@@ -1,0 +1,233 @@
+{
+  "diag": {
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-ptD-1780590774869",
+    "baseline": {
+      "seat": 0,
+      "handBySeat": [
+        14,
+        13,
+        13,
+        13
+      ],
+      "meldBySeat": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "discardBySeat": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "totalDiscard": 0,
+      "totalMeld": 0,
+      "wallCount": 55,
+      "myHandIds": [
+        {
+          "id": 2
+        },
+        {
+          "id": 4
+        },
+        {
+          "id": 5
+        },
+        {
+          "id": 9
+        },
+        {
+          "id": 16
+        },
+        {
+          "id": 26
+        },
+        {
+          "id": 45
+        },
+        {
+          "id": 50
+        },
+        {
+          "id": 54
+        },
+        {
+          "id": 60
+        },
+        {
+          "id": 83
+        },
+        {
+          "id": 94
+        },
+        {
+          "id": 97
+        },
+        {
+          "id": 107
+        }
+      ],
+      "myHandFaceUp": 0,
+      "foreignHandFaceUp": 0,
+      "hasExtraHandTile": false,
+      "pickup": null,
+      "result": null,
+      "gameComplete": null,
+      "claimsBySeat": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "matchPhase": null
+    },
+    "inject": {
+      "ok": true,
+      "payload": {
+        "winner": 0,
+        "type": "Hu",
+        "score": [
+          {
+            "seat": 0,
+            "delta": 24
+          },
+          {
+            "seat": 1,
+            "delta": -8
+          },
+          {
+            "seat": 2,
+            "delta": -8
+          },
+          {
+            "seat": 3,
+            "delta": -8
+          }
+        ],
+        "hand": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13
+        ],
+        "nextBanker": 0
+      }
+    },
+    "ui": {
+      "modalVisible": true,
+      "modalClasses": "modal show",
+      "modalDisplay": "block",
+      "headlineText": "胡!",
+      "winnerText": "Seat 0 赢了 wins!",
+      "scoreRows": 4
+    },
+    "uiAfterTombstone": {
+      "modalVisible": false,
+      "modalDisplay": "none",
+      "modalClasses": "modal"
+    },
+    "gameCompleteInject": {
+      "ok": true
+    },
+    "gcModalVisible": true,
+    "pageDiag": {
+      "label": "D",
+      "pageErrors": [],
+      "consoleErrors": [
+        "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "consoleWarnings": [],
+      "networkFailures": [
+        "404 GET http://127.0.0.1:8088/api/games/vasquez-ptD-1780590774869",
+        "404 GET http://127.0.0.1:8088/api/games/vasquez-ptD-1780590774869/settings"
+      ],
+      "staleMoveToWarnings": 0
+    }
+  },
+  "gates": {
+    "D1_resultInjectionAccepted": {
+      "status": "PASS",
+      "detail": {
+        "ok": true,
+        "payload": {
+          "winner": 0,
+          "type": "Hu",
+          "score": [
+            {
+              "seat": 0,
+              "delta": 24
+            },
+            {
+              "seat": 1,
+              "delta": -8
+            },
+            {
+              "seat": 2,
+              "delta": -8
+            },
+            {
+              "seat": 3,
+              "delta": -8
+            }
+          ],
+          "hand": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "nextBanker": 0
+        }
+      }
+    },
+    "D2_modalSurfaces": {
+      "status": "PASS",
+      "detail": {
+        "modalVisible": true,
+        "modalClasses": "modal show",
+        "modalDisplay": "block",
+        "headlineText": "胡!",
+        "winnerText": "Seat 0 赢了 wins!",
+        "scoreRows": 4
+      }
+    },
+    "D3_modalTombstoneClears": {
+      "status": "PASS",
+      "detail": {
+        "modalVisible": false,
+        "modalDisplay": "none",
+        "modalClasses": "modal"
+      }
+    },
+    "D4_gameCompleteModal": {
+      "status": "PASS",
+      "detail": {
+        "ok": true,
+        "gcModalVisible": true
+      }
+    }
+  }
+}

@@ -44,7 +44,7 @@
       "ok": true,
       "result": {
         "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4",
-        "uniqueGameId": "mobile375-auto-1779762032811-706"
+        "uniqueGameId": "mobile375-auto-1780590409699-449"
       }
     },
     {
@@ -112,10 +112,10 @@
     "Failed to load resource: the server responded with a status of 404 (Not Found)"
   ],
   "consoleWarnings": [
-    "[.WebGL-0xb2400154e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0xb2400154e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0xb2400154e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0xb2400154e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    "[.WebGL-0x202c0013a000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x202c0013a000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x202c0013a000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x202c0013a000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
   ],
   "networkFailures": [
     "404 GET http://127.0.0.1:8088/api/games/changsha-default",

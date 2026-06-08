@@ -1,0 +1,73 @@
+{
+  "timestamp": "2026-06-04T16:16:53.446Z",
+  "runTag": "ripley-docker-proof-1780589813446",
+  "baseUrl": "http://127.0.0.1:8088",
+  "health": {
+    "status": 200,
+    "ok": true,
+    "latencyMs": 11,
+    "body": {
+      "status": "healthy",
+      "buildSha": "dev",
+      "uptime": "23:20:23.2895305",
+      "version": "0.31.0.0",
+      "db": {
+        "connected": true,
+        "latencyMs": 0,
+        "providerName": "Microsoft.EntityFrameworkCore.Sqlite",
+        "canQuery": true,
+        "migrationsApplied": 0
+      },
+      "activeGames": 135,
+      "oauth": {
+        "providers": {}
+      }
+    }
+  },
+  "staticHtml": {
+    "status": 200,
+    "ok": true,
+    "latencyMs": 3,
+    "bytes": 92044,
+    "hasTitle": true,
+    "bundleAsset": "autotable-src.192512af.js",
+    "snippet": "<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"utf-8\">\n    <title>Autotable</title>\n    <meta name=\"viewport\"\n          content=\"width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no\">\n    <!-- Phase J Wave 8 — Sentry DSN injection point.  Empty content\n         keeps Sentry as a no-op; ops can swap the value in via\n         envsubst / k8s ConfigMap mount without rebuilding the bundle. -->\n    <meta name=\"sentry-dsn\" content=\"\">\n    <meta name=\"sentry-environment\" content=\"production\">\n    <!-- Phase K Wave 2 — PWA manifest + theme.  Service worker is\n         registered at "
+  },
+  "screenshot": "playtest-artifacts/screenshots/ripley-docker-proof-1780589813446/docker-game-running.png",
+  "worldSnapshot": {
+    "seat": null,
+    "handBySeat": [
+      11,
+      13,
+      13,
+      13
+    ],
+    "meldBySeat": [
+      3,
+      0,
+      0,
+      0
+    ],
+    "discardBySeat": [
+      2,
+      1,
+      1,
+      1
+    ],
+    "wallCount": 50,
+    "totalDiscard": 5,
+    "totalMeld": 3,
+    "handSum": 50,
+    "thingsCount": 109,
+    "connected": true
+  },
+  "pageErrors": [],
+  "consoleErrors": [
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "ignoredWarnings": 0,
+  "pass": true,
+  "failReason": null
+}

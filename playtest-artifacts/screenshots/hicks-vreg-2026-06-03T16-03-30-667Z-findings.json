@@ -1,0 +1,478 @@
+[
+  {
+    "label": "desktop-1920",
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=hicks-vreg-desktop-1920-1780502610800-514",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "worldState": {
+      "seat": 0,
+      "wallCount": 55,
+      "dealerHand": 14,
+      "allHand": 53,
+      "allDiscard": 0,
+      "allMeld": 0,
+      "wallSeats": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "gameType": "CHANGSHA",
+      "dealType": "INITIAL",
+      "thingCount": 109
+    },
+    "pageErrors": [],
+    "pageErrorsCount": 0,
+    "consoleErrorsCount": 3,
+    "consoleErrorsSample": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarningsCount": 4,
+    "nanRadiusWarnings": 1,
+    "networkFailuresCount": 2,
+    "networkFailuresSample": [
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-desktop-1920-1780502610800-514",
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-desktop-1920-1780502610800-514/settings"
+    ],
+    "screenshots": [
+      "/data/source/mahjong-autotable/playtest-artifacts/playtest-artifacts/screenshots/hicks-vreg-2026-06-03T16-03-30-667Z-desktop-1920-01-post-settle.png"
+    ],
+    "extra": {
+      "dealResult": {
+        "ok": true
+      }
+    }
+  },
+  {
+    "label": "mobile-375",
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=hicks-vreg-mobile-375-1780502628119-816",
+    "viewport": {
+      "width": 375,
+      "height": 667
+    },
+    "worldState": {
+      "seat": null,
+      "wallCount": 55,
+      "dealerHand": 0,
+      "allHand": 53,
+      "allDiscard": 0,
+      "allMeld": 0,
+      "wallSeats": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "gameType": "CHANGSHA",
+      "dealType": "INITIAL",
+      "thingCount": 109
+    },
+    "pageErrors": [],
+    "pageErrorsCount": 0,
+    "consoleErrorsCount": 3,
+    "consoleErrorsSample": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarningsCount": 0,
+    "nanRadiusWarnings": 1,
+    "networkFailuresCount": 2,
+    "networkFailuresSample": [
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-mobile-375-1780502628119-816",
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-mobile-375-1780502628119-816/settings"
+    ],
+    "screenshots": [
+      "/data/source/mahjong-autotable/playtest-artifacts/playtest-artifacts/screenshots/hicks-vreg-2026-06-03T16-03-30-667Z-mobile-375-01-post-settle.png"
+    ],
+    "extra": {
+      "dealResult": {
+        "ok": true
+      }
+    }
+  },
+  {
+    "label": "tablet-768",
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=hicks-vreg-tablet-768-1780502648265-976",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "worldState": {
+      "seat": 0,
+      "wallCount": 55,
+      "dealerHand": 14,
+      "allHand": 53,
+      "allDiscard": 0,
+      "allMeld": 0,
+      "wallSeats": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "gameType": "CHANGSHA",
+      "dealType": "INITIAL",
+      "thingCount": 109
+    },
+    "pageErrors": [],
+    "pageErrorsCount": 0,
+    "consoleErrorsCount": 3,
+    "consoleErrorsSample": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarningsCount": 0,
+    "nanRadiusWarnings": 1,
+    "networkFailuresCount": 2,
+    "networkFailuresSample": [
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-tablet-768-1780502648265-976",
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-tablet-768-1780502648265-976/settings"
+    ],
+    "screenshots": [
+      "/data/source/mahjong-autotable/playtest-artifacts/playtest-artifacts/screenshots/hicks-vreg-2026-06-03T16-03-30-667Z-tablet-768-01-post-settle.png"
+    ],
+    "extra": {
+      "dealResult": {
+        "ok": true
+      }
+    }
+  },
+  {
+    "label": "human-4p-nobots",
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=0&handCount=4&gameId=hicks-vreg-human-4p-nobots-1780502663717-796",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "worldState": {
+      "seat": 0,
+      "wallCount": 108,
+      "dealerHand": 0,
+      "allHand": 0,
+      "allDiscard": 0,
+      "allMeld": 0,
+      "wallSeats": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "gameType": "CHANGSHA",
+      "dealType": "INITIAL",
+      "thingCount": 109
+    },
+    "pageErrors": [],
+    "pageErrorsCount": 0,
+    "consoleErrorsCount": 3,
+    "consoleErrorsSample": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarningsCount": 0,
+    "nanRadiusWarnings": 1,
+    "networkFailuresCount": 2,
+    "networkFailuresSample": [
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-human-4p-nobots-1780502663717-796",
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-human-4p-nobots-1780502663717-796/settings"
+    ],
+    "screenshots": [
+      "/data/source/mahjong-autotable/playtest-artifacts/playtest-artifacts/screenshots/hicks-vreg-2026-06-03T16-03-30-667Z-human-4p-nobots-01-post-settle.png"
+    ],
+    "extra": {}
+  },
+  {
+    "label": "bots-2",
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=2&botDifficulty=Medium&handCount=4&gameId=hicks-vreg-bots-2-1780502673743-651",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "worldState": {
+      "seat": 0,
+      "wallCount": 55,
+      "dealerHand": 14,
+      "allHand": 53,
+      "allDiscard": 0,
+      "allMeld": 0,
+      "wallSeats": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "gameType": "CHANGSHA",
+      "dealType": "INITIAL",
+      "thingCount": 109
+    },
+    "pageErrors": [],
+    "pageErrorsCount": 0,
+    "consoleErrorsCount": 3,
+    "consoleErrorsSample": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarningsCount": 0,
+    "nanRadiusWarnings": 1,
+    "networkFailuresCount": 2,
+    "networkFailuresSample": [
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-bots-2-1780502673743-651",
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-bots-2-1780502673743-651/settings"
+    ],
+    "screenshots": [
+      "/data/source/mahjong-autotable/playtest-artifacts/playtest-artifacts/screenshots/hicks-vreg-2026-06-03T16-03-30-667Z-bots-2-01-post-settle.png"
+    ],
+    "extra": {
+      "dealResult": {
+        "ok": true
+      }
+    }
+  },
+  {
+    "label": "bots-4-auto",
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=4&gameId=hicks-vreg-bots-4-auto-1780502691250-985",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "worldState": {
+      "seat": null,
+      "wallCount": 43,
+      "dealerHand": 0,
+      "allHand": 29,
+      "allDiscard": 11,
+      "allMeld": 25,
+      "wallSeats": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "gameType": "CHANGSHA",
+      "dealType": "INITIAL",
+      "thingCount": 109
+    },
+    "pageErrors": [],
+    "pageErrorsCount": 0,
+    "consoleErrorsCount": 3,
+    "consoleErrorsSample": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarningsCount": 0,
+    "nanRadiusWarnings": 1,
+    "networkFailuresCount": 2,
+    "networkFailuresSample": [
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-bots-4-auto-1780502691250-985",
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-bots-4-auto-1780502691250-985/settings"
+    ],
+    "screenshots": [
+      "/data/source/mahjong-autotable/playtest-artifacts/playtest-artifacts/screenshots/hicks-vreg-2026-06-03T16-03-30-667Z-bots-4-auto-01-post-settle.png"
+    ],
+    "extra": {
+      "dealResult": {
+        "ok": true
+      }
+    }
+  },
+  {
+    "label": "camera-flat",
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=hicks-vreg-camera-flat-1780502708671-983",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "worldState": {
+      "seat": 0,
+      "wallCount": 55,
+      "dealerHand": 14,
+      "allHand": 53,
+      "allDiscard": 0,
+      "allMeld": 0,
+      "wallSeats": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "gameType": "CHANGSHA",
+      "dealType": "INITIAL",
+      "thingCount": 109
+    },
+    "pageErrors": [],
+    "pageErrorsCount": 0,
+    "consoleErrorsCount": 3,
+    "consoleErrorsSample": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarningsCount": 0,
+    "nanRadiusWarnings": 1,
+    "networkFailuresCount": 2,
+    "networkFailuresSample": [
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-camera-flat-1780502708671-983",
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-camera-flat-1780502708671-983/settings"
+    ],
+    "screenshots": [
+      "/data/source/mahjong-autotable/playtest-artifacts/playtest-artifacts/screenshots/hicks-vreg-2026-06-03T16-03-30-667Z-camera-flat-01-post-settle.png"
+    ],
+    "extra": {
+      "dealResult": {
+        "ok": true
+      }
+    }
+  },
+  {
+    "label": "setup-menu-open",
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=hicks-vreg-setup-menu-open-1780502726935-102",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "worldState": {
+      "seat": 0,
+      "wallCount": 55,
+      "dealerHand": 14,
+      "allHand": 53,
+      "allDiscard": 0,
+      "allMeld": 0,
+      "wallSeats": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "gameType": "CHANGSHA",
+      "dealType": "INITIAL",
+      "thingCount": 109
+    },
+    "pageErrors": [],
+    "pageErrorsCount": 0,
+    "consoleErrorsCount": 3,
+    "consoleErrorsSample": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarningsCount": 0,
+    "nanRadiusWarnings": 1,
+    "networkFailuresCount": 2,
+    "networkFailuresSample": [
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-setup-menu-open-1780502726935-102",
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-setup-menu-open-1780502726935-102/settings"
+    ],
+    "screenshots": [
+      "/data/source/mahjong-autotable/playtest-artifacts/playtest-artifacts/screenshots/hicks-vreg-2026-06-03T16-03-30-667Z-setup-menu-open-01-post-settle.png"
+    ],
+    "extra": {
+      "dealResult": {
+        "ok": true
+      }
+    }
+  },
+  {
+    "label": "movelog-open",
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=hicks-vreg-movelog-open-1780502743287-209",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "worldState": {
+      "seat": 0,
+      "wallCount": 55,
+      "dealerHand": 14,
+      "allHand": 53,
+      "allDiscard": 0,
+      "allMeld": 0,
+      "wallSeats": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "gameType": "CHANGSHA",
+      "dealType": "INITIAL",
+      "thingCount": 109
+    },
+    "pageErrors": [],
+    "pageErrorsCount": 0,
+    "consoleErrorsCount": 3,
+    "consoleErrorsSample": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarningsCount": 0,
+    "nanRadiusWarnings": 1,
+    "networkFailuresCount": 2,
+    "networkFailuresSample": [
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-movelog-open-1780502743287-209",
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-movelog-open-1780502743287-209/settings"
+    ],
+    "screenshots": [
+      "/data/source/mahjong-autotable/playtest-artifacts/playtest-artifacts/screenshots/hicks-vreg-2026-06-03T16-03-30-667Z-movelog-open-01-post-settle.png"
+    ],
+    "extra": {
+      "dealResult": {
+        "ok": true
+      }
+    }
+  },
+  {
+    "label": "settled-30s",
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=4&gameId=hicks-vreg-settled-30s-1780502763187-852",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "worldState": {
+      "seat": null,
+      "wallCount": 41,
+      "dealerHand": 0,
+      "allHand": 41,
+      "allDiscard": 14,
+      "allMeld": 12,
+      "wallSeats": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "gameType": "CHANGSHA",
+      "dealType": "INITIAL",
+      "thingCount": 109
+    },
+    "pageErrors": [],
+    "pageErrorsCount": 0,
+    "consoleErrorsCount": 3,
+    "consoleErrorsSample": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarningsCount": 0,
+    "nanRadiusWarnings": 1,
+    "networkFailuresCount": 2,
+    "networkFailuresSample": [
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-settled-30s-1780502763187-852",
+      "404 GET http://127.0.0.1:8088/api/games/hicks-vreg-settled-30s-1780502763187-852/settings"
+    ],
+    "screenshots": [
+      "/data/source/mahjong-autotable/playtest-artifacts/playtest-artifacts/screenshots/hicks-vreg-2026-06-03T16-03-30-667Z-settled-30s-01-post-settle.png"
+    ],
+    "extra": {
+      "dealResult": {
+        "ok": true
+      }
+    }
+  }
+]

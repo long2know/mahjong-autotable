@@ -1,0 +1,351 @@
+{
+  "baseUrl": "http://127.0.0.1:8088",
+  "startedAt": "2026-06-04T15:44:21.371Z",
+  "perGame": [
+    {
+      "gameIndex": 0,
+      "gameId": "frost-scoring-live-1780587861371-0-332",
+      "huForGame": 4,
+      "huWithFansForGame": 1,
+      "firstHuWithFansForGame": {
+        "winner": 0,
+        "type": "Hu",
+        "score": [
+          {
+            "seat": 0,
+            "delta": 31
+          },
+          {
+            "seat": 1,
+            "delta": -11
+          },
+          {
+            "seat": 2,
+            "delta": -12
+          },
+          {
+            "seat": 3,
+            "delta": -8
+          }
+        ],
+        "hand": [
+          41,
+          64,
+          65,
+          72,
+          73,
+          43,
+          97,
+          31,
+          99,
+          29,
+          45,
+          47,
+          28,
+          30
+        ],
+        "nextBanker": 0,
+        "winResult": {
+          "winningSeatIndex": 0,
+          "winType": "selfDraw",
+          "winPattern": "sevenPairs",
+          "winningTileId": 30,
+          "sourceSeatIndex": 0,
+          "allPatterns": [
+            "sevenPairs"
+          ],
+          "isRobbedKong": false,
+          "isSelfDraw": true,
+          "isKongReplacement": false
+        },
+        "scoreResult": {
+          "category": "bigWin",
+          "basePoints": 30,
+          "payments": [
+            {
+              "fromSeatIndex": 1,
+              "toSeatIndex": 0,
+              "amount": 4,
+              "reason": "BigWin-selfDraw-dealer"
+            },
+            {
+              "fromSeatIndex": 2,
+              "toSeatIndex": 0,
+              "amount": 4,
+              "reason": "BigWin-selfDraw-dealer"
+            },
+            {
+              "fromSeatIndex": 3,
+              "toSeatIndex": 0,
+              "amount": 4,
+              "reason": "BigWin-selfDraw-dealer"
+            },
+            {
+              "fromSeatIndex": 1,
+              "toSeatIndex": 0,
+              "amount": 1,
+              "reason": "fan:selfDraw"
+            },
+            {
+              "fromSeatIndex": 1,
+              "toSeatIndex": 0,
+              "amount": 4,
+              "reason": "fan:sevenPairs"
+            },
+            {
+              "fromSeatIndex": 1,
+              "toSeatIndex": 0,
+              "amount": 1,
+              "reason": "fan:concealedHand"
+            },
+            {
+              "fromSeatIndex": 2,
+              "toSeatIndex": 0,
+              "amount": 1,
+              "reason": "fan:selfDraw"
+            },
+            {
+              "fromSeatIndex": 2,
+              "toSeatIndex": 0,
+              "amount": 4,
+              "reason": "fan:sevenPairs"
+            },
+            {
+              "fromSeatIndex": 2,
+              "toSeatIndex": 0,
+              "amount": 1,
+              "reason": "fan:concealedHand"
+            },
+            {
+              "fromSeatIndex": 3,
+              "toSeatIndex": 0,
+              "amount": 1,
+              "reason": "fan:selfDraw"
+            },
+            {
+              "fromSeatIndex": 3,
+              "toSeatIndex": 0,
+              "amount": 4,
+              "reason": "fan:sevenPairs"
+            },
+            {
+              "fromSeatIndex": 3,
+              "toSeatIndex": 0,
+              "amount": 1,
+              "reason": "fan:concealedHand"
+            }
+          ],
+          "fans": [
+            {
+              "fan": "selfDraw",
+              "points": 1,
+              "chinese": "自摸",
+              "pinyin": "zì mō",
+              "english": "Self-draw"
+            },
+            {
+              "fan": "sevenPairs",
+              "points": 4,
+              "chinese": "七对",
+              "pinyin": "qī duì",
+              "english": "Seven Pairs"
+            },
+            {
+              "fan": "concealedHand",
+              "points": 1,
+              "chinese": "门清",
+              "pinyin": "mén qīng",
+              "english": "Concealed Hand"
+            }
+          ],
+          "fanPoints": 6
+        }
+      },
+      "wireForGame": {
+        "resultFramesSeen": 211,
+        "huFramesSeen": 211,
+        "fansFramesSeen": 2,
+        "huFingerprints": [
+          "1|1|0|",
+          "3|2|0|",
+          "0|1|0|",
+          "0|30|6|selfDraw+sevenPairs+concealedHand"
+        ]
+      }
+    }
+  ],
+  "wireSnapshot": {
+    "resultFramesSeen": 211,
+    "huFramesSeen": 211,
+    "fansFramesSeen": 2,
+    "uniqueHuFingerprints": [
+      "1|1|0|",
+      "3|2|0|",
+      "0|1|0|",
+      "0|30|6|selfDraw+sevenPairs+concealedHand"
+    ],
+    "lastFansFrame": null
+  },
+  "huObserved": 4,
+  "huWithFansObserved": 1,
+  "firstHuWithFans": {
+    "gameIndex": 0,
+    "gameId": "frost-scoring-live-1780587861371-0-332",
+    "value": {
+      "winner": 0,
+      "type": "Hu",
+      "score": [
+        {
+          "seat": 0,
+          "delta": 31
+        },
+        {
+          "seat": 1,
+          "delta": -11
+        },
+        {
+          "seat": 2,
+          "delta": -12
+        },
+        {
+          "seat": 3,
+          "delta": -8
+        }
+      ],
+      "hand": [
+        41,
+        64,
+        65,
+        72,
+        73,
+        43,
+        97,
+        31,
+        99,
+        29,
+        45,
+        47,
+        28,
+        30
+      ],
+      "nextBanker": 0,
+      "winResult": {
+        "winningSeatIndex": 0,
+        "winType": "selfDraw",
+        "winPattern": "sevenPairs",
+        "winningTileId": 30,
+        "sourceSeatIndex": 0,
+        "allPatterns": [
+          "sevenPairs"
+        ],
+        "isRobbedKong": false,
+        "isSelfDraw": true,
+        "isKongReplacement": false
+      },
+      "scoreResult": {
+        "category": "bigWin",
+        "basePoints": 30,
+        "payments": [
+          {
+            "fromSeatIndex": 1,
+            "toSeatIndex": 0,
+            "amount": 4,
+            "reason": "BigWin-selfDraw-dealer"
+          },
+          {
+            "fromSeatIndex": 2,
+            "toSeatIndex": 0,
+            "amount": 4,
+            "reason": "BigWin-selfDraw-dealer"
+          },
+          {
+            "fromSeatIndex": 3,
+            "toSeatIndex": 0,
+            "amount": 4,
+            "reason": "BigWin-selfDraw-dealer"
+          },
+          {
+            "fromSeatIndex": 1,
+            "toSeatIndex": 0,
+            "amount": 1,
+            "reason": "fan:selfDraw"
+          },
+          {
+            "fromSeatIndex": 1,
+            "toSeatIndex": 0,
+            "amount": 4,
+            "reason": "fan:sevenPairs"
+          },
+          {
+            "fromSeatIndex": 1,
+            "toSeatIndex": 0,
+            "amount": 1,
+            "reason": "fan:concealedHand"
+          },
+          {
+            "fromSeatIndex": 2,
+            "toSeatIndex": 0,
+            "amount": 1,
+            "reason": "fan:selfDraw"
+          },
+          {
+            "fromSeatIndex": 2,
+            "toSeatIndex": 0,
+            "amount": 4,
+            "reason": "fan:sevenPairs"
+          },
+          {
+            "fromSeatIndex": 2,
+            "toSeatIndex": 0,
+            "amount": 1,
+            "reason": "fan:concealedHand"
+          },
+          {
+            "fromSeatIndex": 3,
+            "toSeatIndex": 0,
+            "amount": 1,
+            "reason": "fan:selfDraw"
+          },
+          {
+            "fromSeatIndex": 3,
+            "toSeatIndex": 0,
+            "amount": 4,
+            "reason": "fan:sevenPairs"
+          },
+          {
+            "fromSeatIndex": 3,
+            "toSeatIndex": 0,
+            "amount": 1,
+            "reason": "fan:concealedHand"
+          }
+        ],
+        "fans": [
+          {
+            "fan": "selfDraw",
+            "points": 1,
+            "chinese": "自摸",
+            "pinyin": "zì mō",
+            "english": "Self-draw"
+          },
+          {
+            "fan": "sevenPairs",
+            "points": 4,
+            "chinese": "七对",
+            "pinyin": "qī duì",
+            "english": "Seven Pairs"
+          },
+          {
+            "fan": "concealedHand",
+            "points": 1,
+            "chinese": "门清",
+            "pinyin": "mén qīng",
+            "english": "Concealed Hand"
+          }
+        ],
+        "fanPoints": 6
+      }
+    }
+  },
+  "pageErrors": [],
+  "issues": []
+}

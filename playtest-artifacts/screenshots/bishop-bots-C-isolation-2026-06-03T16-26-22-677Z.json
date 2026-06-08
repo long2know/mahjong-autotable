@@ -1,0 +1,88 @@
+{
+  "ok": false,
+  "label": "C-isolation",
+  "failures": [
+    "ctx A produced < 2 discards (got 1); isolation check is vacuous"
+  ],
+  "a": {
+    "pageErrors": [],
+    "consoleErrors": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarnings": [],
+    "networkFailures": [
+      "404 GET http://127.0.0.1:8088/api/games/bishop-iso-A-1780504031147",
+      "404 GET http://127.0.0.1:8088/api/games/bishop-iso-A-1780504031147/settings"
+    ],
+    "snapshot": {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 47,
+        "wall": 54,
+        "discard": 1,
+        "meld": 6,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 94,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null
+    },
+    "discardTuples": [
+      "94@discard.0.0@1"
+    ]
+  },
+  "b": {
+    "pageErrors": [],
+    "consoleErrors": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarnings": [],
+    "networkFailures": [
+      "404 GET http://127.0.0.1:8088/api/games/bishop-iso-B-1780504031147",
+      "404 GET http://127.0.0.1:8088/api/games/bishop-iso-B-1780504031147/settings"
+    ],
+    "snapshot": {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 52,
+        "wall": 54,
+        "discard": 2,
+        "meld": 0,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 86,
+          "slotName": "discard.0.0@3",
+          "seat": 3
+        },
+        {
+          "id": 104,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null
+    },
+    "discardTuples": [
+      "86@discard.0.0@3",
+      "104@discard.0.0@0"
+    ]
+  },
+  "intersection": []
+}

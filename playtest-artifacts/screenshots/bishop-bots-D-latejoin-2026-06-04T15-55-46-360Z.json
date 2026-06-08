@@ -1,0 +1,268 @@
+{
+  "ok": true,
+  "label": "D-latejoin",
+  "failures": [],
+  "early": {
+    "pageErrors": [],
+    "consoleErrors": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarnings": [],
+    "networkFailures": [
+      "404 GET http://127.0.0.1:8088/api/games/bishop-late-1780588778273",
+      "404 GET http://127.0.0.1:8088/api/games/bishop-late-1780588778273/settings"
+    ],
+    "beforeJoin": {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 32,
+        "wall": 49,
+        "discard": 5,
+        "meld": 22,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 51,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 60,
+          "slotName": "discard.0.0@3",
+          "seat": 3
+        },
+        {
+          "id": 82,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        },
+        {
+          "id": 85,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 102,
+          "slotName": "discard.0.0@2",
+          "seat": 2
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null
+    },
+    "afterLateJoined": {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 25,
+        "wall": 38,
+        "discard": 16,
+        "meld": 29,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 20,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 25,
+          "slotName": "discard.0.2@1",
+          "seat": 1
+        },
+        {
+          "id": 42,
+          "slotName": "discard.0.4@2",
+          "seat": 2
+        },
+        {
+          "id": 51,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 60,
+          "slotName": "discard.0.0@3",
+          "seat": 3
+        },
+        {
+          "id": 62,
+          "slotName": "discard.0.3@1",
+          "seat": 1
+        },
+        {
+          "id": 64,
+          "slotName": "discard.0.2@0",
+          "seat": 0
+        },
+        {
+          "id": 82,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        },
+        {
+          "id": 85,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 89,
+          "slotName": "discard.0.2@2",
+          "seat": 2
+        },
+        {
+          "id": 100,
+          "slotName": "discard.0.3@2",
+          "seat": 2
+        },
+        {
+          "id": 101,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 102,
+          "slotName": "discard.0.0@2",
+          "seat": 2
+        },
+        {
+          "id": 103,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        },
+        {
+          "id": 104,
+          "slotName": "discard.0.1@3",
+          "seat": 3
+        },
+        {
+          "id": 107,
+          "slotName": "discard.0.1@0",
+          "seat": 0
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null
+    }
+  },
+  "late": {
+    "pageErrors": [],
+    "consoleErrors": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarnings": [],
+    "networkFailures": [
+      "404 GET http://127.0.0.1:8088/api/games/bishop-late-1780588778273",
+      "404 GET http://127.0.0.1:8088/api/games/bishop-late-1780588778273/settings"
+    ],
+    "afterJoin": {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 25,
+        "wall": 38,
+        "discard": 16,
+        "meld": 29,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 20,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 25,
+          "slotName": "discard.0.2@1",
+          "seat": 1
+        },
+        {
+          "id": 42,
+          "slotName": "discard.0.4@2",
+          "seat": 2
+        },
+        {
+          "id": 51,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 60,
+          "slotName": "discard.0.0@3",
+          "seat": 3
+        },
+        {
+          "id": 62,
+          "slotName": "discard.0.3@1",
+          "seat": 1
+        },
+        {
+          "id": 64,
+          "slotName": "discard.0.2@0",
+          "seat": 0
+        },
+        {
+          "id": 82,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        },
+        {
+          "id": 85,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 89,
+          "slotName": "discard.0.2@2",
+          "seat": 2
+        },
+        {
+          "id": 100,
+          "slotName": "discard.0.3@2",
+          "seat": 2
+        },
+        {
+          "id": 101,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 102,
+          "slotName": "discard.0.0@2",
+          "seat": 2
+        },
+        {
+          "id": 103,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        },
+        {
+          "id": 104,
+          "slotName": "discard.0.1@3",
+          "seat": 3
+        },
+        {
+          "id": 107,
+          "slotName": "discard.0.1@0",
+          "seat": 0
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null
+    }
+  },
+  "earlyInPlay": 108,
+  "lateInPlay": 108,
+  "earlyDiscards": 16,
+  "lateDiscards": 16
+}

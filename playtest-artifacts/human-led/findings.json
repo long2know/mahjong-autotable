@@ -1,5 +1,5 @@
 {
-  "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&gameId=humanled-1780084293766-469",
+  "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&gameId=humanled-1780590298292-639",
   "variant": "changsha",
   "dealMode": "manual",
   "botCount": 3,
@@ -8,8 +8,8 @@
       "name": "1-load",
       "ok": true,
       "result": {
-        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&gameId=humanled-1780084293766-469",
-        "gameId": "humanled-1780084293766-469"
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&gameId=humanled-1780590298292-639",
+        "gameId": "humanled-1780590298292-639"
       }
     },
     {
@@ -47,7 +47,8 @@
         "ok": true,
         "before": {
           "seat": 0,
-          "gameType": "FOUR_PLAYER",
+          "gameType": "CHANGSHA",
+          "dealMode": "manual",
           "connected": true
         },
         "matchAfter": {
@@ -76,15 +77,15 @@
       "result": {
         "iterations": 4,
         "lastPickup": null,
-        "finalHandSize": 15
+        "finalHandSize": 14
       }
     },
     {
       "name": "8b-wait-hand-populated",
       "ok": true,
       "result": {
-        "elapsedMs": 41,
-        "finalHandSize": 15
+        "elapsedMs": 0,
+        "finalHandSize": 14
       }
     },
     {
@@ -92,30 +93,29 @@
       "ok": true,
       "result": {
         "seat": 0,
-        "handTileCount": 15,
+        "handTileCount": 14,
         "sampleSlots": [
           {
-            "tileId": 3,
-            "slot": "hand.8@0"
+            "tileId": 5,
+            "slot": "hand.1@0"
           },
           {
-            "tileId": 25,
-            "slot": "hand.13@0"
+            "tileId": 7,
+            "slot": "hand.7@0"
           },
           {
-            "tileId": 26,
-            "slot": "hand.5@0"
+            "tileId": 20,
+            "slot": "hand.2@0"
           },
           {
-            "tileId": 39,
-            "slot": "hand.12@0"
+            "tileId": 29,
+            "slot": "hand.11@0"
           }
         ],
         "thingsByPrefix": {
-          "wall": 74,
-          "hand": 62,
-          "marker": 1,
-          "tray": 60
+          "wall": 55,
+          "hand": 53,
+          "marker": 1
         }
       }
     },
@@ -125,7 +125,7 @@
       "result": {
         "ok": true,
         "via": "world.emitDiscard",
-        "tileId": 3,
+        "tileId": 5,
         "seat": 0,
         "tried": [
           {
@@ -143,18 +143,18 @@
       "name": "11-observe-8s",
       "ok": true,
       "result": {
-        "moveLogCount": 15,
+        "moveLogCount": 24,
         "recent": [
-          "[12:51:43]Seat 3 (Bot 3): picking 4 tiles (round 1)",
-          "[12:51:43]Seat 0 (Seat 0): picking 4 tiles (round 2)",
-          "[12:51:44]Seat 1 (Bot 1): picking 4 tiles (round 2)",
-          "[12:51:44]Seat 2 (Bot 2): picking 4 tiles (round 2)",
-          "[12:51:45]Seat 3 (Bot 3): picking 4 tiles (round 2)",
-          "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-          "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-          "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-          "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-          "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+          "[09:25:11]Seat 0 (Seat 0): picking 1 tile (dealerextra)",
+          "[09:25:17]Seat 0 (Seat 0): discarded 6万",
+          "[09:25:17]Seat 1 (Bot 1): discarded 4筒",
+          "[09:25:18]Seat 2 (Bot 2): discarded 9条",
+          "[09:25:18]Seat 3 (Bot 3): discarded 3筒",
+          "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+          "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+          "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+          "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+          "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
         ]
       }
     },
@@ -163,7 +163,7 @@
       "ok": true,
       "result": {
         "captureCount": 12,
-        "finalLogCount": 15
+        "finalLogCount": 24
       }
     },
     {
@@ -189,27 +189,19 @@
     "Failed to load resource: the server responded with a status of 404 (Not Found)"
   ],
   "consoleWarnings": [
-    "[.WebGL-0x341c0015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x341c0015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x341c0015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x341c0015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
-    "autotable: forcing stale moveTo 108 -> wall.0.1@1 (occupant=29)",
-    "autotable: forcing stale moveTo 108 -> wall.0.1@1 (occupant=29)",
-    "autotable: forcing stale moveTo 111 -> wall.9.1@1 (occupant=82)",
-    "autotable: forcing stale moveTo 111 -> wall.9.1@1 (occupant=88)",
-    "autotable: forcing stale moveTo 111 -> wall.9.1@1 (occupant=60)",
-    "autotable: forcing stale moveTo 108 -> hand.11@1 (occupant=45)",
-    "autotable: forcing stale moveTo 108 -> hand.11@1 (occupant=45)",
-    "autotable: forcing stale moveTo 108 -> hand.11@1 (occupant=45)"
+    "[.WebGL-0x225c00157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x225c00157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x225c00157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x225c00157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
   ],
   "networkFailures": [
-    "404 GET http://127.0.0.1:8088/api/games/humanled-1780084293766-469",
-    "404 GET http://127.0.0.1:8088/api/games/humanled-1780084293766-469/settings"
+    "404 GET http://127.0.0.1:8088/api/games/humanled-1780590298292-639",
+    "404 GET http://127.0.0.1:8088/api/games/humanled-1780590298292-639/settings"
   ],
   "collections": {
     "match": 1,
     "seats": 7,
-    "things": 197,
+    "things": 109,
     "nicks": 7,
     "mouse": 0,
     "sound": 0,
@@ -242,28 +234,25 @@
   ],
   "pickupProgression": [
     {
-      "atSec": "0.1",
+      "atSec": "0.0",
       "seat": 0,
       "pickup": {
         "phase": "SingleTilePickup",
-        "seatIndex": 0,
+        "seatIndex": 1,
         "count": 1,
         "dealMode": "manual",
         "breakPoint": {
-          "wallIndex": 1,
-          "stackIndex": 11,
-          "tileIndex": 50
+          "wallIndex": 2,
+          "stackIndex": 7,
+          "tileIndex": 68
         },
         "wallIndex": 0
       },
-      "myTurn": true,
-      "mySeatHandTiles": 13,
-      "emitTake": {
-        "ok": false
-      }
+      "myTurn": false,
+      "mySeatHandTiles": 13
     },
     {
-      "atSec": "1.4",
+      "atSec": "1.2",
       "seat": 0,
       "pickup": {
         "phase": "SingleTilePickup",
@@ -271,17 +260,17 @@
         "count": 1,
         "dealMode": "manual",
         "breakPoint": {
-          "wallIndex": 1,
-          "stackIndex": 11,
-          "tileIndex": 50
+          "wallIndex": 2,
+          "stackIndex": 7,
+          "tileIndex": 68
         },
         "wallIndex": 0
       },
       "myTurn": false,
-      "mySeatHandTiles": 14
+      "mySeatHandTiles": 13
     },
     {
-      "atSec": "2.6",
+      "atSec": "2.4",
       "seat": 0,
       "pickup": {
         "phase": "DealerExtra",
@@ -289,36 +278,36 @@
         "count": 1,
         "dealMode": "manual",
         "breakPoint": {
-          "wallIndex": 1,
-          "stackIndex": 11,
-          "tileIndex": 50
+          "wallIndex": 2,
+          "stackIndex": 7,
+          "tileIndex": 68
         },
         "wallIndex": 0
       },
       "myTurn": true,
-      "mySeatHandTiles": 14,
+      "mySeatHandTiles": 13,
       "emitTake": {
         "ok": true
       }
     },
     {
-      "atSec": "3.9",
+      "atSec": "3.7",
       "seat": 0,
       "pickup": null,
       "myTurn": false,
-      "mySeatHandTiles": 15
+      "mySeatHandTiles": 14
     }
   ],
   "moveLogProgression": [
     {
       "atSec": 0,
-      "count": 15,
+      "count": 24,
       "recent": [
-        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+        "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+        "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+        "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+        "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
       ],
       "phase": {
         "pickup": null,
@@ -327,13 +316,13 @@
     },
     {
       "atSec": 5,
-      "count": 15,
+      "count": 24,
       "recent": [
-        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+        "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+        "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+        "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+        "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
       ],
       "phase": {
         "pickup": null,
@@ -342,13 +331,13 @@
     },
     {
       "atSec": 10,
-      "count": 15,
+      "count": 24,
       "recent": [
-        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+        "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+        "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+        "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+        "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
       ],
       "phase": {
         "pickup": null,
@@ -357,13 +346,13 @@
     },
     {
       "atSec": 15,
-      "count": 15,
+      "count": 24,
       "recent": [
-        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+        "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+        "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+        "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+        "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
       ],
       "phase": {
         "pickup": null,
@@ -372,13 +361,13 @@
     },
     {
       "atSec": 20,
-      "count": 15,
+      "count": 24,
       "recent": [
-        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+        "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+        "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+        "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+        "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
       ],
       "phase": {
         "pickup": null,
@@ -387,13 +376,13 @@
     },
     {
       "atSec": 25,
-      "count": 15,
+      "count": 24,
       "recent": [
-        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+        "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+        "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+        "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+        "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
       ],
       "phase": {
         "pickup": null,
@@ -402,13 +391,13 @@
     },
     {
       "atSec": 30,
-      "count": 15,
+      "count": 24,
       "recent": [
-        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+        "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+        "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+        "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+        "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
       ],
       "phase": {
         "pickup": null,
@@ -417,13 +406,13 @@
     },
     {
       "atSec": 35,
-      "count": 15,
+      "count": 24,
       "recent": [
-        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+        "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+        "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+        "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+        "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
       ],
       "phase": {
         "pickup": null,
@@ -432,13 +421,13 @@
     },
     {
       "atSec": 40,
-      "count": 15,
+      "count": 24,
       "recent": [
-        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+        "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+        "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+        "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+        "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
       ],
       "phase": {
         "pickup": null,
@@ -447,13 +436,13 @@
     },
     {
       "atSec": 45,
-      "count": 15,
+      "count": 24,
       "recent": [
-        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+        "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+        "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+        "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+        "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
       ],
       "phase": {
         "pickup": null,
@@ -462,13 +451,13 @@
     },
     {
       "atSec": 50,
-      "count": 15,
+      "count": 24,
       "recent": [
-        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+        "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+        "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+        "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+        "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
       ],
       "phase": {
         "pickup": null,
@@ -477,13 +466,13 @@
     },
     {
       "atSec": 55,
-      "count": 15,
+      "count": 24,
       "recent": [
-        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[09:25:18]Seat 1 (Bot 1): claim window — Pung on 3筒 (from Seat 3)",
+        "[09:25:19]Seat 1 (Bot 1): discarded 5万",
+        "[09:25:19]Seat 2 (Bot 2): discarded 9筒",
+        "[09:25:19]Seat 3 (Bot 3): discarded 6筒",
+        "[09:25:19]Seat 0 (Seat 0): claim window — Chow on 6筒 (from Seat 3)"
       ],
       "phase": {
         "pickup": null,
@@ -494,7 +483,7 @@
   "discardAttempt": {
     "ok": true,
     "via": "world.emitDiscard",
-    "tileId": 3,
+    "tileId": 5,
     "seat": 0,
     "tried": [
       {
@@ -514,30 +503,29 @@
   },
   "postDealHandSize": {
     "seat": 0,
-    "handTileCount": 15,
+    "handTileCount": 14,
     "sampleSlots": [
       {
-        "tileId": 3,
-        "slot": "hand.8@0"
+        "tileId": 5,
+        "slot": "hand.1@0"
       },
       {
-        "tileId": 25,
-        "slot": "hand.13@0"
+        "tileId": 7,
+        "slot": "hand.7@0"
       },
       {
-        "tileId": 26,
-        "slot": "hand.5@0"
+        "tileId": 20,
+        "slot": "hand.2@0"
       },
       {
-        "tileId": 39,
-        "slot": "hand.12@0"
+        "tileId": 29,
+        "slot": "hand.11@0"
       }
     ],
     "thingsByPrefix": {
-      "wall": 74,
-      "hand": 62,
-      "marker": 1,
-      "tray": 60
+      "wall": 55,
+      "hand": 53,
+      "marker": 1
     }
   }
 }

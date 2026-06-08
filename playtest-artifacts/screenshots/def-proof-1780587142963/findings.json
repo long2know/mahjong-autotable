@@ -1,0 +1,337 @@
+{
+  "timestamp": "2026-06-04T15:32:22.962Z",
+  "runTag": "def-proof-1780587142963",
+  "baseUrl": "http://127.0.0.1:8088",
+  "totalScreenshots": 10,
+  "passed": [
+    "01-walls-built-facedown",
+    "02-dice-rolled",
+    "03-dealing-ceremony",
+    "04-hand-dealt-faceup",
+    "05-tile-selected",
+    "06-discard-on-table",
+    "07-claim-window",
+    "08-hand-result-modal",
+    "09-game-complete-modal",
+    "10-multi-game-isolation"
+  ],
+  "failed": [],
+  "pageErrorsTotal": 0,
+  "perScreenshot": [
+    {
+      "label": "01-walls-built-facedown",
+      "file": "01-walls-built-facedown.png",
+      "preconditionsMet": true,
+      "pageErrors": 0,
+      "ms": 222,
+      "detail": {
+        "wallCount": 108,
+        "wallFaceDown": 108,
+        "wallFaceUp": 0,
+        "handBySeat": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "label": "02-dice-rolled",
+      "file": "02-dice-rolled.png",
+      "preconditionsMet": true,
+      "pageErrors": 0,
+      "ms": 254,
+      "detail": {
+        "hudReady": true,
+        "snap": {
+          "diceState": "rolled",
+          "diceValues": [
+            1,
+            3
+          ],
+          "wallCount": 104,
+          "handBySeat": [
+            4,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "03-dealing-ceremony",
+      "file": "03-dealing-ceremony.png",
+      "preconditionsMet": true,
+      "pageErrors": 0,
+      "ms": 273,
+      "detail": {
+        "wallCount": 88,
+        "handBySeat": [
+          8,
+          4,
+          4,
+          4
+        ],
+        "myHandFaceUp": 8,
+        "pickupPhase": "PickupRound2",
+        "pickupSeat": 1
+      }
+    },
+    {
+      "label": "04-hand-dealt-faceup",
+      "file": "04-hand-dealt-faceup.png",
+      "preconditionsMet": true,
+      "pageErrors": 0,
+      "ms": 228,
+      "detail": {
+        "seat": 0,
+        "handBySeat": [
+          14,
+          13,
+          13,
+          13
+        ],
+        "myHandFaceUp": 14,
+        "foreignHandFaceUp": 0,
+        "hasExtraHandTile": true,
+        "drainReason": "pickup null",
+        "drainEmitsLog": [
+          {
+            "at": 2560,
+            "done": false,
+            "emitted": true,
+            "error": null,
+            "phase": "SingleTilePickup",
+            "count": 1
+          },
+          {
+            "at": 3075,
+            "done": false,
+            "waitingFor": 1,
+            "phase": "SingleTilePickup"
+          },
+          {
+            "at": 3593,
+            "done": false,
+            "waitingFor": 2,
+            "phase": "SingleTilePickup"
+          },
+          {
+            "at": 4108,
+            "done": false,
+            "waitingFor": 3,
+            "phase": "SingleTilePickup"
+          },
+          {
+            "at": 4627,
+            "done": false,
+            "emitted": true,
+            "error": null,
+            "phase": "DealerExtra",
+            "count": 1
+          },
+          {
+            "at": 5141,
+            "done": true,
+            "reason": "pickup null"
+          }
+        ]
+      }
+    },
+    {
+      "label": "05-tile-selected",
+      "file": "05-tile-selected.png",
+      "preconditionsMet": true,
+      "pageErrors": 0,
+      "ms": 224,
+      "detail": {
+        "tile": {
+          "id": 58
+        },
+        "sel": {
+          "ok": true,
+          "id": 58,
+          "hovered": 58,
+          "selected": [
+            58
+          ]
+        },
+        "liftDetail": {
+          "ok": true,
+          "id": 58,
+          "claimedBy": 0,
+          "hovered": 58,
+          "selected": [
+            58
+          ]
+        },
+        "verify": {
+          "hovered": 58,
+          "selected": [
+            58
+          ],
+          "claimedBy": 0
+        }
+      }
+    },
+    {
+      "label": "06-discard-on-table",
+      "file": "06-discard-on-table.png",
+      "preconditionsMet": true,
+      "pageErrors": 0,
+      "ms": 235,
+      "detail": {
+        "emitOk": true,
+        "emitDetail": {
+          "ok": true,
+          "id": 0
+        },
+        "preHand": [
+          14,
+          13,
+          13,
+          13
+        ],
+        "postHand": [
+          14,
+          10,
+          13,
+          10
+        ],
+        "totalDiscard": 2,
+        "totalMeld": 6,
+        "pickup": null
+      }
+    },
+    {
+      "label": "07-claim-window",
+      "file": "07-claim-window.png",
+      "preconditionsMet": true,
+      "pageErrors": 0,
+      "ms": 243,
+      "detail": {
+        "inject": {
+          "ok": true,
+          "seat": 0,
+          "payload": {
+            "available": [
+              "Pung",
+              "Chow",
+              "Hu"
+            ],
+            "deadline": 1780587198364,
+            "source": 1,
+            "tile": 5
+          }
+        },
+        "ui": {
+          "countdownVisible": true,
+          "overlayVisible": false,
+          "disabled": {
+            "Pung": false,
+            "Chow": false,
+            "Kong": true,
+            "Hu": false,
+            "Pass": false
+          }
+        }
+      }
+    },
+    {
+      "label": "08-hand-result-modal",
+      "file": "08-hand-result-modal.png",
+      "preconditionsMet": true,
+      "pageErrors": 0,
+      "ms": 149,
+      "detail": {
+        "inject": {
+          "ok": true
+        },
+        "ui": {
+          "modalVisible": true,
+          "modalDisplay": "block",
+          "modalClass": "modal show",
+          "scoreRows": 4
+        }
+      }
+    },
+    {
+      "label": "09-game-complete-modal",
+      "file": "09-game-complete-modal.png",
+      "preconditionsMet": true,
+      "pageErrors": 0,
+      "ms": 191,
+      "detail": {
+        "inject": {
+          "ok": true
+        },
+        "ui": {
+          "visible": true,
+          "display": "block",
+          "className": "modal show",
+          "textSample": "🏆 GAME OVER 🏆\n4-hand match complete\nFinal Scores\n座位 Seat\t玩家 Player\t总分 Total Δ\n0 (E 东)\tSeat 0 (You)\t+28\n1 (S 南)\tBot 1\t-8\n3 (N 北)\tBot 3\t-8\n2 (W 西)\tBot 2\t-11\n番种 FANS SCORED\n平胡\n平胡\n平胡\n门前清\n门前清\n门前清\n碰碰胡\n碰碰胡"
+        }
+      }
+    },
+    {
+      "label": "10-multi-game-isolation",
+      "file": "10-multi-game-isolation.png",
+      "companionA": "10-multi-game-isolation-A.png",
+      "companionB": "10-multi-game-isolation-B.png",
+      "preconditionsMet": true,
+      "pageErrors": 0,
+      "ms": 0,
+      "detail": {
+        "gameIdA": "def-proof-1780587142963-iso-A",
+        "gameIdB": "def-proof-1780587142963-iso-B",
+        "handA": [
+          13,
+          14,
+          13,
+          13
+        ],
+        "handB": [
+          14,
+          13,
+          13,
+          13
+        ],
+        "myFaceUpA": 13,
+        "myFaceUpB": 14,
+        "totalDiscardA": 1,
+        "totalDiscardB": 0,
+        "totalMeldA": 0,
+        "totalMeldB": 0,
+        "discardA": {
+          "ok": true
+        },
+        "pageErrorsA": 0,
+        "pageErrorsB": 0
+      }
+    }
+  ],
+  "mainPageDiag": {
+    "pageErrors": [],
+    "pageErrorsCount": 0,
+    "consoleErrorsCount": 3,
+    "staleMoveToWarnings": 0,
+    "networkFailuresCount": 2
+  },
+  "isolationDiag": {
+    "A": {
+      "pageErrorsCount": 0,
+      "consoleErrorsCount": 3,
+      "staleMoveToWarnings": 0
+    },
+    "B": {
+      "pageErrorsCount": 0,
+      "consoleErrorsCount": 3,
+      "staleMoveToWarnings": 0
+    }
+  },
+  "completedAt": "2026-06-04T15:33:26.446Z",
+  "passedCount": 10,
+  "failedCount": 0
+}

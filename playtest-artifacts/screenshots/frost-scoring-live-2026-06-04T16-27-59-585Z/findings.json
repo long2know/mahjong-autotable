@@ -1,0 +1,141 @@
+{
+  "baseUrl": "http://127.0.0.1:8088",
+  "startedAt": "2026-06-04T16:27:59.639Z",
+  "perGame": [
+    {
+      "gameIndex": 0,
+      "gameId": "frost-scoring-live-1780590479639-0-2285",
+      "huForGame": 1,
+      "huWithFansForGame": 0,
+      "firstHuWithFansForGame": null,
+      "wireForGame": {
+        "resultFramesSeen": 193,
+        "huFramesSeen": 98,
+        "fansFramesSeen": 2,
+        "huFingerprints": [
+          "3|2|0|",
+          "3|9|1|selfDraw"
+        ]
+      }
+    }
+  ],
+  "wireSnapshot": {
+    "resultFramesSeen": 193,
+    "huFramesSeen": 98,
+    "fansFramesSeen": 2,
+    "uniqueHuFingerprints": [
+      "3|2|0|"
+    ],
+    "lastFansFrame": null
+  },
+  "huObserved": 1,
+  "huWithFansObserved": 0,
+  "firstHuWithFans": {
+    "gameIndex": 0,
+    "gameId": "frost-scoring-live-1780590479639-0-2285",
+    "value": {
+      "winner": 3,
+      "type": "Hu",
+      "score": [
+        {
+          "seat": 0,
+          "delta": -5
+        },
+        {
+          "seat": 1,
+          "delta": -3
+        },
+        {
+          "seat": 2,
+          "delta": -3
+        },
+        {
+          "seat": 3,
+          "delta": 11
+        }
+      ],
+      "hand": [
+        2,
+        87,
+        76,
+        7,
+        79,
+        84,
+        85,
+        11,
+        44,
+        46,
+        47,
+        32,
+        33,
+        34
+      ],
+      "nextBanker": 3,
+      "winResult": {
+        "winningSeatIndex": 3,
+        "winType": "selfDraw",
+        "winPattern": "standard",
+        "winningTileId": 11,
+        "sourceSeatIndex": 3,
+        "allPatterns": [],
+        "isRobbedKong": false,
+        "isSelfDraw": true,
+        "isKongReplacement": false
+      },
+      "scoreResult": {
+        "category": "smallWin",
+        "basePoints": 9,
+        "payments": [
+          {
+            "fromSeatIndex": 0,
+            "toSeatIndex": 3,
+            "amount": 2,
+            "reason": "SmallWin-selfDraw-dealer"
+          },
+          {
+            "fromSeatIndex": 1,
+            "toSeatIndex": 3,
+            "amount": 2,
+            "reason": "SmallWin-selfDraw-dealer"
+          },
+          {
+            "fromSeatIndex": 2,
+            "toSeatIndex": 3,
+            "amount": 2,
+            "reason": "SmallWin-selfDraw-dealer"
+          },
+          {
+            "fromSeatIndex": 0,
+            "toSeatIndex": 3,
+            "amount": 1,
+            "reason": "fan:selfDraw"
+          },
+          {
+            "fromSeatIndex": 1,
+            "toSeatIndex": 3,
+            "amount": 1,
+            "reason": "fan:selfDraw"
+          },
+          {
+            "fromSeatIndex": 2,
+            "toSeatIndex": 3,
+            "amount": 1,
+            "reason": "fan:selfDraw"
+          }
+        ],
+        "fans": [
+          {
+            "fan": "selfDraw",
+            "points": 1,
+            "chinese": "自摸",
+            "pinyin": "zì mō",
+            "english": "Self-draw"
+          }
+        ],
+        "fanPoints": 1
+      }
+    }
+  },
+  "pageErrors": [],
+  "issues": []
+}

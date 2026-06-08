@@ -1,0 +1,2115 @@
+{
+  "gameId": "frost-scoring-live-1780581733706-4857",
+  "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Hard&gameId=frost-scoring-live-1780581733706-4857",
+  "deadlineHitMs": 1780582038653,
+  "huWithFans": null,
+  "wireSnapshot": {
+    "resultFramesSeen": 327,
+    "fansFramesSeen": 0,
+    "lastFansFrame": null
+  },
+  "observations": [
+    {
+      "at": 1780581739578,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581739580,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581739916,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581739934,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581740281,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581740283,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581740631,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581740884,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581740900,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581741248,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581741249,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581741597,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581741598,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581741948,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581742200,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581742564,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581742815,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581742817,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581743164,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581743415,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581743767,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581743782,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581744130,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581744132,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581744481,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581744747,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581745097,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581745098,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581745447,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581745697,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581745698,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581746050,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581746066,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581746414,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581746415,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581746764,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581746766,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581747117,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581747118,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581747481,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581747482,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581747830,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581747832,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581748181,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581748182,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581748534,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581748550,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581748897,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581748898,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581749246,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581749248,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581749599,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581749863,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581749865,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581750215,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581750216,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581750566,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581750581,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581750930,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581750931,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581751282,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581751284,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581751647,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581751897,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581751898,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581752246,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581752248,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581752615,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581752864,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581752866,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581753213,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581753214,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581753564,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581753566,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581753930,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581754180,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581754530,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581754781,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581754782,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581755147,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581755149,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581755497,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581755766,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581755767,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581756113,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581756115,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581756464,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581756466,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581756815,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581757080,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581757081,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581757447,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581757448,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581757796,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581758047,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581758049,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581758396,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581758398,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581758748,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581759013,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581759015,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581759364,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581759366,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581759729,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581759731,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581760080,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581760330,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581760332,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581760697,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581760698,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581761046,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581761296,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581761648,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581761900,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581761915,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581762262,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581762264,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581762612,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581762614,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581762979,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581763230,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581763232,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581763581,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581763583,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581763933,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581764196,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581764197,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581764546,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581764548,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581764899,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581765163,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581765164,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581765513,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581765766,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581765768,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581766129,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581766479,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581766730,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581766731,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581767096,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581767348,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581767350,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581767352,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581767712,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581767714,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581768063,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581768313,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581768663,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581768664,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581769029,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581769031,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581769380,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581769630,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581769996,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581769997,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581770346,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581770347,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581770717,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581770948,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581771313,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581771562,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581771913,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581771915,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581772265,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581772529,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581772878,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581773129,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581773480,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581773731,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581773748,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581774095,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581774346,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581774695,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581774696,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581775047,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581775313,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581775662,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581775913,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581775914,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581776264,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581776265,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581776629,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581776630,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581776978,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581777229,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581777231,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581777596,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581777597,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581777945,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581778195,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581778197,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581778548,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581778562,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581778914,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581778915,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581779264,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581779265,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581779638,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581779657,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581779980,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581779981,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581780329,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581780330,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581780697,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581780699,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581781048,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581781296,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581781299,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581781663,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581781913,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581781915,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581782263,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581782514,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581782866,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581783130,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581783131,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581783481,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581783501,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581783848,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581783850,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581784216,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581784218,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581784573,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581784825,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581784826,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581785192,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581785193,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581785547,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581785549,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581785906,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581785908,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581786257,
+      "key": "current",
+      "type": "Draw",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581786491,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581786511,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581786877,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581786878,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581787216,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581787218,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581787564,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581787582,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581787932,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581787933,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581788285,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581788287,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581788669,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581788671,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581789012,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581789014,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581789396,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581789646,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581789648,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581789997,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581790266,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581790606,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581790608,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581790966,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581790999,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581791301,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581791303,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581791679,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581791938,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581792296,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581792298,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581792659,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581792900,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581792903,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581793274,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581793278,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581793620,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581793622,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581793984,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581794237,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581794600,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581794851,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581794853,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581795207,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581795471,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581795801,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581795803,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581796166,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581796168,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581796525,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581796788,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581797164,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581797381,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581797729,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581798015,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581798360,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581798629,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581798630,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581798986,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581798989,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581799337,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581799586,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581799589,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581799959,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581799961,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581800314,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581800574,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581800577,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581800912,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581801178,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581801182,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581801549,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581801550,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581801907,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581802178,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581802181,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581802543,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581802545,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581802900,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581802903,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581803260,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581803263,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581803609,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581803611,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581803936,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581803938,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581804316,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581804346,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581804694,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581804696,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581805038,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581805040,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581805383,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581805655,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    },
+    {
+      "at": 1780581805686,
+      "key": "current",
+      "type": "Hu",
+      "fanCount": 0
+    }
+  ],
+  "lastSnapshotPeek": {
+    "queueLen": 327,
+    "current": {
+      "winner": 1,
+      "type": "Hu",
+      "score": [
+        {
+          "seat": 0,
+          "delta": 1
+        },
+        {
+          "seat": 1,
+          "delta": 2
+        },
+        {
+          "seat": 2,
+          "delta": -1
+        },
+        {
+          "seat": 3,
+          "delta": -2
+        }
+      ],
+      "hand": [
+        35,
+        88,
+        33,
+        90,
+        96,
+        98,
+        34,
+        97,
+        65,
+        66,
+        67,
+        1,
+        5,
+        11
+      ],
+      "nextBanker": 1,
+      "winResult": {
+        "winningSeatIndex": 1,
+        "winType": "discard",
+        "winPattern": "standard",
+        "winningTileId": 97,
+        "sourceSeatIndex": 2,
+        "allPatterns": [],
+        "isRobbedKong": false,
+        "isSelfDraw": false,
+        "isKongReplacement": false
+      },
+      "scoreResult": {
+        "category": "smallWin",
+        "basePoints": 1,
+        "payments": [
+          {
+            "fromSeatIndex": 2,
+            "toSeatIndex": 1,
+            "amount": 1,
+            "reason": "SmallWin-discard"
+          }
+        ],
+        "fans": [],
+        "fanPoints": 0
+      }
+    },
+    "latestObservation": {
+      "at": 1780581805686,
+      "key": "current",
+      "value": {
+        "winner": 1,
+        "type": "Hu",
+        "score": [
+          {
+            "seat": 0,
+            "delta": 1
+          },
+          {
+            "seat": 1,
+            "delta": 2
+          },
+          {
+            "seat": 2,
+            "delta": -1
+          },
+          {
+            "seat": 3,
+            "delta": -2
+          }
+        ],
+        "hand": [
+          35,
+          88,
+          33,
+          90,
+          96,
+          98,
+          34,
+          97,
+          65,
+          66,
+          67,
+          1,
+          5,
+          11
+        ],
+        "nextBanker": 1,
+        "winResult": {
+          "winningSeatIndex": 1,
+          "winType": "discard",
+          "winPattern": "standard",
+          "winningTileId": 97,
+          "sourceSeatIndex": 2,
+          "allPatterns": [],
+          "isRobbedKong": false,
+          "isSelfDraw": false,
+          "isKongReplacement": false
+        },
+        "scoreResult": {
+          "category": "smallWin",
+          "basePoints": 1,
+          "payments": [
+            {
+              "fromSeatIndex": 2,
+              "toSeatIndex": 1,
+              "amount": 1,
+              "reason": "SmallWin-discard"
+            }
+          ],
+          "fans": [],
+          "fanPoints": 0
+        }
+      }
+    },
+    "seat": null,
+    "gameId": "frost-scoring-live-1780581733706-4857"
+  },
+  "consoleErrorCount": 3,
+  "pageErrorCount": 0,
+  "pageErrors": []
+}

@@ -1,0 +1,19 @@
+{
+  "t": 1780957377532,
+  "bannerVisible": true,
+  "bannerHidden": false,
+  "bannerText": "Your turn — click a tile to discard",
+  "bannerClasses": [
+    "turn-banner-discard",
+    "visible"
+  ],
+  "bannerHasDiscardClass": true,
+  "bodyHasMyTurnDiscard": true,
+  "bodyClasses": [
+    "theme-light",
+    "variant-changsha",
+    "my-turn-discard"
+  ],
+  "canvasCursor": "pointer",
+  "selfSeat": 0
+}

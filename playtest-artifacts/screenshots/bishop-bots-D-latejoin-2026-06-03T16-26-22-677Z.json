@@ -1,0 +1,381 @@
+{
+  "ok": true,
+  "label": "D-latejoin",
+  "failures": [],
+  "early": {
+    "pageErrors": [],
+    "consoleErrors": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarnings": [],
+    "networkFailures": [
+      "404 GET http://127.0.0.1:8088/api/games/bishop-late-1780504054375",
+      "404 GET http://127.0.0.1:8088/api/games/bishop-late-1780504054375/settings"
+    ],
+    "beforeJoin": {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 32,
+        "wall": 35,
+        "discard": 20,
+        "meld": 21,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 3,
+          "slotName": "discard.0.0@2",
+          "seat": 2
+        },
+        {
+          "id": 37,
+          "slotName": "discard.0.2@1",
+          "seat": 1
+        },
+        {
+          "id": 38,
+          "slotName": "discard.0.0@3",
+          "seat": 3
+        },
+        {
+          "id": 41,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        },
+        {
+          "id": 44,
+          "slotName": "discard.0.3@3",
+          "seat": 3
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 52,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 53,
+          "slotName": "discard.0.3@2",
+          "seat": 2
+        },
+        {
+          "id": 55,
+          "slotName": "discard.0.5@1",
+          "seat": 1
+        },
+        {
+          "id": 61,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 69,
+          "slotName": "discard.0.2@0",
+          "seat": 0
+        },
+        {
+          "id": 72,
+          "slotName": "discard.0.2@2",
+          "seat": 2
+        },
+        {
+          "id": 74,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 79,
+          "slotName": "discard.0.4@1",
+          "seat": 1
+        },
+        {
+          "id": 80,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 83,
+          "slotName": "discard.0.1@0",
+          "seat": 0
+        },
+        {
+          "id": 86,
+          "slotName": "discard.0.1@3",
+          "seat": 3
+        },
+        {
+          "id": 88,
+          "slotName": "discard.0.3@1",
+          "seat": 1
+        },
+        {
+          "id": 89,
+          "slotName": "discard.0.4@0",
+          "seat": 0
+        },
+        {
+          "id": 101,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null
+    },
+    "afterLateJoined": {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 23,
+        "wall": 25,
+        "discard": 30,
+        "meld": 30,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 3,
+          "slotName": "discard.0.0@2",
+          "seat": 2
+        },
+        {
+          "id": 13,
+          "slotName": "discard.1.1@2",
+          "seat": 2
+        },
+        {
+          "id": 25,
+          "slotName": "discard.1.0@2",
+          "seat": 2
+        },
+        {
+          "id": 36,
+          "slotName": "discard.0.4@3",
+          "seat": 3
+        },
+        {
+          "id": 37,
+          "slotName": "discard.0.2@1",
+          "seat": 1
+        },
+        {
+          "id": 38,
+          "slotName": "discard.0.0@3",
+          "seat": 3
+        },
+        {
+          "id": 39,
+          "slotName": "discard.0.5@3",
+          "seat": 3
+        },
+        {
+          "id": 41,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        },
+        {
+          "id": 44,
+          "slotName": "discard.0.3@3",
+          "seat": 3
+        },
+        {
+          "id": 46,
+          "slotName": "discard.1.0@3",
+          "seat": 3
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 52,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 53,
+          "slotName": "discard.0.3@2",
+          "seat": 2
+        },
+        {
+          "id": 55,
+          "slotName": "discard.0.5@1",
+          "seat": 1
+        },
+        {
+          "id": 61,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 68,
+          "slotName": "discard.0.4@2",
+          "seat": 2
+        },
+        {
+          "id": 69,
+          "slotName": "discard.0.2@0",
+          "seat": 0
+        },
+        {
+          "id": 71,
+          "slotName": "discard.1.0@0",
+          "seat": 0
+        },
+        {
+          "id": 72,
+          "slotName": "discard.0.2@2",
+          "seat": 2
+        },
+        {
+          "id": 74,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null
+    }
+  },
+  "late": {
+    "pageErrors": [],
+    "consoleErrors": [
+      "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "consoleWarnings": [],
+    "networkFailures": [
+      "404 GET http://127.0.0.1:8088/api/games/bishop-late-1780504054375",
+      "404 GET http://127.0.0.1:8088/api/games/bishop-late-1780504054375/settings"
+    ],
+    "afterJoin": {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 23,
+        "wall": 25,
+        "discard": 30,
+        "meld": 30,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 3,
+          "slotName": "discard.0.0@2",
+          "seat": 2
+        },
+        {
+          "id": 13,
+          "slotName": "discard.1.1@2",
+          "seat": 2
+        },
+        {
+          "id": 25,
+          "slotName": "discard.1.0@2",
+          "seat": 2
+        },
+        {
+          "id": 36,
+          "slotName": "discard.0.4@3",
+          "seat": 3
+        },
+        {
+          "id": 37,
+          "slotName": "discard.0.2@1",
+          "seat": 1
+        },
+        {
+          "id": 38,
+          "slotName": "discard.0.0@3",
+          "seat": 3
+        },
+        {
+          "id": 39,
+          "slotName": "discard.0.5@3",
+          "seat": 3
+        },
+        {
+          "id": 41,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        },
+        {
+          "id": 44,
+          "slotName": "discard.0.3@3",
+          "seat": 3
+        },
+        {
+          "id": 46,
+          "slotName": "discard.1.0@3",
+          "seat": 3
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 52,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 53,
+          "slotName": "discard.0.3@2",
+          "seat": 2
+        },
+        {
+          "id": 55,
+          "slotName": "discard.0.5@1",
+          "seat": 1
+        },
+        {
+          "id": 61,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 68,
+          "slotName": "discard.0.4@2",
+          "seat": 2
+        },
+        {
+          "id": 69,
+          "slotName": "discard.0.2@0",
+          "seat": 0
+        },
+        {
+          "id": 71,
+          "slotName": "discard.1.0@0",
+          "seat": 0
+        },
+        {
+          "id": 72,
+          "slotName": "discard.0.2@2",
+          "seat": 2
+        },
+        {
+          "id": 74,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null
+    }
+  },
+  "earlyDiscards": 30,
+  "lateDiscards": 30
+}

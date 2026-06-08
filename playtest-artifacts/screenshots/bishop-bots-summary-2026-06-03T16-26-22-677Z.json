@@ -1,0 +1,763 @@
+{
+  "ts": "2026-06-03T16-26-22-677Z",
+  "baseUrl": "http://127.0.0.1:8088",
+  "sections": {
+    "B": {
+      "ok": false,
+      "label": "B-selfplay",
+      "failures": [
+        "expected ≥ 8 discards by end of B; got 5"
+      ],
+      "pageErrors": [],
+      "consoleErrors": [
+        "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "consoleWarnings": [
+        "[.WebGL-0x298400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x298400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x298400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x298400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "networkFailures": [
+        "404 GET http://127.0.0.1:8088/api/games/bishop-selfplay-1780503982763",
+        "404 GET http://127.0.0.1:8088/api/games/bishop-selfplay-1780503982763/settings"
+      ],
+      "baseline": {
+        "ok": true,
+        "thingsTotal": 109,
+        "byGroup": {
+          "hand": 47,
+          "wall": 51,
+          "discard": 4,
+          "meld": 6,
+          "other": 1
+        },
+        "discardSamples": [
+          {
+            "id": 34,
+            "slotName": "discard.0.1@1",
+            "seat": 1
+          },
+          {
+            "id": 49,
+            "slotName": "discard.0.0@1",
+            "seat": 1
+          },
+          {
+            "id": 73,
+            "slotName": "discard.0.0@0",
+            "seat": 0
+          },
+          {
+            "id": 75,
+            "slotName": "discard.0.0@3",
+            "seat": 3
+          }
+        ],
+        "activeSeat": null,
+        "phase": null,
+        "handCount": null
+      },
+      "samples": [
+        {
+          "ok": true,
+          "thingsTotal": 109,
+          "byGroup": {
+            "hand": 49,
+            "wall": 44,
+            "discard": 12,
+            "meld": 3,
+            "other": 1
+          },
+          "discardSamples": [
+            {
+              "id": 12,
+              "slotName": "discard.0.0@3",
+              "seat": 3
+            },
+            {
+              "id": 21,
+              "slotName": "discard.0.2@2",
+              "seat": 2
+            },
+            {
+              "id": 22,
+              "slotName": "discard.0.1@3",
+              "seat": 3
+            },
+            {
+              "id": 23,
+              "slotName": "discard.0.2@1",
+              "seat": 1
+            },
+            {
+              "id": 24,
+              "slotName": "discard.0.1@1",
+              "seat": 1
+            },
+            {
+              "id": 25,
+              "slotName": "discard.0.2@0",
+              "seat": 0
+            },
+            {
+              "id": 33,
+              "slotName": "discard.0.1@2",
+              "seat": 2
+            },
+            {
+              "id": 35,
+              "slotName": "discard.0.0@0",
+              "seat": 0
+            },
+            {
+              "id": 60,
+              "slotName": "discard.0.0@2",
+              "seat": 2
+            },
+            {
+              "id": 72,
+              "slotName": "discard.0.2@3",
+              "seat": 3
+            },
+            {
+              "id": 77,
+              "slotName": "discard.0.1@0",
+              "seat": 0
+            },
+            {
+              "id": 106,
+              "slotName": "discard.0.0@1",
+              "seat": 1
+            }
+          ],
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 15013
+        },
+        {
+          "ok": true,
+          "thingsTotal": 109,
+          "byGroup": {
+            "hand": 47,
+            "wall": 46,
+            "discard": 9,
+            "meld": 6,
+            "other": 1
+          },
+          "discardSamples": [
+            {
+              "id": 0,
+              "slotName": "discard.0.1@2",
+              "seat": 2
+            },
+            {
+              "id": 2,
+              "slotName": "discard.0.0@0",
+              "seat": 0
+            },
+            {
+              "id": 12,
+              "slotName": "discard.0.1@0",
+              "seat": 0
+            },
+            {
+              "id": 47,
+              "slotName": "discard.0.1@3",
+              "seat": 3
+            },
+            {
+              "id": 60,
+              "slotName": "discard.0.0@3",
+              "seat": 3
+            },
+            {
+              "id": 82,
+              "slotName": "discard.0.2@2",
+              "seat": 2
+            },
+            {
+              "id": 83,
+              "slotName": "discard.0.0@1",
+              "seat": 1
+            },
+            {
+              "id": 96,
+              "slotName": "discard.0.0@2",
+              "seat": 2
+            },
+            {
+              "id": 102,
+              "slotName": "discard.0.2@0",
+              "seat": 0
+            }
+          ],
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 30014
+        },
+        {
+          "ok": true,
+          "thingsTotal": 109,
+          "byGroup": {
+            "hand": 44,
+            "wall": 50,
+            "discard": 5,
+            "meld": 9,
+            "other": 1
+          },
+          "discardSamples": [
+            {
+              "id": 15,
+              "slotName": "discard.0.0@1",
+              "seat": 1
+            },
+            {
+              "id": 74,
+              "slotName": "discard.0.1@3",
+              "seat": 3
+            },
+            {
+              "id": 80,
+              "slotName": "discard.0.1@0",
+              "seat": 0
+            },
+            {
+              "id": 87,
+              "slotName": "discard.0.0@0",
+              "seat": 0
+            },
+            {
+              "id": 106,
+              "slotName": "discard.0.0@3",
+              "seat": 3
+            }
+          ],
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 45027
+        }
+      ],
+      "final": {
+        "ok": true,
+        "thingsTotal": 109,
+        "byGroup": {
+          "hand": 44,
+          "wall": 50,
+          "discard": 5,
+          "meld": 9,
+          "other": 1
+        },
+        "discardSamples": [
+          {
+            "id": 15,
+            "slotName": "discard.0.0@1",
+            "seat": 1
+          },
+          {
+            "id": 74,
+            "slotName": "discard.0.1@3",
+            "seat": 3
+          },
+          {
+            "id": 80,
+            "slotName": "discard.0.1@0",
+            "seat": 0
+          },
+          {
+            "id": 87,
+            "slotName": "discard.0.0@0",
+            "seat": 0
+          },
+          {
+            "id": 106,
+            "slotName": "discard.0.0@3",
+            "seat": 3
+          }
+        ],
+        "activeSeat": null,
+        "phase": null,
+        "handCount": null,
+        "elapsedMs": 45027
+      }
+    },
+    "C": {
+      "ok": false,
+      "label": "C-isolation",
+      "failures": [
+        "ctx A produced < 2 discards (got 1); isolation check is vacuous"
+      ],
+      "a": {
+        "pageErrors": [],
+        "consoleErrors": [
+          "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+          "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        ],
+        "consoleWarnings": [],
+        "networkFailures": [
+          "404 GET http://127.0.0.1:8088/api/games/bishop-iso-A-1780504031147",
+          "404 GET http://127.0.0.1:8088/api/games/bishop-iso-A-1780504031147/settings"
+        ],
+        "snapshot": {
+          "ok": true,
+          "thingsTotal": 109,
+          "byGroup": {
+            "hand": 47,
+            "wall": 54,
+            "discard": 1,
+            "meld": 6,
+            "other": 1
+          },
+          "discardSamples": [
+            {
+              "id": 94,
+              "slotName": "discard.0.0@1",
+              "seat": 1
+            }
+          ],
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null
+        },
+        "discardTuples": [
+          "94@discard.0.0@1"
+        ]
+      },
+      "b": {
+        "pageErrors": [],
+        "consoleErrors": [
+          "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+          "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        ],
+        "consoleWarnings": [],
+        "networkFailures": [
+          "404 GET http://127.0.0.1:8088/api/games/bishop-iso-B-1780504031147",
+          "404 GET http://127.0.0.1:8088/api/games/bishop-iso-B-1780504031147/settings"
+        ],
+        "snapshot": {
+          "ok": true,
+          "thingsTotal": 109,
+          "byGroup": {
+            "hand": 52,
+            "wall": 54,
+            "discard": 2,
+            "meld": 0,
+            "other": 1
+          },
+          "discardSamples": [
+            {
+              "id": 86,
+              "slotName": "discard.0.0@3",
+              "seat": 3
+            },
+            {
+              "id": 104,
+              "slotName": "discard.0.0@0",
+              "seat": 0
+            }
+          ],
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null
+        },
+        "discardTuples": [
+          "86@discard.0.0@3",
+          "104@discard.0.0@0"
+        ]
+      },
+      "intersection": []
+    },
+    "D": {
+      "ok": true,
+      "label": "D-latejoin",
+      "failures": [],
+      "early": {
+        "pageErrors": [],
+        "consoleErrors": [
+          "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+          "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        ],
+        "consoleWarnings": [],
+        "networkFailures": [
+          "404 GET http://127.0.0.1:8088/api/games/bishop-late-1780504054375",
+          "404 GET http://127.0.0.1:8088/api/games/bishop-late-1780504054375/settings"
+        ],
+        "beforeJoin": {
+          "ok": true,
+          "thingsTotal": 109,
+          "byGroup": {
+            "hand": 32,
+            "wall": 35,
+            "discard": 20,
+            "meld": 21,
+            "other": 1
+          },
+          "discardSamples": [
+            {
+              "id": 3,
+              "slotName": "discard.0.0@2",
+              "seat": 2
+            },
+            {
+              "id": 37,
+              "slotName": "discard.0.2@1",
+              "seat": 1
+            },
+            {
+              "id": 38,
+              "slotName": "discard.0.0@3",
+              "seat": 3
+            },
+            {
+              "id": 41,
+              "slotName": "discard.0.1@2",
+              "seat": 2
+            },
+            {
+              "id": 44,
+              "slotName": "discard.0.3@3",
+              "seat": 3
+            },
+            {
+              "id": 49,
+              "slotName": "discard.0.1@1",
+              "seat": 1
+            },
+            {
+              "id": 52,
+              "slotName": "discard.0.5@0",
+              "seat": 0
+            },
+            {
+              "id": 53,
+              "slotName": "discard.0.3@2",
+              "seat": 2
+            },
+            {
+              "id": 55,
+              "slotName": "discard.0.5@1",
+              "seat": 1
+            },
+            {
+              "id": 61,
+              "slotName": "discard.0.3@0",
+              "seat": 0
+            },
+            {
+              "id": 69,
+              "slotName": "discard.0.2@0",
+              "seat": 0
+            },
+            {
+              "id": 72,
+              "slotName": "discard.0.2@2",
+              "seat": 2
+            },
+            {
+              "id": 74,
+              "slotName": "discard.0.0@1",
+              "seat": 1
+            },
+            {
+              "id": 79,
+              "slotName": "discard.0.4@1",
+              "seat": 1
+            },
+            {
+              "id": 80,
+              "slotName": "discard.0.0@0",
+              "seat": 0
+            },
+            {
+              "id": 83,
+              "slotName": "discard.0.1@0",
+              "seat": 0
+            },
+            {
+              "id": 86,
+              "slotName": "discard.0.1@3",
+              "seat": 3
+            },
+            {
+              "id": 88,
+              "slotName": "discard.0.3@1",
+              "seat": 1
+            },
+            {
+              "id": 89,
+              "slotName": "discard.0.4@0",
+              "seat": 0
+            },
+            {
+              "id": 101,
+              "slotName": "discard.0.2@3",
+              "seat": 3
+            }
+          ],
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null
+        },
+        "afterLateJoined": {
+          "ok": true,
+          "thingsTotal": 109,
+          "byGroup": {
+            "hand": 23,
+            "wall": 25,
+            "discard": 30,
+            "meld": 30,
+            "other": 1
+          },
+          "discardSamples": [
+            {
+              "id": 3,
+              "slotName": "discard.0.0@2",
+              "seat": 2
+            },
+            {
+              "id": 13,
+              "slotName": "discard.1.1@2",
+              "seat": 2
+            },
+            {
+              "id": 25,
+              "slotName": "discard.1.0@2",
+              "seat": 2
+            },
+            {
+              "id": 36,
+              "slotName": "discard.0.4@3",
+              "seat": 3
+            },
+            {
+              "id": 37,
+              "slotName": "discard.0.2@1",
+              "seat": 1
+            },
+            {
+              "id": 38,
+              "slotName": "discard.0.0@3",
+              "seat": 3
+            },
+            {
+              "id": 39,
+              "slotName": "discard.0.5@3",
+              "seat": 3
+            },
+            {
+              "id": 41,
+              "slotName": "discard.0.1@2",
+              "seat": 2
+            },
+            {
+              "id": 44,
+              "slotName": "discard.0.3@3",
+              "seat": 3
+            },
+            {
+              "id": 46,
+              "slotName": "discard.1.0@3",
+              "seat": 3
+            },
+            {
+              "id": 49,
+              "slotName": "discard.0.1@1",
+              "seat": 1
+            },
+            {
+              "id": 52,
+              "slotName": "discard.0.5@0",
+              "seat": 0
+            },
+            {
+              "id": 53,
+              "slotName": "discard.0.3@2",
+              "seat": 2
+            },
+            {
+              "id": 55,
+              "slotName": "discard.0.5@1",
+              "seat": 1
+            },
+            {
+              "id": 61,
+              "slotName": "discard.0.3@0",
+              "seat": 0
+            },
+            {
+              "id": 68,
+              "slotName": "discard.0.4@2",
+              "seat": 2
+            },
+            {
+              "id": 69,
+              "slotName": "discard.0.2@0",
+              "seat": 0
+            },
+            {
+              "id": 71,
+              "slotName": "discard.1.0@0",
+              "seat": 0
+            },
+            {
+              "id": 72,
+              "slotName": "discard.0.2@2",
+              "seat": 2
+            },
+            {
+              "id": 74,
+              "slotName": "discard.0.0@1",
+              "seat": 1
+            }
+          ],
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null
+        }
+      },
+      "late": {
+        "pageErrors": [],
+        "consoleErrors": [
+          "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+          "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        ],
+        "consoleWarnings": [],
+        "networkFailures": [
+          "404 GET http://127.0.0.1:8088/api/games/bishop-late-1780504054375",
+          "404 GET http://127.0.0.1:8088/api/games/bishop-late-1780504054375/settings"
+        ],
+        "afterJoin": {
+          "ok": true,
+          "thingsTotal": 109,
+          "byGroup": {
+            "hand": 23,
+            "wall": 25,
+            "discard": 30,
+            "meld": 30,
+            "other": 1
+          },
+          "discardSamples": [
+            {
+              "id": 3,
+              "slotName": "discard.0.0@2",
+              "seat": 2
+            },
+            {
+              "id": 13,
+              "slotName": "discard.1.1@2",
+              "seat": 2
+            },
+            {
+              "id": 25,
+              "slotName": "discard.1.0@2",
+              "seat": 2
+            },
+            {
+              "id": 36,
+              "slotName": "discard.0.4@3",
+              "seat": 3
+            },
+            {
+              "id": 37,
+              "slotName": "discard.0.2@1",
+              "seat": 1
+            },
+            {
+              "id": 38,
+              "slotName": "discard.0.0@3",
+              "seat": 3
+            },
+            {
+              "id": 39,
+              "slotName": "discard.0.5@3",
+              "seat": 3
+            },
+            {
+              "id": 41,
+              "slotName": "discard.0.1@2",
+              "seat": 2
+            },
+            {
+              "id": 44,
+              "slotName": "discard.0.3@3",
+              "seat": 3
+            },
+            {
+              "id": 46,
+              "slotName": "discard.1.0@3",
+              "seat": 3
+            },
+            {
+              "id": 49,
+              "slotName": "discard.0.1@1",
+              "seat": 1
+            },
+            {
+              "id": 52,
+              "slotName": "discard.0.5@0",
+              "seat": 0
+            },
+            {
+              "id": 53,
+              "slotName": "discard.0.3@2",
+              "seat": 2
+            },
+            {
+              "id": 55,
+              "slotName": "discard.0.5@1",
+              "seat": 1
+            },
+            {
+              "id": 61,
+              "slotName": "discard.0.3@0",
+              "seat": 0
+            },
+            {
+              "id": 68,
+              "slotName": "discard.0.4@2",
+              "seat": 2
+            },
+            {
+              "id": 69,
+              "slotName": "discard.0.2@0",
+              "seat": 0
+            },
+            {
+              "id": 71,
+              "slotName": "discard.1.0@0",
+              "seat": 0
+            },
+            {
+              "id": 72,
+              "slotName": "discard.0.2@2",
+              "seat": 2
+            },
+            {
+              "id": 74,
+              "slotName": "discard.0.0@1",
+              "seat": 1
+            }
+          ],
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null
+        }
+      },
+      "earlyDiscards": 30,
+      "lateDiscards": 30
+    }
+  },
+  "failures": [
+    "B: expected ≥ 8 discards by end of B; got 5",
+    "C: ctx A produced < 2 discards (got 1); isolation check is vacuous"
+  ]
+}

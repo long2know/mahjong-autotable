@@ -1,0 +1,374 @@
+{
+  "diag": {
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-ptA-1780590736572",
+    "preDiscard": {
+      "seat": 0,
+      "handBySeat": [
+        14,
+        13,
+        13,
+        13
+      ],
+      "meldBySeat": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "discardBySeat": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "totalDiscard": 0,
+      "totalMeld": 0,
+      "wallCount": 55,
+      "myHandIds": [
+        {
+          "id": 3
+        },
+        {
+          "id": 5
+        },
+        {
+          "id": 24
+        },
+        {
+          "id": 42
+        },
+        {
+          "id": 45
+        },
+        {
+          "id": 47
+        },
+        {
+          "id": 48
+        },
+        {
+          "id": 62
+        },
+        {
+          "id": 63
+        },
+        {
+          "id": 65
+        },
+        {
+          "id": 77
+        },
+        {
+          "id": 78
+        },
+        {
+          "id": 90
+        },
+        {
+          "id": 104
+        }
+      ],
+      "myHandFaceUp": 14,
+      "foreignHandFaceUp": 0,
+      "hasExtraHandTile": true,
+      "pickup": null,
+      "result": null,
+      "gameComplete": null,
+      "claimsBySeat": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "matchPhase": null
+    },
+    "discardTarget": {
+      "id": 3
+    },
+    "discardEmit": {
+      "ok": true
+    },
+    "postDiscard": {
+      "seat": 0,
+      "handBySeat": [
+        14,
+        13,
+        13,
+        13
+      ],
+      "meldBySeat": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "discardBySeat": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "totalDiscard": 0,
+      "totalMeld": 0,
+      "wallCount": 55,
+      "myHandIds": [
+        {
+          "id": 3
+        },
+        {
+          "id": 5
+        },
+        {
+          "id": 24
+        },
+        {
+          "id": 42
+        },
+        {
+          "id": 45
+        },
+        {
+          "id": 47
+        },
+        {
+          "id": 48
+        },
+        {
+          "id": 62
+        },
+        {
+          "id": 63
+        },
+        {
+          "id": 65
+        },
+        {
+          "id": 77
+        },
+        {
+          "id": 78
+        },
+        {
+          "id": 90
+        },
+        {
+          "id": 104
+        }
+      ],
+      "myHandFaceUp": 14,
+      "foreignHandFaceUp": 0,
+      "hasExtraHandTile": true,
+      "pickup": null,
+      "result": null,
+      "gameComplete": null,
+      "claimsBySeat": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "matchPhase": null
+    },
+    "logAfterDiscard": [
+      "[09:32:17] System::  Match started — dealer is Seat 0",
+      "[09:32:22] System::  Dice rolled: 4 + 2 = 6",
+      "[09:32:25] Seat 0 (Seat 0)::  discarded 4万"
+    ],
+    "botObservation": {
+      "1": true,
+      "2": false,
+      "3": false
+    },
+    "botLogTail": [
+      "[09:32:17] System::  Match started — dealer is Seat 0",
+      "[09:32:22] System::  Dice rolled: 4 + 2 = 6",
+      "[09:32:25] Seat 0 (Seat 0)::  discarded 4万",
+      "[09:32:25] Seat 1 (Bot 1)::  discarded 8万",
+      "[09:32:25] Seat 0 (Seat 0)::  claim window — Pung on 8万 (from Seat 1)",
+      "[09:32:25] Seat 2 (Bot 2)::  claim window — Chow on 8万 (from Seat 1)"
+    ],
+    "rrFinal": {
+      "seat": 0,
+      "handBySeat": [
+        13,
+        13,
+        10,
+        11
+      ],
+      "meldBySeat": [
+        0,
+        0,
+        3,
+        3
+      ],
+      "discardBySeat": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "totalDiscard": 1,
+      "totalMeld": 6,
+      "wallCount": 54,
+      "myHandIds": [
+        {
+          "id": 5
+        },
+        {
+          "id": 24
+        },
+        {
+          "id": 42
+        },
+        {
+          "id": 45
+        },
+        {
+          "id": 47
+        },
+        {
+          "id": 48
+        },
+        {
+          "id": 62
+        },
+        {
+          "id": 63
+        },
+        {
+          "id": 65
+        },
+        {
+          "id": 77
+        },
+        {
+          "id": 78
+        },
+        {
+          "id": 90
+        },
+        {
+          "id": 104
+        }
+      ],
+      "myHandFaceUp": 13,
+      "foreignHandFaceUp": 0,
+      "hasExtraHandTile": false,
+      "pickup": null,
+      "result": null,
+      "gameComplete": null,
+      "claimsBySeat": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "matchPhase": null
+    },
+    "rrLogTail": [
+      "[09:32:17] System::  Match started — dealer is Seat 0",
+      "[09:32:22] System::  Dice rolled: 4 + 2 = 6",
+      "[09:32:25] Seat 0 (Seat 0)::  discarded 4万",
+      "[09:32:25] Seat 1 (Bot 1)::  discarded 8万",
+      "[09:32:25] Seat 0 (Seat 0)::  claim window — Pung on 8万 (from Seat 1)",
+      "[09:32:25] Seat 2 (Bot 2)::  claim window — Chow on 8万 (from Seat 1)",
+      "[09:32:30] Seat 2 (Bot 2)::  discarded 2万",
+      "[09:32:30] Seat 3 (Bot 3)::  claim window — Chow on 2万 (from Seat 2)"
+    ],
+    "pageDiag": {
+      "label": "A",
+      "pageErrors": [],
+      "consoleErrors": [
+        "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "consoleWarnings": [
+        "[.WebGL-0x1a9400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x1a9400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x1a9400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x1a9400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "networkFailures": [
+        "404 GET http://127.0.0.1:8088/api/games/vasquez-ptA-1780590736572",
+        "404 GET http://127.0.0.1:8088/api/games/vasquez-ptA-1780590736572/settings"
+      ],
+      "staleMoveToWarnings": 0
+    }
+  },
+  "gates": {
+    "A1_dealerHas14FaceUp": {
+      "status": "PASS",
+      "detail": {
+        "dealerHand": 14,
+        "faceUpMine": 14,
+        "foreignFaceUp": 0,
+        "handBySeat": [
+          14,
+          13,
+          13,
+          13
+        ]
+      }
+    },
+    "A2_humanDiscardRoundTrip": {
+      "status": "PASS",
+      "detail": {
+        "dealerDiscardPile": 0,
+        "totalDiscard": 0,
+        "logDealerDiscard": true,
+        "logTail": [
+          "[09:32:17] System::  Match started — dealer is Seat 0",
+          "[09:32:22] System::  Dice rolled: 4 + 2 = 6",
+          "[09:32:25] Seat 0 (Seat 0)::  discarded 4万"
+        ]
+      }
+    },
+    "A3_atLeastOneBotDiscarded": {
+      "status": "PASS",
+      "detail": {
+        "seats": {
+          "1": true,
+          "2": false,
+          "3": false
+        },
+        "logTail": [
+          "[09:32:17] System::  Match started — dealer is Seat 0",
+          "[09:32:22] System::  Dice rolled: 4 + 2 = 6",
+          "[09:32:25] Seat 0 (Seat 0)::  discarded 4万",
+          "[09:32:25] Seat 1 (Bot 1)::  discarded 8万",
+          "[09:32:25] Seat 0 (Seat 0)::  claim window — Pung on 8万 (from Seat 1)",
+          "[09:32:25] Seat 2 (Bot 2)::  claim window — Chow on 8万 (from Seat 1)"
+        ]
+      }
+    },
+    "A4_roundRobinAllOthers": {
+      "status": "PASS",
+      "detail": {
+        "discardBySeat": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "actedBySeat": {
+          "seat1": true,
+          "seat2": true,
+          "seat3": true
+        },
+        "actedCount": 3,
+        "totalDiscard": 1,
+        "logTail": [
+          "[09:32:17] System::  Match started — dealer is Seat 0",
+          "[09:32:22] System::  Dice rolled: 4 + 2 = 6",
+          "[09:32:25] Seat 0 (Seat 0)::  discarded 4万",
+          "[09:32:25] Seat 1 (Bot 1)::  discarded 8万",
+          "[09:32:25] Seat 0 (Seat 0)::  claim window — Pung on 8万 (from Seat 1)",
+          "[09:32:25] Seat 2 (Bot 2)::  claim window — Chow on 8万 (from Seat 1)",
+          "[09:32:30] Seat 2 (Bot 2)::  discarded 2万",
+          "[09:32:30] Seat 3 (Bot 3)::  claim window — Chow on 2万 (from Seat 2)"
+        ]
+      }
+    }
+  }
+}

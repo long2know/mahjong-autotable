@@ -1,7 +1,7 @@
 # Ripley — Production-Readiness Checklist Report
 
-- Started: 2026-06-03T16:15:58.452Z
-- Finished: 2026-06-03T16:16:19.222Z
+- Started: 2026-06-04T16:27:38.969Z
+- Finished: 2026-06-04T16:27:59.266Z
 - Base URL: http://127.0.0.1:8088
 - WS Base URL: ws://127.0.0.1:8088
 
@@ -19,7 +19,7 @@
 
 | ID | Status | Evidence (short) |
 |----|--------|------------------|
-| `O-1-health-200` | PASS | `{"httpStatus":200,"bodyStatus":"healthy","version":"0.31.0.0","uptime":"00:13:54.9611943","buildSha":"dev","latencyMs":10,"error":null}` |
+| `O-1-health-200` | PASS | `{"httpStatus":200,"bodyStatus":"healthy","version":"0.31.0.0","uptime":"23:31:08.8116040","buildSha":"dev","latencyMs":10,"error":null}` |
 | `O-2-db-connected` | PASS | `{"connected":true,"canQuery":true,"providerName":"Microsoft.EntityFrameworkCore.Sqlite","latencyMs":0,"migrationsApplied":0}` |
 | `O-3-migrations-or-bootstrap` | PASS | `{"providerName":"Microsoft.EntityFrameworkCore.Sqlite","migrationsApplied":0,"sqliteEnsureCreatedAccepted":true}` |
 | `O-4-ws-handshake` | PASS | `{"ok":true,"url":"ws://127.0.0.1:8088/autotable/ws"}` |
@@ -36,10 +36,10 @@
 
 | ID | Status | Evidence (short) |
 |----|--------|------------------|
-| `MG-1-distinct-identities` | PASS | `{"playerA":"39afa3a2ae7d4a26a8e19a927129888e","playerB":"38e95ba1a41648ca9fecb84b1b6ebade","sameId":false}` |
-| `MG-2-distinct-game-ids` | PASS | `{"requestedA":"ripley-prodready-A-1780503362695","observedA":null,"observedLastIdA":"ripley-prodready-A-1780503362695","urlIdA":"ripley-prodready-A-1780503362695","effectiveA":"ripley-prodready-A-1780503362695","requestedB":"ripley-prodread` |
+| `MG-1-distinct-identities` | PASS | `{"playerA":"fb03517898984c3e89ba53a2a67dc66c","playerB":"8a6414e8063e488db51febaec4653fee","sameId":false}` |
+| `MG-2-distinct-game-ids` | PASS | `{"requestedA":"ripley-prodready-A-1780590463183","observedA":null,"observedLastIdA":"ripley-prodready-A-1780590463183","urlIdA":"ripley-prodready-A-1780590463183","effectiveA":"ripley-prodready-A-1780590463183","requestedB":"ripley-prodread` |
 | `MG-3-both-worlds-populated` | PASS | `{"thingsA":109,"thingsB":109,"seatA":null,"seatB":null}` |
-| `MG-4-backend-activeGames-grew` | PASS | `{"activeGamesAfter":47,"activeGamesBefore":47}` |
+| `MG-4-backend-activeGames-grew` | PASS | `{"activeGamesAfter":157,"activeGamesBefore":157}` |
 
 ### 4-https
 

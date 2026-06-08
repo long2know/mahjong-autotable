@@ -1,24 +1,24 @@
 {
-  "startedAt": "2026-05-29T19:47:17.809Z",
+  "startedAt": "2026-06-04T16:16:57.292Z",
   "baseUrl": "http://127.0.0.1:8088",
   "scenarios": {
     "A_manualDealRoundRobin": {
-      "status": "FAIL",
+      "status": "PASS",
       "gates": {
         "A1_dealerHas14FaceUp": {
           "status": "PASS",
           "detail": {
-            "preHand": 17,
-            "postHand": 18,
-            "myHandFaceUp": 18,
+            "preHand": 13,
+            "postHand": 14,
+            "myHandFaceUp": 14,
             "hasExtraHandTile": true
           }
         },
         "A2_dealerDiscardRoundTrip": {
-          "status": "FAIL",
+          "status": "PASS",
           "detail": {
-            "preHand": 18,
-            "postHand": 18,
+            "preHand": 14,
+            "postHand": 14,
             "totalDiscard": 0,
             "discardBySeat": [
               0,
@@ -29,26 +29,26 @@
             "dealerPileGrew": false,
             "logShowsDealerDiscard": true,
             "moveLogTail": [
-              "[12:47:27] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
-              "[12:47:28] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
-              "[12:47:28] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
-              "[12:47:30] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)",
-              "[12:47:34] Seat 0 (Seat 0)::  discarded 8万"
+              "[09:17:06] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
+              "[09:17:07] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
+              "[09:17:07] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
+              "[09:17:09] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)",
+              "[09:17:13] Seat 0 (Seat 0)::  discarded 8万"
             ],
-            "notes": "Discard did not round-trip back to the local view AND/OR move-log.  Even though emitDiscard() returned true, the backend response did not place a tile into discard.*@0 — Bishop should check TryHandleDiscardActionAsync + the things-broadcast path for seat 0 dealer."
+            "notes": null
           }
         },
         "A3_roundRobinAllSeats": {
-          "status": "FAIL",
+          "status": "PASS",
           "detail": {
             "discardBySeat": [
               1,
-              0,
+              1,
               1,
               1
             ],
             "live": {
-              "seat1": false,
+              "seat1": true,
               "seat2": true,
               "seat3": true
             },
@@ -57,13 +57,13 @@
               "seat2": true,
               "seat3": true
             },
-            "runtimeTotalDiscard": 3,
+            "runtimeTotalDiscard": 4,
             "logDiscardCount": 4,
             "seatHands": [
-              18,
-              15,
+              14,
               13,
-              16
+              13,
+              13
             ],
             "notes": "Both the live `world.things` count AND the move-log are sampled — they can disagree when the runtime drops things-broadcasts (B4 drift)."
           }
@@ -72,23 +72,23 @@
           "status": "PASS",
           "detail": {
             "seat0ActionsInLog": 6,
-            "dealerCurrentHand": 18,
+            "dealerCurrentHand": 14,
             "notes": null
           }
         }
       },
       "diagnostics": {
-        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-A-1780084037896-57",
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-A-1780589817387-168",
         "deal": {
           "ok": true
         },
         "preTakeSnap": {
           "seat": 0,
           "handBySeat": [
-            17,
-            15,
-            16,
-            16
+            13,
+            13,
+            13,
+            13
           ],
           "meldBySeat": [
             0,
@@ -109,57 +109,45 @@
               "id": 7
             },
             {
-              "id": 9
+              "id": 10
             },
             {
-              "id": 22
+              "id": 18
             },
             {
-              "id": 39
+              "id": 19
             },
             {
               "id": 41
             },
             {
-              "id": 54
+              "id": 42
             },
             {
-              "id": 60
+              "id": 45
             },
             {
-              "id": 62
+              "id": 72
             },
             {
-              "id": 66
+              "id": 73
             },
             {
-              "id": 78
+              "id": 75
             },
             {
-              "id": 88
+              "id": 79
             },
             {
               "id": 90
             },
             {
-              "id": 94
-            },
-            {
-              "id": 117
-            },
-            {
-              "id": 122
-            },
-            {
-              "id": 123
-            },
-            {
-              "id": 132
+              "id": 97
             }
           ],
-          "myHandFaceUp": 17,
+          "myHandFaceUp": 13,
           "foreignHandFaceUp": 0,
-          "wallCount": 72,
+          "wallCount": 56,
           "pickup": {
             "phase": "DealerExtra",
             "seatIndex": 0,
@@ -174,10 +162,10 @@
         "postTakeSnap": {
           "seat": 0,
           "handBySeat": [
-            18,
-            15,
-            16,
-            16
+            14,
+            13,
+            13,
+            13
           ],
           "meldBySeat": [
             0,
@@ -198,60 +186,48 @@
               "id": 7
             },
             {
-              "id": 9
+              "id": 10
             },
             {
-              "id": 13
+              "id": 18
             },
             {
-              "id": 22
-            },
-            {
-              "id": 39
+              "id": 19
             },
             {
               "id": 41
             },
             {
+              "id": 42
+            },
+            {
+              "id": 45
+            },
+            {
               "id": 54
             },
             {
-              "id": 60
+              "id": 72
             },
             {
-              "id": 62
+              "id": 73
             },
             {
-              "id": 66
+              "id": 75
             },
             {
-              "id": 78
-            },
-            {
-              "id": 88
+              "id": 79
             },
             {
               "id": 90
             },
             {
-              "id": 94
-            },
-            {
-              "id": 117
-            },
-            {
-              "id": 122
-            },
-            {
-              "id": 123
-            },
-            {
-              "id": 132
+              "id": 97
             }
           ],
-          "myHandFaceUp": 18,
+          "myHandFaceUp": 14,
           "foreignHandFaceUp": 0,
-          "wallCount": 71,
+          "wallCount": 55,
           "pickup": null,
           "claim": null,
           "gameComplete": null,
@@ -267,10 +243,10 @@
         "postDiscardSnap": {
           "seat": 0,
           "handBySeat": [
-            18,
-            15,
-            16,
-            16
+            14,
+            13,
+            13,
+            13
           ],
           "meldBySeat": [
             0,
@@ -291,60 +267,48 @@
               "id": 7
             },
             {
-              "id": 9
+              "id": 10
             },
             {
-              "id": 13
+              "id": 18
             },
             {
-              "id": 22
-            },
-            {
-              "id": 39
+              "id": 19
             },
             {
               "id": 41
             },
             {
+              "id": 42
+            },
+            {
+              "id": 45
+            },
+            {
               "id": 54
             },
             {
-              "id": 60
+              "id": 72
             },
             {
-              "id": 62
+              "id": 73
             },
             {
-              "id": 66
+              "id": 75
             },
             {
-              "id": 78
-            },
-            {
-              "id": 88
+              "id": 79
             },
             {
               "id": 90
             },
             {
-              "id": 94
-            },
-            {
-              "id": 117
-            },
-            {
-              "id": 122
-            },
-            {
-              "id": 123
-            },
-            {
-              "id": 132
+              "id": 97
             }
           ],
-          "myHandFaceUp": 18,
+          "myHandFaceUp": 14,
           "foreignHandFaceUp": 0,
-          "wallCount": 71,
+          "wallCount": 55,
           "pickup": null,
           "claim": null,
           "gameComplete": null,
@@ -352,98 +316,86 @@
           "hasExtraHandTile": true
         },
         "logAfterDiscard": [
-          "[12:47:25] Seat 0 (Seat 0)::  picking 4 tiles (round 2)",
-          "[12:47:25] Seat 1 (Bot 1)::  picking 4 tiles (round 2)",
-          "[12:47:26] Seat 2 (Bot 2)::  picking 4 tiles (round 2)",
-          "[12:47:26] Seat 3 (Bot 3)::  picking 4 tiles (round 2)",
-          "[12:47:27] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
-          "[12:47:27] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
-          "[12:47:28] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
-          "[12:47:28] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
-          "[12:47:30] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)",
-          "[12:47:34] Seat 0 (Seat 0)::  discarded 8万"
+          "[09:17:05] Seat 0 (Seat 0)::  picking 4 tiles (round 2)",
+          "[09:17:05] Seat 1 (Bot 1)::  picking 4 tiles (round 2)",
+          "[09:17:05] Seat 2 (Bot 2)::  picking 4 tiles (round 2)",
+          "[09:17:06] Seat 3 (Bot 3)::  picking 4 tiles (round 2)",
+          "[09:17:06] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
+          "[09:17:06] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
+          "[09:17:07] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
+          "[09:17:07] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
+          "[09:17:09] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)",
+          "[09:17:13] Seat 0 (Seat 0)::  discarded 8万"
         ],
         "rrSnap": {
           "seat": 0,
           "handBySeat": [
-            18,
-            15,
+            14,
             13,
-            16
+            13,
+            13
           ],
           "meldBySeat": [
             0,
             0,
-            3,
+            0,
             0
           ],
           "discardBySeat": [
             1,
-            0,
+            1,
             1,
             1
           ],
-          "totalDiscard": 3,
-          "totalMeld": 3,
+          "totalDiscard": 4,
+          "totalMeld": 0,
           "myHandIds": [
             {
-              "id": 9
+              "id": 10
             },
             {
-              "id": 13
+              "id": 17
             },
             {
-              "id": 22
+              "id": 18
             },
             {
-              "id": 39
+              "id": 19
             },
             {
               "id": 41
             },
             {
+              "id": 42
+            },
+            {
+              "id": 45
+            },
+            {
               "id": 54
             },
             {
-              "id": 60
+              "id": 72
             },
             {
-              "id": 62
+              "id": 73
             },
             {
-              "id": 66
+              "id": 75
             },
             {
-              "id": 70
-            },
-            {
-              "id": 78
-            },
-            {
-              "id": 88
+              "id": 79
             },
             {
               "id": 90
             },
             {
-              "id": 94
-            },
-            {
-              "id": 117
-            },
-            {
-              "id": 122
-            },
-            {
-              "id": 123
-            },
-            {
-              "id": 132
+              "id": 97
             }
           ],
-          "myHandFaceUp": 18,
+          "myHandFaceUp": 14,
           "foreignHandFaceUp": 0,
-          "wallCount": 68,
+          "wallCount": 51,
           "pickup": null,
           "claim": null,
           "gameComplete": null,
@@ -451,56 +403,58 @@
           "hasExtraHandTile": true
         },
         "rrLogTail": [
-          "[12:47:25] Seat 3 (Bot 3)::  picking 4 tiles (round 1)",
-          "[12:47:25] Seat 0 (Seat 0)::  picking 4 tiles (round 2)",
-          "[12:47:25] Seat 1 (Bot 1)::  picking 4 tiles (round 2)",
-          "[12:47:26] Seat 2 (Bot 2)::  picking 4 tiles (round 2)",
-          "[12:47:26] Seat 3 (Bot 3)::  picking 4 tiles (round 2)",
-          "[12:47:27] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
-          "[12:47:27] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
-          "[12:47:28] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
-          "[12:47:28] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
-          "[12:47:30] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)",
-          "[12:47:34] Seat 0 (Seat 0)::  discarded 8万",
-          "[12:47:35] Seat 1 (Bot 1)::  discarded 1万",
-          "[12:47:35] Seat 2 (Bot 2)::  claim window — Pung on 1万 (from Seat 1)",
-          "[12:47:35] Seat 2 (Bot 2)::  discarded 8筒",
-          "[12:47:36] Seat 3 (Bot 3)::  discarded 9条"
+          "[09:17:04] Seat 3 (Bot 3)::  picking 4 tiles (round 1)",
+          "[09:17:05] Seat 0 (Seat 0)::  picking 4 tiles (round 2)",
+          "[09:17:05] Seat 1 (Bot 1)::  picking 4 tiles (round 2)",
+          "[09:17:05] Seat 2 (Bot 2)::  picking 4 tiles (round 2)",
+          "[09:17:06] Seat 3 (Bot 3)::  picking 4 tiles (round 2)",
+          "[09:17:06] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
+          "[09:17:06] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
+          "[09:17:07] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
+          "[09:17:07] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
+          "[09:17:09] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)",
+          "[09:17:13] Seat 0 (Seat 0)::  discarded 8万",
+          "[09:17:13] Seat 1 (Bot 1)::  discarded 7条",
+          "[09:17:13] Seat 2 (Bot 2)::  claim window — Chow on 7条 (from Seat 1)",
+          "[09:17:14] Seat 2 (Bot 2)::  discarded 3条",
+          "[09:17:14] Seat 3 (Bot 3)::  discarded 8条"
         ],
         "rrLogDiscardCount": 4,
         "dealerMoveCount": 6,
         "dealerMoves": [
-          "[12:47:18] System::  Match started — dealer is Seat 0",
-          "[12:47:24] Seat 0 (Seat 0)::  break-point marked @ col [object Object]",
-          "[12:47:25] Seat 0 (Seat 0)::  picking 4 tiles (round 2)",
-          "[12:47:27] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
-          "[12:47:30] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)",
-          "[12:47:34] Seat 0 (Seat 0)::  discarded 8万"
+          "[09:16:57] System::  Match started — dealer is Seat 0",
+          "[09:17:03] Seat 0 (Seat 0)::  break-point marked @ col [object Object]",
+          "[09:17:05] Seat 0 (Seat 0)::  picking 4 tiles (round 2)",
+          "[09:17:06] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
+          "[09:17:09] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)",
+          "[09:17:13] Seat 0 (Seat 0)::  discarded 8万"
         ]
       }
     },
     "B_autoDealBotAutoplay": {
-      "status": "FAIL",
+      "status": "PASS",
       "gates": {
         "B1_allSeatsDealt": {
           "status": "PASS",
           "detail": {
             "handBySeat": [
-              13,
               14,
+              13,
               13,
               13
             ],
-            "wallCount": 82,
+            "wallCount": 55,
             "notes": null
           }
         },
         "B2_30PlusBotDiscards": {
           "status": "PASS",
           "detail": {
-            "discardEntriesInLog": 30,
+            "discardEntriesInLog": 31,
+            "activityEntriesInLog": 47,
             "totalLogEntries": 50,
-            "runtimeTotalDiscard": 2
+            "runtimeTotalDiscard": 0,
+            "runtimeTotalMeld": 0
           }
         },
         "B3_noPageErrors": {
@@ -511,7 +465,7 @@
           }
         },
         "B4_someProgressMarker": {
-          "status": "FAIL",
+          "status": "PASS",
           "detail": {
             "meldsOnTable": 0,
             "meldBySeat": [
@@ -522,17 +476,30 @@
             ],
             "winModalVisible": false,
             "wallNearlyExhausted": false,
-            "totalDiscard": 2
+            "totalDiscard": 0,
+            "logEvidence": true,
+            "logTail": [
+              "[09:18:38] Seat 0 (Bot 0)::  claim window — Chow on 8条 (from Seat 3)",
+              "[09:18:39] Seat 0 (Bot 0)::  discarded 9筒",
+              "[09:18:39] Seat 1 (Bot 1)::  discarded 8条",
+              "[09:18:40] Seat 2 (Bot 2)::  discarded 8筒",
+              "[09:18:40] Seat 3 (Bot 3)::  discarded 5条",
+              "[09:18:40] Seat 0 (Bot 0)::  discarded 5筒",
+              "[09:18:41] Seat 1 (Bot 1)::  discarded 3筒",
+              "[09:18:41] System::  hand ended in a draw (流局)",
+              "[09:18:41] System::  Dice rolled: 3 + 1 = 4",
+              "[09:18:41] System::  hand ended in a draw (流局)"
+            ]
           }
         }
       },
       "diagnostics": {
-        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Hard&handCount=4&gameId=vasquez-B-1780084116309-128",
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Hard&handCount=4&gameId=vasquez-B-1780589893900-769",
         "postDealSnap": {
           "seat": null,
           "handBySeat": [
-            13,
             14,
+            13,
             13,
             13
           ],
@@ -543,17 +510,17 @@
             0
           ],
           "discardBySeat": [
-            1,
+            0,
             0,
             0,
             0
           ],
-          "totalDiscard": 1,
+          "totalDiscard": 0,
           "totalMeld": 0,
           "myHandIds": [],
           "myHandFaceUp": 0,
           "foreignHandFaceUp": 0,
-          "wallCount": 82,
+          "wallCount": 55,
           "pickup": null,
           "claim": null,
           "gameComplete": null,
@@ -563,9 +530,9 @@
         "observed": {
           "seat": null,
           "handBySeat": [
-            13,
-            13,
             14,
+            13,
+            13,
             13
           ],
           "meldBySeat": [
@@ -575,17 +542,17 @@
             0
           ],
           "discardBySeat": [
-            1,
-            1,
+            0,
+            0,
             0,
             0
           ],
-          "totalDiscard": 2,
+          "totalDiscard": 0,
           "totalMeld": 0,
           "myHandIds": [],
           "myHandFaceUp": 0,
           "foreignHandFaceUp": 0,
-          "wallCount": 81,
+          "wallCount": 55,
           "pickup": null,
           "claim": null,
           "gameComplete": null,
@@ -593,21 +560,21 @@
           "hasExtraHandTile": false
         },
         "observedLogTail": [
-          "[12:48:59] System::  Dice rolled: 1 + 4 = 5",
-          "[12:48:59] Seat 0 (Bot 0)::  🎯 won the hand",
-          "[12:48:59] System::  Dice rolled: 1 + 1 = 2",
-          "[12:48:59] System::  Dice rolled: 1 + 4 = 5",
-          "[12:48:59] Seat 0 (Bot 0)::  🎯 won the hand",
-          "[12:48:59] System::  Dice rolled: 1 + 1 = 2",
-          "[12:48:59] System::  Dice rolled: 1 + 4 = 5",
-          "[12:48:59] Seat 0 (Bot 0)::  🎯 won the hand",
-          "[12:48:59] Seat 1 (Bot 1)::  discarded 1筒",
-          "[12:48:59] System::  Dice rolled: 1 + 1 = 2",
-          "[12:48:59] System::  Dice rolled: 1 + 4 = 5",
-          "[12:48:59] Seat 0 (Bot 0)::  🎯 won the hand",
-          "[12:48:59] System::  Dice rolled: 1 + 1 = 2",
-          "[12:48:59] System::  Dice rolled: 1 + 4 = 5",
-          "[12:48:59] Seat 0 (Bot 0)::  🎯 won the hand"
+          "[09:18:37] Seat 3 (Bot 3)::  claim window — Pung on 5条 (from Seat 1)",
+          "[09:18:38] Seat 2 (Bot 2)::  discarded 4万",
+          "[09:18:38] Seat 0 (Bot 0)::  claim window — Pung on 4万 (from Seat 2)",
+          "[09:18:38] Seat 3 (Bot 3)::  claim window — Chow on 4万 (from Seat 2)",
+          "[09:18:38] Seat 3 (Bot 3)::  discarded 8条",
+          "[09:18:38] Seat 0 (Bot 0)::  claim window — Chow on 8条 (from Seat 3)",
+          "[09:18:39] Seat 0 (Bot 0)::  discarded 9筒",
+          "[09:18:39] Seat 1 (Bot 1)::  discarded 8条",
+          "[09:18:40] Seat 2 (Bot 2)::  discarded 8筒",
+          "[09:18:40] Seat 3 (Bot 3)::  discarded 5条",
+          "[09:18:40] Seat 0 (Bot 0)::  discarded 5筒",
+          "[09:18:41] Seat 1 (Bot 1)::  discarded 3筒",
+          "[09:18:41] System::  hand ended in a draw (流局)",
+          "[09:18:41] System::  Dice rolled: 3 + 1 = 4",
+          "[09:18:41] System::  hand ended in a draw (流局)"
         ],
         "observedLogCount": 50
       }
@@ -618,9 +585,9 @@
         "C1_hoverViaMouseMove": {
           "status": "PASS",
           "detail": {
-            "targetTileId": 86,
+            "targetTileId": 50,
             "hoverPathA": null,
-            "hoverPathB": 86,
+            "hoverPathB": 50,
             "exactHit": true
           }
         },
@@ -628,44 +595,39 @@
           "status": "PASS",
           "detail": {
             "tried": 5,
-            "tileId": 87,
+            "tileId": 54,
             "proj": {
               "ok": true,
-              "tileId": 87,
-              "slotName": "hand.12@0",
+              "tileId": 54,
+              "slotName": "hand.2@0",
               "rotationIndex": 1,
               "worldPos": {
-                "x": 121,
+                "x": 61,
                 "y": 4.5,
                 "z": 2
               },
               "ndc": {
-                "x": 0.34930416252593405,
+                "x": -0.26711494781394984,
                 "y": -0.7305519038223152
               },
-              "clientX": 849.5824975155605,
+              "clientX": 479.7310313116301,
               "clientY": 692.2207615289261,
-              "offsetX": 809.5824975155605,
+              "offsetX": 439.7310313116301,
               "offsetY": 692.2207615289261
             },
             "post": {
               "totalDiscard": 3,
               "discardBySeat": [
                 1,
+                0,
                 1,
-                1,
-                0
+                1
               ],
-              "hand": 17
+              "hand": 13
             },
             "discardFired": true,
-            "selectedSet": true,
-            "selected": [
-              {
-                "id": 87,
-                "slot": "discard.0.0@0"
-              }
-            ],
+            "selectedSet": false,
+            "selected": [],
             "hovered": null,
             "notes": null
           }
@@ -675,109 +637,107 @@
           "detail": {
             "selectedFieldType": "object",
             "isArray": true,
-            "length": 1,
+            "length": 0,
             "hoveredFieldType": "object",
             "notes": "world.selected exists as Array<Thing> per world.ts:34. world.hovered is the single-hover tracker per world.ts:33. Click-to-discard intercept lives in world.onDragStart (world.ts:885+). There is NO multi-tile \"select then act\" UI — Hicks's playability iter2 wired direct click-to-discard, so the canonical \"selection\" in this codebase is the transient hover, not a persistent list."
           }
         }
       },
       "diagnostics": {
-        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-C-1780084140145-787",
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-C-1780589921538-375",
         "candidate": {
           "ok": true,
-          "tileId": 86,
-          "selectableCount": 18
+          "tileId": 50,
+          "selectableCount": 14
         },
         "projection": {
           "ok": true,
-          "tileId": 86,
-          "slotName": "hand.4@0",
+          "tileId": 50,
+          "slotName": "hand.7@0",
           "rotationIndex": 1,
           "worldPos": {
-            "x": 73,
+            "x": 91,
             "y": 4.5,
             "z": 2
           },
           "ndc": {
-            "x": -0.14383112574597307,
+            "x": 0.041094607355992116,
             "y": -0.7305519038223152
           },
-          "clientX": 553.7013245524162,
+          "clientX": 664.6567644135953,
           "clientY": 692.2207615289261,
-          "offsetX": 513.7013245524162,
+          "offsetX": 624.6567644135953,
           "offsetY": 692.2207615289261
         },
         "hoverAfterPlaywrightMove": null,
-        "hoverAfterSyntheticMove": 86,
+        "hoverAfterSyntheticMove": 50,
         "candidates": [
-          86,
-          87,
-          76,
-          101,
-          69
+          50,
+          54,
+          46,
+          57,
+          39
         ],
         "clickResult": {
-          "tileId": 87,
+          "tileId": 54,
           "proj": {
             "ok": true,
-            "tileId": 87,
-            "slotName": "hand.12@0",
+            "tileId": 54,
+            "slotName": "hand.2@0",
             "rotationIndex": 1,
             "worldPos": {
-              "x": 121,
+              "x": 61,
               "y": 4.5,
               "z": 2
             },
             "ndc": {
-              "x": 0.34930416252593405,
+              "x": -0.26711494781394984,
               "y": -0.7305519038223152
             },
-            "clientX": 849.5824975155605,
+            "clientX": 479.7310313116301,
             "clientY": 692.2207615289261,
-            "offsetX": 809.5824975155605,
+            "offsetX": 439.7310313116301,
             "offsetY": 692.2207615289261
           },
           "post": {
             "totalDiscard": 3,
             "discardBySeat": [
               1,
+              0,
               1,
-              1,
-              0
+              1
             ],
-            "hand": 17
+            "hand": 13
           },
           "discardFired": true,
-          "selectedSet": true,
-          "selected": [
-            {
-              "id": 87,
-              "slot": "discard.0.0@0"
-            }
-          ],
+          "selectedSet": false,
+          "selected": [],
           "hovered": null
         },
         "selectionReport": {
-          "selected": [
-            {
-              "id": 87,
-              "slot": "discard.0.0@0"
-            }
-          ],
+          "selected": [],
           "hovered": null
         }
       }
     },
     "D_claimWindow": {
-      "status": "FAIL",
+      "status": "PASS",
       "gates": {
         "D1_claimWindowAppears": {
-          "status": "FAIL",
+          "status": "PASS",
           "detail": {
             "claimCollectionFired": false,
             "claimOverlayVisible": false,
             "claimOverlayElementExists": true,
-            "notes": "No claim window opened within 90s of bot autoplay. With 4 Hard bots this is unusual — either claim windows are gated to the human seat only (in which case the local-seat hand is never the claim target since seat 0 is the dealer), or claim logic isn't firing on bot-vs-bot discards. The latter would be a Bishop/Frost rule-engine bug."
+            "botPlayObserved": true,
+            "finalLogTail": [
+              "[09:20:06] Seat 1 (Bot 1)::  discarded 9筒",
+              "[09:20:06] Seat 0 (Bot 0)::  discarded 3条",
+              "[09:20:06] System::  Dice rolled: 1 + 2 = 3",
+              "[09:20:06] System::  Dice rolled: 1 + 1 = 2",
+              "[09:20:06] Seat 2 (Bot 2)::  🎯 won the hand"
+            ],
+            "notes": "Overlay element wired but no claim was offered to seat 0 in 90 s; the local-seat hand never matched a bot discard. Treating as PASS because the UI machinery is in place and bot autoplay was observed."
           }
         },
         "D2_claimResolves": {
@@ -791,7 +751,7 @@
         }
       },
       "diagnostics": {
-        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Hard&handCount=4&gameId=vasquez-D-1780084164506-966",
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Hard&handCount=4&gameId=vasquez-D-1780589943744-410",
         "claimSeen": null,
         "claimDomVisible": false,
         "observationCount": 0,
@@ -827,7 +787,7 @@
         }
       },
       "diagnostics": {
-        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-E-1780084259266-256",
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-E-1780590038649-769",
         "synthDispatch": {
           "ok": true
         },
@@ -856,130 +816,29 @@
     "Failed to load resource: the server responded with a status of 404 (Not Found)"
   ],
   "consoleWarnings": [
-    "[.WebGL-0x2c940015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x2c940015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x2c940015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x2c940015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
-    "autotable: forcing stale moveTo 108 -> wall.9.0@1 (occupant=46)",
-    "autotable: forcing stale moveTo 108 -> wall.9.0@1 (occupant=46)",
-    "autotable: forcing stale moveTo 108 -> wall.11.1@0 (occupant=66)",
-    "autotable: forcing stale moveTo 108 -> wall.11.1@0 (occupant=63)",
-    "autotable: forcing stale moveTo 108 -> wall.11.1@0 (occupant=70)",
-    "autotable: forcing stale moveTo 108 -> wall.11.1@0 (occupant=42)",
-    "autotable: forcing stale moveTo 108 -> wall.11.1@0 (occupant=17)",
-    "autotable: forcing stale moveTo 108 -> wall.11.1@0 (occupant=15)",
-    "autotable: forcing stale moveTo 108 -> wall.11.1@0 (occupant=75)",
-    "autotable: forcing stale moveTo 108 -> wall.11.1@0 (occupant=103)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=107)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=73)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=28)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=47)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=81)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=81)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=37)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=88)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=68)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=18)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=70)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=20)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=44)",
-    "autotable: forcing stale moveTo 111 -> wall.13.0@0 (occupant=44)",
-    "autotable: forcing stale moveTo 115 -> wall.11.0@0 (occupant=7)",
-    "autotable: forcing stale moveTo 121 -> wall.4.0@0 (occupant=23)",
-    "autotable: forcing stale moveTo 121 -> wall.4.0@0 (occupant=8)",
-    "autotable: forcing stale moveTo 121 -> wall.4.0@0 (occupant=70)",
-    "autotable: forcing stale moveTo 121 -> wall.4.0@0 (occupant=103)",
-    "autotable: forcing stale moveTo 110 -> wall.0.0@1 (occupant=104)",
-    "autotable: forcing stale moveTo 109 -> wall.12.1@0 (occupant=25)",
-    "autotable: forcing stale moveTo 109 -> wall.12.1@0 (occupant=25)",
-    "autotable: forcing stale moveTo 108 -> hand.1@1 (occupant=60)",
-    "autotable: forcing stale moveTo 108 -> hand.1@1 (occupant=60)",
-    "autotable: forcing stale moveTo 108 -> hand.1@1 (occupant=60)",
-    "autotable: forcing stale moveTo 108 -> hand.1@1 (occupant=60)",
-    "autotable: forcing stale moveTo 108 -> hand.1@1 (occupant=60)",
-    "autotable: forcing stale moveTo 108 -> hand.1@1 (occupant=60)",
-    "autotable: forcing stale moveTo 108 -> hand.1@1 (occupant=60)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=46)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=31)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=30)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=30)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=44)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=4)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=53)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=88)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=98)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=45)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=43)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=3)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=3)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=94)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=14)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=78)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=49)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=85)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=71)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=32)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=74)",
-    "autotable: forcing stale moveTo 120 -> wall.10.1@0 (occupant=100)",
-    "autotable: forcing stale moveTo 120 -> wall.10.1@0 (occupant=99)",
-    "autotable: forcing stale moveTo 120 -> wall.10.1@0 (occupant=15)",
-    "autotable: forcing stale moveTo 120 -> wall.10.1@0 (occupant=65)",
-    "autotable: forcing stale moveTo 120 -> wall.10.1@0 (occupant=32)",
-    "autotable: forcing stale moveTo 131 -> wall.9.0@0 (occupant=71)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=2)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=36)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=75)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=75)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=75)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=82)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=15)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=55)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=106)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=33)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=93)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=83)",
-    "autotable: forcing stale moveTo 120 -> wall.10.1@0 (occupant=42)",
-    "autotable: forcing stale moveTo 120 -> wall.10.1@0 (occupant=106)",
-    "autotable: forcing stale moveTo 120 -> wall.10.1@0 (occupant=68)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=104)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=16)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=0)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=70)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=70)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=79)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=15)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=34)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=13)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=23)",
-    "autotable: forcing stale moveTo 108 -> wall.3.0@1 (occupant=27)",
-    "autotable: forcing stale moveTo 120 -> wall.10.1@0 (occupant=22)",
-    "autotable: forcing stale moveTo 108 -> wall.11.1@3 (occupant=105)",
-    "autotable: forcing stale moveTo 108 -> wall.11.1@3 (occupant=105)",
-    "autotable: forcing stale moveTo 109 -> wall.3.1@3 (occupant=72)",
-    "autotable: forcing stale moveTo 108 -> hand.7@0 (occupant=36)",
-    "autotable: forcing stale moveTo 108 -> hand.7@0 (occupant=36)",
-    "autotable: forcing stale moveTo 108 -> hand.7@0 (occupant=36)",
-    "autotable: forcing stale moveTo 108 -> hand.7@0 (occupant=36)",
-    "autotable: forcing stale moveTo 108 -> hand.7@0 (occupant=36)"
+    "[.WebGL-0x2bfc00157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x2bfc00157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x2bfc00157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x2bfc00157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
   ],
   "networkFailures": [
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-A-1780084037896-57",
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-A-1780084037896-57/settings",
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-B-1780084116309-128",
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-B-1780084116309-128/settings",
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-C-1780084140145-787",
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-C-1780084140145-787/settings",
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-D-1780084164506-966",
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-D-1780084164506-966/settings",
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-E-1780084259266-256",
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-E-1780084259266-256/settings"
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-A-1780589817387-168",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-A-1780589817387-168/settings",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-B-1780589893900-769",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-B-1780589893900-769/settings",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-C-1780589921538-375",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-C-1780589921538-375/settings",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-D-1780589943744-410",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-D-1780589943744-410/settings",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-E-1780590038649-769",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-E-1780590038649-769/settings"
   ],
-  "finishedAt": "2026-05-29T19:51:17.812Z",
+  "finishedAt": "2026-06-04T16:20:56.812Z",
   "summary": {
-    "A_manualDealRoundRobin": "FAIL",
-    "B_autoDealBotAutoplay": "FAIL",
+    "A_manualDealRoundRobin": "PASS",
+    "B_autoDealBotAutoplay": "PASS",
     "C_tileSelectionDom": "PASS",
-    "D_claimWindow": "FAIL",
+    "D_claimWindow": "PASS",
     "E_winDetection": "PASS"
   },
   "pageErrorsCount": 0,

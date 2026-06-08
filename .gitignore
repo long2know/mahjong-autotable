@@ -59,6 +59,15 @@ nunit-*.xml
 .squad/sessions/
 # Squad: SubSquad activation file (local to this machine)
 .squad-workstream
+# Squad v0.10.0: memory runtime state (audit log + storage backends)
+.squad/memory/audit.jsonl
+.squad/memory/local/
+.squad/memory/policy-inbox/
+.squad/memory/semantic-inbox/
+.squad/memory/tombstones/
+
+# Linux FUSE orphan-file handles (created by editors over CIFS/NFS/FUSE mounts)
+.fuse_hidden*
 
 # Node/Vite
 node_modules/
@@ -100,3 +109,4 @@ mobile/*.tgz
 # don't fail on a missing parent.
 .work/*
 !.work/.gitkeep
+.squad/.cache/
