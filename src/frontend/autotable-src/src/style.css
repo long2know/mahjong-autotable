@@ -440,6 +440,62 @@ body.variant-riichi   .changsha-only { display: none !important; }
 #pickup-hud #pickup-hud-text { margin-right: 8px; }
 #pickup-hud .btn { padding: 4px 12px; }
 
+/* Hicks postfix-verify P0 — turn indicator banner.  Floating top-center pill
+   that surfaces "your turn to discard / pick / claim" cues so the user is
+   never staring at a dealt hand without knowing what to do next.  Hidden by
+   default (HTML `hidden` attr); the .visible class drives the fade-in so the
+   transition runs both ways without a paint-blocking display swap.  Pointer-
+   events stay disabled so the banner never eats clicks targeted at tiles
+   beneath it. */
+#turn-banner {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    z-index: 70;
+    background-color: rgba(20, 35, 55, 0.92);
+    color: #ffd75e;
+    padding: 10px 22px;
+    border-radius: 999px;
+    font-family: Verdana, Arial, sans-serif;
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55),
+                0 0 0 2px rgba(255, 215, 94, 0.55) inset;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 220ms ease, transform 220ms ease;
+    white-space: nowrap;
+    max-width: 90vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#turn-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+#turn-banner[hidden] { display: none !important; }
+#turn-banner .turn-banner-countdown {
+    margin-left: 10px;
+    color: #ffffff;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+#turn-banner.turn-banner-claim { color: #ffe7a3; }
+#turn-banner.turn-banner-pickup { color: #b8f0ff; }
+#turn-banner.turn-banner-discard { color: #ffd75e; }
+
+/* Hicks postfix-verify P1 — cursor affordance.  Only flip the canvas cursor
+   to pointer when it's our turn to discard; the rest of the time keep the
+   default cursor so casual hover doesn't read as "click me" and the user
+   doesn't fire an out-of-turn toast.  The 3D outline / hover material is
+   intentionally untouched — cheaper than re-plumbing the THREE.js material
+   path and avoids any risk of a render regression. */
+body.my-turn-discard #main canvas {
+    cursor: pointer;
+}
+
 /* Roll-dice button — only the dealer sees this, only on RollingDice phase.
    Big clickable dice icon at the screen center.  Hidden by default. */
 #roll-dice {

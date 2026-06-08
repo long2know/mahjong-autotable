@@ -406,6 +406,14 @@
     <!-- Phase D — Bot banner (bottom-left): announces auto-fill. -->
     <div id="bot-banner" hidden></div>
 
+    <!-- Hicks postfix-verify P0 — turn indicator banner.  Floating top-center.
+         Surfaces "Your turn — click a tile to discard" when seat 0 has 14
+         tiles, "Your turn — pick a tile from the wall" while a pickup
+         affordance targets self, and "Claim opportunity …" with a seconds
+         countdown when a claim window includes self.  See game-ui.ts
+         setupTurnBanner / refreshTurnBanner. -->
+    <div id="turn-banner" hidden role="status" aria-live="polite"></div>
+
     <!-- Phase F — Variant badge (top-right): always-visible label so players
          confirm what they're playing without opening the sidebar. -->
     <div id="variant-badge">🀄 Changsha</div>

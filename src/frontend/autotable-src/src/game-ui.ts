@@ -371,6 +371,10 @@ export class GameUi {
     pickupTakeCount: HTMLElement;
     rollDice: HTMLButtonElement;
     breakMarker: HTMLElement;
+    // Hicks postfix-verify P0 — turn indicator banner.  See setupTurnBanner
+    // for the per-source listener fan-in and refreshTurnBanner for the
+    // priority order (claim > pickup > discard).
+    turnBanner: HTMLElement;
     // Phase J Wave 1 — Hot-seat swap (Move button + inline picker).
     // Visibility, button states, and click handlers are all owned by
     // setupMoveSeatPicker / refreshMoveSeatPicker below.  The row container
@@ -497,6 +501,7 @@ export class GameUi {
       pickupTakeCount:     document.getElementById('pickup-take-count') as HTMLElement,
       rollDice:            document.getElementById('roll-dice') as HTMLButtonElement,
       breakMarker:         document.getElementById('break-marker') as HTMLElement,
+      turnBanner:          document.getElementById('turn-banner') as HTMLElement,
       moveSeatRow:         document.getElementById('move-seat-row') as HTMLElement,
       moveSeatBtn:         document.getElementById('move-seat-btn') as HTMLButtonElement,
       moveSeatPanel:       document.getElementById('move-seat-panel') as HTMLElement,
@@ -544,6 +549,7 @@ export class GameUi {
     this.setupBotBanner();
     this.setupPhaseFPickers();
     this.setupPickupHud();
+    this.setupTurnBanner();
     this.setupMoveSeatPicker();
     this.setupGameCompleteModal();
     this.setupSettingsDrawer();
@@ -685,6 +691,9 @@ export class GameUi {
     // and refresh the bot banner whenever seat ↔ nick mapping shifts.
     this.refreshClaimButtons();
     this.refreshBotBanner();
+    // Hicks postfix-verify P0 — seat ↔ player binding shifts dictate whose
+    // hand we count for the discard cue; re-check the banner here too.
+    this.refreshTurnBanner();
   }
 
   private setupDealButton(): void {
@@ -868,6 +877,9 @@ export class GameUi {
       this.elements.claim.Pass.disabled = true;
       this.stopClaimTimer();
       hideEl(this.elements.claimCountdown);
+      // Hicks postfix-verify P0 — claim window closed; banner may need to
+      // fall back to a discard / pickup cue or hide entirely.
+      this.refreshTurnBanner();
       return;
     }
 
@@ -878,6 +890,8 @@ export class GameUi {
     showEl(this.elements.claimCountdown);
     this.tickClaimCountdown();
     this.startClaimTimer();
+    // Hicks postfix-verify P0 — claim window opened; banner takes priority.
+    this.refreshTurnBanner();
   }
 
   private startClaimTimer(): void {
@@ -907,6 +921,9 @@ export class GameUi {
     // the deadline, hiding the claim window before the player ever saw it.
     if (claim.deadline <= 0) {
       this.elements.claimCountdownValue.textContent = '—';
+      // Hicks postfix-verify P0 — keep banner countdown text in sync even
+      // when the server is owning the timeout (renders as "—").
+      this.updateTurnBannerCountdown(null);
       this.stopClaimTimer();
       return;
     }
@@ -914,10 +931,12 @@ export class GameUi {
     if (remainingMs <= 0) {
       // Auto-pass on expiry.
       this.elements.claimCountdownValue.textContent = '0.0';
+      this.updateTurnBannerCountdown(0);
       this.sendClaim({ action: 'pass', type: null });
       return;
     }
     this.elements.claimCountdownValue.textContent = (remainingMs / 1000).toFixed(1);
+    this.updateTurnBannerCountdown(remainingMs / 1000);
   }
 
   private sendClaim(action: ClaimAction): void {
@@ -1575,6 +1594,10 @@ export class GameUi {
       this.renderPickupHud(pickup);
       this.renderRollDiceButton(pickup);
       this.renderBreakMarker(pickup);
+      // Hicks postfix-verify P0 — pickup affordance just shifted; re-check
+      // whether the turn-banner should switch to a pickup cue (or back to
+      // the discard cue once the pickup chain completes).
+      this.refreshTurnBanner();
     }
   }
 
@@ -1632,6 +1655,181 @@ export class GameUi {
     marker.dataset.col = String(col);
     showEl(marker);
   }
+
+  // ---------------------------------------------------------------------
+  // Hicks postfix-verify P0 — Turn indicator banner.
+  //
+  // Vasquez surfaced (`vasquez-postfix-verify-1-p0-regression-found-…`)
+  // that once seat 0 reaches 14 tiles (post-bot-discard, in-hand draw
+  // unresolved) the bundle gives NO visual cue that it's the human's
+  // turn to act.  Stephen — and her playtest doppelgänger in
+  // playtest-artifacts — sits idle; the game waits forever.
+  //
+  // This wires a floating top-center banner (`#turn-banner`) with three
+  // priority-ordered states:
+  //
+  //   1. CLAIM  — claim window targets self (highest priority since the
+  //               window expires; the player has seconds, not minutes).
+  //   2. PICKUP — pickup affordance targets self (post-deal dealer-extra,
+  //               manual-pickup chain).
+  //   3. DISCARD — my hand has 14 backend-authoritative tiles AND no
+  //                pickup / claim window is in flight.
+  //
+  // The refresh fans in off four existing collection listeners (`seats`,
+  // `pickup`, `claim`, `things`) — no new polling loop.  The `things`
+  // hook is debounced so a deal batch (18-36 entries) only computes the
+  // banner state once per animation frame.
+  //
+  // We also flip a `body.my-turn-discard` class so CSS can swap the
+  // canvas cursor (P1 addition) without re-plumbing the THREE.js hover
+  // material path.
+  // ---------------------------------------------------------------------
+  private turnBannerRafHandle: number | null = null;
+  private turnBannerLastState: string = '';
+  private setupTurnBanner(): void {
+    // `things.update` fires per-batch; we debounce to the next animation
+    // frame so a 32-tile deal doesn't recompute 32 times in a row.
+    this.client.things.on('update', () => this.scheduleTurnBannerRefresh());
+    // Re-evaluate at boot so the banner picks up any state that was
+    // already present before our listeners attached (rare but safe).
+    this.refreshTurnBanner();
+  }
+
+  private scheduleTurnBannerRefresh(): void {
+    if (this.turnBannerRafHandle !== null) return;
+    this.turnBannerRafHandle = window.requestAnimationFrame(() => {
+      this.turnBannerRafHandle = null;
+      this.refreshTurnBanner();
+    });
+  }
+
+  /**
+   * Recompute the turn-banner state from the current client/world snapshot
+   * and patch the DOM iff the rendered state actually changed.  Stable
+   * keying (`turnBannerLastState`) avoids redundant style/class writes that
+   * would otherwise interrupt the CSS fade transition.
+   */
+  private refreshTurnBanner(): void {
+    const banner = this.elements.turnBanner;
+    if (!banner) return; // defensive — index.html should always carry it
+
+    const selfSeat = this.client.seat;
+    const spectating = readSpectatorFromUrl();
+
+    // Spectators / unseated viewers never see a "your turn" cue.
+    if (spectating || selfSeat === null) {
+      this.applyTurnBannerState('', null, null, null);
+      return;
+    }
+
+    // Priority 1 — claim window targeting self.
+    if (this.activeClaim !== null) {
+      const available = Array.isArray(this.activeClaim.available)
+        ? this.activeClaim.available.join(' / ')
+        : '';
+      const text = available
+        ? `Claim opportunity — ${available}`
+        : 'Claim opportunity';
+      this.applyTurnBannerState('claim', text, 'claim', /* show countdown */ true);
+      return;
+    }
+
+    // Priority 2 — pickup affordance targeting self.
+    const pickup = this.client.pickup.get('current') ?? null;
+    if (pickup && pickup.count > 0 && pickup.seatIndex === selfSeat) {
+      // The phase 'rollDice' state already shows the big dice button;
+      // the pickup HUD covers the count.  We still surface a high-
+      // contrast top-center cue so the user knows where to look.
+      const text = pickup.count === 1
+        ? 'Your turn — pick a tile from the wall'
+        : `Your turn — pick ${pickup.count} tiles from the wall`;
+      this.applyTurnBannerState('pickup', text, 'pickup', null);
+      return;
+    }
+
+    // Priority 3 — extra hand tile (14 tiles, no pickup/claim in flight).
+    // `world.hasExtraHandTile()` already encodes the count-only-real-
+    // backend-tiles + skip-extra-preview-slot logic; reuse it so we don't
+    // duplicate the discard-gate semantics.
+    if (this.world.hasExtraHandTile()) {
+      this.applyTurnBannerState(
+        'discard',
+        'Your turn — click a tile to discard',
+        'discard',
+        null,
+      );
+      return;
+    }
+
+    this.applyTurnBannerState('', null, null, null);
+  }
+
+  /**
+   * Patch the banner DOM only when the (kind|text|countdown) tuple has
+   * actually changed since the last call.  Toggles `body.my-turn-discard`
+   * for the canvas cursor affordance (P1 addition).
+   */
+  private applyTurnBannerState(
+    kind: 'claim' | 'pickup' | 'discard' | '',
+    text: string | null,
+    cls: 'claim' | 'pickup' | 'discard' | null,
+    countdown: boolean | null,
+  ): void {
+    const banner = this.elements.turnBanner;
+    const stateKey = `${kind}|${text ?? ''}|${countdown ? 'c' : '-'}`;
+    if (stateKey !== this.turnBannerLastState) {
+      this.turnBannerLastState = stateKey;
+      banner.classList.remove(
+        'turn-banner-claim', 'turn-banner-pickup', 'turn-banner-discard');
+      if (kind === '' || text === null) {
+        banner.classList.remove('visible');
+        banner.textContent = '';
+        // Keep `hidden` so the element doesn't accumulate stale aria-live
+        // announcements between turns.
+        banner.hidden = true;
+      } else {
+        banner.hidden = false;
+        if (cls) banner.classList.add(`turn-banner-${cls}`);
+        // Two children so we can update the countdown text in place
+        // without re-flowing the label (see updateTurnBannerCountdown).
+        banner.textContent = '';
+        const label = document.createElement('span');
+        label.className = 'turn-banner-text';
+        label.textContent = text;
+        banner.appendChild(label);
+        if (countdown) {
+          const cd = document.createElement('span');
+          cd.className = 'turn-banner-countdown';
+          cd.textContent = '';
+          banner.appendChild(cd);
+        }
+        // Force a reflow so the visible-class transition runs the first
+        // time the banner appears after a `hidden` toggle.
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+        banner.offsetHeight;
+        banner.classList.add('visible');
+      }
+    }
+    // Body-class toggle is idempotent; safe to call every refresh.
+    document.body.classList.toggle('my-turn-discard', kind === 'discard');
+  }
+
+  /**
+   * Update only the countdown span inside the banner.  Called from
+   * `tickClaimCountdown` (CLAIM_TICK_MS) so the seconds-remaining text
+   * stays smooth without recreating the surrounding DOM.
+   */
+  private updateTurnBannerCountdown(secondsRemaining: number | null): void {
+    const cd = this.elements.turnBanner.querySelector(
+      '.turn-banner-countdown') as HTMLElement | null;
+    if (!cd) return;
+    if (secondsRemaining === null) {
+      cd.textContent = '—';
+    } else {
+      cd.textContent = `${secondsRemaining.toFixed(1)}s`;
+    }
+  }
+
 
   // ---------------------------------------------------------------------
   // Phase J Wave 1 — Hot-seat swap.
