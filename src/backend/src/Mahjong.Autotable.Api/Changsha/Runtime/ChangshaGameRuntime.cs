@@ -937,7 +937,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 throw new HubException($"Seat {seatIndex} cannot claim {claimType} on this discard.");
 
             instance.PendingClaims[seatIndex] = new ClaimResponse(parsed, tileIds);
-            resolveNow = AllClaimsIn(instance);
+            resolveNow = AllClaimsIn(instance) || CanResolveEarly(instance);
         }
         finally
         {
@@ -959,7 +959,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             if (instance.State.Phase != ChangshaPhase.AwaitingClaim || instance.State.ClaimWindow is null)
                 return; // late pass — ignore quietly
             instance.PendingClaims[seatIndex] = new ClaimResponse(null, null);
-            resolveNow = AllClaimsIn(instance);
+            resolveNow = AllClaimsIn(instance) || CanResolveEarly(instance);
         }
         finally
         {
@@ -974,6 +974,100 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         if (instance.State.ClaimWindow is null) return false;
         var eligible = instance.State.ClaimWindow.Opportunities.Select(o => o.SeatIndex).Distinct();
         return eligible.All(s => instance.PendingClaims.ContainsKey(s));
+    }
+
+    /// <summary>
+    /// Bishop W26 — claim-expiry stall fix. Returns true when the claim window can
+    /// resolve immediately because no possible response from any unresponsive seat
+    /// could change the winner.
+    ///
+    /// <para>The runtime auto-passes unresponsive seats at <see cref="ChangshaRuntimeOptions.ClaimWindowTimeoutMs"/>
+    /// (default 5s). When a bot responds quickly with a high-priority claim
+    /// (Pung/Kong/Hu) the table sits idle for the full timeout waiting on humans whose
+    /// strongest possible opportunity (e.g. Chow) cannot beat the bot's claim under
+    /// the priority + CCW tiebreak rules. This is pure latency — the unresponsive
+    /// seat's hypothetical claim would lose regardless of whether they responded
+    /// in time.</para>
+    ///
+    /// <para>For each unresponded eligible seat S, compute the strongest opportunity
+    /// S could declare. If that hypothetical claim would beat the current best
+    /// responder claim under <see cref="ChangshaClaimPriority"/>, we MUST keep
+    /// waiting. Otherwise, the window can resolve now. Hu opportunities for
+    /// unresponded seats always force a wait (Hu beats every other tier).</para>
+    ///
+    /// <para>Returns false for kong-robbing windows: those only contain Hu
+    /// opportunities, so an unresponsive seat always has Hu-tier potential — no
+    /// early resolution is ever safe.</para>
+    ///
+    /// <para>Caller MUST hold <see cref="ChangshaGameInstance.Lock"/>.</para>
+    /// </summary>
+    internal static bool CanResolveEarly(ChangshaGameInstance instance)
+    {
+        var window = instance.State.ClaimWindow;
+        if (window is null) return false;
+        if (window.IsKongRobbing) return false;
+
+        var eligibleSeats = window.Opportunities.Select(o => o.SeatIndex).Distinct().ToList();
+        var unresponded = eligibleSeats.Where(s => !instance.PendingClaims.ContainsKey(s)).ToList();
+
+        if (unresponded.Count == 0) return false; // AllClaimsIn already covers this
+
+        // Current best claim across already-responded seats (ignoring passes).
+        (int Seat, TableClaimType ClaimType)? currentBest = null;
+        foreach (var kvp in instance.PendingClaims)
+        {
+            if (!eligibleSeats.Contains(kvp.Key)) continue;
+            var claimType = kvp.Value?.ClaimType;
+            if (claimType is null) continue;
+            var contender = (kvp.Key, claimType.Value);
+            if (currentBest is null || BeatsCurrentBest(contender, currentBest.Value, window.DiscardSeatIndex))
+                currentBest = contender;
+        }
+
+        // If nobody has actually claimed yet, an unresponded seat's potential claim
+        // would automatically be the winner — must keep waiting.
+        if (currentBest is null) return false;
+
+        foreach (var seat in unresponded)
+        {
+            var bestOpp = window.Opportunities
+                .Where(o => o.SeatIndex == seat)
+                .OrderByDescending(o => ChangshaClaimPriority.TierOf(o.ClaimType))
+                .First();
+            var hypothetical = (seat, bestOpp.ClaimType);
+            if (BeatsCurrentBest(hypothetical, currentBest.Value, window.DiscardSeatIndex))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Bishop W26 — claim-priority comparator. Returns true when <paramref name="contender"/>
+    /// would beat <paramref name="best"/> under the same ordering used by
+    /// <see cref="ResolveClaimWindowAsync"/>: higher tier wins, then closer CCW
+    /// distance to the discarder, then lower seat index (impossible tie — distinct
+    /// seats always have distinct CCW distances).
+    /// </summary>
+    private static bool BeatsCurrentBest(
+        (int Seat, TableClaimType ClaimType) contender,
+        (int Seat, TableClaimType ClaimType) best,
+        int discardSeat)
+    {
+        var contenderTier = ChangshaClaimPriority.TierOf(contender.ClaimType);
+        var bestTier = ChangshaClaimPriority.TierOf(best.ClaimType);
+        if (contenderTier != bestTier) return contenderTier > bestTier;
+
+        var contenderDist = ChangshaClaimPriority.CounterClockwiseDistance(discardSeat, contender.Seat);
+        var bestDist = ChangshaClaimPriority.CounterClockwiseDistance(discardSeat, best.Seat);
+        return contenderDist < bestDist;
+    }
+
+    private bool ShouldResolveClaimWindow(ChangshaGameInstance instance)
+    {
+        instance.Lock.Wait();
+        try { return AllClaimsIn(instance) || CanResolveEarly(instance); }
+        finally { instance.Lock.Release(); }
     }
 
     // ── DeclareKong / DeclareWin ──────────────────────────────────────
@@ -1338,7 +1432,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         }
         finally { instance.Lock.Release(); }
 
-        if (AllClaimsInChecked(instance))
+        if (ShouldResolveClaimWindow(instance))
             await ResolveClaimWindowAsync(instance, CancellationToken.None);
     }
 
