@@ -1,11 +1,11 @@
 {
-  "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=hicks-walls-1780084293813-697",
+  "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=hicks-walls-1780590795328-302",
   "steps": [
     {
       "name": "1-load-lobby",
       "ok": true,
       "result": {
-        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=hicks-walls-1780084293813-697"
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=hicks-walls-1780590795328-302"
       }
     },
     {
@@ -22,7 +22,7 @@
       "result": {
         "ok": true,
         "seat": 0,
-        "gameType": "FOUR_PLAYER"
+        "gameType": "CHANGSHA"
       }
     },
     {
@@ -30,12 +30,12 @@
       "ok": true,
       "result": {
         "seat": 0,
-        "wallCount": 105,
-        "wallBackRotationCount": 105,
+        "wallCount": 88,
+        "wallBackRotationCount": 88,
         "wallFrontRotationCount": 0,
         "foreignHandFaceUp": 0,
-        "localSeatHandFaceUp": 11,
-        "localSeatHandTotal": 11,
+        "localSeatHandFaceUp": 8,
+        "localSeatHandTotal": 8,
         "wallSlotRotationsLen": [
           2
         ],
@@ -45,7 +45,7 @@
           2,
           3
         ],
-        "wallSlotKeyCount": 96
+        "wallSlotKeyCount": 88
       }
     },
     {
@@ -55,90 +55,90 @@
         "observations": [
           {
             "atMs": 0,
-            "dealerHand": 11,
-            "allHand": 31,
-            "wallCount": 105,
+            "dealerHand": 8,
+            "allHand": 20,
+            "wallCount": 88,
             "seat": 0
           },
           {
             "atMs": 500,
-            "dealerHand": 11,
-            "allHand": 35,
-            "wallCount": 101,
+            "dealerHand": 8,
+            "allHand": 24,
+            "wallCount": 84,
             "seat": 0
           },
           {
             "atMs": 1000,
-            "dealerHand": 11,
-            "allHand": 39,
-            "wallCount": 97,
+            "dealerHand": 8,
+            "allHand": 28,
+            "wallCount": 80,
             "seat": 0
           },
           {
             "atMs": 1500,
-            "dealerHand": 15,
-            "allHand": 47,
-            "wallCount": 89,
+            "dealerHand": 12,
+            "allHand": 36,
+            "wallCount": 72,
             "seat": 0
           },
           {
             "atMs": 2000,
-            "dealerHand": 15,
-            "allHand": 51,
-            "wallCount": 85,
+            "dealerHand": 12,
+            "allHand": 40,
+            "wallCount": 68,
             "seat": 0
           },
           {
             "atMs": 2500,
-            "dealerHand": 16,
-            "allHand": 60,
-            "wallCount": 76,
+            "dealerHand": 12,
+            "allHand": 44,
+            "wallCount": 64,
             "seat": 0
           },
           {
             "atMs": 3000,
-            "dealerHand": 16,
-            "allHand": 60,
-            "wallCount": 76,
+            "dealerHand": 13,
+            "allHand": 49,
+            "wallCount": 59,
             "seat": 0
           },
           {
             "atMs": 3500,
-            "dealerHand": 16,
-            "allHand": 62,
-            "wallCount": 74,
+            "dealerHand": 13,
+            "allHand": 50,
+            "wallCount": 58,
             "seat": 0
           },
           {
             "atMs": 4000,
-            "dealerHand": 16,
-            "allHand": 63,
-            "wallCount": 73,
+            "dealerHand": 13,
+            "allHand": 51,
+            "wallCount": 57,
             "seat": 0
           },
           {
             "atMs": 4500,
-            "dealerHand": 16,
-            "allHand": 63,
-            "wallCount": 73,
+            "dealerHand": 13,
+            "allHand": 52,
+            "wallCount": 56,
             "seat": 0
           },
           {
             "atMs": 5000,
-            "dealerHand": 16,
-            "allHand": 63,
-            "wallCount": 73,
+            "dealerHand": 13,
+            "allHand": 52,
+            "wallCount": 56,
             "seat": 0
           },
           {
             "atMs": 5500,
-            "dealerHand": 16,
-            "allHand": 63,
-            "wallCount": 73,
+            "dealerHand": 13,
+            "allHand": 52,
+            "wallCount": 56,
             "seat": 0
           }
         ],
-        "maxDealerHand": 16
+        "maxDealerHand": 13
       }
     },
     {
@@ -146,13 +146,10 @@
       "ok": true,
       "result": {
         "seat": 0,
-        "localSeatHandFaceUp": 16,
-        "localSeatHandTotal": 16,
-        "localSeatHandFaceCount": 16,
+        "localSeatHandFaceUp": 13,
+        "localSeatHandTotal": 13,
+        "localSeatHandFaceCount": 13,
         "localSeatRotIdx": [
-          1,
-          1,
-          1,
           1,
           1,
           1,
@@ -177,32 +174,24 @@
     "Failed to load resource: the server responded with a status of 404 (Not Found)"
   ],
   "consoleWarnings": [
-    "[.WebGL-0x2dc40015b200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x2dc40015b200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x2dc40015b200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x2dc40015b200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
-    "autotable: forcing stale moveTo 109 -> wall.8.1@2 (occupant=73)",
-    "autotable: forcing stale moveTo 109 -> wall.8.1@2 (occupant=73)",
-    "autotable: forcing stale moveTo 108 -> hand.0@1 (occupant=85)",
-    "autotable: forcing stale moveTo 108 -> hand.0@1 (occupant=85)",
-    "autotable: forcing stale moveTo 108 -> hand.0@1 (occupant=85)",
-    "autotable: forcing stale moveTo 108 -> hand.0@1 (occupant=85)",
-    "autotable: forcing stale moveTo 108 -> hand.0@1 (occupant=85)",
-    "autotable: forcing stale moveTo 108 -> hand.0@1 (occupant=85)"
+    "[.WebGL-0x345400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x345400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x345400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x345400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
   ],
   "networkFailures": [
-    "404 GET http://127.0.0.1:8088/api/games/hicks-walls-1780084293813-697",
-    "404 GET http://127.0.0.1:8088/api/games/hicks-walls-1780084293813-697/settings"
+    "404 GET http://127.0.0.1:8088/api/games/hicks-walls-1780590795328-302",
+    "404 GET http://127.0.0.1:8088/api/games/hicks-walls-1780590795328-302/settings"
   ],
   "assertions": {
     "summary": {
       "seat": 0,
-      "wallCount": 105,
-      "wallBackRotationCount": 105,
+      "wallCount": 88,
+      "wallBackRotationCount": 88,
       "wallFrontRotationCount": 0,
       "foreignHandFaceUp": 0,
-      "localSeatHandFaceUp": 11,
-      "localSeatHandTotal": 11,
+      "localSeatHandFaceUp": 8,
+      "localSeatHandTotal": 8,
       "wallSlotRotationsLen": [
         2
       ],
@@ -212,103 +201,100 @@
         2,
         3
       ],
-      "wallSlotKeyCount": 96
+      "wallSlotKeyCount": 88
     },
     "pickupProgression": [
       {
         "atMs": 0,
-        "dealerHand": 11,
-        "allHand": 31,
-        "wallCount": 105,
+        "dealerHand": 8,
+        "allHand": 20,
+        "wallCount": 88,
         "seat": 0
       },
       {
         "atMs": 500,
-        "dealerHand": 11,
-        "allHand": 35,
-        "wallCount": 101,
+        "dealerHand": 8,
+        "allHand": 24,
+        "wallCount": 84,
         "seat": 0
       },
       {
         "atMs": 1000,
-        "dealerHand": 11,
-        "allHand": 39,
-        "wallCount": 97,
+        "dealerHand": 8,
+        "allHand": 28,
+        "wallCount": 80,
         "seat": 0
       },
       {
         "atMs": 1500,
-        "dealerHand": 15,
-        "allHand": 47,
-        "wallCount": 89,
+        "dealerHand": 12,
+        "allHand": 36,
+        "wallCount": 72,
         "seat": 0
       },
       {
         "atMs": 2000,
-        "dealerHand": 15,
-        "allHand": 51,
-        "wallCount": 85,
+        "dealerHand": 12,
+        "allHand": 40,
+        "wallCount": 68,
         "seat": 0
       },
       {
         "atMs": 2500,
-        "dealerHand": 16,
-        "allHand": 60,
-        "wallCount": 76,
+        "dealerHand": 12,
+        "allHand": 44,
+        "wallCount": 64,
         "seat": 0
       },
       {
         "atMs": 3000,
-        "dealerHand": 16,
-        "allHand": 60,
-        "wallCount": 76,
+        "dealerHand": 13,
+        "allHand": 49,
+        "wallCount": 59,
         "seat": 0
       },
       {
         "atMs": 3500,
-        "dealerHand": 16,
-        "allHand": 62,
-        "wallCount": 74,
+        "dealerHand": 13,
+        "allHand": 50,
+        "wallCount": 58,
         "seat": 0
       },
       {
         "atMs": 4000,
-        "dealerHand": 16,
-        "allHand": 63,
-        "wallCount": 73,
+        "dealerHand": 13,
+        "allHand": 51,
+        "wallCount": 57,
         "seat": 0
       },
       {
         "atMs": 4500,
-        "dealerHand": 16,
-        "allHand": 63,
-        "wallCount": 73,
+        "dealerHand": 13,
+        "allHand": 52,
+        "wallCount": 56,
         "seat": 0
       },
       {
         "atMs": 5000,
-        "dealerHand": 16,
-        "allHand": 63,
-        "wallCount": 73,
+        "dealerHand": 13,
+        "allHand": 52,
+        "wallCount": 56,
         "seat": 0
       },
       {
         "atMs": 5500,
-        "dealerHand": 16,
-        "allHand": 63,
-        "wallCount": 73,
+        "dealerHand": 13,
+        "allHand": 52,
+        "wallCount": 56,
         "seat": 0
       }
     ],
     "postDeal": {
       "seat": 0,
-      "localSeatHandFaceUp": 16,
-      "localSeatHandTotal": 16,
-      "localSeatHandFaceCount": 16,
+      "localSeatHandFaceUp": 13,
+      "localSeatHandTotal": 13,
+      "localSeatHandFaceCount": 13,
       "localSeatRotIdx": [
-        1,
-        1,
-        1,
         1,
         1,
         1,
@@ -325,7 +311,7 @@
       ]
     },
     "checks": {
-      "wallCountAtLeast100": true,
+      "wallCountAtLeast80": true,
       "zeroForeignHandFaceUp": true,
       "allWallBackRotation": true,
       "fourSeatWalls": true,

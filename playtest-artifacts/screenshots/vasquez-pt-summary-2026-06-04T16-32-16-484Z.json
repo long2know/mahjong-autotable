@@ -1,0 +1,1549 @@
+{
+  "startedAt": "2026-06-04T16:32:16.484Z",
+  "baseUrl": "http://127.0.0.1:8088",
+  "ts": "2026-06-04T16-32-16-484Z",
+  "scenarios": {
+    "A_autoDealRoundRobin": {
+      "status": "PASS",
+      "gates": {
+        "A1_dealerHas14FaceUp": {
+          "status": "PASS",
+          "detail": {
+            "dealerHand": 14,
+            "faceUpMine": 14,
+            "foreignFaceUp": 0,
+            "handBySeat": [
+              14,
+              13,
+              13,
+              13
+            ]
+          }
+        },
+        "A2_humanDiscardRoundTrip": {
+          "status": "PASS",
+          "detail": {
+            "dealerDiscardPile": 0,
+            "totalDiscard": 0,
+            "logDealerDiscard": true,
+            "logTail": [
+              "[09:32:17] System::  Match started — dealer is Seat 0",
+              "[09:32:22] System::  Dice rolled: 4 + 2 = 6",
+              "[09:32:25] Seat 0 (Seat 0)::  discarded 4万"
+            ]
+          }
+        },
+        "A3_atLeastOneBotDiscarded": {
+          "status": "PASS",
+          "detail": {
+            "seats": {
+              "1": true,
+              "2": false,
+              "3": false
+            },
+            "logTail": [
+              "[09:32:17] System::  Match started — dealer is Seat 0",
+              "[09:32:22] System::  Dice rolled: 4 + 2 = 6",
+              "[09:32:25] Seat 0 (Seat 0)::  discarded 4万",
+              "[09:32:25] Seat 1 (Bot 1)::  discarded 8万",
+              "[09:32:25] Seat 0 (Seat 0)::  claim window — Pung on 8万 (from Seat 1)",
+              "[09:32:25] Seat 2 (Bot 2)::  claim window — Chow on 8万 (from Seat 1)"
+            ]
+          }
+        },
+        "A4_roundRobinAllOthers": {
+          "status": "PASS",
+          "detail": {
+            "discardBySeat": [
+              1,
+              0,
+              0,
+              0
+            ],
+            "actedBySeat": {
+              "seat1": true,
+              "seat2": true,
+              "seat3": true
+            },
+            "actedCount": 3,
+            "totalDiscard": 1,
+            "logTail": [
+              "[09:32:17] System::  Match started — dealer is Seat 0",
+              "[09:32:22] System::  Dice rolled: 4 + 2 = 6",
+              "[09:32:25] Seat 0 (Seat 0)::  discarded 4万",
+              "[09:32:25] Seat 1 (Bot 1)::  discarded 8万",
+              "[09:32:25] Seat 0 (Seat 0)::  claim window — Pung on 8万 (from Seat 1)",
+              "[09:32:25] Seat 2 (Bot 2)::  claim window — Chow on 8万 (from Seat 1)",
+              "[09:32:30] Seat 2 (Bot 2)::  discarded 2万",
+              "[09:32:30] Seat 3 (Bot 3)::  claim window — Chow on 2万 (from Seat 2)"
+            ]
+          }
+        }
+      },
+      "diagnostics": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-ptA-1780590736572",
+        "preDiscard": {
+          "seat": 0,
+          "handBySeat": [
+            14,
+            13,
+            13,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 0,
+          "wallCount": 55,
+          "myHandIds": [
+            {
+              "id": 3
+            },
+            {
+              "id": 5
+            },
+            {
+              "id": 24
+            },
+            {
+              "id": 42
+            },
+            {
+              "id": 45
+            },
+            {
+              "id": 47
+            },
+            {
+              "id": 48
+            },
+            {
+              "id": 62
+            },
+            {
+              "id": 63
+            },
+            {
+              "id": 65
+            },
+            {
+              "id": 77
+            },
+            {
+              "id": 78
+            },
+            {
+              "id": 90
+            },
+            {
+              "id": 104
+            }
+          ],
+          "myHandFaceUp": 14,
+          "foreignHandFaceUp": 0,
+          "hasExtraHandTile": true,
+          "pickup": null,
+          "result": null,
+          "gameComplete": null,
+          "claimsBySeat": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "matchPhase": null
+        },
+        "discardTarget": {
+          "id": 3
+        },
+        "discardEmit": {
+          "ok": true
+        },
+        "postDiscard": {
+          "seat": 0,
+          "handBySeat": [
+            14,
+            13,
+            13,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 0,
+          "wallCount": 55,
+          "myHandIds": [
+            {
+              "id": 3
+            },
+            {
+              "id": 5
+            },
+            {
+              "id": 24
+            },
+            {
+              "id": 42
+            },
+            {
+              "id": 45
+            },
+            {
+              "id": 47
+            },
+            {
+              "id": 48
+            },
+            {
+              "id": 62
+            },
+            {
+              "id": 63
+            },
+            {
+              "id": 65
+            },
+            {
+              "id": 77
+            },
+            {
+              "id": 78
+            },
+            {
+              "id": 90
+            },
+            {
+              "id": 104
+            }
+          ],
+          "myHandFaceUp": 14,
+          "foreignHandFaceUp": 0,
+          "hasExtraHandTile": true,
+          "pickup": null,
+          "result": null,
+          "gameComplete": null,
+          "claimsBySeat": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "matchPhase": null
+        },
+        "logAfterDiscard": [
+          "[09:32:17] System::  Match started — dealer is Seat 0",
+          "[09:32:22] System::  Dice rolled: 4 + 2 = 6",
+          "[09:32:25] Seat 0 (Seat 0)::  discarded 4万"
+        ],
+        "botObservation": {
+          "1": true,
+          "2": false,
+          "3": false
+        },
+        "botLogTail": [
+          "[09:32:17] System::  Match started — dealer is Seat 0",
+          "[09:32:22] System::  Dice rolled: 4 + 2 = 6",
+          "[09:32:25] Seat 0 (Seat 0)::  discarded 4万",
+          "[09:32:25] Seat 1 (Bot 1)::  discarded 8万",
+          "[09:32:25] Seat 0 (Seat 0)::  claim window — Pung on 8万 (from Seat 1)",
+          "[09:32:25] Seat 2 (Bot 2)::  claim window — Chow on 8万 (from Seat 1)"
+        ],
+        "rrFinal": {
+          "seat": 0,
+          "handBySeat": [
+            13,
+            13,
+            10,
+            11
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            3,
+            3
+          ],
+          "discardBySeat": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 1,
+          "totalMeld": 6,
+          "wallCount": 54,
+          "myHandIds": [
+            {
+              "id": 5
+            },
+            {
+              "id": 24
+            },
+            {
+              "id": 42
+            },
+            {
+              "id": 45
+            },
+            {
+              "id": 47
+            },
+            {
+              "id": 48
+            },
+            {
+              "id": 62
+            },
+            {
+              "id": 63
+            },
+            {
+              "id": 65
+            },
+            {
+              "id": 77
+            },
+            {
+              "id": 78
+            },
+            {
+              "id": 90
+            },
+            {
+              "id": 104
+            }
+          ],
+          "myHandFaceUp": 13,
+          "foreignHandFaceUp": 0,
+          "hasExtraHandTile": false,
+          "pickup": null,
+          "result": null,
+          "gameComplete": null,
+          "claimsBySeat": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "matchPhase": null
+        },
+        "rrLogTail": [
+          "[09:32:17] System::  Match started — dealer is Seat 0",
+          "[09:32:22] System::  Dice rolled: 4 + 2 = 6",
+          "[09:32:25] Seat 0 (Seat 0)::  discarded 4万",
+          "[09:32:25] Seat 1 (Bot 1)::  discarded 8万",
+          "[09:32:25] Seat 0 (Seat 0)::  claim window — Pung on 8万 (from Seat 1)",
+          "[09:32:25] Seat 2 (Bot 2)::  claim window — Chow on 8万 (from Seat 1)",
+          "[09:32:30] Seat 2 (Bot 2)::  discarded 2万",
+          "[09:32:30] Seat 3 (Bot 3)::  claim window — Chow on 2万 (from Seat 2)"
+        ],
+        "pageDiag": {
+          "label": "A",
+          "pageErrors": [],
+          "consoleErrors": [
+            "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+            "Failed to load resource: the server responded with a status of 404 (Not Found)",
+            "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          ],
+          "consoleWarnings": [
+            "[.WebGL-0x1a9400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+            "[.WebGL-0x1a9400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+            "[.WebGL-0x1a9400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+            "[.WebGL-0x1a9400157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+          ],
+          "networkFailures": [
+            "404 GET http://127.0.0.1:8088/api/games/vasquez-ptA-1780590736572",
+            "404 GET http://127.0.0.1:8088/api/games/vasquez-ptA-1780590736572/settings"
+          ],
+          "staleMoveToWarnings": 0
+        }
+      }
+    },
+    "B_manualDealPickups": {
+      "status": "PASS",
+      "gates": {
+        "B1_dealerHandReached13": {
+          "status": "PASS",
+          "detail": {
+            "dealerHand": 14,
+            "handBySeat": [
+              14,
+              13,
+              13,
+              13
+            ],
+            "pickupTraceLen": 7,
+            "lastPickup": null
+          }
+        },
+        "B2_myHandFaceUp": {
+          "status": "PASS",
+          "detail": {
+            "myHandFaceUp": 14,
+            "dealerHand": 14
+          }
+        },
+        "B3_foreignHandsHidden": {
+          "status": "PASS",
+          "detail": {
+            "foreignFaceUp": 0,
+            "handBySeat": [
+              14,
+              13,
+              13,
+              13
+            ]
+          }
+        },
+        "B4_dealerExtraComplete": {
+          "status": "PASS",
+          "detail": {
+            "dealerHand": 14,
+            "hasExtraHandTile": true
+          }
+        }
+      },
+      "diagnostics": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-ptB-1780590751611",
+        "deal": {
+          "ok": true
+        },
+        "rollDice": {
+          "ok": true
+        },
+        "pickupTrace": [
+          {
+            "atMs": 1780590759789,
+            "seat": 0,
+            "pickup": {
+              "phase": "PickupRound2",
+              "seatIndex": 2,
+              "count": 4,
+              "dealMode": "manual",
+              "breakPoint": {
+                "wallIndex": 0,
+                "stackIndex": 5,
+                "tileIndex": 10
+              },
+              "wallIndex": 0
+            },
+            "myTurn": false,
+            "hand": 8
+          },
+          {
+            "atMs": 1780590760703,
+            "seat": 0,
+            "pickup": {
+              "phase": "PickupRound2",
+              "seatIndex": 3,
+              "count": 4,
+              "dealMode": "manual",
+              "breakPoint": {
+                "wallIndex": 0,
+                "stackIndex": 5,
+                "tileIndex": 10
+              },
+              "wallIndex": 0
+            },
+            "myTurn": false,
+            "hand": 8
+          },
+          {
+            "atMs": 1780590761604,
+            "seat": 0,
+            "pickup": {
+              "phase": "PickupRound3",
+              "seatIndex": 2,
+              "count": 4,
+              "dealMode": "manual",
+              "breakPoint": {
+                "wallIndex": 0,
+                "stackIndex": 5,
+                "tileIndex": 10
+              },
+              "wallIndex": 0
+            },
+            "myTurn": false,
+            "hand": 12
+          },
+          {
+            "atMs": 1780590762520,
+            "seat": 0,
+            "pickup": {
+              "phase": "SingleTilePickup",
+              "seatIndex": 1,
+              "count": 1,
+              "dealMode": "manual",
+              "breakPoint": {
+                "wallIndex": 0,
+                "stackIndex": 5,
+                "tileIndex": 10
+              },
+              "wallIndex": 0
+            },
+            "myTurn": false,
+            "hand": 13
+          },
+          {
+            "atMs": 1780590763421,
+            "seat": 0,
+            "pickup": {
+              "phase": "SingleTilePickup",
+              "seatIndex": 3,
+              "count": 1,
+              "dealMode": "manual",
+              "breakPoint": {
+                "wallIndex": 0,
+                "stackIndex": 5,
+                "tileIndex": 10
+              },
+              "wallIndex": 0
+            },
+            "myTurn": false,
+            "hand": 13
+          },
+          {
+            "atMs": 1780590764336,
+            "seat": 0,
+            "pickup": {
+              "phase": "DealerExtra",
+              "seatIndex": 0,
+              "count": 1,
+              "dealMode": "manual",
+              "breakPoint": {
+                "wallIndex": 0,
+                "stackIndex": 5,
+                "tileIndex": 10
+              },
+              "wallIndex": 0
+            },
+            "myTurn": true,
+            "hand": 13
+          },
+          {
+            "atMs": 1780590765252,
+            "seat": 0,
+            "pickup": null,
+            "myTurn": false,
+            "hand": 14
+          }
+        ],
+        "pickupTraceLen": 7,
+        "lastPickupSnap": {
+          "seat": 0,
+          "pickup": null,
+          "myTurn": false,
+          "hand": 14
+        },
+        "final": {
+          "seat": 0,
+          "handBySeat": [
+            14,
+            13,
+            13,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 0,
+          "wallCount": 55,
+          "myHandIds": [
+            {
+              "id": 8
+            },
+            {
+              "id": 11
+            },
+            {
+              "id": 15
+            },
+            {
+              "id": 22
+            },
+            {
+              "id": 33
+            },
+            {
+              "id": 35
+            },
+            {
+              "id": 59
+            },
+            {
+              "id": 65
+            },
+            {
+              "id": 68
+            },
+            {
+              "id": 69
+            },
+            {
+              "id": 72
+            },
+            {
+              "id": 75
+            },
+            {
+              "id": 103
+            },
+            {
+              "id": 104
+            }
+          ],
+          "myHandFaceUp": 14,
+          "foreignHandFaceUp": 0,
+          "hasExtraHandTile": true,
+          "pickup": null,
+          "result": null,
+          "gameComplete": null,
+          "claimsBySeat": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "matchPhase": null
+        },
+        "pageDiag": {
+          "label": "B",
+          "pageErrors": [],
+          "consoleErrors": [
+            "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+            "Failed to load resource: the server responded with a status of 404 (Not Found)",
+            "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          ],
+          "consoleWarnings": [],
+          "networkFailures": [
+            "404 GET http://127.0.0.1:8088/api/games/vasquez-ptB-1780590751611",
+            "404 GET http://127.0.0.1:8088/api/games/vasquez-ptB-1780590751611/settings"
+          ],
+          "staleMoveToWarnings": 0
+        }
+      }
+    },
+    "C_claimWindow": {
+      "status": "PASS",
+      "gates": {
+        "C1_injectionAccepted": {
+          "status": "PASS",
+          "detail": {
+            "ok": true,
+            "seat": 0,
+            "payload": {
+              "available": [
+                "Pung",
+                "Chow",
+                "Hu"
+              ],
+              "deadline": 1780590778498,
+              "source": 1,
+              "tile": 5
+            }
+          }
+        },
+        "C2_claimUiSurfaces": {
+          "status": "PASS",
+          "detail": {
+            "countdownVisible": true,
+            "countdownText": "4.2",
+            "disabled": {
+              "Pung": false,
+              "Chow": false,
+              "Kong": true,
+              "Hu": false,
+              "Pass": false
+            }
+          }
+        },
+        "C3_claimTombstoneClears": {
+          "status": "PASS",
+          "detail": {
+            "countdownStillVisible": false,
+            "pungDisabled": true,
+            "passDisabled": true
+          }
+        }
+      },
+      "diagnostics": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-ptC-1780590765746",
+        "baseline": {
+          "seat": 0,
+          "handBySeat": [
+            14,
+            13,
+            13,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 0,
+          "wallCount": 55,
+          "myHandIds": [
+            {
+              "id": 12
+            },
+            {
+              "id": 16
+            },
+            {
+              "id": 19
+            },
+            {
+              "id": 21
+            },
+            {
+              "id": 26
+            },
+            {
+              "id": 79
+            },
+            {
+              "id": 92
+            },
+            {
+              "id": 96
+            },
+            {
+              "id": 97
+            },
+            {
+              "id": 99
+            },
+            {
+              "id": 100
+            },
+            {
+              "id": 101
+            },
+            {
+              "id": 102
+            },
+            {
+              "id": 107
+            }
+          ],
+          "myHandFaceUp": 0,
+          "foreignHandFaceUp": 0,
+          "hasExtraHandTile": false,
+          "pickup": null,
+          "result": null,
+          "gameComplete": null,
+          "claimsBySeat": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "matchPhase": null
+        },
+        "injection": {
+          "ok": true,
+          "seat": 0,
+          "payload": {
+            "available": [
+              "Pung",
+              "Chow",
+              "Hu"
+            ],
+            "deadline": 1780590778498,
+            "source": 1,
+            "tile": 5
+          }
+        },
+        "ui": {
+          "countdownVisible": true,
+          "countdownText": "4.2",
+          "disabled": {
+            "Pung": false,
+            "Chow": false,
+            "Kong": true,
+            "Hu": false,
+            "Pass": false
+          }
+        },
+        "uiAfterTombstone": {
+          "countdownStillVisible": false,
+          "pungDisabled": true,
+          "passDisabled": true
+        },
+        "pageDiag": {
+          "label": "C",
+          "pageErrors": [],
+          "consoleErrors": [
+            "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+            "Failed to load resource: the server responded with a status of 404 (Not Found)",
+            "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          ],
+          "consoleWarnings": [],
+          "networkFailures": [
+            "404 GET http://127.0.0.1:8088/api/games/vasquez-ptC-1780590765746",
+            "404 GET http://127.0.0.1:8088/api/games/vasquez-ptC-1780590765746/settings"
+          ],
+          "staleMoveToWarnings": 0
+        }
+      }
+    },
+    "D_synthHandResult": {
+      "status": "PASS",
+      "gates": {
+        "D1_resultInjectionAccepted": {
+          "status": "PASS",
+          "detail": {
+            "ok": true,
+            "payload": {
+              "winner": 0,
+              "type": "Hu",
+              "score": [
+                {
+                  "seat": 0,
+                  "delta": 24
+                },
+                {
+                  "seat": 1,
+                  "delta": -8
+                },
+                {
+                  "seat": 2,
+                  "delta": -8
+                },
+                {
+                  "seat": 3,
+                  "delta": -8
+                }
+              ],
+              "hand": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13
+              ],
+              "nextBanker": 0
+            }
+          }
+        },
+        "D2_modalSurfaces": {
+          "status": "PASS",
+          "detail": {
+            "modalVisible": true,
+            "modalClasses": "modal show",
+            "modalDisplay": "block",
+            "headlineText": "胡!",
+            "winnerText": "Seat 0 赢了 wins!",
+            "scoreRows": 4
+          }
+        },
+        "D3_modalTombstoneClears": {
+          "status": "PASS",
+          "detail": {
+            "modalVisible": false,
+            "modalDisplay": "none",
+            "modalClasses": "modal"
+          }
+        },
+        "D4_gameCompleteModal": {
+          "status": "PASS",
+          "detail": {
+            "ok": true,
+            "gcModalVisible": true
+          }
+        }
+      },
+      "diagnostics": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-ptD-1780590774869",
+        "baseline": {
+          "seat": 0,
+          "handBySeat": [
+            14,
+            13,
+            13,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 0,
+          "wallCount": 55,
+          "myHandIds": [
+            {
+              "id": 2
+            },
+            {
+              "id": 4
+            },
+            {
+              "id": 5
+            },
+            {
+              "id": 9
+            },
+            {
+              "id": 16
+            },
+            {
+              "id": 26
+            },
+            {
+              "id": 45
+            },
+            {
+              "id": 50
+            },
+            {
+              "id": 54
+            },
+            {
+              "id": 60
+            },
+            {
+              "id": 83
+            },
+            {
+              "id": 94
+            },
+            {
+              "id": 97
+            },
+            {
+              "id": 107
+            }
+          ],
+          "myHandFaceUp": 0,
+          "foreignHandFaceUp": 0,
+          "hasExtraHandTile": false,
+          "pickup": null,
+          "result": null,
+          "gameComplete": null,
+          "claimsBySeat": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "matchPhase": null
+        },
+        "inject": {
+          "ok": true,
+          "payload": {
+            "winner": 0,
+            "type": "Hu",
+            "score": [
+              {
+                "seat": 0,
+                "delta": 24
+              },
+              {
+                "seat": 1,
+                "delta": -8
+              },
+              {
+                "seat": 2,
+                "delta": -8
+              },
+              {
+                "seat": 3,
+                "delta": -8
+              }
+            ],
+            "hand": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13
+            ],
+            "nextBanker": 0
+          }
+        },
+        "ui": {
+          "modalVisible": true,
+          "modalClasses": "modal show",
+          "modalDisplay": "block",
+          "headlineText": "胡!",
+          "winnerText": "Seat 0 赢了 wins!",
+          "scoreRows": 4
+        },
+        "uiAfterTombstone": {
+          "modalVisible": false,
+          "modalDisplay": "none",
+          "modalClasses": "modal"
+        },
+        "gameCompleteInject": {
+          "ok": true
+        },
+        "gcModalVisible": true,
+        "pageDiag": {
+          "label": "D",
+          "pageErrors": [],
+          "consoleErrors": [
+            "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+            "Failed to load resource: the server responded with a status of 404 (Not Found)",
+            "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          ],
+          "consoleWarnings": [],
+          "networkFailures": [
+            "404 GET http://127.0.0.1:8088/api/games/vasquez-ptD-1780590774869",
+            "404 GET http://127.0.0.1:8088/api/games/vasquez-ptD-1780590774869/settings"
+          ],
+          "staleMoveToWarnings": 0
+        }
+      }
+    },
+    "E_multiGameIsolation": {
+      "status": "PASS",
+      "gates": {
+        "E1_bothGamesDealtIndependently": {
+          "status": "PASS",
+          "detail": {
+            "gameIdInPageA": "vasquez-ptE-A-1780590785540",
+            "gameIdInPageB": "vasquez-ptE-B-1780590785540-x",
+            "handA": 14,
+            "handB": 14
+          }
+        },
+        "E2_noCrossContaminationFromAtoB": {
+          "status": "PASS",
+          "detail": {
+            "aDealerDiscards": 0,
+            "aTotalDiscard": 0,
+            "aTotalMeld": 3,
+            "aMeldBySeat": [
+              0,
+              3,
+              0,
+              0
+            ],
+            "aTotalActivity": 3,
+            "bDealerDiscards": 0,
+            "bTotalDiscard": 0,
+            "bTotalMeld": 0,
+            "bHandBySeat": [
+              14,
+              13,
+              13,
+              13
+            ],
+            "bTotalActivity": 0
+          }
+        },
+        "E3_BGameStateIntact": {
+          "status": "PASS",
+          "detail": {
+            "bHandBySeat": [
+              14,
+              13,
+              13,
+              13
+            ],
+            "bForeignFaceUp": 0,
+            "bWallCount": 55
+          }
+        },
+        "E4_resultModalIsolatedToA": {
+          "status": "PASS",
+          "detail": {
+            "aModalVisible": true,
+            "bModalVisible": false
+          }
+        }
+      },
+      "diagnostics": {
+        "urls": {
+          "A": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-ptE-A-1780590785540",
+          "B": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-ptE-B-1780590785540-x"
+        },
+        "snapA_pre": {
+          "seat": 0,
+          "handBySeat": [
+            14,
+            13,
+            13,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 0,
+          "wallCount": 55,
+          "myHandIds": [
+            {
+              "id": 10
+            },
+            {
+              "id": 16
+            },
+            {
+              "id": 47
+            },
+            {
+              "id": 51
+            },
+            {
+              "id": 53
+            },
+            {
+              "id": 59
+            },
+            {
+              "id": 62
+            },
+            {
+              "id": 67
+            },
+            {
+              "id": 76
+            },
+            {
+              "id": 80
+            },
+            {
+              "id": 84
+            },
+            {
+              "id": 88
+            },
+            {
+              "id": 99
+            },
+            {
+              "id": 104
+            }
+          ],
+          "myHandFaceUp": 14,
+          "foreignHandFaceUp": 0,
+          "hasExtraHandTile": true,
+          "pickup": null,
+          "result": null,
+          "gameComplete": null,
+          "claimsBySeat": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "matchPhase": null
+        },
+        "snapB_pre": {
+          "seat": 0,
+          "handBySeat": [
+            14,
+            13,
+            13,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 0,
+          "wallCount": 55,
+          "myHandIds": [
+            {
+              "id": 30
+            },
+            {
+              "id": 43
+            },
+            {
+              "id": 49
+            },
+            {
+              "id": 54
+            },
+            {
+              "id": 55
+            },
+            {
+              "id": 60
+            },
+            {
+              "id": 65
+            },
+            {
+              "id": 72
+            },
+            {
+              "id": 73
+            },
+            {
+              "id": 78
+            },
+            {
+              "id": 83
+            },
+            {
+              "id": 86
+            },
+            {
+              "id": 88
+            },
+            {
+              "id": 91
+            }
+          ],
+          "myHandFaceUp": 14,
+          "foreignHandFaceUp": 0,
+          "hasExtraHandTile": true,
+          "pickup": null,
+          "result": null,
+          "gameComplete": null,
+          "claimsBySeat": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "matchPhase": null
+        },
+        "gameIdInPage": {
+          "A": "vasquez-ptE-A-1780590785540",
+          "B": "vasquez-ptE-B-1780590785540-x"
+        },
+        "discardA": {
+          "tileId": 10,
+          "result": {
+            "ok": true
+          }
+        },
+        "snapA_postDiscard": {
+          "seat": 0,
+          "handBySeat": [
+            13,
+            11,
+            13,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            3,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 3,
+          "wallCount": 55,
+          "myHandIds": [
+            {
+              "id": 16
+            },
+            {
+              "id": 47
+            },
+            {
+              "id": 51
+            },
+            {
+              "id": 53
+            },
+            {
+              "id": 59
+            },
+            {
+              "id": 62
+            },
+            {
+              "id": 67
+            },
+            {
+              "id": 76
+            },
+            {
+              "id": 80
+            },
+            {
+              "id": 84
+            },
+            {
+              "id": 88
+            },
+            {
+              "id": 99
+            },
+            {
+              "id": 104
+            }
+          ],
+          "myHandFaceUp": 13,
+          "foreignHandFaceUp": 0,
+          "hasExtraHandTile": false,
+          "pickup": null,
+          "result": null,
+          "gameComplete": null,
+          "claimsBySeat": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "matchPhase": null
+        },
+        "snapB_postDiscard": {
+          "seat": 0,
+          "handBySeat": [
+            14,
+            13,
+            13,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 0,
+          "wallCount": 55,
+          "myHandIds": [
+            {
+              "id": 30
+            },
+            {
+              "id": 43
+            },
+            {
+              "id": 49
+            },
+            {
+              "id": 54
+            },
+            {
+              "id": 55
+            },
+            {
+              "id": 60
+            },
+            {
+              "id": 65
+            },
+            {
+              "id": 72
+            },
+            {
+              "id": 73
+            },
+            {
+              "id": 78
+            },
+            {
+              "id": 83
+            },
+            {
+              "id": 86
+            },
+            {
+              "id": 88
+            },
+            {
+              "id": 91
+            }
+          ],
+          "myHandFaceUp": 14,
+          "foreignHandFaceUp": 0,
+          "hasExtraHandTile": true,
+          "pickup": null,
+          "result": null,
+          "gameComplete": null,
+          "claimsBySeat": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "matchPhase": null
+        },
+        "aModalVisible": true,
+        "bModalVisible": false,
+        "pageDiagA": {
+          "label": "E-A",
+          "pageErrors": [],
+          "consoleErrors": [
+            "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+            "Failed to load resource: the server responded with a status of 404 (Not Found)",
+            "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          ],
+          "consoleWarnings": [],
+          "networkFailures": [
+            "404 GET http://127.0.0.1:8088/api/games/vasquez-ptE-A-1780590785540",
+            "404 GET http://127.0.0.1:8088/api/games/vasquez-ptE-A-1780590785540/settings"
+          ],
+          "staleMoveToWarnings": 0
+        },
+        "pageDiagB": {
+          "label": "E-B",
+          "pageErrors": [],
+          "consoleErrors": [
+            "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+            "Failed to load resource: the server responded with a status of 404 (Not Found)",
+            "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          ],
+          "consoleWarnings": [],
+          "networkFailures": [
+            "404 GET http://127.0.0.1:8088/api/games/vasquez-ptE-B-1780590785540-x",
+            "404 GET http://127.0.0.1:8088/api/games/vasquez-ptE-B-1780590785540-x/settings"
+          ],
+          "staleMoveToWarnings": 0
+        }
+      }
+    }
+  },
+  "summary": {
+    "ts": "2026-06-04T16-32-16-484Z",
+    "baseUrl": "http://127.0.0.1:8088",
+    "byScenario": {
+      "A_autoDealRoundRobin": {
+        "status": "PASS",
+        "error": null,
+        "gates": {
+          "A1_dealerHas14FaceUp": "PASS",
+          "A2_humanDiscardRoundTrip": "PASS",
+          "A3_atLeastOneBotDiscarded": "PASS",
+          "A4_roundRobinAllOthers": "PASS"
+        }
+      },
+      "B_manualDealPickups": {
+        "status": "PASS",
+        "error": null,
+        "gates": {
+          "B1_dealerHandReached13": "PASS",
+          "B2_myHandFaceUp": "PASS",
+          "B3_foreignHandsHidden": "PASS",
+          "B4_dealerExtraComplete": "PASS"
+        }
+      },
+      "C_claimWindow": {
+        "status": "PASS",
+        "error": null,
+        "gates": {
+          "C1_injectionAccepted": "PASS",
+          "C2_claimUiSurfaces": "PASS",
+          "C3_claimTombstoneClears": "PASS"
+        }
+      },
+      "D_synthHandResult": {
+        "status": "PASS",
+        "error": null,
+        "gates": {
+          "D1_resultInjectionAccepted": "PASS",
+          "D2_modalSurfaces": "PASS",
+          "D3_modalTombstoneClears": "PASS",
+          "D4_gameCompleteModal": "PASS"
+        }
+      },
+      "E_multiGameIsolation": {
+        "status": "PASS",
+        "error": null,
+        "gates": {
+          "E1_bothGamesDealtIndependently": "PASS",
+          "E2_noCrossContaminationFromAtoB": "PASS",
+          "E3_BGameStateIntact": "PASS",
+          "E4_resultModalIsolatedToA": "PASS"
+        }
+      }
+    },
+    "totalPass": 5,
+    "totalFail": 0,
+    "totalError": 0
+  }
+}

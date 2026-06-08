@@ -1,5 +1,5 @@
 {
-  "ts": "2026-06-03T16-56-46-315Z",
+  "ts": "2026-06-04T16-26-26-857Z",
   "baseUrl": "http://127.0.0.1:8088",
   "gates": [
     {
@@ -23,8 +23,8 @@
       "id": "S-2-distinct-player-ids",
       "status": "PASS",
       "evidence": {
-        "aPid": "ad0f99baf9b5402cbb41d6c0526f4b36",
-        "bPid": "2fecdb2995f3426793e45e385ec25038"
+        "aPid": "1f2515d7dc984fa2976b6bf74505d50e",
+        "bPid": "b8af1469f2664ed0a535e67eb6d29c8b"
       }
     },
     {
@@ -41,7 +41,7 @@
       "status": "PASS",
       "evidence": {
         "leaveVia": "#leave-seat click",
-        "elapsedMs": 20,
+        "elapsedMs": 21,
         "preLeave": {
           "seatsEntry": {
             "seat": 0
@@ -60,7 +60,7 @@
       "id": "S-5-A-local-seat-cleared",
       "status": "PASS",
       "evidence": {
-        "pid": "ad0f99baf9b5402cbb41d6c0526f4b36",
+        "pid": "1f2515d7dc984fa2976b6bf74505d50e",
         "seatsEntry": null,
         "clientSeat": null
       }

@@ -1,0 +1,274 @@
+{
+  "settingsPanelFixed": true,
+  "leaveSeatBroadcast": {
+    "before": "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z/leave-seat-B-before.png",
+    "after": "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z/leave-seat-B-after.png",
+    "deltaMs": 8,
+    "exit": 0,
+    "pass": true
+  },
+  "handResultModalRender": "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z/handResult-modal-synthetic-hu.png",
+  "fourBotSelfPlay": [
+    "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z/4bot-5s.png",
+    "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z/4bot-15s.png",
+    "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z/4bot-30s.png"
+  ],
+  "pageErrorsTotal": 0,
+  "knownIgnored": [
+    "Computed radius is NaN"
+  ],
+  "runTimestamp": "2026-06-04T15-37-08-176Z",
+  "outDir": "/data/source/mahjong-autotable/playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z",
+  "details": {
+    "settingsPanel": {
+      "mobile": {
+        "label": "mobile-375",
+        "viewport": {
+          "width": 375,
+          "height": 667
+        },
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=0&gameId=hicks-polish-settings-mobile-375-1780587428264",
+        "opened": {
+          "w2": true,
+          "w7": true,
+          "toggled": true,
+          "gearToggled": true
+        },
+        "geom": {
+          "viewport": {
+            "w": 375,
+            "h": 667
+          },
+          "w2": {
+            "tag": "#settings-drawer",
+            "present": true,
+            "visible": true,
+            "rect": {
+              "x": 399,
+              "y": 8,
+              "w": 337.5,
+              "h": 413.53125
+            },
+            "maxHeight": "600.3px",
+            "maxWidth": "337.5px",
+            "overflowY": "auto",
+            "right": "-361.5px",
+            "top": "8px",
+            "width": "337.5px",
+            "height": "413.531px"
+          },
+          "w7": {
+            "tag": ".settings-drawer-v2",
+            "present": true,
+            "visible": true,
+            "rect": {
+              "x": 29.5,
+              "y": 8,
+              "w": 337.5,
+              "h": 449.5
+            },
+            "maxHeight": "600.3px",
+            "maxWidth": "337.5px",
+            "overflowY": "auto",
+            "right": "8px",
+            "top": "8px",
+            "width": "337.5px",
+            "height": "449.5px"
+          }
+        },
+        "screenshot": "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z/settings-panel-mobile-375.png",
+        "screenshotBytes": 37568,
+        "pageErrorsCount": 0,
+        "nanRadius": 1,
+        "checks": {
+          "w2": {
+            "widthOk": true,
+            "heightOk": true,
+            "fillsScreenH": false,
+            "fillsScreenW": false,
+            "widthPx": 337.5,
+            "heightPx": 413.53125
+          },
+          "w7": {
+            "widthOk": true,
+            "heightOk": true,
+            "fillsScreenH": false,
+            "fillsScreenW": false,
+            "widthPx": 337.5,
+            "heightPx": 449.5
+          }
+        },
+        "pass": true
+      },
+      "tablet": {
+        "label": "tablet-768",
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=0&gameId=hicks-polish-settings-tablet-768-1780587432208",
+        "opened": {
+          "w2": true,
+          "w7": true,
+          "toggled": true,
+          "gearToggled": true
+        },
+        "geom": {
+          "viewport": {
+            "w": 768,
+            "h": 1024
+          },
+          "w2": {
+            "tag": "#settings-drawer",
+            "present": true,
+            "visible": true,
+            "rect": {
+              "x": 792,
+              "y": 8,
+              "w": 360,
+              "h": 396.0625
+            },
+            "maxHeight": "921.6px",
+            "maxWidth": "360px",
+            "overflowY": "auto",
+            "right": "-384px",
+            "top": "8px",
+            "width": "360px",
+            "height": "396.062px"
+          },
+          "w7": {
+            "tag": ".settings-drawer-v2",
+            "present": true,
+            "visible": true,
+            "rect": {
+              "x": 400,
+              "y": 8,
+              "w": 360,
+              "h": 449.5
+            },
+            "maxHeight": "921.6px",
+            "maxWidth": "360px",
+            "overflowY": "auto",
+            "right": "8px",
+            "top": "8px",
+            "width": "360px",
+            "height": "449.5px"
+          }
+        },
+        "screenshot": "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z/settings-panel-tablet-768.png",
+        "screenshotBytes": 198821,
+        "pageErrorsCount": 0,
+        "nanRadius": 1,
+        "checks": {
+          "w2": {
+            "widthOk": true,
+            "heightOk": true,
+            "fillsScreenH": false,
+            "fillsScreenW": false,
+            "widthPx": 360,
+            "heightPx": 396.0625
+          },
+          "w7": {
+            "widthOk": true,
+            "heightOk": true,
+            "fillsScreenH": false,
+            "fillsScreenW": false,
+            "widthPx": 360,
+            "heightPx": 449.5
+          }
+        },
+        "pass": true
+      }
+    },
+    "handResultModal": {
+      "inject": {
+        "ok": false,
+        "reason": "TypeError: c.charAt is not a function"
+      },
+      "state": {
+        "exists": true,
+        "rendered": true,
+        "classList": "modal show",
+        "display": "block",
+        "rect": {
+          "w": 1280,
+          "h": 800,
+          "x": 0,
+          "y": 0
+        },
+        "scoreRowCount": 4,
+        "handTileCount": 14,
+        "headlineText": "胡!",
+        "winnerText": "Seat 0 赢了 wins!",
+        "chipCount": 0
+      },
+      "screenshot": "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z/handResult-modal-synthetic-hu.png",
+      "screenshotBytes": 146236,
+      "pageErrorsCount": 0,
+      "pageErrors": [],
+      "consoleErrorsCount": 2,
+      "nanRadius": 1,
+      "pass": true,
+      "injectErrorIsHarmless": true
+    },
+    "fourBot": {
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=4&gameId=hicks-polish-4bot-1780587445856",
+      "snapshots": [
+        {
+          "tag": "4bot-5s",
+          "atMs": 5000,
+          "elapsedMs": 5408,
+          "state": {
+            "wall": 41,
+            "hand": 43,
+            "disc": 15,
+            "meld": 9,
+            "things": 109
+          },
+          "screenshot": "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z/4bot-5s.png",
+          "screenshotBytes": 1230113
+        },
+        {
+          "tag": "4bot-15s",
+          "atMs": 15000,
+          "elapsedMs": 15290,
+          "state": {
+            "wall": 51,
+            "hand": 53,
+            "disc": 4,
+            "meld": 0,
+            "things": 109
+          },
+          "screenshot": "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z/4bot-15s.png",
+          "screenshotBytes": 508003
+        },
+        {
+          "tag": "4bot-30s",
+          "atMs": 30000,
+          "elapsedMs": 30301,
+          "state": {
+            "wall": 26,
+            "hand": 23,
+            "disc": 29,
+            "meld": 30,
+            "things": 109
+          },
+          "screenshot": "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-37-08-176Z/4bot-30s.png",
+          "screenshotBytes": 550630
+        }
+      ],
+      "pageErrorsCount": 0,
+      "pageErrors": [],
+      "nanRadius": 1,
+      "pass": true
+    }
+  },
+  "verdict": {
+    "settings": true,
+    "leaveSeat": true,
+    "handResult": true,
+    "fourBot": true,
+    "noErrors": true
+  },
+  "go": true
+}

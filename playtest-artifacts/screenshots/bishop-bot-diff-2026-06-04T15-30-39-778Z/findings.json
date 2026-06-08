@@ -1,0 +1,1894 @@
+{
+  "spec": "playtest-bot-difficulty-live.spec.mjs",
+  "baseUrl": "http://127.0.0.1:8088",
+  "ts": "2026-06-04T15-30-39-778Z",
+  "startedAt": "2026-06-04T15:30:39.829Z",
+  "completedAt": "2026-06-04T15:32:08.318Z",
+  "totalDurationMs": 88489,
+  "trials_per_tier": 3,
+  "per_game_budget_ms": 90000,
+  "tiers": [
+    "Easy",
+    "Medium",
+    "Hard",
+    "Master"
+  ],
+  "results": {
+    "Easy": {
+      "median_time_to_hu_ms": 19182,
+      "hu_rate": 0.333,
+      "median_fans": 0,
+      "median_fan_points": 0,
+      "median_base_points": 2,
+      "median_claims": 16,
+      "median_discards": 51,
+      "hu_count": 1,
+      "draw_count": 2,
+      "timeout_count": 0,
+      "self_draw_count": 0,
+      "page_errors": 0,
+      "console_errors": 9
+    },
+    "Medium": {
+      "median_time_to_hu_ms": 15378,
+      "hu_rate": 1,
+      "median_fans": 0,
+      "median_fan_points": 0,
+      "median_base_points": 2,
+      "median_claims": 27,
+      "median_discards": 20,
+      "hu_count": 3,
+      "draw_count": 0,
+      "timeout_count": 0,
+      "self_draw_count": 1,
+      "page_errors": 0,
+      "console_errors": 9
+    },
+    "Hard": {
+      "median_time_to_hu_ms": 13198,
+      "hu_rate": 1,
+      "median_fans": 1,
+      "median_fan_points": 1,
+      "median_base_points": 3,
+      "median_claims": 18,
+      "median_discards": 17,
+      "hu_count": 3,
+      "draw_count": 0,
+      "timeout_count": 0,
+      "self_draw_count": 1,
+      "page_errors": 0,
+      "console_errors": 9
+    },
+    "Master": {
+      "median_time_to_hu_ms": 19170,
+      "hu_rate": 0.667,
+      "median_fans": 1,
+      "median_fan_points": 1,
+      "median_base_points": 4,
+      "median_claims": 12,
+      "median_discards": 32,
+      "hu_count": 2,
+      "draw_count": 1,
+      "timeout_count": 0,
+      "self_draw_count": 1,
+      "page_errors": 0,
+      "console_errors": 9
+    }
+  },
+  "tier_differentiation": "DETECTED",
+  "verdict_signal_count": 2,
+  "verdict_evidence": [
+    {
+      "metric": "median_time_to_hu_ms",
+      "spread": {
+        "easy": 19182,
+        "master": 19170,
+        "delta": -12,
+        "relative": -0.001,
+        "expectedDirection": "down"
+      },
+      "ordering": {
+        "values": [
+          19182,
+          15378,
+          13198,
+          19170
+        ],
+        "monotonicUp": false,
+        "monotonicDown": false
+      }
+    },
+    {
+      "metric": "hu_rate",
+      "spread": {
+        "easy": 0.333,
+        "master": 0.667,
+        "delta": 0.334,
+        "relative": 0.501,
+        "expectedDirection": "up"
+      },
+      "ordering": {
+        "values": [
+          0.333,
+          1,
+          1,
+          0.667
+        ],
+        "monotonicUp": false,
+        "monotonicDown": false
+      }
+    },
+    {
+      "metric": "median_fan_points",
+      "spread": {
+        "easy": 0,
+        "master": 1,
+        "delta": 1,
+        "relative": 1,
+        "expectedDirection": "up"
+      },
+      "ordering": {
+        "values": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "monotonicUp": false,
+        "monotonicDown": false
+      }
+    },
+    {
+      "metric": "median_claims",
+      "spread": {
+        "easy": 16,
+        "master": 12,
+        "delta": -4,
+        "relative": -0.25,
+        "expectedDirection": "up"
+      },
+      "ordering": {
+        "values": [
+          16,
+          27,
+          18,
+          12
+        ],
+        "monotonicUp": false,
+        "monotonicDown": false
+      }
+    }
+  ],
+  "verdict": "Tier-to-tier variation detected across 2 metric signal(s). Bot difficulty strategies produce measurably different play across 4 tiers × 3 trials.",
+  "page_errors_total": 0,
+  "raw_trials": [
+    {
+      "tier": "Easy",
+      "trialIdx": 0,
+      "gameId": "bot-diff-easy-1780587039829-0",
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Easy&handCount=1&gameId=bot-diff-easy-1780587039829-0",
+      "startedAt": 1780587039872,
+      "outcome": "Hu",
+      "timeToHuMs": 19182,
+      "claimsAttempted": 15,
+      "discardsCount": 30,
+      "fans": 0,
+      "fanPoints": 0,
+      "basePoints": 2,
+      "fanNames": [],
+      "isSelfDraw": false,
+      "isRobbedKong": false,
+      "winPattern": "standard",
+      "winner": 0,
+      "scoreDeltas": [
+        {
+          "seat": 0,
+          "delta": 2
+        },
+        {
+          "seat": 1,
+          "delta": 0
+        },
+        {
+          "seat": 2,
+          "delta": 0
+        },
+        {
+          "seat": 3,
+          "delta": -2
+        }
+      ],
+      "handTileCount": 14,
+      "pageErrors": 0,
+      "pageErrorMessages": [],
+      "consoleErrors": 3,
+      "wsFramesSeen": 117,
+      "resultFramesSeen": 22,
+      "huFramesSeen": 1,
+      "drawFramesSeen": 0,
+      "samples": [
+        {
+          "byGroup": {
+            "hand": 44,
+            "wall": 51,
+            "discard": 4,
+            "meld": 9,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 5182
+        },
+        {
+          "byGroup": {
+            "hand": 41,
+            "wall": 46,
+            "discard": 9,
+            "meld": 12,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 8210
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 39,
+            "discard": 16,
+            "meld": 15,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 11259
+        },
+        {
+          "byGroup": {
+            "hand": 37,
+            "wall": 33,
+            "discard": 23,
+            "meld": 15,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 14282
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 25,
+            "discard": 30,
+            "meld": 15,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 17328
+        },
+        {
+          "byGroup": {
+            "hand": 53,
+            "wall": 52,
+            "discard": 3,
+            "meld": 0,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 20379
+        },
+        {
+          "byGroup": {
+            "hand": 50,
+            "wall": 47,
+            "discard": 8,
+            "meld": 3,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 23420
+        }
+      ],
+      "durationMs": 23420
+    },
+    {
+      "tier": "Easy",
+      "trialIdx": 1,
+      "gameId": "bot-diff-easy-1780587063308-1",
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Easy&handCount=1&gameId=bot-diff-easy-1780587063308-1",
+      "startedAt": 1780587063335,
+      "outcome": "Draw",
+      "timeToHuMs": null,
+      "claimsAttempted": 16,
+      "discardsCount": 52,
+      "fans": null,
+      "fanPoints": null,
+      "basePoints": null,
+      "fanNames": [],
+      "isSelfDraw": null,
+      "isRobbedKong": null,
+      "winPattern": null,
+      "winner": -1,
+      "scoreDeltas": [
+        {
+          "seat": 0,
+          "delta": 0
+        },
+        {
+          "seat": 1,
+          "delta": 0
+        },
+        {
+          "seat": 2,
+          "delta": 0
+        },
+        {
+          "seat": 3,
+          "delta": 0
+        }
+      ],
+      "handTileCount": null,
+      "pageErrors": 0,
+      "pageErrorMessages": [],
+      "consoleErrors": 3,
+      "wsFramesSeen": 167,
+      "resultFramesSeen": 28,
+      "huFramesSeen": 0,
+      "drawFramesSeen": 1,
+      "samples": [
+        {
+          "byGroup": {
+            "hand": 50,
+            "wall": 49,
+            "discard": 6,
+            "meld": 3,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 5198
+        },
+        {
+          "byGroup": {
+            "hand": 50,
+            "wall": 41,
+            "discard": 14,
+            "meld": 3,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 8239
+        },
+        {
+          "byGroup": {
+            "hand": 44,
+            "wall": 35,
+            "discard": 19,
+            "meld": 10,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 11269
+        },
+        {
+          "byGroup": {
+            "hand": 44,
+            "wall": 28,
+            "discard": 26,
+            "meld": 10,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 14271
+        },
+        {
+          "byGroup": {
+            "hand": 44,
+            "wall": 22,
+            "discard": 32,
+            "meld": 10,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 17313
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 16,
+            "discard": 38,
+            "meld": 16,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 20355
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 9,
+            "discard": 45,
+            "meld": 16,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 23399
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 2,
+            "discard": 52,
+            "meld": 16,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 26429
+        },
+        {
+          "byGroup": {
+            "hand": 53,
+            "wall": 50,
+            "discard": 5,
+            "meld": 0,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 29459
+        },
+        {
+          "byGroup": {
+            "hand": 53,
+            "wall": 43,
+            "discard": 12,
+            "meld": 0,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 32495
+        }
+      ],
+      "durationMs": 32495
+    },
+    {
+      "tier": "Easy",
+      "trialIdx": 2,
+      "gameId": "bot-diff-easy-1780587095849-2",
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Easy&handCount=1&gameId=bot-diff-easy-1780587095849-2",
+      "startedAt": 1780587095882,
+      "outcome": "Draw",
+      "timeToHuMs": null,
+      "claimsAttempted": 18,
+      "discardsCount": 51,
+      "fans": null,
+      "fanPoints": null,
+      "basePoints": null,
+      "fanNames": [],
+      "isSelfDraw": null,
+      "isRobbedKong": null,
+      "winPattern": null,
+      "winner": -1,
+      "scoreDeltas": [
+        {
+          "seat": 0,
+          "delta": 0
+        },
+        {
+          "seat": 1,
+          "delta": 0
+        },
+        {
+          "seat": 2,
+          "delta": 0
+        },
+        {
+          "seat": 3,
+          "delta": 0
+        }
+      ],
+      "handTileCount": null,
+      "pageErrors": 0,
+      "pageErrorMessages": [],
+      "consoleErrors": 3,
+      "wsFramesSeen": 164,
+      "resultFramesSeen": 21,
+      "huFramesSeen": 0,
+      "drawFramesSeen": 1,
+      "samples": [
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 50,
+            "discard": 5,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 5123
+        },
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 42,
+            "discard": 13,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 8147
+        },
+        {
+          "byGroup": {
+            "hand": 41,
+            "wall": 37,
+            "discard": 18,
+            "meld": 12,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 11161
+        },
+        {
+          "byGroup": {
+            "hand": 40,
+            "wall": 31,
+            "discard": 25,
+            "meld": 12,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 14172
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 24,
+            "discard": 31,
+            "meld": 15,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 17190
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 18,
+            "discard": 37,
+            "meld": 15,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 20202
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 10,
+            "discard": 45,
+            "meld": 15,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 23222
+        },
+        {
+          "byGroup": {
+            "hand": 35,
+            "wall": 4,
+            "discard": 51,
+            "meld": 18,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 26247
+        },
+        {
+          "byGroup": {
+            "hand": 52,
+            "wall": 54,
+            "discard": 2,
+            "meld": 0,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 29249
+        },
+        {
+          "byGroup": {
+            "hand": 49,
+            "wall": 49,
+            "discard": 7,
+            "meld": 3,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 32264
+        }
+      ],
+      "durationMs": 32264
+    },
+    {
+      "tier": "Medium",
+      "trialIdx": 0,
+      "gameId": "bot-diff-medium-1780587039830-0",
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=1&gameId=bot-diff-medium-1780587039830-0",
+      "startedAt": 1780587039872,
+      "outcome": "Hu",
+      "timeToHuMs": 15378,
+      "claimsAttempted": 27,
+      "discardsCount": 20,
+      "fans": 1,
+      "fanPoints": 1,
+      "basePoints": 7,
+      "fanNames": [
+        "selfDraw"
+      ],
+      "isSelfDraw": true,
+      "isRobbedKong": false,
+      "winPattern": "standard",
+      "winner": 2,
+      "scoreDeltas": [
+        {
+          "seat": 0,
+          "delta": -3
+        },
+        {
+          "seat": 1,
+          "delta": -2
+        },
+        {
+          "seat": 2,
+          "delta": 7
+        },
+        {
+          "seat": 3,
+          "delta": -2
+        }
+      ],
+      "handTileCount": 14,
+      "pageErrors": 0,
+      "pageErrorMessages": [],
+      "consoleErrors": 3,
+      "wsFramesSeen": 94,
+      "resultFramesSeen": 22,
+      "huFramesSeen": 1,
+      "drawFramesSeen": 0,
+      "samples": [
+        {
+          "byGroup": {
+            "hand": 46,
+            "wall": 48,
+            "discard": 8,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 5172
+        },
+        {
+          "byGroup": {
+            "hand": 41,
+            "wall": 42,
+            "discard": 13,
+            "meld": 12,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 8188
+        },
+        {
+          "byGroup": {
+            "hand": 35,
+            "wall": 38,
+            "discard": 17,
+            "meld": 18,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 11228
+        },
+        {
+          "byGroup": {
+            "hand": 26,
+            "wall": 35,
+            "discard": 20,
+            "meld": 27,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 14249
+        },
+        {
+          "byGroup": {
+            "hand": 49,
+            "wall": 53,
+            "discard": 3,
+            "meld": 3,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 17261
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 50,
+            "discard": 5,
+            "meld": 15,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 20290
+        }
+      ],
+      "durationMs": 20290
+    },
+    {
+      "tier": "Medium",
+      "trialIdx": 1,
+      "gameId": "bot-diff-medium-1780587060187-1",
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=1&gameId=bot-diff-medium-1780587060187-1",
+      "startedAt": 1780587060221,
+      "outcome": "Hu",
+      "timeToHuMs": 11506,
+      "claimsAttempted": 28,
+      "discardsCount": 11,
+      "fans": 0,
+      "fanPoints": 0,
+      "basePoints": 2,
+      "fanNames": [],
+      "isSelfDraw": false,
+      "isRobbedKong": false,
+      "winPattern": "standard",
+      "winner": 1,
+      "scoreDeltas": [
+        {
+          "seat": 0,
+          "delta": -2
+        },
+        {
+          "seat": 1,
+          "delta": 2
+        },
+        {
+          "seat": 2,
+          "delta": 0
+        },
+        {
+          "seat": 3,
+          "delta": 0
+        }
+      ],
+      "handTileCount": 15,
+      "pageErrors": 0,
+      "pageErrorMessages": [],
+      "consoleErrors": 3,
+      "wsFramesSeen": 73,
+      "resultFramesSeen": 26,
+      "huFramesSeen": 1,
+      "drawFramesSeen": 0,
+      "samples": [
+        {
+          "byGroup": {
+            "hand": 44,
+            "wall": 49,
+            "discard": 5,
+            "meld": 10,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 5101
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 44,
+            "discard": 10,
+            "meld": 16,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 8123
+        },
+        {
+          "byGroup": {
+            "hand": 26,
+            "wall": 43,
+            "discard": 11,
+            "meld": 28,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 11159
+        },
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 51,
+            "discard": 4,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 14174
+        },
+        {
+          "byGroup": {
+            "hand": 41,
+            "wall": 46,
+            "discard": 8,
+            "meld": 13,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 17216
+        }
+      ],
+      "durationMs": 17216
+    },
+    {
+      "tier": "Medium",
+      "trialIdx": 2,
+      "gameId": "bot-diff-medium-1780587077450-2",
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=1&gameId=bot-diff-medium-1780587077450-2",
+      "startedAt": 1780587077477,
+      "outcome": "Hu",
+      "timeToHuMs": 15522,
+      "claimsAttempted": 25,
+      "discardsCount": 21,
+      "fans": 0,
+      "fanPoints": 0,
+      "basePoints": 1,
+      "fanNames": [],
+      "isSelfDraw": false,
+      "isRobbedKong": false,
+      "winPattern": "standard",
+      "winner": 1,
+      "scoreDeltas": [
+        {
+          "seat": 0,
+          "delta": 0
+        },
+        {
+          "seat": 1,
+          "delta": 1
+        },
+        {
+          "seat": 2,
+          "delta": -1
+        },
+        {
+          "seat": 3,
+          "delta": 0
+        }
+      ],
+      "handTileCount": 15,
+      "pageErrors": 0,
+      "pageErrorMessages": [],
+      "consoleErrors": 3,
+      "wsFramesSeen": 89,
+      "resultFramesSeen": 19,
+      "huFramesSeen": 1,
+      "drawFramesSeen": 0,
+      "samples": [
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 49,
+            "discard": 6,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 5160
+        },
+        {
+          "byGroup": {
+            "hand": 43,
+            "wall": 43,
+            "discard": 13,
+            "meld": 9,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 8174
+        },
+        {
+          "byGroup": {
+            "hand": 37,
+            "wall": 37,
+            "discard": 18,
+            "meld": 16,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 11204
+        },
+        {
+          "byGroup": {
+            "hand": 29,
+            "wall": 33,
+            "discard": 21,
+            "meld": 25,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 14242
+        },
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 54,
+            "discard": 1,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 17264
+        },
+        {
+          "byGroup": {
+            "hand": 32,
+            "wall": 54,
+            "discard": 1,
+            "meld": 21,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 20293
+        }
+      ],
+      "durationMs": 20293
+    },
+    {
+      "tier": "Hard",
+      "trialIdx": 0,
+      "gameId": "bot-diff-hard-1780587039830-0",
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Hard&handCount=1&gameId=bot-diff-hard-1780587039830-0",
+      "startedAt": 1780587039872,
+      "outcome": "Hu",
+      "timeToHuMs": 13198,
+      "claimsAttempted": 12,
+      "discardsCount": 17,
+      "fans": 1,
+      "fanPoints": 1,
+      "basePoints": 9,
+      "fanNames": [
+        "selfDraw"
+      ],
+      "isSelfDraw": true,
+      "isRobbedKong": false,
+      "winPattern": "standard",
+      "winner": 0,
+      "scoreDeltas": [
+        {
+          "seat": 0,
+          "delta": 9
+        },
+        {
+          "seat": 1,
+          "delta": -3
+        },
+        {
+          "seat": 2,
+          "delta": -3
+        },
+        {
+          "seat": 3,
+          "delta": -3
+        }
+      ],
+      "handTileCount": 14,
+      "pageErrors": 0,
+      "pageErrorMessages": [],
+      "consoleErrors": 3,
+      "wsFramesSeen": 78,
+      "resultFramesSeen": 17,
+      "huFramesSeen": 1,
+      "drawFramesSeen": 0,
+      "samples": [
+        {
+          "byGroup": {
+            "hand": 52,
+            "wall": 47,
+            "discard": 9,
+            "meld": 0,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 5207
+        },
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 43,
+            "discard": 12,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 8248
+        },
+        {
+          "byGroup": {
+            "hand": 41,
+            "wall": 38,
+            "discard": 17,
+            "meld": 12,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 11265
+        },
+        {
+          "byGroup": {
+            "hand": 49,
+            "wall": 55,
+            "discard": 1,
+            "meld": 3,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 14313
+        },
+        {
+          "byGroup": {
+            "hand": 40,
+            "wall": 52,
+            "discard": 4,
+            "meld": 12,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 17336
+        }
+      ],
+      "durationMs": 17336
+    },
+    {
+      "tier": "Hard",
+      "trialIdx": 1,
+      "gameId": "bot-diff-hard-1780587057241-1",
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Hard&handCount=1&gameId=bot-diff-hard-1780587057241-1",
+      "startedAt": 1780587057266,
+      "outcome": "Hu",
+      "timeToHuMs": 12796,
+      "claimsAttempted": 18,
+      "discardsCount": 13,
+      "fans": 0,
+      "fanPoints": 0,
+      "basePoints": 1,
+      "fanNames": [],
+      "isSelfDraw": false,
+      "isRobbedKong": false,
+      "winPattern": "standard",
+      "winner": 1,
+      "scoreDeltas": [
+        {
+          "seat": 0,
+          "delta": 0
+        },
+        {
+          "seat": 1,
+          "delta": 1
+        },
+        {
+          "seat": 2,
+          "delta": 0
+        },
+        {
+          "seat": 3,
+          "delta": -1
+        }
+      ],
+      "handTileCount": 14,
+      "pageErrors": 0,
+      "pageErrorMessages": [],
+      "consoleErrors": 3,
+      "wsFramesSeen": 77,
+      "resultFramesSeen": 23,
+      "huFramesSeen": 1,
+      "drawFramesSeen": 0,
+      "samples": [
+        {
+          "byGroup": {
+            "hand": 46,
+            "wall": 51,
+            "discard": 5,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 5133
+        },
+        {
+          "byGroup": {
+            "hand": 37,
+            "wall": 48,
+            "discard": 8,
+            "meld": 15,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 8165
+        },
+        {
+          "byGroup": {
+            "hand": 35,
+            "wall": 42,
+            "discard": 13,
+            "meld": 18,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 11187
+        },
+        {
+          "byGroup": {
+            "hand": 52,
+            "wall": 52,
+            "discard": 4,
+            "meld": 0,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 14230
+        },
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 47,
+            "discard": 8,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 17249
+        }
+      ],
+      "durationMs": 17249
+    },
+    {
+      "tier": "Hard",
+      "trialIdx": 2,
+      "gameId": "bot-diff-hard-1780587074534-2",
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Hard&handCount=1&gameId=bot-diff-hard-1780587074534-2",
+      "startedAt": 1780587074568,
+      "outcome": "Hu",
+      "timeToHuMs": 24631,
+      "claimsAttempted": 18,
+      "discardsCount": 41,
+      "fans": 1,
+      "fanPoints": 1,
+      "basePoints": 3,
+      "fanNames": [
+        "concealedHand"
+      ],
+      "isSelfDraw": false,
+      "isRobbedKong": false,
+      "winPattern": "standard",
+      "winner": 0,
+      "scoreDeltas": [
+        {
+          "seat": 0,
+          "delta": 3
+        },
+        {
+          "seat": 1,
+          "delta": 0
+        },
+        {
+          "seat": 2,
+          "delta": 0
+        },
+        {
+          "seat": 3,
+          "delta": -3
+        }
+      ],
+      "handTileCount": 14,
+      "pageErrors": 0,
+      "pageErrorMessages": [],
+      "consoleErrors": 3,
+      "wsFramesSeen": 143,
+      "resultFramesSeen": 25,
+      "huFramesSeen": 1,
+      "drawFramesSeen": 0,
+      "samples": [
+        {
+          "byGroup": {
+            "hand": 50,
+            "wall": 48,
+            "discard": 7,
+            "meld": 3,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 5114
+        },
+        {
+          "byGroup": {
+            "hand": 40,
+            "wall": 47,
+            "discard": 9,
+            "meld": 12,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 8127
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 40,
+            "discard": 15,
+            "meld": 15,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 11148
+        },
+        {
+          "byGroup": {
+            "hand": 37,
+            "wall": 34,
+            "discard": 22,
+            "meld": 15,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 14185
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 26,
+            "discard": 29,
+            "meld": 15,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 17228
+        },
+        {
+          "byGroup": {
+            "hand": 35,
+            "wall": 21,
+            "discard": 34,
+            "meld": 18,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 20240
+        },
+        {
+          "byGroup": {
+            "hand": 35,
+            "wall": 14,
+            "discard": 41,
+            "meld": 18,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 23247
+        },
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 54,
+            "discard": 1,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 26284
+        },
+        {
+          "byGroup": {
+            "hand": 44,
+            "wall": 48,
+            "discard": 7,
+            "meld": 9,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 29303
+        }
+      ],
+      "durationMs": 29303
+    },
+    {
+      "tier": "Master",
+      "trialIdx": 0,
+      "gameId": "bot-diff-master-1780587039830-0",
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Master&handCount=1&gameId=bot-diff-master-1780587039830-0",
+      "startedAt": 1780587039873,
+      "outcome": "Hu",
+      "timeToHuMs": 18736,
+      "claimsAttempted": 12,
+      "discardsCount": 32,
+      "fans": 0,
+      "fanPoints": 0,
+      "basePoints": 1,
+      "fanNames": [],
+      "isSelfDraw": false,
+      "isRobbedKong": false,
+      "winPattern": "standard",
+      "winner": 3,
+      "scoreDeltas": [
+        {
+          "seat": 0,
+          "delta": 0
+        },
+        {
+          "seat": 1,
+          "delta": 0
+        },
+        {
+          "seat": 2,
+          "delta": -1
+        },
+        {
+          "seat": 3,
+          "delta": 1
+        }
+      ],
+      "handTileCount": 14,
+      "pageErrors": 0,
+      "pageErrorMessages": [],
+      "consoleErrors": 3,
+      "wsFramesSeen": 119,
+      "resultFramesSeen": 25,
+      "huFramesSeen": 1,
+      "drawFramesSeen": 0,
+      "samples": [
+        {
+          "byGroup": {
+            "hand": 46,
+            "wall": 50,
+            "discard": 6,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 5190
+        },
+        {
+          "byGroup": {
+            "hand": 40,
+            "wall": 45,
+            "discard": 11,
+            "meld": 12,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 8223
+        },
+        {
+          "byGroup": {
+            "hand": 41,
+            "wall": 38,
+            "discard": 17,
+            "meld": 12,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 11235
+        },
+        {
+          "byGroup": {
+            "hand": 40,
+            "wall": 31,
+            "discard": 25,
+            "meld": 12,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 14272
+        },
+        {
+          "byGroup": {
+            "hand": 41,
+            "wall": 23,
+            "discard": 32,
+            "meld": 12,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 17312
+        },
+        {
+          "byGroup": {
+            "hand": 50,
+            "wall": 53,
+            "discard": 2,
+            "meld": 3,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 20364
+        },
+        {
+          "byGroup": {
+            "hand": 50,
+            "wall": 45,
+            "discard": 10,
+            "meld": 3,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 23381
+        }
+      ],
+      "durationMs": 23381
+    },
+    {
+      "tier": "Master",
+      "trialIdx": 1,
+      "gameId": "bot-diff-master-1780587063277-1",
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Master&handCount=1&gameId=bot-diff-master-1780587063277-1",
+      "startedAt": 1780587063309,
+      "outcome": "Hu",
+      "timeToHuMs": 19603,
+      "claimsAttempted": 6,
+      "discardsCount": 32,
+      "fans": 1,
+      "fanPoints": 1,
+      "basePoints": 7,
+      "fanNames": [
+        "selfDraw"
+      ],
+      "isSelfDraw": true,
+      "isRobbedKong": false,
+      "winPattern": "standard",
+      "winner": 3,
+      "scoreDeltas": [
+        {
+          "seat": 0,
+          "delta": -3
+        },
+        {
+          "seat": 1,
+          "delta": -2
+        },
+        {
+          "seat": 2,
+          "delta": -2
+        },
+        {
+          "seat": 3,
+          "delta": 7
+        }
+      ],
+      "handTileCount": 14,
+      "pageErrors": 0,
+      "pageErrorMessages": [],
+      "consoleErrors": 3,
+      "wsFramesSeen": 117,
+      "resultFramesSeen": 20,
+      "huFramesSeen": 1,
+      "drawFramesSeen": 0,
+      "samples": [
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 48,
+            "discard": 7,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 5196
+        },
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 41,
+            "discard": 14,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 8238
+        },
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 36,
+            "discard": 19,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 11247
+        },
+        {
+          "byGroup": {
+            "hand": 46,
+            "wall": 30,
+            "discard": 26,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 14293
+        },
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 23,
+            "discard": 32,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 17307
+        },
+        {
+          "byGroup": {
+            "hand": 53,
+            "wall": 53,
+            "discard": 2,
+            "meld": 0,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 20321
+        },
+        {
+          "byGroup": {
+            "hand": 50,
+            "wall": 48,
+            "discard": 7,
+            "meld": 3,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 23346
+        }
+      ],
+      "durationMs": 23346
+    },
+    {
+      "tier": "Master",
+      "trialIdx": 2,
+      "gameId": "bot-diff-master-1780587086686-2",
+      "url": "http://127.0.0.1:8088/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Master&handCount=1&gameId=bot-diff-master-1780587086686-2",
+      "startedAt": 1780587086719,
+      "outcome": "Draw",
+      "timeToHuMs": null,
+      "claimsAttempted": 24,
+      "discardsCount": 52,
+      "fans": null,
+      "fanPoints": null,
+      "basePoints": null,
+      "fanNames": [],
+      "isSelfDraw": null,
+      "isRobbedKong": null,
+      "winPattern": null,
+      "winner": -1,
+      "scoreDeltas": [
+        {
+          "seat": 0,
+          "delta": 0
+        },
+        {
+          "seat": 1,
+          "delta": 0
+        },
+        {
+          "seat": 2,
+          "delta": 0
+        },
+        {
+          "seat": 3,
+          "delta": 0
+        }
+      ],
+      "handTileCount": null,
+      "pageErrors": 0,
+      "pageErrorMessages": [],
+      "consoleErrors": 3,
+      "wsFramesSeen": 175,
+      "resultFramesSeen": 26,
+      "huFramesSeen": 0,
+      "drawFramesSeen": 1,
+      "samples": [
+        {
+          "byGroup": {
+            "hand": 47,
+            "wall": 49,
+            "discard": 6,
+            "meld": 6,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 5188
+        },
+        {
+          "byGroup": {
+            "hand": 38,
+            "wall": 46,
+            "discard": 9,
+            "meld": 15,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 8218
+        },
+        {
+          "byGroup": {
+            "hand": 35,
+            "wall": 40,
+            "discard": 15,
+            "meld": 18,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 11258
+        },
+        {
+          "byGroup": {
+            "hand": 35,
+            "wall": 33,
+            "discard": 22,
+            "meld": 18,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 14275
+        },
+        {
+          "byGroup": {
+            "hand": 34,
+            "wall": 28,
+            "discard": 28,
+            "meld": 18,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 17303
+        },
+        {
+          "byGroup": {
+            "hand": 31,
+            "wall": 24,
+            "discard": 32,
+            "meld": 21,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 20313
+        },
+        {
+          "byGroup": {
+            "hand": 29,
+            "wall": 18,
+            "discard": 37,
+            "meld": 24,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 23321
+        },
+        {
+          "byGroup": {
+            "hand": 28,
+            "wall": 11,
+            "discard": 45,
+            "meld": 24,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 26342
+        },
+        {
+          "byGroup": {
+            "hand": 29,
+            "wall": 3,
+            "discard": 52,
+            "meld": 24,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 29355
+        },
+        {
+          "byGroup": {
+            "hand": 52,
+            "wall": 52,
+            "discard": 4,
+            "meld": 0,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 32376
+        },
+        {
+          "byGroup": {
+            "hand": 49,
+            "wall": 46,
+            "discard": 10,
+            "meld": 3,
+            "other": 1
+          },
+          "activeSeat": null,
+          "phase": null,
+          "handCount": null,
+          "elapsedMs": 35393
+        }
+      ],
+      "durationMs": 35393
+    }
+  ]
+}

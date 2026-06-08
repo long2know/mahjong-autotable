@@ -1,6 +1,6 @@
 {
-  "startedAt": "2026-06-03T16:15:58.452Z",
-  "finishedAt": "2026-06-03T16:16:19.222Z",
+  "startedAt": "2026-06-04T16:27:38.969Z",
+  "finishedAt": "2026-06-04T16:27:59.266Z",
   "baseUrl": "http://127.0.0.1:8088",
   "wsBaseUrl": "ws://127.0.0.1:8088",
   "counts": {
@@ -17,7 +17,7 @@
         "httpStatus": 200,
         "bodyStatus": "healthy",
         "version": "0.31.0.0",
-        "uptime": "00:13:54.9611943",
+        "uptime": "23:31:08.8116040",
         "buildSha": "dev",
         "latencyMs": 10,
         "error": null
@@ -100,8 +100,8 @@
       "category": "3-multi-game",
       "status": "PASS",
       "evidence": {
-        "playerA": "39afa3a2ae7d4a26a8e19a927129888e",
-        "playerB": "38e95ba1a41648ca9fecb84b1b6ebade",
+        "playerA": "fb03517898984c3e89ba53a2a67dc66c",
+        "playerB": "8a6414e8063e488db51febaec4653fee",
         "sameId": false
       },
       "screenshots": []
@@ -111,16 +111,16 @@
       "category": "3-multi-game",
       "status": "PASS",
       "evidence": {
-        "requestedA": "ripley-prodready-A-1780503362695",
+        "requestedA": "ripley-prodready-A-1780590463183",
         "observedA": null,
-        "observedLastIdA": "ripley-prodready-A-1780503362695",
-        "urlIdA": "ripley-prodready-A-1780503362695",
-        "effectiveA": "ripley-prodready-A-1780503362695",
-        "requestedB": "ripley-prodready-B-1780503362695",
+        "observedLastIdA": "ripley-prodready-A-1780590463183",
+        "urlIdA": "ripley-prodready-A-1780590463183",
+        "effectiveA": "ripley-prodready-A-1780590463183",
+        "requestedB": "ripley-prodready-B-1780590463183",
         "observedB": null,
-        "observedLastIdB": "ripley-prodready-B-1780503362695",
-        "urlIdB": "ripley-prodready-B-1780503362695",
-        "effectiveB": "ripley-prodready-B-1780503362695"
+        "observedLastIdB": "ripley-prodready-B-1780590463183",
+        "urlIdB": "ripley-prodready-B-1780590463183",
+        "effectiveB": "ripley-prodready-B-1780590463183"
       },
       "screenshots": []
     },
@@ -144,8 +144,8 @@
       "category": "3-multi-game",
       "status": "PASS",
       "evidence": {
-        "activeGamesAfter": 47,
-        "activeGamesBefore": 47
+        "activeGamesAfter": 157,
+        "activeGamesBefore": 157
       },
       "screenshots": []
     },

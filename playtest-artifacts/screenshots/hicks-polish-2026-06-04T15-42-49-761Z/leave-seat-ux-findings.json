@@ -1,0 +1,84 @@
+{
+  "ts": "2026-06-04T15-42-49-761Z",
+  "baseUrl": "http://127.0.0.1:8088",
+  "outDir": "/data/source/mahjong-autotable/playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-42-49-761Z",
+  "gates": [
+    {
+      "id": "PRE-1-health",
+      "status": "PASS",
+      "evidence": {
+        "status": "healthy",
+        "version": "0.31.0.0",
+        "dbConnected": true
+      }
+    },
+    {
+      "id": "S-1-bundles-ready",
+      "status": "PASS",
+      "evidence": {
+        "aReady": true,
+        "bReady": true
+      }
+    },
+    {
+      "id": "S-2-distinct-player-ids",
+      "status": "PASS",
+      "evidence": {
+        "aPid": "2630eccacff44ce28dfe19a944cfe510",
+        "bPid": "7515d6b77c024475b8187cf1b4abfcc9"
+      }
+    },
+    {
+      "id": "S-3-A-takes-seat-0",
+      "status": "PASS",
+      "evidence": {
+        "takeVia": "client.seats.set",
+        "seatedFromA": true,
+        "seatedFromB": true
+      }
+    },
+    {
+      "id": "S-4-B-sees-A-leave-within-1500ms",
+      "status": "PASS",
+      "evidence": {
+        "leaveVia": "#leave-seat click",
+        "elapsedMs": 18,
+        "preLeave": {
+          "seatsEntry": {
+            "seat": 0
+          },
+          "nicksEntry": "Seat 0"
+        },
+        "postLeave": {
+          "seatsEntry": null,
+          "nicksEntry": null,
+          "seatVacated": true,
+          "nickVacated": true
+        }
+      }
+    },
+    {
+      "id": "S-5-A-no-page-errors",
+      "status": "PASS",
+      "evidence": {
+        "pageErrorsCount": 0,
+        "pageErrors": []
+      }
+    },
+    {
+      "id": "S-6-B-no-page-errors",
+      "status": "PASS",
+      "evidence": {
+        "pageErrorsCount": 0,
+        "pageErrors": []
+      }
+    }
+  ],
+  "pass": 7,
+  "fail": 0,
+  "deltaMs": 18,
+  "beforePath": "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-42-49-761Z/leave-seat-B-before.png",
+  "afterPath": "playtest-artifacts/screenshots/hicks-polish-2026-06-04T15-42-49-761Z/leave-seat-B-after.png",
+  "pageErrorsTotal": 0,
+  "nanRadiusTotal": 2
+}

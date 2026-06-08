@@ -1,11 +1,11 @@
 {
-  "startedAt": "2026-05-29T19:47:17.818Z",
-  "finishedAt": "2026-05-29T19:50:01.817Z",
+  "startedAt": "2026-06-04T16:29:04.813Z",
+  "finishedAt": "2026-06-04T16:31:40.206Z",
   "baseUrl": "http://127.0.0.1:8088",
   "sqlitePath": "/tmp/mat-postfix.db",
   "counts": {
-    "PASS": 38,
-    "FAIL": 5,
+    "PASS": 39,
+    "FAIL": 4,
     "SKIP": 0
   },
   "findings": [
@@ -110,8 +110,8 @@
       "status": "PASS",
       "evidence": {
         "gameIdInputPresent": true,
-        "filled": "audit-prefill-1780084041058",
-        "echo": "audit-prefill-1780084041058"
+        "filled": "audit-prefill-1780590547956",
+        "echo": "audit-prefill-1780590547956"
       },
       "screenshots": []
     },
@@ -159,7 +159,7 @@
         "seatIdx": 0,
         "seatTaken": 0,
         "worldSeat": 0,
-        "thingsCount": 197,
+        "thingsCount": 109,
         "pageErrors": 0,
         "pageErrorMessages": []
       },
@@ -175,7 +175,7 @@
         "seatIdx": 1,
         "seatTaken": 1,
         "worldSeat": 1,
-        "thingsCount": 197,
+        "thingsCount": 109,
         "pageErrors": 0,
         "pageErrorMessages": []
       },
@@ -191,7 +191,7 @@
         "seatIdx": 2,
         "seatTaken": 2,
         "worldSeat": 2,
-        "thingsCount": 197,
+        "thingsCount": 109,
         "pageErrors": 0,
         "pageErrorMessages": []
       },
@@ -207,7 +207,7 @@
         "seatIdx": 3,
         "seatTaken": 3,
         "worldSeat": 3,
-        "thingsCount": 197,
+        "thingsCount": 109,
         "pageErrors": 0,
         "pageErrorMessages": []
       },
@@ -221,10 +221,10 @@
       "status": "PASS",
       "evidence": {
         "worldSeat": null,
-        "things": 197,
-        "hand": 37,
-        "wall": 70,
-        "discard": 14,
+        "things": 109,
+        "hand": 53,
+        "wall": 35,
+        "discard": 20,
         "pageErrors": 0,
         "pageErrorMessages": []
       },
@@ -235,24 +235,22 @@
     {
       "id": "L-10-leave-seat",
       "category": "1-lobby",
-      "status": "FAIL",
+      "status": "PASS",
       "evidence": {
         "leaveVisible": true,
         "seatBefore": 0,
-        "seatAfter": 0,
+        "seatAfter": null,
         "playerSeatBefore": {
-          "playerId": "184cc19e1afc43a4a17e849a6b4b70ac",
+          "playerId": "8e898f4a95a8407195ec2c4ed1fcf155",
           "entry": {
             "seat": 0
           },
           "clientSeat": 0
         },
         "playerSeatAfter": {
-          "playerId": "184cc19e1afc43a4a17e849a6b4b70ac",
-          "entry": {
-            "seat": 0
-          },
-          "clientSeat": 0
+          "playerId": "8e898f4a95a8407195ec2c4ed1fcf155",
+          "entry": null,
+          "clientSeat": null
         },
         "takeSeatVisibleAfter": 0,
         "pageErrors": 0
@@ -267,7 +265,7 @@
       "status": "PASS",
       "evidence": {
         "worldSeat": 0,
-        "things": 197,
+        "things": 109,
         "connected": true,
         "pageErrors": 0
       },
@@ -283,9 +281,9 @@
         "variant": "changsha",
         "expectedRuntime": "ChangshaRuntime",
         "canvasMounted": true,
-        "thingsCount": 197,
-        "wallCount": 81,
-        "handCount": 47,
+        "thingsCount": 109,
+        "wallCount": 51,
+        "handCount": 52,
         "connected": true,
         "pageErrors": 0,
         "pageErrorMessages": []
@@ -301,9 +299,9 @@
       "evidence": {
         "variant": "changsha",
         "observedMovement": true,
-        "discardAfter": 4,
-        "thingsAfter": 197,
-        "thingsBefore": 197
+        "discardAfter": 6,
+        "thingsAfter": 109,
+        "thingsBefore": 109
       },
       "screenshots": []
     },
@@ -315,9 +313,9 @@
         "variant": "riichi4",
         "expectedRuntime": "Relay",
         "canvasMounted": true,
-        "thingsCount": 197,
-        "wallCount": 136,
-        "handCount": 0,
+        "thingsCount": 109,
+        "wallCount": 55,
+        "handCount": 53,
         "connected": true,
         "pageErrors": 0,
         "pageErrorMessages": []
@@ -335,7 +333,7 @@
         "observedMovement": false,
         "discardAfter": null,
         "thingsAfter": null,
-        "thingsBefore": 197
+        "thingsBefore": 109
       },
       "screenshots": []
     },
@@ -347,9 +345,9 @@
         "variant": "riichi3",
         "expectedRuntime": "Relay",
         "canvasMounted": true,
-        "thingsCount": 197,
-        "wallCount": 136,
-        "handCount": 0,
+        "thingsCount": 109,
+        "wallCount": 55,
+        "handCount": 53,
         "connected": true,
         "pageErrors": 0,
         "pageErrorMessages": []
@@ -367,7 +365,7 @@
         "observedMovement": false,
         "discardAfter": null,
         "thingsAfter": null,
-        "thingsBefore": 197
+        "thingsBefore": 109
       },
       "screenshots": []
     },
@@ -379,8 +377,8 @@
         "variant": "bamboo",
         "expectedRuntime": "Relay",
         "canvasMounted": true,
-        "thingsCount": 197,
-        "wallCount": 136,
+        "thingsCount": 67,
+        "wallCount": 36,
         "handCount": 0,
         "connected": true,
         "pageErrors": 0,
@@ -399,7 +397,7 @@
         "observedMovement": false,
         "discardAfter": null,
         "thingsAfter": null,
-        "thingsBefore": 197
+        "thingsBefore": 67
       },
       "screenshots": []
     },
@@ -411,8 +409,8 @@
         "variant": "minefield",
         "expectedRuntime": "Relay",
         "canvasMounted": true,
-        "thingsCount": 197,
-        "wallCount": 136,
+        "thingsCount": 167,
+        "wallCount": 69,
         "handCount": 0,
         "connected": true,
         "pageErrors": 0,
@@ -431,7 +429,7 @@
         "observedMovement": false,
         "discardAfter": null,
         "thingsAfter": null,
-        "thingsBefore": 197
+        "thingsBefore": 167
       },
       "screenshots": []
     },
@@ -545,14 +543,14 @@
               "Chow",
               "Hu"
             ],
-            "deadline": 1780084195567,
+            "deadline": 1780590694974,
             "source": 1,
             "tile": 5
           }
         },
         "visState": {
           "visible": true,
-          "innerText": "六Seat 1Claim window6.9s碰PUNGP吃CHOWC杠KONGK胡HUHClick a chip or press the highlighted key — auto-pass at 0.跳过PASSEsc",
+          "innerText": "六Seat 1Claim window7.0s碰PUNGP吃CHOWC杠KONGK胡HUHClick a chip or press the highlighted key — auto-pass at 0.跳过PASSEsc",
           "badgesVisible": [
             {
               "type": "Pung",
@@ -583,16 +581,16 @@
       "status": "PASS",
       "evidence": {
         "sequence": [
-          "6.9",
-          "6.2",
-          "5.6",
-          "5.0"
+          "7.0",
+          "6.4",
+          "5.8",
+          "5.2"
         ],
         "numeric": [
-          6.9,
-          6.2,
-          5.6,
-          5
+          7,
+          6.4,
+          5.8,
+          5.2
         ]
       },
       "screenshots": []

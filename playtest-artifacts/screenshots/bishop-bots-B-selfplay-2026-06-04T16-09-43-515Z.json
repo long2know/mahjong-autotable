@@ -1,0 +1,1492 @@
+{
+  "ok": true,
+  "label": "B-selfplay",
+  "failures": [],
+  "pageErrors": [],
+  "consoleErrors": [
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "consoleWarnings": [
+    "[.WebGL-0x2c240015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x2c240015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x2c240015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x2c240015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+  ],
+  "networkFailures": [
+    "404 GET http://127.0.0.1:8088/api/games/bishop-selfplay-1780589383599",
+    "404 GET http://127.0.0.1:8088/api/games/bishop-selfplay-1780589383599/settings"
+  ],
+  "baseline": {
+    "ok": true,
+    "thingsTotal": 109,
+    "byGroup": {
+      "hand": 50,
+      "wall": 50,
+      "discard": 5,
+      "meld": 3,
+      "other": 1
+    },
+    "discardSamples": [
+      {
+        "id": 2,
+        "slotName": "discard.0.0@3",
+        "seat": 3
+      },
+      {
+        "id": 26,
+        "slotName": "discard.0.1@0",
+        "seat": 0
+      },
+      {
+        "id": 37,
+        "slotName": "discard.0.0@0",
+        "seat": 0
+      },
+      {
+        "id": 39,
+        "slotName": "discard.0.0@1",
+        "seat": 1
+      },
+      {
+        "id": 70,
+        "slotName": "discard.0.0@2",
+        "seat": 2
+      }
+    ],
+    "activeSeat": null,
+    "phase": null,
+    "handCount": null
+  },
+  "samples": [
+    {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 17,
+        "wall": 27,
+        "discard": 28,
+        "meld": 36,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 2,
+          "slotName": "discard.0.0@3",
+          "seat": 3
+        },
+        {
+          "id": 7,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 14,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        },
+        {
+          "id": 23,
+          "slotName": "discard.0.4@1",
+          "seat": 1
+        },
+        {
+          "id": 26,
+          "slotName": "discard.0.1@0",
+          "seat": 0
+        },
+        {
+          "id": 27,
+          "slotName": "discard.0.3@3",
+          "seat": 3
+        },
+        {
+          "id": 28,
+          "slotName": "discard.0.4@0",
+          "seat": 0
+        },
+        {
+          "id": 36,
+          "slotName": "discard.0.2@2",
+          "seat": 2
+        },
+        {
+          "id": 37,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 39,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 48,
+          "slotName": "discard.1.0@1",
+          "seat": 1
+        },
+        {
+          "id": 57,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 61,
+          "slotName": "discard.0.4@2",
+          "seat": 2
+        },
+        {
+          "id": 62,
+          "slotName": "discard.0.4@3",
+          "seat": 3
+        },
+        {
+          "id": 63,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 65,
+          "slotName": "discard.0.1@3",
+          "seat": 3
+        },
+        {
+          "id": 66,
+          "slotName": "discard.0.5@1",
+          "seat": 1
+        },
+        {
+          "id": 68,
+          "slotName": "discard.0.2@1",
+          "seat": 1
+        },
+        {
+          "id": 70,
+          "slotName": "discard.0.0@2",
+          "seat": 2
+        },
+        {
+          "id": 74,
+          "slotName": "discard.0.3@2",
+          "seat": 2
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null,
+      "elapsedMs": 15014
+    },
+    {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 26,
+        "wall": 49,
+        "discard": 6,
+        "meld": 27,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 22,
+          "slotName": "discard.0.2@0",
+          "seat": 0
+        },
+        {
+          "id": 34,
+          "slotName": "discard.0.0@3",
+          "seat": 3
+        },
+        {
+          "id": 35,
+          "slotName": "discard.0.1@0",
+          "seat": 0
+        },
+        {
+          "id": 39,
+          "slotName": "discard.0.0@2",
+          "seat": 2
+        },
+        {
+          "id": 72,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 94,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null,
+      "elapsedMs": 30017
+    },
+    {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 13,
+        "wall": 15,
+        "discard": 40,
+        "meld": 40,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 0,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 2,
+          "slotName": "discard.1.1@1",
+          "seat": 1
+        },
+        {
+          "id": 8,
+          "slotName": "discard.1.0@0",
+          "seat": 0
+        },
+        {
+          "id": 16,
+          "slotName": "discard.0.4@0",
+          "seat": 0
+        },
+        {
+          "id": 18,
+          "slotName": "discard.1.2@0",
+          "seat": 0
+        },
+        {
+          "id": 19,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 21,
+          "slotName": "discard.0.2@2",
+          "seat": 2
+        },
+        {
+          "id": 22,
+          "slotName": "discard.0.2@0",
+          "seat": 0
+        },
+        {
+          "id": 33,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        },
+        {
+          "id": 34,
+          "slotName": "discard.0.0@3",
+          "seat": 3
+        },
+        {
+          "id": 35,
+          "slotName": "discard.0.1@0",
+          "seat": 0
+        },
+        {
+          "id": 36,
+          "slotName": "discard.1.1@3",
+          "seat": 3
+        },
+        {
+          "id": 37,
+          "slotName": "discard.0.3@1",
+          "seat": 1
+        },
+        {
+          "id": 39,
+          "slotName": "discard.0.0@2",
+          "seat": 2
+        },
+        {
+          "id": 40,
+          "slotName": "discard.1.3@2",
+          "seat": 2
+        },
+        {
+          "id": 48,
+          "slotName": "discard.1.2@2",
+          "seat": 2
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.4@1",
+          "seat": 1
+        },
+        {
+          "id": 52,
+          "slotName": "discard.1.0@3",
+          "seat": 3
+        },
+        {
+          "id": 53,
+          "slotName": "discard.0.5@3",
+          "seat": 3
+        },
+        {
+          "id": 62,
+          "slotName": "discard.0.1@3",
+          "seat": 3
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null,
+      "elapsedMs": 45033
+    },
+    {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 23,
+        "wall": 31,
+        "discard": 24,
+        "meld": 30,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 9,
+          "slotName": "discard.0.1@3",
+          "seat": 3
+        },
+        {
+          "id": 17,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        },
+        {
+          "id": 18,
+          "slotName": "discard.0.3@2",
+          "seat": 2
+        },
+        {
+          "id": 20,
+          "slotName": "discard.0.2@2",
+          "seat": 2
+        },
+        {
+          "id": 24,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 26,
+          "slotName": "discard.0.2@0",
+          "seat": 0
+        },
+        {
+          "id": 28,
+          "slotName": "discard.0.3@3",
+          "seat": 3
+        },
+        {
+          "id": 32,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 39,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        },
+        {
+          "id": 42,
+          "slotName": "discard.0.3@1",
+          "seat": 1
+        },
+        {
+          "id": 43,
+          "slotName": "discard.0.2@1",
+          "seat": 1
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 67,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 74,
+          "slotName": "discard.0.0@3",
+          "seat": 3
+        },
+        {
+          "id": 75,
+          "slotName": "discard.0.0@2",
+          "seat": 2
+        },
+        {
+          "id": 78,
+          "slotName": "discard.0.1@0",
+          "seat": 0
+        },
+        {
+          "id": 79,
+          "slotName": "discard.0.4@0",
+          "seat": 0
+        },
+        {
+          "id": 82,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 83,
+          "slotName": "discard.0.5@2",
+          "seat": 2
+        },
+        {
+          "id": 84,
+          "slotName": "discard.0.4@1",
+          "seat": 1
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null,
+      "elapsedMs": 60046
+    },
+    {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 23,
+        "wall": 37,
+        "discard": 15,
+        "meld": 33,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 8,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 10,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 13,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        },
+        {
+          "id": 21,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 31,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        },
+        {
+          "id": 58,
+          "slotName": "discard.0.1@3",
+          "seat": 3
+        },
+        {
+          "id": 68,
+          "slotName": "discard.0.1@0",
+          "seat": 0
+        },
+        {
+          "id": 69,
+          "slotName": "discard.0.0@3",
+          "seat": 3
+        },
+        {
+          "id": 80,
+          "slotName": "discard.0.0@2",
+          "seat": 2
+        },
+        {
+          "id": 81,
+          "slotName": "discard.0.2@0",
+          "seat": 0
+        },
+        {
+          "id": 82,
+          "slotName": "discard.0.4@3",
+          "seat": 3
+        },
+        {
+          "id": 93,
+          "slotName": "discard.0.3@2",
+          "seat": 2
+        },
+        {
+          "id": 98,
+          "slotName": "discard.0.3@3",
+          "seat": 3
+        },
+        {
+          "id": 107,
+          "slotName": "discard.0.2@2",
+          "seat": 2
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null,
+      "elapsedMs": 75049
+    },
+    {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 11,
+        "wall": 3,
+        "discard": 49,
+        "meld": 45,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 8,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 10,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 11,
+          "slotName": "discard.1.5@2",
+          "seat": 2
+        },
+        {
+          "id": 13,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        },
+        {
+          "id": 18,
+          "slotName": "discard.1.2@3",
+          "seat": 3
+        },
+        {
+          "id": 20,
+          "slotName": "discard.1.4@0",
+          "seat": 0
+        },
+        {
+          "id": 21,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 24,
+          "slotName": "discard.0.4@1",
+          "seat": 1
+        },
+        {
+          "id": 26,
+          "slotName": "discard.1.2@2",
+          "seat": 2
+        },
+        {
+          "id": 27,
+          "slotName": "discard.1.3@0",
+          "seat": 0
+        },
+        {
+          "id": 31,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 32,
+          "slotName": "discard.0.4@2",
+          "seat": 2
+        },
+        {
+          "id": 33,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 34,
+          "slotName": "discard.1.5@3",
+          "seat": 3
+        },
+        {
+          "id": 35,
+          "slotName": "discard.1.0@1",
+          "seat": 1
+        },
+        {
+          "id": 40,
+          "slotName": "discard.1.5@0",
+          "seat": 0
+        },
+        {
+          "id": 41,
+          "slotName": "discard.1.2@1",
+          "seat": 1
+        },
+        {
+          "id": 42,
+          "slotName": "discard.1.1@1",
+          "seat": 1
+        },
+        {
+          "id": 48,
+          "slotName": "discard.1.4@3",
+          "seat": 3
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null,
+      "elapsedMs": 90061
+    },
+    {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 11,
+        "wall": 3,
+        "discard": 49,
+        "meld": 45,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 8,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 10,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 11,
+          "slotName": "discard.1.5@2",
+          "seat": 2
+        },
+        {
+          "id": 13,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        },
+        {
+          "id": 18,
+          "slotName": "discard.1.2@3",
+          "seat": 3
+        },
+        {
+          "id": 20,
+          "slotName": "discard.1.4@0",
+          "seat": 0
+        },
+        {
+          "id": 21,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 24,
+          "slotName": "discard.0.4@1",
+          "seat": 1
+        },
+        {
+          "id": 26,
+          "slotName": "discard.1.2@2",
+          "seat": 2
+        },
+        {
+          "id": 27,
+          "slotName": "discard.1.3@0",
+          "seat": 0
+        },
+        {
+          "id": 31,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 32,
+          "slotName": "discard.0.4@2",
+          "seat": 2
+        },
+        {
+          "id": 33,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 34,
+          "slotName": "discard.1.5@3",
+          "seat": 3
+        },
+        {
+          "id": 35,
+          "slotName": "discard.1.0@1",
+          "seat": 1
+        },
+        {
+          "id": 40,
+          "slotName": "discard.1.5@0",
+          "seat": 0
+        },
+        {
+          "id": 41,
+          "slotName": "discard.1.2@1",
+          "seat": 1
+        },
+        {
+          "id": 42,
+          "slotName": "discard.1.1@1",
+          "seat": 1
+        },
+        {
+          "id": 48,
+          "slotName": "discard.1.4@3",
+          "seat": 3
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null,
+      "elapsedMs": 105078
+    },
+    {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 11,
+        "wall": 3,
+        "discard": 49,
+        "meld": 45,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 8,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 10,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 11,
+          "slotName": "discard.1.5@2",
+          "seat": 2
+        },
+        {
+          "id": 13,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        },
+        {
+          "id": 18,
+          "slotName": "discard.1.2@3",
+          "seat": 3
+        },
+        {
+          "id": 20,
+          "slotName": "discard.1.4@0",
+          "seat": 0
+        },
+        {
+          "id": 21,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 24,
+          "slotName": "discard.0.4@1",
+          "seat": 1
+        },
+        {
+          "id": 26,
+          "slotName": "discard.1.2@2",
+          "seat": 2
+        },
+        {
+          "id": 27,
+          "slotName": "discard.1.3@0",
+          "seat": 0
+        },
+        {
+          "id": 31,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 32,
+          "slotName": "discard.0.4@2",
+          "seat": 2
+        },
+        {
+          "id": 33,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 34,
+          "slotName": "discard.1.5@3",
+          "seat": 3
+        },
+        {
+          "id": 35,
+          "slotName": "discard.1.0@1",
+          "seat": 1
+        },
+        {
+          "id": 40,
+          "slotName": "discard.1.5@0",
+          "seat": 0
+        },
+        {
+          "id": 41,
+          "slotName": "discard.1.2@1",
+          "seat": 1
+        },
+        {
+          "id": 42,
+          "slotName": "discard.1.1@1",
+          "seat": 1
+        },
+        {
+          "id": 48,
+          "slotName": "discard.1.4@3",
+          "seat": 3
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null,
+      "elapsedMs": 120094
+    },
+    {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 11,
+        "wall": 3,
+        "discard": 49,
+        "meld": 45,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 8,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 10,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 11,
+          "slotName": "discard.1.5@2",
+          "seat": 2
+        },
+        {
+          "id": 13,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        },
+        {
+          "id": 18,
+          "slotName": "discard.1.2@3",
+          "seat": 3
+        },
+        {
+          "id": 20,
+          "slotName": "discard.1.4@0",
+          "seat": 0
+        },
+        {
+          "id": 21,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 24,
+          "slotName": "discard.0.4@1",
+          "seat": 1
+        },
+        {
+          "id": 26,
+          "slotName": "discard.1.2@2",
+          "seat": 2
+        },
+        {
+          "id": 27,
+          "slotName": "discard.1.3@0",
+          "seat": 0
+        },
+        {
+          "id": 31,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 32,
+          "slotName": "discard.0.4@2",
+          "seat": 2
+        },
+        {
+          "id": 33,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 34,
+          "slotName": "discard.1.5@3",
+          "seat": 3
+        },
+        {
+          "id": 35,
+          "slotName": "discard.1.0@1",
+          "seat": 1
+        },
+        {
+          "id": 40,
+          "slotName": "discard.1.5@0",
+          "seat": 0
+        },
+        {
+          "id": 41,
+          "slotName": "discard.1.2@1",
+          "seat": 1
+        },
+        {
+          "id": 42,
+          "slotName": "discard.1.1@1",
+          "seat": 1
+        },
+        {
+          "id": 48,
+          "slotName": "discard.1.4@3",
+          "seat": 3
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null,
+      "elapsedMs": 135096
+    },
+    {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 11,
+        "wall": 3,
+        "discard": 49,
+        "meld": 45,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 8,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 10,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 11,
+          "slotName": "discard.1.5@2",
+          "seat": 2
+        },
+        {
+          "id": 13,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        },
+        {
+          "id": 18,
+          "slotName": "discard.1.2@3",
+          "seat": 3
+        },
+        {
+          "id": 20,
+          "slotName": "discard.1.4@0",
+          "seat": 0
+        },
+        {
+          "id": 21,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 24,
+          "slotName": "discard.0.4@1",
+          "seat": 1
+        },
+        {
+          "id": 26,
+          "slotName": "discard.1.2@2",
+          "seat": 2
+        },
+        {
+          "id": 27,
+          "slotName": "discard.1.3@0",
+          "seat": 0
+        },
+        {
+          "id": 31,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 32,
+          "slotName": "discard.0.4@2",
+          "seat": 2
+        },
+        {
+          "id": 33,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 34,
+          "slotName": "discard.1.5@3",
+          "seat": 3
+        },
+        {
+          "id": 35,
+          "slotName": "discard.1.0@1",
+          "seat": 1
+        },
+        {
+          "id": 40,
+          "slotName": "discard.1.5@0",
+          "seat": 0
+        },
+        {
+          "id": 41,
+          "slotName": "discard.1.2@1",
+          "seat": 1
+        },
+        {
+          "id": 42,
+          "slotName": "discard.1.1@1",
+          "seat": 1
+        },
+        {
+          "id": 48,
+          "slotName": "discard.1.4@3",
+          "seat": 3
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null,
+      "elapsedMs": 150110
+    },
+    {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 11,
+        "wall": 3,
+        "discard": 49,
+        "meld": 45,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 8,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 10,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 11,
+          "slotName": "discard.1.5@2",
+          "seat": 2
+        },
+        {
+          "id": 13,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        },
+        {
+          "id": 18,
+          "slotName": "discard.1.2@3",
+          "seat": 3
+        },
+        {
+          "id": 20,
+          "slotName": "discard.1.4@0",
+          "seat": 0
+        },
+        {
+          "id": 21,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 24,
+          "slotName": "discard.0.4@1",
+          "seat": 1
+        },
+        {
+          "id": 26,
+          "slotName": "discard.1.2@2",
+          "seat": 2
+        },
+        {
+          "id": 27,
+          "slotName": "discard.1.3@0",
+          "seat": 0
+        },
+        {
+          "id": 31,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 32,
+          "slotName": "discard.0.4@2",
+          "seat": 2
+        },
+        {
+          "id": 33,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 34,
+          "slotName": "discard.1.5@3",
+          "seat": 3
+        },
+        {
+          "id": 35,
+          "slotName": "discard.1.0@1",
+          "seat": 1
+        },
+        {
+          "id": 40,
+          "slotName": "discard.1.5@0",
+          "seat": 0
+        },
+        {
+          "id": 41,
+          "slotName": "discard.1.2@1",
+          "seat": 1
+        },
+        {
+          "id": 42,
+          "slotName": "discard.1.1@1",
+          "seat": 1
+        },
+        {
+          "id": 48,
+          "slotName": "discard.1.4@3",
+          "seat": 3
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null,
+      "elapsedMs": 165126
+    },
+    {
+      "ok": true,
+      "thingsTotal": 109,
+      "byGroup": {
+        "hand": 11,
+        "wall": 3,
+        "discard": 49,
+        "meld": 45,
+        "other": 1
+      },
+      "discardSamples": [
+        {
+          "id": 8,
+          "slotName": "discard.0.0@0",
+          "seat": 0
+        },
+        {
+          "id": 10,
+          "slotName": "discard.0.3@0",
+          "seat": 0
+        },
+        {
+          "id": 11,
+          "slotName": "discard.1.5@2",
+          "seat": 2
+        },
+        {
+          "id": 13,
+          "slotName": "discard.0.2@3",
+          "seat": 3
+        },
+        {
+          "id": 18,
+          "slotName": "discard.1.2@3",
+          "seat": 3
+        },
+        {
+          "id": 20,
+          "slotName": "discard.1.4@0",
+          "seat": 0
+        },
+        {
+          "id": 21,
+          "slotName": "discard.0.0@1",
+          "seat": 1
+        },
+        {
+          "id": 24,
+          "slotName": "discard.0.4@1",
+          "seat": 1
+        },
+        {
+          "id": 26,
+          "slotName": "discard.1.2@2",
+          "seat": 2
+        },
+        {
+          "id": 27,
+          "slotName": "discard.1.3@0",
+          "seat": 0
+        },
+        {
+          "id": 31,
+          "slotName": "discard.0.1@1",
+          "seat": 1
+        },
+        {
+          "id": 32,
+          "slotName": "discard.0.4@2",
+          "seat": 2
+        },
+        {
+          "id": 33,
+          "slotName": "discard.0.5@0",
+          "seat": 0
+        },
+        {
+          "id": 34,
+          "slotName": "discard.1.5@3",
+          "seat": 3
+        },
+        {
+          "id": 35,
+          "slotName": "discard.1.0@1",
+          "seat": 1
+        },
+        {
+          "id": 40,
+          "slotName": "discard.1.5@0",
+          "seat": 0
+        },
+        {
+          "id": 41,
+          "slotName": "discard.1.2@1",
+          "seat": 1
+        },
+        {
+          "id": 42,
+          "slotName": "discard.1.1@1",
+          "seat": 1
+        },
+        {
+          "id": 48,
+          "slotName": "discard.1.4@3",
+          "seat": 3
+        },
+        {
+          "id": 49,
+          "slotName": "discard.0.1@2",
+          "seat": 2
+        }
+      ],
+      "activeSeat": null,
+      "phase": null,
+      "handCount": null,
+      "elapsedMs": 180142
+    }
+  ],
+  "final": {
+    "ok": true,
+    "thingsTotal": 109,
+    "byGroup": {
+      "hand": 11,
+      "wall": 3,
+      "discard": 49,
+      "meld": 45,
+      "other": 1
+    },
+    "discardSamples": [
+      {
+        "id": 8,
+        "slotName": "discard.0.0@0",
+        "seat": 0
+      },
+      {
+        "id": 10,
+        "slotName": "discard.0.3@0",
+        "seat": 0
+      },
+      {
+        "id": 11,
+        "slotName": "discard.1.5@2",
+        "seat": 2
+      },
+      {
+        "id": 13,
+        "slotName": "discard.0.2@3",
+        "seat": 3
+      },
+      {
+        "id": 18,
+        "slotName": "discard.1.2@3",
+        "seat": 3
+      },
+      {
+        "id": 20,
+        "slotName": "discard.1.4@0",
+        "seat": 0
+      },
+      {
+        "id": 21,
+        "slotName": "discard.0.0@1",
+        "seat": 1
+      },
+      {
+        "id": 24,
+        "slotName": "discard.0.4@1",
+        "seat": 1
+      },
+      {
+        "id": 26,
+        "slotName": "discard.1.2@2",
+        "seat": 2
+      },
+      {
+        "id": 27,
+        "slotName": "discard.1.3@0",
+        "seat": 0
+      },
+      {
+        "id": 31,
+        "slotName": "discard.0.1@1",
+        "seat": 1
+      },
+      {
+        "id": 32,
+        "slotName": "discard.0.4@2",
+        "seat": 2
+      },
+      {
+        "id": 33,
+        "slotName": "discard.0.5@0",
+        "seat": 0
+      },
+      {
+        "id": 34,
+        "slotName": "discard.1.5@3",
+        "seat": 3
+      },
+      {
+        "id": 35,
+        "slotName": "discard.1.0@1",
+        "seat": 1
+      },
+      {
+        "id": 40,
+        "slotName": "discard.1.5@0",
+        "seat": 0
+      },
+      {
+        "id": 41,
+        "slotName": "discard.1.2@1",
+        "seat": 1
+      },
+      {
+        "id": 42,
+        "slotName": "discard.1.1@1",
+        "seat": 1
+      },
+      {
+        "id": 48,
+        "slotName": "discard.1.4@3",
+        "seat": 3
+      },
+      {
+        "id": 49,
+        "slotName": "discard.0.1@2",
+        "seat": 2
+      }
+    ],
+    "activeSeat": null,
+    "phase": null,
+    "handCount": null,
+    "elapsedMs": 180142
+  },
+  "peakDiscards": 49,
+  "handTransitions": 3
+}

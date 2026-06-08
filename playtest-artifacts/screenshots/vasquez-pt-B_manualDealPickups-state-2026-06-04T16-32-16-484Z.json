@@ -1,0 +1,273 @@
+{
+  "diag": {
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-ptB-1780590751611",
+    "deal": {
+      "ok": true
+    },
+    "rollDice": {
+      "ok": true
+    },
+    "pickupTrace": [
+      {
+        "atMs": 1780590759789,
+        "seat": 0,
+        "pickup": {
+          "phase": "PickupRound2",
+          "seatIndex": 2,
+          "count": 4,
+          "dealMode": "manual",
+          "breakPoint": {
+            "wallIndex": 0,
+            "stackIndex": 5,
+            "tileIndex": 10
+          },
+          "wallIndex": 0
+        },
+        "myTurn": false,
+        "hand": 8
+      },
+      {
+        "atMs": 1780590760703,
+        "seat": 0,
+        "pickup": {
+          "phase": "PickupRound2",
+          "seatIndex": 3,
+          "count": 4,
+          "dealMode": "manual",
+          "breakPoint": {
+            "wallIndex": 0,
+            "stackIndex": 5,
+            "tileIndex": 10
+          },
+          "wallIndex": 0
+        },
+        "myTurn": false,
+        "hand": 8
+      },
+      {
+        "atMs": 1780590761604,
+        "seat": 0,
+        "pickup": {
+          "phase": "PickupRound3",
+          "seatIndex": 2,
+          "count": 4,
+          "dealMode": "manual",
+          "breakPoint": {
+            "wallIndex": 0,
+            "stackIndex": 5,
+            "tileIndex": 10
+          },
+          "wallIndex": 0
+        },
+        "myTurn": false,
+        "hand": 12
+      },
+      {
+        "atMs": 1780590762520,
+        "seat": 0,
+        "pickup": {
+          "phase": "SingleTilePickup",
+          "seatIndex": 1,
+          "count": 1,
+          "dealMode": "manual",
+          "breakPoint": {
+            "wallIndex": 0,
+            "stackIndex": 5,
+            "tileIndex": 10
+          },
+          "wallIndex": 0
+        },
+        "myTurn": false,
+        "hand": 13
+      },
+      {
+        "atMs": 1780590763421,
+        "seat": 0,
+        "pickup": {
+          "phase": "SingleTilePickup",
+          "seatIndex": 3,
+          "count": 1,
+          "dealMode": "manual",
+          "breakPoint": {
+            "wallIndex": 0,
+            "stackIndex": 5,
+            "tileIndex": 10
+          },
+          "wallIndex": 0
+        },
+        "myTurn": false,
+        "hand": 13
+      },
+      {
+        "atMs": 1780590764336,
+        "seat": 0,
+        "pickup": {
+          "phase": "DealerExtra",
+          "seatIndex": 0,
+          "count": 1,
+          "dealMode": "manual",
+          "breakPoint": {
+            "wallIndex": 0,
+            "stackIndex": 5,
+            "tileIndex": 10
+          },
+          "wallIndex": 0
+        },
+        "myTurn": true,
+        "hand": 13
+      },
+      {
+        "atMs": 1780590765252,
+        "seat": 0,
+        "pickup": null,
+        "myTurn": false,
+        "hand": 14
+      }
+    ],
+    "pickupTraceLen": 7,
+    "lastPickupSnap": {
+      "seat": 0,
+      "pickup": null,
+      "myTurn": false,
+      "hand": 14
+    },
+    "final": {
+      "seat": 0,
+      "handBySeat": [
+        14,
+        13,
+        13,
+        13
+      ],
+      "meldBySeat": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "discardBySeat": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "totalDiscard": 0,
+      "totalMeld": 0,
+      "wallCount": 55,
+      "myHandIds": [
+        {
+          "id": 8
+        },
+        {
+          "id": 11
+        },
+        {
+          "id": 15
+        },
+        {
+          "id": 22
+        },
+        {
+          "id": 33
+        },
+        {
+          "id": 35
+        },
+        {
+          "id": 59
+        },
+        {
+          "id": 65
+        },
+        {
+          "id": 68
+        },
+        {
+          "id": 69
+        },
+        {
+          "id": 72
+        },
+        {
+          "id": 75
+        },
+        {
+          "id": 103
+        },
+        {
+          "id": 104
+        }
+      ],
+      "myHandFaceUp": 14,
+      "foreignHandFaceUp": 0,
+      "hasExtraHandTile": true,
+      "pickup": null,
+      "result": null,
+      "gameComplete": null,
+      "claimsBySeat": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "matchPhase": null
+    },
+    "pageDiag": {
+      "label": "B",
+      "pageErrors": [],
+      "consoleErrors": [
+        "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "consoleWarnings": [],
+      "networkFailures": [
+        "404 GET http://127.0.0.1:8088/api/games/vasquez-ptB-1780590751611",
+        "404 GET http://127.0.0.1:8088/api/games/vasquez-ptB-1780590751611/settings"
+      ],
+      "staleMoveToWarnings": 0
+    }
+  },
+  "gates": {
+    "B1_dealerHandReached13": {
+      "status": "PASS",
+      "detail": {
+        "dealerHand": 14,
+        "handBySeat": [
+          14,
+          13,
+          13,
+          13
+        ],
+        "pickupTraceLen": 7,
+        "lastPickup": null
+      }
+    },
+    "B2_myHandFaceUp": {
+      "status": "PASS",
+      "detail": {
+        "myHandFaceUp": 14,
+        "dealerHand": 14
+      }
+    },
+    "B3_foreignHandsHidden": {
+      "status": "PASS",
+      "detail": {
+        "foreignFaceUp": 0,
+        "handBySeat": [
+          14,
+          13,
+          13,
+          13
+        ]
+      }
+    },
+    "B4_dealerExtraComplete": {
+      "status": "PASS",
+      "detail": {
+        "dealerHand": 14,
+        "hasExtraHandTile": true
+      }
+    }
+  }
+}
