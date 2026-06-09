@@ -364,6 +364,20 @@ public static class BotDiscardAdvisor
                     .Where(entry => entry.RemainingCopies <= 0)
                     .ToList();
 
+                if (liveSmallWinSingletons.Count == 0 && deadSmallWinSingletons.Count > 0)
+                {
+                    var deadTiles = deadSmallWinSingletons.Select(entry => entry.Tile).ToHashSet();
+                    var deadSingletonCandidates = candidates
+                        .Where(candidate => deadTiles.Contains(candidate.Tile)
+                            && !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts))
+                        .ToList();
+
+                    if (deadSingletonCandidates.Count > 0)
+                    {
+                        candidates = deadSingletonCandidates;
+                    }
+                }
+
                 if (liveSmallWinSingletons.Count == 1 && deadSmallWinSingletons.Count > 0)
                 {
                     var pairCount = handCounts.Count(entry => entry.Value >= 2);
