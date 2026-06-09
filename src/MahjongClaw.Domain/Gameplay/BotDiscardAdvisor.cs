@@ -21,6 +21,7 @@ public static class BotDiscardAdvisor
     private const int DeadPairOutsTolerance = 1;
     private const int NearDeadPairOutsTolerance = 1;
     private const int DeadHonorSingletonOutsTolerance = 1;
+    private const int DeadSuitedSingletonOutsTolerance = 1;
     private const int OffRankConcealedKongOutsTolerance = 0;
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
@@ -956,9 +957,46 @@ public static class BotDiscardAdvisor
 
         if (ruleset == MahjongRuleset.ChineseOfficial && visibleCounts.Count > 0 && sevenPairsPairCount < 6)
         {
+            var filteredByDeadSuitedSingleton = false;
+            var deadSingletonCandidates = candidates
+                .Where(candidate =>
+                {
+                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                    if (handCount != 1 || candidate.Tile.IsHonor || candidate.RemainingCopies != 0)
+                    {
+                        return false;
+                    }
+
+                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                })
+                .ToList();
+
+            if (deadSingletonCandidates.Count > 0)
+            {
+                var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestOverallOutCopies = candidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                var bestDeadOuts = deadSingletonCandidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestDeadOutCopies = deadSingletonCandidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestDeadOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                var withinOutsTolerance = bestDeadOuts >= bestOverallOuts - DeadSuitedSingletonOutsTolerance;
+                var withinCopyTolerance = bestDeadOuts < bestOverallOuts
+                    || bestDeadOutCopies >= bestOverallOutCopies - DeadSuitedSingletonOutsTolerance;
+
+                if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                {
+                    candidates = deadSingletonCandidates;
+                    filteredByDeadSuitedSingleton = true;
+                }
+            }
+
             var pairCount = handCounts.Count(entry => entry.Value >= 2 && !entry.Key.IsFlower);
             var filteredByDeadPair = false;
-            if (pairCount >= 2)
+            if (!filteredByDeadSuitedSingleton && pairCount >= 2)
             {
                 var deadPairCandidates = candidates
                     .Where(candidate =>
