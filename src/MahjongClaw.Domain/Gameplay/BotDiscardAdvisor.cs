@@ -197,6 +197,15 @@ public static class BotDiscardAdvisor
             ? HasStrongSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts)
             : hasSmallWinTileInHand;
 
+        var liveSmallWinPairCandidates = enforceSmallWinPairBias && visibleCounts.Count > 0
+            ? BuildLiveSmallWinPairCandidates(handCounts, ownedCounts, visibleCounts)
+            : null;
+
+        var hasDominantSuitLiveSmallWinCandidate = hasChangshaPureSuitLean
+            && changshaDominantSuit.HasValue
+            && liveSmallWinPairCandidates is not null
+            && liveSmallWinPairCandidates.Any(tile => tile.Suit == changshaDominantSuit.Value);
+
         Tile? lastSmallWinSingleton = null;
         if (enforceSmallWinPairBias)
         {
@@ -225,15 +234,15 @@ public static class BotDiscardAdvisor
                     var candidate = smallWinSingletons[0];
                     if (candidate.RemainingCopies >= 2 || pairCount == 0)
                     {
-                        lastSmallWinSingleton = candidate.Tile;
+                        if (!hasDominantSuitLiveSmallWinCandidate
+                            || candidate.Tile.Suit == changshaDominantSuit.GetValueOrDefault())
+                        {
+                            lastSmallWinSingleton = candidate.Tile;
+                        }
                     }
                 }
             }
         }
-
-        var liveSmallWinPairCandidates = enforceSmallWinPairBias && visibleCounts.Count > 0
-            ? BuildLiveSmallWinPairCandidates(handCounts, ownedCounts, visibleCounts)
-            : null;
 
         if (!allowBreakingSoleChangshaSmallWinPairForPureSuitLean
             && hasChangshaPureSuitLean
@@ -323,7 +332,10 @@ public static class BotDiscardAdvisor
                     ownedCounts.TryGetValue(singletonTile, out var ownedCount);
                     visibleCounts.TryGetValue(singletonTile, out var visibleCount);
 
-                    if (4 - ownedCount - visibleCount > 0)
+                    var shouldProtectSingleton = !hasDominantSuitLiveSmallWinCandidate
+                        || singletonTile.Suit == changshaDominantSuit.GetValueOrDefault();
+
+                    if (shouldProtectSingleton && 4 - ownedCount - visibleCount > 0)
                     {
                         var nonProtectedCandidates = candidates
                             .Where(candidate => !candidate.Tile.Equals(singletonTile))
