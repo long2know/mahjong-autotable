@@ -363,7 +363,7 @@ public static class BotDiscardAdvisor
                         var deadTiles = deadSmallWinSingletons.Select(entry => entry.Tile).ToHashSet();
                         var deadCandidates = candidates
                             .Where(candidate => deadTiles.Contains(candidate.Tile)
-                                && !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts))
+                                && !HasCompleteChowInHand(handCounts, candidate.Tile))
                             .ToList();
 
                         if (deadCandidates.Count > 0)
@@ -378,7 +378,7 @@ public static class BotDiscardAdvisor
                     var deadTiles = deadSmallWinSingletons.Select(entry => entry.Tile).ToHashSet();
                     var deadSingletonCandidates = candidates
                         .Where(candidate => deadTiles.Contains(candidate.Tile)
-                            && !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts))
+                            && !HasCompleteChowInHand(handCounts, candidate.Tile))
                         .ToList();
 
                     if (deadSingletonCandidates.Count > 0)
@@ -401,6 +401,43 @@ public static class BotDiscardAdvisor
                     if (nonProtectedCandidates.Count > 0)
                     {
                         candidates = nonProtectedCandidates;
+                    }
+                }
+            }
+        }
+
+        if (ruleset == MahjongRuleset.Changsha258
+            && enforceSmallWinPairBias
+            && hasStrongSmallWinPairCandidate
+            && visibleCounts.Count > 0)
+        {
+            var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
+            var pairCount = handCounts.Count(entry => entry.Value >= 2);
+            if (smallWinPairCount == 0 && pairCount == 1)
+            {
+                var anchoredSmallWinSingletons = handCounts
+                    .Where(entry => entry.Value == 1 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                    .Select(entry => entry.Key)
+                    .Where(tile =>
+                    {
+                        ownedCounts.TryGetValue(tile, out var ownedCount);
+                        visibleCounts.TryGetValue(tile, out var visibleCount);
+                        return 4 - ownedCount - visibleCount > 0
+                            && HasCompleteChowInHand(handCounts, tile);
+                    })
+                    .ToList();
+
+                if (anchoredSmallWinSingletons.Count > 0)
+                {
+                    var nonSmallWinPairCandidates = candidates
+                        .Where(candidate => !Changsha258Ruleset.IsSmallWinPair(candidate.Tile)
+                            && handCounts.TryGetValue(candidate.Tile, out var count)
+                            && count >= 2)
+                        .ToList();
+
+                    if (nonSmallWinPairCandidates.Count > 0)
+                    {
+                        candidates = nonSmallWinPairCandidates;
                     }
                 }
             }
@@ -1745,6 +1782,13 @@ public static class BotDiscardAdvisor
 
         var applySmallWinPairBias = enforceSmallWinPairBias && ruleset == MahjongRuleset.Changsha258;
 
+        var hasDeadSmallWinSingleton = applySmallWinPairBias
+            && smallWinPairCount == 0
+            && visibleCounts.Count > 0
+            && tileCounts.Any(entry => entry.Value == 1
+                && Changsha258Ruleset.IsSmallWinPair(entry.Key)
+                && IsTileExhausted(entry.Key, ownedCounts, visibleCounts));
+
         var deadPairPenalty = 0;
         if (tileMatchCount == 2 && pairCount >= 2)
         {
@@ -1855,6 +1899,7 @@ public static class BotDiscardAdvisor
             && tileMatchCount >= 2
             && !Changsha258Ruleset.IsSmallWinPair(tile)
             && hasStrongSmallWinPairCandidate
+            && !hasDeadSmallWinSingleton
             ? -14
             : 0;
 
@@ -2713,6 +2758,34 @@ public static class BotDiscardAdvisor
         }
 
         return false;
+    }
+
+    private static bool HasCompleteChowInHand(
+        IReadOnlyDictionary<Tile, int> handCounts,
+        Tile tile)
+    {
+        if (!IsSuitedTile(tile))
+        {
+            return false;
+        }
+
+        bool HasInHand(Tile candidate)
+            => handCounts.TryGetValue(candidate, out var count) && count > 0;
+
+        var suit = tile.Suit;
+        var rank = tile.Rank;
+
+        var hasLowSequence = rank >= 3
+            && HasInHand(new Tile(suit, rank - 2))
+            && HasInHand(new Tile(suit, rank - 1));
+        var hasMiddleSequence = rank is >= 2 and <= 8
+            && HasInHand(new Tile(suit, rank - 1))
+            && HasInHand(new Tile(suit, rank + 1));
+        var hasHighSequence = rank <= 7
+            && HasInHand(new Tile(suit, rank + 1))
+            && HasInHand(new Tile(suit, rank + 2));
+
+        return hasLowSequence || hasMiddleSequence || hasHighSequence;
     }
 
     private static bool HasAdjacentSmallWinSingleton(
