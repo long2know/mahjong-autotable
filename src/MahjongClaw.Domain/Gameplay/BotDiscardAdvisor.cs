@@ -183,6 +183,16 @@ public static class BotDiscardAdvisor
             return forcedDiscardIndex.Value;
         }
 
+        var offRankKongDiscardIndex = TrySelectChangshaIsolatedOffRankConcealedKongDiscardIndex(
+            handTiles,
+            handCounts,
+            enforceSmallWinPairBias);
+
+        if (offRankKongDiscardIndex.HasValue)
+        {
+            return offRankKongDiscardIndex.Value;
+        }
+
         var hasStrongSmallWinPairCandidate = enforceSmallWinPairBias && visibleCounts.Count > 0
             ? HasStrongSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts)
             : hasSmallWinTileInHand;
@@ -2692,6 +2702,55 @@ public static class BotDiscardAdvisor
             }
 
             return i;
+        }
+
+        return null;
+    }
+
+    private static int? TrySelectChangshaIsolatedOffRankConcealedKongDiscardIndex(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyDictionary<Tile, int> handCounts,
+        bool enforceSmallWinPairBias)
+    {
+        if (!enforceSmallWinPairBias)
+        {
+            return null;
+        }
+
+        var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
+        if (smallWinPairCount > 0)
+        {
+            return null;
+        }
+
+        var offRankKongTiles = handCounts
+            .Where(entry => entry.Value >= 4 && !Changsha258Ruleset.IsSmallWinPair(entry.Key))
+            .Select(entry => entry.Key)
+            .ToList();
+
+        if (offRankKongTiles.Count != 1)
+        {
+            return null;
+        }
+
+        var kongTile = offRankKongTiles[0];
+        if (HasAdjacentSuitedTile(handCounts, kongTile))
+        {
+            return null;
+        }
+
+        var hasSmallWinTileInHand = handCounts.Keys.Any(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
+        if (!hasSmallWinTileInHand)
+        {
+            return null;
+        }
+
+        for (var i = 0; i < handTiles.Count; i++)
+        {
+            if (handTiles[i].Equals(kongTile))
+            {
+                return i;
+            }
         }
 
         return null;
