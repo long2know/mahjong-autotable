@@ -537,6 +537,46 @@ public static class BotDiscardAdvisor
                     }
                 }
             }
+
+            var nearDeadOffRankSingletonCandidates = candidates
+                .Where(candidate =>
+                {
+                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                    if (handCount != 1 || Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
+                    {
+                        return false;
+                    }
+
+                    if (candidate.RemainingCopies != 1)
+                    {
+                        return false;
+                    }
+
+                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                })
+                .ToList();
+
+            if (nearDeadOffRankSingletonCandidates.Count > 0)
+            {
+                var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestOverallOutCopies = candidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                var bestNearDeadOuts = nearDeadOffRankSingletonCandidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestNearDeadOutCopies = nearDeadOffRankSingletonCandidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestNearDeadOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                var withinOutsTolerance = bestNearDeadOuts >= bestOverallOuts - NearDeadSingletonOutsTolerance;
+                var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
+                    || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadSingletonOutsTolerance;
+
+                if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                {
+                    candidates = nearDeadOffRankSingletonCandidates;
+                }
+            }
         }
 
         if (ruleset == MahjongRuleset.Changsha258
