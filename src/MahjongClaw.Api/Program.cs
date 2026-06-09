@@ -2148,6 +2148,20 @@ static bool TryApplyChangshaBotWin(
         return false;
     }
 
+    int? birdRank = game.BirdRank;
+    int[]? birdRanks = null;
+    if (game.BirdRanks is not null)
+    {
+        try
+        {
+            birdRanks = System.Text.Json.JsonSerializer.Deserialize<int[]>(game.BirdRanks);
+        }
+        catch
+        {
+            // Ignore deserialization errors, fallback to single BirdRank
+        }
+    }
+
     var settlementRequest = new ChangshaSettlementRequest(
         settlementSeats,
         WinnerId: winnerId,
@@ -2155,6 +2169,8 @@ static bool TryApplyChangshaBotWin(
         IsSelfDraw: isSelfDraw,
         IsBigWin: changshaEvaluation.IsBigWin,
         DiscarderId: isSelfDraw ? null : discarderId,
+        BirdRank: birdRanks is null ? birdRank : null,
+        BirdRanks: birdRanks,
         WinTypes: changshaEvaluation.WinTypes);
 
     var settlementResult = ChangshaSettlementCalculator.Calculate(settlementRequest);
