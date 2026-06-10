@@ -469,7 +469,7 @@
     {
       "wave": "K22",
       "bundler": "vite",
-      "recordedAt": "2026-06-10T20:40:00.661Z",
+      "recordedAt": "2026-06-10T20:59:23.352Z",
       "chunks": {
         "autotable-src-eager": 108090,
         "game-bootstrap": 174693,
@@ -496,7 +496,7 @@
         "action-router": 9136,
         "sentry-shim": 2307,
         "sentry": 342614,
-        "leaderboard": 11388,
+        "leaderboard": 11369,
         "settings-drawer": 18166,
         "profile-page": 9504,
         "admin-panel-core": 31164,
@@ -506,7 +506,7 @@
         "spectator-follow": 3602,
         "matchmaking": 2681,
         "rule-presets": 9817,
-        "auth": 21359,
+        "auth": 21629,
         "identity-onboarding": 3293,
         "identity-avatar-migration": 1987
       }

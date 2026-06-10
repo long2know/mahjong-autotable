@@ -58,6 +58,18 @@ async function mockLeaderboard(page: Page, opts: { ratingsAvailable: boolean }):
   });
 }
 
+// The lobby's leaderboard pane is `hidden` until the user activates
+// the Leaderboard tab — so we must click `lobby-leaderboard-tab`
+// before any rating control inside that pane becomes interactive.
+// Soft-pass when the tab itself isn't shipped (mobile / staging).
+async function openLeaderboardPane(page: Page): Promise<boolean> {
+  const tab = page.getByTestId('lobby-leaderboard-tab');
+  if (await tab.count() === 0) return false;
+  await tab.first().click().catch(() => undefined);
+  await page.waitForTimeout(300);
+  return true;
+}
+
 test.describe('Phase K Wave 1 — ELO leaderboard toggle', () => {
   test.beforeEach(async ({}, testInfo) => {
     test.skip(
@@ -70,6 +82,7 @@ test.describe('Phase K Wave 1 — ELO leaderboard toggle', () => {
     await mockLeaderboard(page, { ratingsAvailable: true });
     await page.goto('');
     await page.waitForLoadState('domcontentloaded');
+    await openLeaderboardPane(page);
 
     const toggle = page.getByTestId('leaderboard-rating-toggle');
     if (await toggle.count() === 0) {
@@ -90,6 +103,7 @@ test.describe('Phase K Wave 1 — ELO leaderboard toggle', () => {
     await mockLeaderboard(page, { ratingsAvailable: true });
     await page.goto('');
     await page.waitForLoadState('domcontentloaded');
+    await openLeaderboardPane(page);
 
     const toggle = page.getByTestId('leaderboard-rating-toggle');
     if (await toggle.count() === 0) {
@@ -118,6 +132,15 @@ test.describe('Phase K Wave 1 — ELO leaderboard toggle', () => {
     await mockLeaderboard(page, { ratingsAvailable: true });
     await page.goto('');
     await page.waitForLoadState('domcontentloaded');
+    await openLeaderboardPane(page);
+
+    // The season picker is only revealed in rating mode (it makes no
+    // sense in legacy stats mode), so flip the rating toggle first.
+    const toggle = page.getByTestId('leaderboard-rating-toggle');
+    if (await toggle.count() > 0) {
+      await toggle.check().catch(async () => { await toggle.click(); });
+      await page.waitForTimeout(300);
+    }
 
     const select = page.getByTestId('leaderboard-season-select');
     if (await select.count() === 0) {
@@ -140,6 +163,7 @@ test.describe('Phase K Wave 1 — ELO leaderboard toggle', () => {
     await mockLeaderboard(page, { ratingsAvailable: false });
     await page.goto('');
     await page.waitForLoadState('domcontentloaded');
+    await openLeaderboardPane(page);
 
     const toggle = page.getByTestId('leaderboard-rating-toggle');
     if (await toggle.count() === 0) {
@@ -169,6 +193,7 @@ test.describe('Phase K Wave 1 — ELO leaderboard toggle', () => {
     await mockLeaderboard(page, { ratingsAvailable: true });
     await page.goto('');
     await page.waitForLoadState('domcontentloaded');
+    await openLeaderboardPane(page);
 
     const toggle = page.getByTestId('leaderboard-rating-toggle');
     if (await toggle.count() === 0) {

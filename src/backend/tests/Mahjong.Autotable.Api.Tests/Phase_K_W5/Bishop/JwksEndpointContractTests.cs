@@ -47,25 +47,23 @@ public sealed class JwksEndpointContractTests : IAsyncLifetime
     }
 
     [Fact, Trait("Category", "Auth"), Trait("Wave", "Phase-K-5"), Trait("Lane", "Bishop")]
-    public async Task Jwks_Returns404WithBrieflyCacheableNegative()
+    public async Task Jwks_Returns404WithNoStoreNegative()
     {
         Assert.NotNull(_factory);
         using var client = _factory!.CreateClient();
         using var resp = await client.GetAsync("/api/auth/.well-known/jwks.json");
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
-        // Phase K Wave 6 — Bishop. JWKS-HS256 negative is now briefly
-        // cacheable (public, max-age=60) so CDNs can absorb the
-        // negative without pinning it indefinitely. The Wave-5
-        // `no-store` is intentionally relaxed; the 60-second window
-        // bounds the lag on the eventual RS256 flip.
+        // Phase K Wave 5 contract — re-pinned. A previous Wave-6 tuning
+        // attempted to relax the negative to `public, max-age=60` so
+        // CDNs could briefly absorb the 404, but the public-facing
+        // contract (tests/e2e/jwks-endpoint-shape.spec.ts) hard-pins
+        // `Cache-Control: no-store` so a misconfigured CDN cannot
+        // 30-day-cache the envelope and block the Phase L RS256 flip.
+        // We honour the e2e contract — it's the load-bearing one.
         Assert.True(
-            resp.Headers.CacheControl?.Public == true,
-            "JWKS 404 MUST carry Cache-Control: public (Wave 6 tuning)."
-        );
-        Assert.True(
-            resp.Headers.CacheControl?.MaxAge is { } maxAge && maxAge.TotalSeconds is > 0 and <= 300,
-            "JWKS 404 MUST carry a bounded max-age (Wave-6 spec: 60s; allow up to 5 min for operator tuning)."
+            resp.Headers.CacheControl?.NoStore == true,
+            "JWKS 404 MUST carry Cache-Control: no-store (Wave-5 contract; e2e jwks-endpoint-shape.spec.ts)."
         );
     }
 
