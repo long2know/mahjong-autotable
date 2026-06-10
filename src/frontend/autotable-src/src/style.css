@@ -592,6 +592,52 @@ body.my-turn-discard #main canvas {
 #lobby-toggle .lobby-toggle-icon { font-size: 1rem; line-height: 1; }
 body.lobby-active #lobby-toggle { display: none; }
 
+/* Hicks e2e wave 27 — accessibility sweep.  The legacy upstream
+   sidebar (#sidebar / #setup-desc / disabled outline-secondary +
+   text-white buttons) is meaningful only during an active game; the
+   lobby/onboarding flow renders entirely over it.  axe-core flags
+   the disabled placeholder buttons inside it as critical contrast
+   violations on every lobby surface (lobby, leaderboard, profile,
+   settings drawer, replay overlay) because they're still in the
+   render tree.  Hiding the sidebar while `body.lobby-active` is set
+   removes the violation set without changing any in-game UX —
+   `lobby-active` is dropped the moment the user clicks Apply /
+   Quick Match. */
+body.lobby-active #sidebar,
+body.lobby-active #move-log-toggle {
+    display: none !important;
+}
+
+/* Hicks e2e wave 27 — accessibility sweep.  Bootstrap 4's stock
+   `.btn-success` (#28a745) against white text resolves to a 3.13:1
+   contrast ratio, which fails WCAG 2 AA (requires 4.5:1).  The
+   buttons are scattered across the lobby (Quick Match / Apply) and
+   onboarding (Continue), so we override globally with a darker
+   green (#146c43, ~5.07:1) and re-derive hover/active states.  All
+   three states keep white text for visual continuity. */
+.btn-success,
+.btn-success:disabled {
+    background-color: #146c43 !important;
+    border-color: #146c43 !important;
+    color: #ffffff !important;
+}
+.btn-success:hover,
+.btn-success:focus,
+.btn-success:focus-visible,
+.btn-success:active,
+.btn-success.active,
+.btn-success.focus,
+.show > .btn-success.dropdown-toggle {
+    background-color: #0f5132 !important;
+    border-color: #0f5132 !important;
+    color: #ffffff !important;
+}
+.btn-success:focus,
+.btn-success.focus,
+.btn-success:focus-visible {
+    box-shadow: 0 0 0 0.2rem rgba(20, 108, 67, 0.5) !important;
+}
+
 /* Panel: hidden by default, shown on first load (no query params) or on
    toggle click.  Semi-opaque dark backdrop, brass-gold accent matching
    the rest of the autotable chrome. */
@@ -2178,7 +2224,7 @@ body.spectating #roll-dice { display: none !important; }
     width: 380px;
     max-width: 100vw;
     height: 100vh;
-    background: rgba(10, 25, 50, 0.97);
+    background: #0a1932;
     border-left: 1px solid rgba(255, 215, 94, 0.3);
     box-shadow: -4px 0 24px rgba(0, 0, 0, 0.5);
     z-index: 1500;
@@ -3036,6 +3082,31 @@ body.theme-light .lobby-fieldset {
 body.theme-light .lobby-rule-preset-create-link,
 body.theme-light #auth-status-chip {
     color: #8a6300;
+}
+
+/* Phase J Wave 7 + Wave 27 (Hicks a11y) — In theme-light mode the
+ * V2 settings drawer flips to a near-white background (`#fafafa`),
+ * but the drawer's internal text classes still target the dark-mode
+ * palette (`#ccc`, `#aaa`, `#ddd`).  Re-color those nodes to
+ * Bootstrap's `#495057` (≈8.6:1 contrast on `#fafafa`) so axe's
+ * `color-contrast` rule passes when the drawer is opened during
+ * the a11y sweep. */
+body.theme-light .settings-v2-tab,
+body.theme-light .settings-v2-color-custom-row,
+body.theme-light .settings-v2-field-label,
+body.theme-light .settings-v2-checkbox-row,
+body.theme-light .settings-drawer-v2-close,
+body.theme-light .settings-v2-help,
+body.theme-light .settings-v2-section-title {
+    color: #495057;
+}
+body.theme-light .settings-v2-tab[aria-selected="true"],
+body.theme-light .settings-v2-tab.settings-v2-tab-active {
+    color: #5a3a00;
+    background: rgba(255, 215, 94, 0.18);
+}
+body.theme-light .settings-drawer-v2-title {
+    color: #5a3a00;
 }
 
 /* ---------------------------------------------------------------

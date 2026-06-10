@@ -832,15 +832,24 @@ export function initLobby(client?: Client): void {
     });
   }
 
-  // Phase J Wave 4 — Settings shortcut.  Opens the settings drawer
-  // without closing the lobby so a returning player can adjust
-  // per-game overrides before clicking Apply.  We dispatch a synthetic
-  // click on #settings-toggle so the existing setupSettingsDrawer wiring
-  // in game-ui.ts handles the open animation + aria toggling.
+  // Phase J Wave 4 — Settings shortcut.  Opens the Wave-7 app-wide
+  // settings drawer (V2 tabbed surface) without closing the lobby so a
+  // returning player can adjust per-game overrides before clicking
+  // Apply.  We synthesise a click on the V2 trigger (`#settings-button`)
+  // so the lazy installer in `./settings-drawer.ts` handles the open
+  // animation + aria toggling.  Falls back to the legacy
+  // `#settings-toggle` (Wave-2 per-game drawer) when the V2 trigger
+  // is missing so older deploys / surfaces still respond.
   const openSettingsBtn = document.getElementById(
     'lobby-open-settings') as HTMLButtonElement | null;
   if (openSettingsBtn !== null) {
     openSettingsBtn.addEventListener('click', () => {
+      const settingsButton = document.getElementById(
+        'settings-button') as HTMLButtonElement | null;
+      if (settingsButton !== null) {
+        settingsButton.click();
+        return;
+      }
       const settingsToggle = document.getElementById(
         'settings-toggle') as HTMLButtonElement | null;
       settingsToggle?.click();
@@ -912,6 +921,7 @@ export function initLobby(client?: Client): void {
   // previous-session onboarding shows the default "Profile" text
   // until the hub round-trip eventually lands.
   hydrateProfileFromCacheIfAvailable();
+  installLobbyOpenProfileChipUpdater();
   installLobbyTabs();
   // Phase K Wave 19 — bundle audit §3.4: public-games pane + make-
   // public toggle are now lazy-mounted behind tab/toggle activation.
@@ -1521,6 +1531,44 @@ function installLobbyStatsPanel(): void {
   // Also subscribe directly in case the client isn't attached yet
   // (initLobby runs before Game.start()).
   onProfile(() => renderLobbyStatsPanel());
+}
+
+// Phase K Wave 22+ — Hicks (e2e wave 27).  Eager onProfile listener
+// for the lobby's `#lobby-open-profile` chip label + avatar.  The
+// full profile-drawer module (which carries the legacy Wave-5 chip
+// label updater) lazy-loads on chip hover/focus/click, so a fresh
+// lobby visit that completes onboarding (or hydrates a cached
+// profile) was leaving the chip stuck on the placeholder "Profile"
+// text until the user moved their mouse over the chip.  ~10 LoC of
+// eager bytes here keeps the chip in sync from the first profile
+// event onwards; the lazy drawer module's identical listener simply
+// re-applies the same values once mounted (idempotent).
+function installLobbyOpenProfileChipUpdater(): void {
+  const label = document.getElementById('lobby-open-profile-label');
+  const avatar = document.getElementById('lobby-open-profile-avatar');
+  if (label === null && avatar === null) return;
+  const apply = (p: PlayerProfile): void => {
+    if (label !== null) {
+      label.textContent = p.displayName === '' ? 'Profile' : p.displayName;
+    }
+    if (avatar !== null) {
+      const el = avatar as HTMLElement;
+      el.style.backgroundColor = p.avatarColor;
+      const initials = chipInitialsFromName(p.displayName);
+      el.textContent = initials === '' ? '?' : initials;
+    }
+  };
+  onProfile(apply);
+  const seeded = getProfile();
+  if (seeded !== null) apply(seeded);
+}
+
+function chipInitialsFromName(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed === '') return '';
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
 function renderLobbyStatsPanel(): void {

@@ -20,6 +20,7 @@ import {
   setAvatarColor as setProfileAvatarColor,
   validateAvatarColor,
 } from './profile';
+import { getIdentity, onIdentity } from './identity';
 import { showEl, hideEl } from './dom-utils';
 
 // The legacy hex `#808080` is the sentinel for "not yet customised".
@@ -27,6 +28,28 @@ import { showEl, hideEl } from './dom-utils';
 // shown the modal once their profile loads.  Picking + confirming
 // persists via the existing setAvatarColor() Hub RPC.
 const LEGACY_AVATAR_COLOR = '#808080';
+
+// Hicks (e2e wave 27).  The identity cache is the canonical source
+// of truth for the legacy avatar sentinel — it's what the index.ts
+// lazy-mount probe reads to decide whether to install this module
+// at all.  Sniffing it directly (in addition to subscribing to the
+// profile + identity event channels) lets the modal surface on
+// fresh visits where neither the SignalR profile nor the cookie-
+// bound identity has hydrated yet (e.g. lobby-only visits before
+// any game RPC).
+const LS_KEY_IDENTITY_CACHE = 'mahjong.identity.cache.v1';
+
+function readCachedAvatarColor(): string | null {
+  try {
+    const raw = window.localStorage.getItem(LS_KEY_IDENTITY_CACHE);
+    if (raw === null) return null;
+    const j = JSON.parse(raw) as { avatarColor?: unknown };
+    if (typeof j.avatarColor !== 'string') return null;
+    return j.avatarColor;
+  } catch {
+    return null;
+  }
+}
 
 // Vasquez's Wave-10 testid contract uses friendly colour names
 // (e.g. `avatar-migration-pick-emerald`) rather than hex strings.
@@ -128,18 +151,36 @@ export function installAvatarMigrationModalIfNeeded(): void {
     });
   }
 
+  let shownAtLeastOnce = false;
   const evaluate = (): void => {
+    // Hicks (e2e wave 27).  Whichever source surfaces the legacy
+    // sentinel first wins; once the modal has been shown, an async
+    // arrival of a fresh non-legacy identity/profile does NOT silently
+    // close it — the user must explicitly Pick or Dismiss.  This is
+    // critical for the lobby-only visit path where the LS cache says
+    // legacy but a server-side identity reissue may otherwise race
+    // ahead and auto-hide a prompt the user never saw.
     const profile = getProfile();
-    if (profile === null) return;
-    if (isLegacyAvatarColor(profile.avatarColor)) {
+    const identity = getIdentity();
+    const profileColor = profile !== null ? profile.avatarColor : null;
+    const identityColor = identity !== null ? identity.avatarColor : null;
+    const cachedColor = readCachedAvatarColor();
+
+    if (isLegacyAvatarColor(profileColor) || isLegacyAvatarColor(identityColor)
+        || isLegacyAvatarColor(cachedColor)) {
       showMigrationModal();
-    } else {
+      shownAtLeastOnce = true;
+      return;
+    }
+    if (!shownAtLeastOnce && (profile !== null || identity !== null)) {
       hideMigrationModal();
     }
   };
 
-  // Listen for profile updates from the Hub.  The initial profile may
-  // arrive before or after this install runs; evaluate() handles both.
+  // Listen for profile and identity updates.  Either channel arriving
+  // (or already-arrived) will trigger evaluate(); the initial call
+  // handles the LS-cache-only path on lobby-only visits.
   onProfile(evaluate);
+  onIdentity(evaluate);
   evaluate();
 }

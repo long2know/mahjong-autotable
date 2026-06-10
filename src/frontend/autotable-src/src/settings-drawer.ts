@@ -503,7 +503,7 @@ function buildAudioPanel(): HTMLDivElement {
   const soundInput = document.createElement('input');
   soundInput.type = 'checkbox';
   soundInput.checked = current.soundEnabled;
-  soundInput.setAttribute('data-testid', 'settings-sound-toggle');
+  soundInput.setAttribute('data-testid', 'settings-sound');
   const soundText = document.createElement('span');
   soundText.textContent = t('settings.sound_effects') || 'Sound effects';
   soundInput.addEventListener('change', () => {
