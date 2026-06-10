@@ -12,23 +12,34 @@ public static class BotMeldAdvisor
         IReadOnlyList<Tile> handTiles,
         MahjongRuleset ruleset,
         out Tile kongTile)
-        => TrySelectConcealedKong(handTiles, Array.Empty<Tile>(), ruleset, out kongTile);
+        => TrySelectConcealedKong(handTiles, Array.Empty<Tile>(), Array.Empty<Tile>(), ruleset, out kongTile);
 
     public static bool TrySelectConcealedKong(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
         MahjongRuleset ruleset,
         out Tile kongTile)
+        => TrySelectConcealedKong(handTiles, meldTiles, Array.Empty<Tile>(), ruleset, out kongTile);
+
+    public static bool TrySelectConcealedKong(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        IReadOnlyList<Tile> visibleTiles,
+        MahjongRuleset ruleset,
+        out Tile kongTile)
     {
         ArgumentNullException.ThrowIfNull(handTiles);
         ArgumentNullException.ThrowIfNull(meldTiles);
+        ArgumentNullException.ThrowIfNull(visibleTiles);
 
         if (handTiles.Count == 0)
         {
             throw new ArgumentException("Hand cannot be empty.", nameof(handTiles));
         }
 
-        if (handTiles.Any(static tile => tile is null) || meldTiles.Any(static tile => tile is null))
+        if (handTiles.Any(static tile => tile is null)
+            || meldTiles.Any(static tile => tile is null)
+            || visibleTiles.Any(static tile => tile is null))
         {
             throw new ArgumentException("Tiles cannot contain null values.", nameof(handTiles));
         }
@@ -36,6 +47,7 @@ public static class BotMeldAdvisor
         var handCounts = handTiles
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
+        var visibleCounts = BuildVisibleCounts(visibleTiles);
 
         var candidates = handCounts
             .Where(entry => entry.Value == 4)
@@ -76,11 +88,11 @@ public static class BotMeldAdvisor
             }
         }
 
-        var bestPreKongOuts = CountBestWinningOutsWithoutKong(handTiles, meldTiles, ruleset);
+        var bestPreKongOuts = CountBestWinningOutsWithoutKong(handTiles, meldTiles, visibleCounts, ruleset);
         if (bestPreKongOuts > 0)
         {
             var candidatesThatKeepOuts = candidates
-                .Where(candidate => CountWinningOutsAfterConcealedKong(handTiles, meldTiles, candidate, ruleset) > 0)
+                .Where(candidate => CountWinningOutsAfterConcealedKong(handTiles, meldTiles, visibleCounts, candidate, ruleset) > 0)
                 .ToList();
 
             if (candidatesThatKeepOuts.Count == 0)
@@ -111,16 +123,27 @@ public static class BotMeldAdvisor
         IReadOnlyList<Tile> meldTiles,
         MahjongRuleset ruleset,
         out Tile kongTile)
+        => TrySelectPromotedKong(handTiles, meldTiles, Array.Empty<Tile>(), ruleset, out kongTile);
+
+    public static bool TrySelectPromotedKong(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        IReadOnlyList<Tile> visibleTiles,
+        MahjongRuleset ruleset,
+        out Tile kongTile)
     {
         ArgumentNullException.ThrowIfNull(handTiles);
         ArgumentNullException.ThrowIfNull(meldTiles);
+        ArgumentNullException.ThrowIfNull(visibleTiles);
 
         if (handTiles.Count == 0)
         {
             throw new ArgumentException("Hand cannot be empty.", nameof(handTiles));
         }
 
-        if (handTiles.Any(static tile => tile is null) || meldTiles.Any(static tile => tile is null))
+        if (handTiles.Any(static tile => tile is null)
+            || meldTiles.Any(static tile => tile is null)
+            || visibleTiles.Any(static tile => tile is null))
         {
             throw new ArgumentException("Tiles cannot contain null values.");
         }
@@ -131,6 +154,7 @@ public static class BotMeldAdvisor
         var meldCounts = meldTiles
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
+        var visibleCounts = BuildVisibleCounts(visibleTiles);
 
         var candidates = meldCounts
             .Where(entry => entry.Value == 3 && handCounts.ContainsKey(entry.Key))
@@ -165,11 +189,11 @@ public static class BotMeldAdvisor
             }
         }
 
-        var bestPreKongOuts = CountBestWinningOutsWithoutKong(handTiles, meldTiles, ruleset);
+        var bestPreKongOuts = CountBestWinningOutsWithoutKong(handTiles, meldTiles, visibleCounts, ruleset);
         if (bestPreKongOuts > 0)
         {
             var candidatesThatKeepOuts = candidates
-                .Where(candidate => CountWinningOutsAfterPromotedKong(handTiles, meldTiles, candidate, ruleset) > 0)
+                .Where(candidate => CountWinningOutsAfterPromotedKong(handTiles, meldTiles, visibleCounts, candidate, ruleset) > 0)
                 .ToList();
 
             if (candidatesThatKeepOuts.Count == 0)
@@ -211,6 +235,7 @@ public static class BotMeldAdvisor
     private static int CountBestWinningOutsWithoutKong(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
         MahjongRuleset ruleset)
     {
         var bestOuts = 0;
@@ -221,7 +246,7 @@ public static class BotMeldAdvisor
                 .Where((_, index) => index != discardIndex)
                 .ToList();
 
-            var outs = CountWinningDrawOutsAfterSupplementDraw(reducedHand, meldTiles, ruleset);
+            var outs = CountWinningDrawOutsAfterSupplementDraw(reducedHand, meldTiles, visibleCounts, ruleset);
             if (outs > bestOuts)
             {
                 bestOuts = outs;
@@ -234,6 +259,7 @@ public static class BotMeldAdvisor
     private static int CountWinningOutsAfterConcealedKong(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
         Tile kongTile,
         MahjongRuleset ruleset)
     {
@@ -254,12 +280,13 @@ public static class BotMeldAdvisor
             .Concat(Enumerable.Repeat(kongTile, 4))
             .ToList();
 
-        return CountWinningDrawOutsAfterSupplementDraw(handAfterKong, meldAfterKong, ruleset);
+        return CountWinningDrawOutsAfterSupplementDraw(handAfterKong, meldAfterKong, visibleCounts, ruleset);
     }
 
     private static int CountWinningOutsAfterPromotedKong(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
         Tile kongTile,
         MahjongRuleset ruleset)
     {
@@ -276,12 +303,13 @@ public static class BotMeldAdvisor
             .Concat(new[] { kongTile })
             .ToList();
 
-        return CountWinningDrawOutsAfterSupplementDraw(handAfterKong, meldAfterKong, ruleset);
+        return CountWinningDrawOutsAfterSupplementDraw(handAfterKong, meldAfterKong, visibleCounts, ruleset);
     }
 
     private static int CountWinningDrawOutsAfterSupplementDraw(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
         MahjongRuleset ruleset)
     {
         var drawTileTypes = ruleset == MahjongRuleset.Changsha258
@@ -300,7 +328,9 @@ public static class BotMeldAdvisor
         foreach (var drawTileType in drawTileTypes)
         {
             ownedCounts.TryGetValue(drawTileType, out var drawTileCount);
-            if (drawTileCount >= 4)
+            visibleCounts.TryGetValue(drawTileType, out var visibleCount);
+            var remainingCopies = 4 - drawTileCount - visibleCount;
+            if (remainingCopies <= 0)
             {
                 continue;
             }
@@ -316,6 +346,13 @@ public static class BotMeldAdvisor
 
         return winningOuts;
     }
+
+    private static IReadOnlyDictionary<Tile, int> BuildVisibleCounts(IReadOnlyList<Tile> visibleTiles)
+        => visibleTiles.Count == 0
+            ? new Dictionary<Tile, int>()
+            : visibleTiles
+                .GroupBy(static tile => tile)
+                .ToDictionary(group => group.Key, group => group.Count());
 
     private static IReadOnlyList<Tile> BuildDrawTileTypes(MahjongRuleset ruleset)
     {

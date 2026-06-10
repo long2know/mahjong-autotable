@@ -1639,51 +1639,6 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         return BotTurnExecutionResult.Fail(409, "Bot hand contains invalid tile data.");
     }
 
-    if (turnState.HasAction(TurnAction.Meld))
-    {
-        if (BotMeldAdvisor.TrySelectPromotedKong(botHand, botMeldHandForDiscard, ruleset, out var promotedKongTile))
-        {
-            var kongApplied = await TryApplyBotPromotedKongAsync(
-                game,
-                botPlayer,
-                promotedKongTile,
-                drawResponse,
-                dbContext,
-                hubContext,
-                cancellationToken);
-
-            if (kongApplied)
-            {
-                return await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
-            }
-        }
-
-        if (BotMeldAdvisor.TrySelectConcealedKong(botHand, botMeldHandForDiscard, ruleset, out var kongTile))
-        {
-            var kongTiles = handTiles
-                .Where(tile => TileEntityMatches(tile, kongTile))
-                .Take(4)
-                .ToList();
-
-            if (kongTiles.Count == 4)
-            {
-                var kongApplied = await TryApplyBotConcealedKongAsync(
-                    game,
-                    botPlayer,
-                    kongTiles,
-                    drawResponse,
-                    dbContext,
-                    hubContext,
-                    cancellationToken);
-
-                if (kongApplied)
-                {
-                    return await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
-                }
-            }
-        }
-    }
-
     var visibleMeldTileEntities = game.Tiles
         .Where(tile => string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase)
             && tile.PlayerId != botPlayer.Id)
@@ -1721,6 +1676,51 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
     var opponentKongThreatTiles = OpponentMeldThreatAnalyzer.BuildPromotableKongThreatTiles(
         opponentMeldTileViews,
         new HashSet<Guid> { botPlayer.Id });
+
+    if (turnState.HasAction(TurnAction.Meld))
+    {
+        if (BotMeldAdvisor.TrySelectPromotedKong(botHand, botMeldHandForDiscard, visibleTiles, ruleset, out var promotedKongTile))
+        {
+            var kongApplied = await TryApplyBotPromotedKongAsync(
+                game,
+                botPlayer,
+                promotedKongTile,
+                drawResponse,
+                dbContext,
+                hubContext,
+                cancellationToken);
+
+            if (kongApplied)
+            {
+                return await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
+            }
+        }
+
+        if (BotMeldAdvisor.TrySelectConcealedKong(botHand, botMeldHandForDiscard, visibleTiles, ruleset, out var kongTile))
+        {
+            var kongTiles = handTiles
+                .Where(tile => TileEntityMatches(tile, kongTile))
+                .Take(4)
+                .ToList();
+
+            if (kongTiles.Count == 4)
+            {
+                var kongApplied = await TryApplyBotConcealedKongAsync(
+                    game,
+                    botPlayer,
+                    kongTiles,
+                    drawResponse,
+                    dbContext,
+                    hubContext,
+                    cancellationToken);
+
+                if (kongApplied)
+                {
+                    return await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
+                }
+            }
+        }
+    }
 
     var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand, botMeldHandForDiscard, visibleTiles, opponentKongThreatTiles, ruleset);
     var discardTile = handTiles[discardIndex];
