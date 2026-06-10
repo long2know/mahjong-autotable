@@ -256,6 +256,7 @@ public static class BotDiscardAdvisor
         }
 
         if (allowBreakingSoleChangshaSmallWinPairForPureSuitLean
+            && !hasChangshaDominantSuitTriplet
             && liveSmallWinPairCandidates is not null
             && changshaDominantSuit.HasValue
             && !liveSmallWinPairCandidates.Any(tile => tile.Suit == changshaDominantSuit.Value))
