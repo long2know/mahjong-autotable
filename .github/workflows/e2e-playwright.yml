@@ -47,11 +47,26 @@ jobs:
         run: docker build --build-arg BUILD_SHA=${{ github.sha }} -t mahjong-autotable:e2e .
 
       - name: Start container
-        run: docker run -d --name mahjong-e2e -p 8080:8080 -e BUILD_SHA=${{ github.sha }} mahjong-autotable:e2e
+        # The runtime image bakes ASPNETCORE_ENVIRONMENT=Production
+        # (Dockerfile L101). Drake's Phase L prod-hardening
+        # (JwtSigningKeyProvider.cs:121) refuses to boot in Production
+        # when Authentication:JwtSigningKeys[0] is empty — without it
+        # the .NET host crashes immediately, the port mapping tears
+        # down, and `/health` becomes unreachable (see run 27174250123).
+        # CI is the "operator" for ephemeral test containers, so we
+        # mint a per-run random HMAC key. The key never leaves the
+        # runner.
+        run: |
+          set -euo pipefail
+          JWT_KEY="$(openssl rand -base64 48)"
+          docker run -d --name mahjong-e2e -p 8080:8080 \
+            -e BUILD_SHA=${{ github.sha }} \
+            -e Authentication__JwtSigningKeys__0="$JWT_KEY" \
+            mahjong-autotable:e2e
 
       - name: Wait for /health
         run: |
-          for i in {1..30}; do
+          for i in {1..60}; do
             if curl -fsS http://localhost:8080/health > /dev/null; then
               echo "Health endpoint reachable after ${i}s"
               exit 0

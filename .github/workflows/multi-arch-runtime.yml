@@ -105,10 +105,18 @@ jobs:
           IMAGE="mahjong-autotable:ci-${ARCH}"
           CONTAINER="mahjong-autotable-runtime-${ARCH}"
 
+          # The runtime image bakes ASPNETCORE_ENVIRONMENT=Production
+          # (Dockerfile L101). Drake's Phase L prod-hardening
+          # (JwtSigningKeyProvider.cs:121) aborts boot in Production
+          # when Authentication:JwtSigningKeys[0] is empty. Mint a
+          # per-run ephemeral HMAC key so the container actually starts.
+          JWT_KEY="$(openssl rand -base64 48)"
+
           docker run -d --rm \
             --platform "$PLATFORM" \
             --name "$CONTAINER" \
             -p "${HOST_PORT}:8080" \
+            -e Authentication__JwtSigningKeys__0="$JWT_KEY" \
             "$IMAGE"
 
           deadline=$(( $(date +%s) + BOOT_TIMEOUT_S ))
