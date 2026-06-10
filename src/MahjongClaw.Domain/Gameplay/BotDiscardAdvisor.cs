@@ -2497,23 +2497,30 @@ public static class BotDiscardAdvisor
         int distinctOrphanTypes)
     {
         var orphanTypeCount = ChineseOfficialOrphanTileTypes.Count;
+        var orphanTilesInHand = ChineseOfficialOrphanTileTypes
+            .Where(tile => ownedCounts.TryGetValue(tile, out var count) && count > 0)
+            .ToList();
+        var hasOrphanPair = orphanTilesInHand.Any(tile => ownedCounts[tile] >= 2);
+
+        bool HasRemainingCopy(Tile tile, int ownedCount)
+        {
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+            return 4 - ownedCount - visibleCount > 0;
+        }
+
+        var hasOwnedPairPotential = orphanTilesInHand.Any(tile =>
+        {
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            return ownedCount == 1 && HasRemainingCopy(tile, ownedCount);
+        });
 
         if (distinctOrphanTypes >= orphanTypeCount)
         {
-            foreach (var tile in ChineseOfficialOrphanTileTypes)
-            {
-                ownedCounts.TryGetValue(tile, out var ownedCount);
-                visibleCounts.TryGetValue(tile, out var visibleCount);
-                if (4 - ownedCount - visibleCount > 0)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return hasOrphanPair || hasOwnedPairPotential;
         }
 
         var hasMissingOrphan = false;
+        var hasMissingPairPotential = false;
         foreach (var tile in ChineseOfficialOrphanTileTypes)
         {
             if (ownedCounts.ContainsKey(tile))
@@ -2523,13 +2530,29 @@ public static class BotDiscardAdvisor
 
             hasMissingOrphan = true;
             visibleCounts.TryGetValue(tile, out var visibleCount);
-            if (4 - visibleCount <= 0)
+            var remainingCopies = 4 - visibleCount;
+            if (remainingCopies <= 0)
             {
                 return false;
             }
+
+            if (remainingCopies >= 2)
+            {
+                hasMissingPairPotential = true;
+            }
         }
 
-        return hasMissingOrphan;
+        if (!hasMissingOrphan)
+        {
+            return hasOrphanPair || hasOwnedPairPotential;
+        }
+
+        if (hasOrphanPair)
+        {
+            return true;
+        }
+
+        return hasOwnedPairPotential || hasMissingPairPotential;
     }
 
     private static IReadOnlySet<Tile> BuildLiveSmallWinPairCandidates(
