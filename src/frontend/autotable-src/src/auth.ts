@@ -185,7 +185,26 @@ function setState(next: Partial<AuthState>): void {
 
 function intersectProviders(raw: unknown): AuthProviderId[] {
   if (!Array.isArray(raw)) return [];
-  const lower = raw.map((p) => String(p).toLowerCase());
+  // Phase K Wave 3 — Bishop. The backend's `/api/auth/providers`
+  // surface returns either the legacy string list
+  // (`["google", "github"]`) or the W3 object envelope
+  // (`[{ id, displayName, enabled, kind }, …]`).  Accept both shapes
+  // so the sign-in modal can light up Microsoft (and any other
+  // backend-configured provider) without a string-only contract pin.
+  const lower: string[] = [];
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      lower.push(item.toLowerCase());
+      continue;
+    }
+    if (item !== null && typeof item === 'object') {
+      const o = item as Record<string, unknown>;
+      const enabled = o.enabled ?? o.Enabled;
+      if (enabled === false) continue;
+      const id = o.id ?? o.Id ?? o.provider ?? o.Provider;
+      if (typeof id === 'string') lower.push(id.toLowerCase());
+    }
+  }
   return KNOWN_PROVIDERS.filter((p) => lower.indexOf(p) !== -1);
 }
 
