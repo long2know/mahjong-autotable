@@ -34,6 +34,23 @@ async function openSettingsDrawer(page: Page): Promise<void> {
   await expect(page.getByTestId('settings-drawer')).toBeVisible();
 }
 
+// The Wave-7 V2 drawer is tab-gated — only the active tab's panel
+// is rendered (the others have `hidden`).  The sound checkbox lives
+// in the Audio tab, so this helper activates it before any
+// assertion that needs the sound input visible.
+async function activateAudioTab(page: Page): Promise<void> {
+  // Wait for the V2 drawer's tab strip to lazy-mount before clicking.
+  const tab = page.getByTestId('settings-tab-audio');
+  await tab.waitFor({ state: 'attached', timeout: 5_000 }).catch(() => undefined);
+  if (await tab.count() === 0) return;
+  if ((await tab.getAttribute('aria-selected')) === 'true') {
+    await page.getByTestId('settings-panel-audio').waitFor({ state: 'visible', timeout: 5_000 }).catch(() => undefined);
+    return;
+  }
+  await tab.click();
+  await expect(page.getByTestId('settings-panel-audio')).toBeVisible({ timeout: 5_000 });
+}
+
 test.describe('Mahjong Autotable — settings drawer', () => {
   test.beforeEach(async ({ page }, testInfo) => {
     test.skip(
@@ -55,8 +72,8 @@ test.describe('Mahjong Autotable — settings drawer', () => {
 
     // Close via the X — drawer should hide.
     await close.click();
-    await expect(page.locator('#app-settings-drawer-v2'))
-      .not.toHaveClass(/settings-open/);
+    await expect(page.locator('#settings-drawer-v2'))
+      .not.toHaveClass(/settings-drawer-v2-open/);
   });
 
   test('save then reload — drawer state persists in localStorage', async ({ page }) => {
@@ -68,6 +85,7 @@ test.describe('Mahjong Autotable — settings drawer', () => {
     await openSettingsDrawer(page);
 
     // Toggle the sound checkbox first to mark the form dirty.
+    await activateAudioTab(page);
     const sound = page.getByTestId('settings-sound');
     await expect(sound).toBeVisible();
     const before = await sound.isChecked();
@@ -99,6 +117,7 @@ test.describe('Mahjong Autotable — settings drawer', () => {
     const reopen = page.getByTestId('lobby-open-settings');
     await expect(reopen).toBeVisible({ timeout: 10_000 });
     await reopen.click();
+    await activateAudioTab(page);
     const soundAfter = page.getByTestId('settings-sound');
     await expect(soundAfter).toBeVisible();
     await expect(soundAfter).toBeChecked({ checked: !before });
@@ -108,6 +127,7 @@ test.describe('Mahjong Autotable — settings drawer', () => {
     test.setTimeout(45_000);
     await openSettingsDrawer(page);
 
+    await activateAudioTab(page);
     const sound = page.getByTestId('settings-sound');
     await expect(sound).toBeVisible();
     const before = await sound.isChecked();

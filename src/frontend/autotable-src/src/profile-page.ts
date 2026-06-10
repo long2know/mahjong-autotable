@@ -357,12 +357,18 @@ function renderRecentGames(): void {
   }
   host.replaceChildren();
   if (recentGamesCache.length === 0 && !recentGamesLoading && recentGamesError === null) {
+    // Phase J Wave 7 a11y — when the list is empty drop the
+    // `role="list"` so axe's `aria-required-children` rule passes
+    // (a list MUST contain ≥1 listitem).  We restore it when items
+    // arrive below.
+    host.removeAttribute('role');
     const empty = document.createElement('div');
     empty.className = 'profile-recent-empty';
     empty.textContent = 'No recent games yet — start a match to see your replays here.';
     host.appendChild(empty);
     return;
   }
+  host.setAttribute('role', 'list');
   recentGamesCache.forEach((game, i) => {
     if (i >= RECENT_GAMES_LIMIT) return;
     host.appendChild(buildRecentGameRow(game, i));

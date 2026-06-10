@@ -14,9 +14,29 @@
 //
 // Selector contract: src/frontend/autotable-src/tests/selectors.md.
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 const SOUND_LS_KEY = 'mahjong:soundEnabled';
+
+// The Wave-7 V2 drawer is tab-gated — the sound checkbox lives in
+// the Audio tab.  Hicks (e2e wave 27) wired `lobby-open-settings`
+// to open the V2 drawer; this helper hops to the Audio tab so
+// `[data-testid="settings-sound"]` becomes interactable.
+async function activateAudioTab(page: Page): Promise<void> {
+  // Wait for the V2 drawer to lazy-mount its tab strip; the lobby's
+  // settings shortcut forwards into a dynamic-imported chunk, so the
+  // tab may not be in the DOM on the next tick.  We bail to a no-op
+  // only if the tab never surfaces (legacy build, etc).
+  const tab = page.getByTestId('settings-tab-audio');
+  await tab.waitFor({ state: 'attached', timeout: 5_000 }).catch(() => undefined);
+  if (await tab.count() === 0) return;
+  if ((await tab.getAttribute('aria-selected')) === 'true') {
+    await page.getByTestId('settings-panel-audio').waitFor({ state: 'visible', timeout: 5_000 }).catch(() => undefined);
+    return;
+  }
+  await tab.click();
+  await expect(page.getByTestId('settings-panel-audio')).toBeVisible({ timeout: 5_000 });
+}
 
 test.describe('Mahjong Autotable — sound toggle persistence', () => {
   test('toggles flip the mahjong:soundEnabled key and persist across reload', async ({ page }, testInfo) => {
@@ -37,6 +57,7 @@ test.describe('Mahjong Autotable — sound toggle persistence', () => {
     // Wait for the sound checkbox.  It exists in the DOM at all
     // times; we just need to wait for the drawer to be in the
     // .settings-open state so the click target is interactable.
+    await activateAudioTab(page);
     const soundToggle = page.getByTestId('settings-sound');
     await expect(soundToggle).toBeVisible();
 
@@ -72,6 +93,7 @@ test.describe('Mahjong Autotable — sound toggle persistence', () => {
     await expect(openSettings2).toBeVisible({ timeout: 10_000 });
     await openSettings2.click();
 
+    await activateAudioTab(page);
     const soundToggle2 = page.getByTestId('settings-sound');
     await expect(soundToggle2).toBeVisible();
 

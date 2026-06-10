@@ -359,11 +359,19 @@ let displayNameTimer: number | null = null;
 export function setDisplayName(name: string): { error: string | null } {
   const { value, error } = validateDisplayName(name);
   if (error !== null) return { error };
-  if (current === null) return { error: 'Profile not loaded yet.' };
+  if (current === null) {
+    // Phase K Wave 22+ — Hicks (e2e wave 27).  The profile-page edit
+    // surfaces can be reached before the SignalR hub has populated a
+    // ProfileLoaded event (the lobby never connects until the user
+    // joins a game).  Synthesise a guest placeholder so the optimistic
+    // local update + LS cache write below land — the hub round-trip,
+    // when it happens, will replace `current` via setCurrent().
+    setCurrent(synthesizeProfile(''));
+  }
   // Optimistic local update so subscribers (lobby chips, move-log)
   // see the new name immediately.  The UpdateProfile invoke below
   // confirms with the server.
-  setCurrent({ ...current, displayName: value! });
+  setCurrent({ ...current!, displayName: value! });
   pendingDisplayName = value!;
   if (displayNameTimer !== null) window.clearTimeout(displayNameTimer);
   displayNameTimer = window.setTimeout(() => {
@@ -379,9 +387,14 @@ export function setAvatarColor(hex: string): { error: string | null } {
   if (!validateAvatarColor(hex)) {
     return { error: 'Avatar colour must be a hex code like #ff0000.' };
   }
-  if (current === null) return { error: 'Profile not loaded yet.' };
+  if (current === null) {
+    // Phase K Wave 22+ — Hicks (e2e wave 27).  Same rationale as
+    // setDisplayName above — synthesise a guest profile so the edit
+    // path is never blocked by a pre-hub null current.
+    setCurrent(synthesizeProfile(''));
+  }
   const normalized = hex.toLowerCase();
-  setCurrent({ ...current, avatarColor: normalized });
+  setCurrent({ ...current!, avatarColor: normalized });
   void sendUpdateProfile({ avatarColor: normalized });
   return { error: null };
 }

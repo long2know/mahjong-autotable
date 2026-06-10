@@ -27,10 +27,17 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
+// Canonical autotable route first.  When `/` is hit first the backend
+// serves a meta-refresh redirect (`<meta http-equiv="refresh"
+// content="0;url=/autotable/">`), which `page.goto` resolves OK but
+// then immediately tears down the execution context as the refresh
+// fires — any `page.evaluate` we queue right after the return throws
+// "Execution context was destroyed".  Putting `/autotable/` first
+// avoids the trap entirely.
 const ROUTES = [
-  '/',
   '/autotable/',
   '/autotable/index.html',
+  '/',
   '/index.html',
 ];
 
@@ -38,7 +45,13 @@ async function tryGoto(page: Page): Promise<boolean> {
   for (const r of ROUTES) {
     try {
       const res = await page.goto(r, { waitUntil: 'domcontentloaded' });
-      if (res && res.ok()) return true;
+      if (res && res.ok()) {
+        // Belt-and-braces against meta-refresh / soft redirects:
+        // wait for the load state to settle before returning so a
+        // subsequent `page.evaluate` doesn't race a tear-down.
+        await page.waitForLoadState('load').catch(() => undefined);
+        return true;
+      }
     } catch (_e) { /* try next */ }
   }
   return false;
