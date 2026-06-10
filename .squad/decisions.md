@@ -17821,7 +17821,7 @@ branch, Drake's persistence.
 2. **Tiny floating "Seat 0" HUD dead-centre on table** — Riichi scoreboard (upstream `Center` mesh + CanvasTexture) rendering even though Changsha has no stick/score display.
 3. **Visible top-wall gap / phantom wall slots** — `setup-slots.ts` using uniform `row(19)` for every variant (left 4–6 trailing empty columns per seat on Changsha's 108-tile budget).
 
-**Fix:** 
+**Fix:**
 - `setup-slots.ts` — Split CHANGSHA wall into `row(14)` for seats 0/1 and `row(13)` for seats 2/3 (matches backend 28/28/26/26 = 108 layout). Updated `fixupSlots()` to use per-seat last-col index for drop-shadow placement.
 - `object-view.ts` — New `setVariant(gameType)` method toggles tray + center mesh visibility (both off for Changsha, both on for Riichi variants). Constructor calls `setVariant` with URL-declared variant; `updateScores()` skips `center.draw()` when hidden.
 - `world.ts` — `updateConditions()` calls `this.objectView.setVariant(conditions.gameType)` to propagate backend/dropdown variant flips into static scenery.
@@ -17838,7 +17838,7 @@ branch, Drake's persistence.
 **By:** Frost (Backend Specialist)
 **What:** Stephen reported `wall.13.0@2` page error persisting after Hicks round 2 + Frost's prior `99c1af0` per-seat rebalance. Investigation revealed: **Backend is healthy.** The `wall.13.0@2` error originates from frontend's local pre-WS render path (`setup-deal.ts`), NOT from backend slot emit. Backend's `EnumerateWallSlotsInOrder` already caps per-seat via `col >= WallStackCount(seat) continue` and `WallSlot` validates `col < WallStackCount(seat)` with throw. The frontend DEALS table for Changsha still inherited the old uniform layout's `wall.1.0` start for seats 2/3 — when round-2 constrained those seats to 26 slots (wall.0.0 through wall.12.1), the table-walk from index 2 + 26 entries ran off the end.
 
-**Fix (frontend patch, Hicks's lane):** 
+**Fix (frontend patch, Hicks's lane):**
 In `src/frontend/autotable-src/src/setup-deal.ts` CHANGSHA table, flip seats 2/3 from `wall.1.0` (slotNames index 2) to `wall.0.0` (index 0) across three blocks (INITIAL, HANDS[1], UNSHUFFLED) — 6 lines total.
 
 **This commit's contribution (backend regression tests):**

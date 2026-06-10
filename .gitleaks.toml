@@ -1,0 +1,146 @@
+# gitleaks configuration for mahjong-autotable
+#
+# Author: Apone (DevOps), 2026-06-10
+# Squad decision: greening the `secrets-scan` workflow on `main` (HEAD 534e6fd).
+#
+# This file does NOT disable any of gitleaks' default rules — it only ADDS
+# narrow allowlists for 10 cross-confirmed FALSE POSITIVES that were tripping
+# the `secrets-scan` GitHub Actions job (run 27259776633). Every entry below
+# cites the exact file and explains the legitimate non-secret content.
+#
+# Two scoping strategies are used, in order of preference:
+#   1. Per-rule allowlists ([[rules.allowlists]] with `condition = "AND"`) —
+#      require BOTH a file-path match AND a tight content-regex match.
+#      Used for source files and docs that *could* host a real secret later;
+#      we keep the rule fully active and only suppress the documented shape.
+#   2. Global path allowlists ([allowlist].paths) — whole-file suppression.
+#      Used only for files that are by-design non-secret-bearing: agent
+#      doctrine docs (SKILL.md teaching tables) and Phase K Bishop unit-test
+#      fixtures (locally-minted HMAC keys for throwaway JWT signing).
+#
+# Config syntax reference:
+#   https://github.com/gitleaks/gitleaks/blob/master/README.md
+#   (specifically the [extend] + [allowlist] + [[rules.allowlists]] sections)
+
+title = "mahjong-autotable allowlist"
+
+[extend]
+# Inherit the full default ruleset (private-key, generic-api-key, etc.).
+# We are NOT weakening defaults — only allowlisting documented false hits.
+useDefault = true
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Global path allowlist — whole-file suppression for non-secret-bearing files
+# ─────────────────────────────────────────────────────────────────────────────
+# These paths are by-design free of real secret material. Any future finding
+# in one of them is overwhelmingly likely to be another doctrine/test
+# fixture — and the cost of a real secret slipping into a SKILL.md or a
+# Phase K unit-test file is low (both lanes are reviewed by the squad).
+#
+# In contrast, the source-file false positives (AuthOptions.cs,
+# JwtSigningKeyProvider.cs) and prose-docs false positives (jwt-rotation.md,
+# jwt-ssm-runbook.md, mobile-build.yml) get TIGHT per-rule regex allowlists
+# below — those files COULD host a real secret one day, so we keep the
+# scanner armed.
+
+[allowlist]
+description = "Doctrine docs + Phase K test fixtures (whole-file allowlist)"
+paths = [
+    # secret-handling SKILL.md — both copies. Line 48 ships a doctrine
+    # table whose right column literally shows the regex
+    # `-----BEGIN [A-Z ]+PRIVATE KEY-----` as an example for agents to
+    # learn from. No key bodies present.
+    '''(^|/)\.copilot/skills/secret-handling/SKILL\.md$''',
+    '''(^|/)\.squad/templates/skills/secret-handling/SKILL\.md$''',
+    # Phase K Bishop test fixtures — each declares
+    # `private const string TestKey = "wXX-...-key-..."` for unit tests
+    # that sign throwaway JWTs. Never leaves the test binary.
+    #   Phase_K_W12/Bishop/CommentaryCostBudgetFacts.cs
+    #   Phase_K_W17/Bishop/JwtIssuingServiceTenantTests.cs
+    #   Phase_K_W19/Bishop/JwtServiceDurationIntegrationTests.cs
+    #   Phase_K_W21/Bishop/JwtValidatorAnomalyMetricsTests.cs
+    '''(^|/)src/backend/tests/Mahjong\.Autotable\.Api\.Tests/Phase_K_W\d+/Bishop/[A-Za-z0-9_]+\.cs$''',
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-rule extension — `generic-api-key`
+# ─────────────────────────────────────────────────────────────────────────────
+# Extends the default `generic-api-key` rule with two AND-scoped allowlists:
+# both the file path AND the line content must match the documented shape.
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "<base64-key>/<previous-key> placeholder strings in JWT rotation docs + Auth error messages"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+    # Match angle-bracketed placeholder tokens like:
+    #   <base64-key>, <previous-key>, <PEM-encoded private key>
+    # i.e. operator-actionable docstring fill-ins, never real key bytes.
+    '''<(?:base64|previous|PEM-encoded)[ -][^>]*key[^>]*>''',
+]
+paths = [
+    # docs/jwt-rotation.md:340 — operator startup-error block quoting:
+    #   "Authentication__JwtSigningKeys__0=<base64-key>=48-bytes-recommended"
+    '''(^|/)docs/jwt-rotation\.md$''',
+    # src/backend/.../JwtSigningKeyProvider.cs:66 — same string, but as
+    # the `ProdRequiresOperatorHmacKeyMessage` const so tests can assert
+    # against the canonical wording verbatim.
+    '''(^|/)src/backend/src/Mahjong\.Autotable\.Api/Auth/JwtSigningKeyProvider\.cs$''',
+]
+
+[[rules.allowlists]]
+description = "GitHub Actions step-output cache-key echo (avd-api-...)"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+    # The line is shell:
+    #   echo "key=avd-api-34-default-x86_64-v1" >> "$GITHUB_OUTPUT"
+    # i.e. it sets a GHA step output named `key` to a literal AVD cache
+    # identifier — not a secret, just the cache key itself.
+    '''echo\s+"key=avd-[A-Za-z0-9_.-]+"\s*>>\s*"\$GITHUB_OUTPUT"''',
+]
+paths = [
+    # .github/workflows/mobile-build.yml:296 (actual echo at L302; the
+    # gitleaks report fires on the step's starting line).
+    '''(^|/)\.github/workflows/mobile-build\.yml$''',
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-rule extension — `private-key`
+# ─────────────────────────────────────────────────────────────────────────────
+# Extends the default `private-key` rule with one AND-scoped allowlist for
+# PEM-header strings that appear inside documentation/XML doc-comments —
+# not the key body itself.
+
+[[rules]]
+id = "private-key"
+
+[[rules.allowlists]]
+description = "PEM begin-header doc references in AuthOptions XML comments and SSM runbook"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+    # Match the literal PEM begin-header. We do NOT match a full PEM
+    # block (`(?s)-----BEGIN ... -----END ... -----`) — if real key bytes
+    # ever appear in these files they will fall outside this allowlist
+    # and be reported.
+    '''-----BEGIN [A-Z ]+PRIVATE KEY-----''',
+]
+paths = [
+    # src/backend/.../AuthOptions.cs:120-121 — XML doc comment:
+    #   /// (<c>-----BEGIN RSA PRIVATE KEY-----</c>) or PKCS#8
+    #   /// (<c>-----BEGIN PRIVATE KEY-----</c>) encoding.
+    '''(^|/)src/backend/src/Mahjong\.Autotable\.Api/Auth/AuthOptions\.cs$''',
+    # docs/jwt-ssm-runbook.md — bash-comment doc lines:
+    #   # Expected: each prints "-----BEGIN PRIVATE KEY-----" (PKCS#8) or
+    #   # "-----BEGIN RSA PRIVATE KEY-----" (PKCS#1).
+    # gitleaks reports the section heading line (175) but the actual hit
+    # is on the comment lines further down.
+    '''(^|/)docs/jwt-ssm-runbook\.md$''',
+]
