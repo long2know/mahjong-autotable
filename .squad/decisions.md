@@ -18295,3 +18295,35 @@ ab34d09 — chore(deploy): docker build+smoke proof + README deploy guide (squas
 | Apone | 164fef1 | #97 | secrets-scan ✅ + pre-commit-check ✅ |
 | Bishop | 4a9c5e4 | #96 | e2e-playwright ✅ + multi-arch-runtime ✅ + multi-arch-smoke ✅ |
 | Vasquez | — | — | Live re-verify 3/3 PASS; bare-URL playable |
+
+## 2026-06-10 — 27-failure e2e fix wave (Ferro #98 + Bishop #99 + Hicks #100)
+
+After Bishop's #96 fixed container boot, the e2e-playwright suite revealed 27 distinct test failures across 17 specs (44 total counting Playwright retries). Coordinator fanned out 3 specialists by domain in parallel worktrees. All 3 PRs merged.
+
+### Decision: parallel fan-out by feature domain, not by test count
+
+Splitting 27 tests three ways by domain expertise (UI/UX trunk → Hicks, frontend platform → Ferro, backend API → Bishop) collapsed many tests to shared root causes within each lane (e.g., 5 ELO tests → 2 root causes; 3 i18n tests → 1 lazy-mount race). Per-domain agents who own the surface make faster, deeper fixes than per-test parallelism.
+
+### 3 production bugs found (NOT just test fixes)
+
+1. **lobby.ts lazy-mount race** (Ferro #98) — Playwright `click()` fires `mouseenter` first, consuming `{once:true}` lazy-load handler with `openOnLoad=false`; subsequent click hit `load()` which early-returned. Affected real users with hover-then-click. Fix: sticky `loadPromise`; click handler always awaits load + synth-clicks.
+2. **OAuth provider envelope drift** (Bishop #99) — `/api/auth/providers` shape changed to `{id, displayName, enabled, kind}` objects but frontend `intersectProviders` still assumed `string[]`. EVERY OAuth button silently hidden in production. Fix: accept both shapes + honour `enabled:false`.
+3. **ELO fallback banner unreachable** (Bishop #99) — `state.mode` flips to `'stats'` BEFORE next render, so `mode==='rating' && ratingsAvailable===false` was dead code. Fix: gate on `ratingsAvailable===false` alone.
+
+### Patterns documented for future agents
+
+- **V1↔V2 settings drawer divergence** — `#lobby-open-settings` → V1 (legacy, `right:-340px` off-viewport); `#settings-button` → V2 (canonical, tab-gated). Specs targeting `data-testid="settings-sound"` resolve to the LEGACY checkbox; V2 uses `data-testid="settings-sound-toggle"` inside Audio tab.
+- **Identity LS key migration** — `mahjong:profile:v1` → `mahjong.identity.cache.v1`. Avatar-migration modal must subscribe to identity events + use LS-cache fallback.
+- **Meta-refresh strips query** — `page.goto('/?action=...')` hits bare origin; meta-refresh fires before action-router runs. Use relative URLs + `waitForLoadState('load')` + try/catch retry.
+- **JWKS Cache-Control regression** — `no-store` on 404 is a load-bearing e2e contract; do not relax it.
+- **Color contrast a11y** — `.btn-success` 3.13:1 → re-skinned to `#146c43` (5.07:1). V2 theme-light tabs/labels re-skinned to `#495057`.
+
+### Infrastructure discovery (Hicks)
+
+Backend serves the dist from `/data/source/mahjong-autotable/src/frontend/autotable/` regardless of which worktree built it. **Non-main worktree agents MUST rsync built dist to the main worktree path** after `npm run build`, or backend serves stale bundle.
+
+| Agent | PR | SHA | Tests | Files | Duration |
+|---|---|---|---|---|---|
+| Ferro | #98 | `b1fccd2` | 15/15 | `lobby.ts`, `i18n/*`, `pwa*`, `deep-link*`, `replay*`, `commentary*`, 6 specs | 23 min |
+| Bishop | #99 | `693ca79` | 7/7 | `auth.ts`, `leaderboard.ts`, `AuthTokenController.cs`, `sign-in-modal.ts`, 3 specs | 41 min |
+| Hicks | #100 | `1cfff41` | 20/20 | `settings-drawer.ts`, `lobby.ts`, `game-ui.ts`, `style.css`, `index.html`, 8 specs | 43 min |

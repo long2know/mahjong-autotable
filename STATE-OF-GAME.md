@@ -381,3 +381,34 @@ All previously-failing CI gates are now green:
 **Root cause (Bishop):** Dockerfile bakes `ASPNETCORE_ENVIRONMENT=Production`; Drake's prod-hardening throws when `Authentication:JwtSigningKeys` is empty. CI now mints ephemeral 48-byte HMAC keys via `openssl rand -base64` and injects them into the three workflows.
 
 **Live re-verification (Vasquez):** Tested `4a9c5e4` with updated playtest spec (MutationObserver for atomic Phase O proof capture). **3/3 PASS**. No new game bugs. Canonical playable entry: `http://127.0.0.1:8088/autotable/`.
+
+---
+
+## 2026-06-10 — 27-failure e2e-playwright fix wave (HEAD `1cfff41`)
+
+After Bishop's `4a9c5e4` fixed container boot, the e2e-playwright suite revealed **27 distinct test failures** in peripheral feature surfaces (NOT in Stephen's core play path, which Vasquez verified 3/3 PASS). The Coordinator fanned out 3 specialist agents in parallel worktrees by domain. All 3 PRs merged.
+
+| Agent | PR | SHA | Lane | Tests Fixed |
+|---|---|---|---|---|
+| Ferro | #98 | `b1fccd2` | i18n / PWA / deep-link / replay / commentary-cost / bracket | 15/15 |
+| Bishop | #99 | `693ca79` | ELO leaderboard / JWKS / Microsoft OAuth | 7/7 (+9 verifies) |
+| Hicks | #100 | `1cfff41` | a11y / settings / sound / avatar / profile / lobby / commentary-dispatch / bundler-swap | 20/20 |
+
+### 3 Production Bugs Surfaced (not just test fixes)
+
+1. **Ferro — Lobby lazy-mount race** (`lobby.ts:scheduleSettingsDrawerLazyMount`). Hover-then-click consumed the `{once:true}` lazy-load handler with `openOnLoad=false`; subsequent click hit `load()` which early-returned, dropping the open intent. **Affected real users** (any hover-then-click pattern, common with mouse-pointer users). Fix: sticky `loadPromise`; click handler always awaits load + synth-clicks.
+
+2. **Bishop — OAuth provider envelope drift** (`auth.ts:intersectProviders`). Backend `/api/auth/providers` returns `{id, displayName, enabled, kind}` objects, but the frontend assumed legacy `["google", …]` string array. Result: **every OAuth button was silently hidden in real deploys**. Fixed by accepting both shapes + honouring `enabled:false`.
+
+3. **Bishop — ELO fallback banner unreachable code** (`leaderboard.ts`). `fetchOnce()` on 404 flipped `state.mode='stats'` BEFORE the next render, so the render guard `mode==='rating' && ratingsAvailable===false` was dead. Re-gated on `ratingsAvailable===false` alone.
+
+### Critical Infra Finding (Hicks)
+
+The running backend serves the frontend dist from `/data/source/mahjong-autotable/src/frontend/autotable/` regardless of which worktree built it. Non-main worktree agents MUST rsync the built dist to the main worktree path after `npm run build`, or the backend serves stale bundle (fixes appear to no-op for hours).
+
+### Pipeline State
+
+| Workflow | Status |
+|---|---|
+| secrets-scan, pre-commit, multi-arch-runtime ×2, multi-arch-smoke, docker-build, container-scan, sbom, sign-image, slsa-provenance, Squad Release | ✅ |
+| e2e-playwright | 🟡 final verification run in flight on `1cfff41` (~42 min) |
