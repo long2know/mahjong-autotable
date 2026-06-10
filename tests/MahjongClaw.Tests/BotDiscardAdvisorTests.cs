@@ -4276,6 +4276,53 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PivotsFromDeadThirteenOrphans_WhenPairCannotBeCompleted()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3)
+        };
+
+        var visibleTiles = new List<Tile>();
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Characters, 1), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Characters, 9), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Dots, 1), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Dots, 9), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Bamboos, 1), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Bamboos, 9), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Winds, 0, Wind.East), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Winds, 0, Wind.South), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Winds, 0, Wind.West), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Winds, 0, Wind.North), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Dragons, 0, null, Dragon.Red), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Dragons, 0, null, Dragon.Green), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Dragons, 0, null, Dragon.White), 3));
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex]
+            .Should()
+            .Match<Tile>(tile => tile.IsHonor || tile.Rank == 1 || tile.Rank == 9);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PreservesSoleTripletPairCandidate_ForChineseOfficial()
     {
         var tiles = new List<Tile>
