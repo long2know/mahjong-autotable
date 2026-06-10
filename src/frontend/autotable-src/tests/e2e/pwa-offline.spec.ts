@@ -142,14 +142,28 @@ test.describe('Phase K Wave 2 — PWA offline', () => {
     });
     await page.waitForTimeout(400);
 
-    const btn = page.getByTestId('pwa-install-prompt');
-    if (await btn.count() === 0) {
+    // Phase K Wave 6 promoted the affordance to a visible top-bar
+    // <button data-testid="pwa-install-button">; the legacy
+    // `pwa-install-prompt` testid lives on a hidden alias span inside
+    // the button for back-compat (see tests/selectors.md §K-W6 PWA
+    // install button polish).  Prefer the new visible testid; fall back
+    // to verifying the legacy alias is at least attached when the new
+    // testid hasn't shipped.
+    const btn = page.getByTestId('pwa-install-button');
+    const legacy = page.getByTestId('pwa-install-prompt');
+    if (await btn.count() > 0) {
+      await expect(btn).toBeVisible();
+      return;
+    }
+    if (await legacy.count() === 0) {
       test.info().annotations.push({
         type: 'soft-pass',
         description: 'pwa-install-prompt button ships in Phase K Wave 2',
       });
       return;
     }
-    await expect(btn).toBeVisible();
+    // Legacy alias present but intentionally hidden — confirm it is
+    // wired into the DOM (attachment-only check, no visibility).
+    await expect(legacy).toBeAttached();
   });
 });

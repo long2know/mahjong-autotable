@@ -48,7 +48,18 @@ const CASES: ActionCase[] = [
 ];
 
 async function anyCandidateResolves(page: Page, kase: ActionCase): Promise<boolean> {
-  const hash = await page.evaluate(() => window.location.hash || '');
+  // The action-router may rewrite the URL via history.replaceState which
+  // can race with our evaluate() call; tolerate "execution context
+  // destroyed" by retrying after a short settle.
+  let hash = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      hash = await page.evaluate(() => window.location.hash || '');
+      break;
+    } catch {
+      await page.waitForTimeout(250);
+    }
+  }
   for (const cand of kase.hashCandidates) {
     if (hash.toLowerCase().startsWith(cand.toLowerCase())) return true;
   }
@@ -71,9 +82,16 @@ test.describe('Phase K Wave 11 — deep-link ?action= routing', () => {
     async ({ page }, testInfo) => {
       let resolved = 0;
       for (const kase of CASES) {
-        await page.goto(`/?action=${kase.query}`);
-        // Allow the action router to settle.
+        // Use a relative URL so the Playwright baseURL (which already
+        // points at /autotable/) is preserved.  A leading '/' would
+        // hit the bare origin (e.g. http://host:8088/), which the
+        // backend redirects to /autotable/ via meta-refresh and
+        // drops the query — so the action-router would never see it.
+        await page.goto(`?action=${kase.query}`);
         await page.waitForLoadState('domcontentloaded');
+        // Allow the action router to settle (its dispatch may
+        // history.replaceState the URL on the next microtask).
+        await page.waitForTimeout(300);
         const ok = await anyCandidateResolves(page, kase);
         if (ok) {
           resolved++;
