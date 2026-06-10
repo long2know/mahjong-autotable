@@ -469,9 +469,9 @@
     {
       "wave": "K22",
       "bundler": "vite",
-      "recordedAt": "2026-06-08T21:23:08.164Z",
+      "recordedAt": "2026-06-10T20:40:00.661Z",
       "chunks": {
-        "autotable-src-eager": 108106,
+        "autotable-src-eager": 108090,
         "game-bootstrap": 174693,
         "scene-shell": 2572,
         "scene-effects": 62141,
