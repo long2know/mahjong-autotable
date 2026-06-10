@@ -112,8 +112,8 @@ Vasquez Hicks   Bishop      (background, all 3)
 This wave had no rejection events; the reconciliation pass was mechanical wire-key alignment + a Bishop-diagnosed test bug applied by the coordinator (not a verdict against Bishop's work — Bishop deliberately did not fix it from his own seat per file-scope discipline).
 # Session 2026-06-03 — Thorough test wave wrap
 
-**Date:** 2026-06-03T10:30Z  
-**Agents:** Hicks, Drake, Vasquez, Bishop (×2), Frost, Ripley  
+**Date:** 2026-06-03T10:30Z
+**Agents:** Hicks, Drake, Vasquez, Bishop (×2), Frost, Ripley
 **Task:** Merge 7 test-wave commit memos into squad decisions + cross-reference agent histories + clean inbox
 
 ## Summary

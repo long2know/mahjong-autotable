@@ -336,7 +336,7 @@ Extended the playtest spec with a state-driven autoplay driver (Phase H3, emits 
 
 ```
 Run 1: gameCompleted=true, 61 total discards, 4 discard-phase turns captured
-Run 2: gameCompleted=true, 19 total discards, 3 discard-phase turns captured  
+Run 2: gameCompleted=true, 19 total discards, 3 discard-phase turns captured
 Run 3: gameCompleted=true, 61 total discards, 4 discard-phase turns captured
 ```
 

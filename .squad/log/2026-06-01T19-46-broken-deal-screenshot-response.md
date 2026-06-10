@@ -1,9 +1,9 @@
 # Session Log: Broken Deal Screenshot Response
 
-**Date:** 2026-06-01  
-**Triggered by:** Stephen Long (broken-deal screenshot via Copilot)  
-**HEAD at completion:** `99c1af0` (Frost — column-major wall enumeration)  
-**Status:** 3 of 4 fixes landed; round-2 Hicks cleanup in flight  
+**Date:** 2026-06-01
+**Triggered by:** Stephen Long (broken-deal screenshot via Copilot)
+**HEAD at completion:** `99c1af0` (Frost — column-major wall enumeration)
+**Status:** 3 of 4 fixes landed; round-2 Hicks cleanup in flight
 
 ---
 

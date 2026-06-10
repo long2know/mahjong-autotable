@@ -237,4 +237,3 @@ Key config (`appsettings.json`):
 See [`docs/known-limitations.md`](docs/known-limitations.md) for the
 current list (V2 rules gaps, single-game-per-instance pin on relay
 variants, etc.).
-

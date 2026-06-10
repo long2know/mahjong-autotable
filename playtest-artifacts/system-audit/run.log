@@ -70,7 +70,7 @@
   "lastGameAtNullable": true,
   "count": 84,
   "sample": [
-  
+
 [PASS] DB-1-schema — 6-db-persistence
         evidence: {"sqlitePath":"/tmp/mat-postfix.db","hasPlayerStatsTable":true,"lastGameAtNullable":true,"baselineRows":84,"schemaColumns":["PlayerId:TEXT NN","GamesPlayed:INTEGER NN","GamesWon:INTEGER NN","TotalScore:INTEGER NN","HighestSingleGameScore:INTEGER NN","LongestWinStreak:INTEGER NN",…
 [PASS] DB-2-identity-endpoint — 6-db-persistence
