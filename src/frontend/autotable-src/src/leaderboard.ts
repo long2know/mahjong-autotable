@@ -609,7 +609,14 @@ export function installLeaderboardSurface(): void {
       }
     }
     if (ratingStatus !== null) {
-      if (state.mode === 'rating' && state.ratingsAvailable === false) {
+      // Phase K Wave 1 — Bishop. When the ratings endpoint 404s
+      // `fetchOnce()` flips `state.mode` back to 'stats' and pins
+      // `ratingsAvailable=false`, so the banner condition must NOT
+      // re-check `state.mode === 'rating'` (otherwise the fallback
+      // mutation immediately suppresses the banner). The banner is
+      // gated on `ratingsAvailable === false` alone — that flag is
+      // only set after a real user-driven rating-mode fetch failed.
+      if (state.ratingsAvailable === false) {
         setElHidden(ratingStatus, false);
         ratingStatus.textContent = 'Ratings unavailable — showing stats.';
       } else {

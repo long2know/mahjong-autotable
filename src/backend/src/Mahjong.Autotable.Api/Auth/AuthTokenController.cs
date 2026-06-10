@@ -137,12 +137,11 @@ public sealed class AuthTokenController : ControllerBase
     ///         keys without missing a rotation window.</item>
     ///   <item><b>HS256:</b> retains the negative 404 — the body now
     ///         carries <c>{"reason":"jwt-algorithm-is-hs256","migrate-to":"RS256"}</c>
-    ///         so the migration target is wire-discoverable, and the
-    ///         cache header is tuned from <c>no-store</c> to
-    ///         <c>public, max-age=60</c> so CDNs can briefly absorb
-    ///         the negative without pinning it indefinitely (a
-    ///         60-second window keeps the lag-on-flip under one
-    ///         CDN-refresh cycle).</item>
+    ///         so the migration target is wire-discoverable. The cache
+    ///         header is pinned to <c>no-store</c> so a misconfigured
+    ///         CDN cannot 30-day-cache the 404 envelope and block the
+    ///         Phase L RS256 flip (the Wave-5 contract — see
+    ///         tests/e2e/jwks-endpoint-shape.spec.ts).</item>
     /// </list>
     /// </summary>
     [HttpGet(".well-known/jwks.json")]
@@ -181,7 +180,7 @@ public sealed class AuthTokenController : ControllerBase
             return Content(payload.Body, "application/json");
         }
 
-        Response.Headers.CacheControl = "public, max-age=60";
+        Response.Headers.CacheControl = "no-store";
         return StatusCode(StatusCodes.Status404NotFound, new
         {
             error = "JWKS document is not published for HMAC-signed tokens.",

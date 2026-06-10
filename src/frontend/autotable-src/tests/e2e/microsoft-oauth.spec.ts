@@ -29,6 +29,21 @@ async function mockProviders(page: Page, microsoftEnabled: boolean): Promise<voi
   }));
 }
 
+// The sign-in modal opener historically carried `signin-modal-open`
+// in selectors.md drafts but the shipped canonical chip is
+// `signin-button` (header CTA — see selectors.md §`signin-button`).
+// Try both so the spec is resilient to either landing.
+async function openSignInModalIfNeeded(page: Page): Promise<void> {
+  for (const tid of ['signin-modal-open', 'signin-button']) {
+    const opener = page.getByTestId(tid);
+    if (await opener.count() > 0) {
+      await opener.first().click().catch(() => undefined);
+      await page.waitForTimeout(200);
+      return;
+    }
+  }
+}
+
 test.describe('Phase K Wave 3 — Microsoft OAuth', () => {
   test.beforeEach(async ({}, testInfo) => {
     test.skip(
@@ -44,11 +59,7 @@ test.describe('Phase K Wave 3 — Microsoft OAuth', () => {
     await page.waitForTimeout(500);
 
     // Find the signin opener if needed.
-    const opener = page.getByTestId('signin-modal-open');
-    if (await opener.count() > 0) {
-      await opener.first().click().catch(() => undefined);
-      await page.waitForTimeout(200);
-    }
+    await openSignInModalIfNeeded(page);
 
     const btn = page.getByTestId('signin-provider-microsoft');
     if (await btn.count() === 0) {
@@ -68,11 +79,7 @@ test.describe('Phase K Wave 3 — Microsoft OAuth', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(500);
 
-    const opener = page.getByTestId('signin-modal-open');
-    if (await opener.count() > 0) {
-      await opener.first().click().catch(() => undefined);
-      await page.waitForTimeout(200);
-    }
+    await openSignInModalIfNeeded(page);
 
     const btn = page.getByTestId('signin-provider-microsoft');
     if (await btn.count() === 0) {
@@ -108,11 +115,7 @@ test.describe('Phase K Wave 3 — Microsoft OAuth', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(500);
 
-    const opener = page.getByTestId('signin-modal-open');
-    if (await opener.count() > 0) {
-      await opener.first().click().catch(() => undefined);
-      await page.waitForTimeout(200);
-    }
+    await openSignInModalIfNeeded(page);
 
     const btn = page.getByTestId('signin-provider-microsoft');
     const cnt = await btn.count();
