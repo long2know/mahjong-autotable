@@ -20,7 +20,17 @@ async function openSettings(page: Page): Promise<boolean> {
   const btn = page.getByTestId('settings-button');
   if (await btn.count() === 0) return false;
   await btn.click().catch(() => undefined);
-  await page.waitForTimeout(250);
+  // The settings drawer is lazy-loaded (lobby.ts:scheduleSettingsDrawerLazyMount);
+  // the first click triggers an async import and then a synthetic re-click that
+  // actually opens the drawer.  Wait for the drawer aside to become visible
+  // (CSS toggles `visibility: hidden` → `visible` with the open class).
+  const drawer = page.getByTestId('settings-drawer');
+  try {
+    await drawer.waitFor({ state: 'visible', timeout: 5_000 });
+  } catch {
+    // Drawer didn't open in time — let caller soft-pass.
+  }
+  await page.waitForTimeout(150);
   return true;
 }
 

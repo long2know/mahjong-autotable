@@ -68,7 +68,10 @@ test.describe('Phase K Wave 12 — ?action=replay&replayId=<id> routing', () => 
 
   test('valid replayId routes to /replay/<id> OR forward-staged',
     async ({ page }, testInfo) => {
-      await page.goto(`/?action=replay&replayId=${REPLAY_ID_VALID}`);
+      // Relative URL so the baseURL (/autotable/) prefix is preserved;
+      // a leading '/' would trip the root → /autotable/ meta-refresh
+      // and strip the query before the action-router can claim it.
+      await page.goto(`?action=replay&replayId=${REPLAY_ID_VALID}`);
       await page.waitForLoadState('domcontentloaded');
       // Allow the router to settle.
       await page.waitForTimeout(500);
@@ -85,7 +88,7 @@ test.describe('Phase K Wave 12 — ?action=replay&replayId=<id> routing', () => 
 
   test('invalid replayId shows 404 toast OR forward-staged',
     async ({ page }, testInfo) => {
-      await page.goto(`/?action=replay&replayId=${REPLAY_ID_INVALID}`);
+      await page.goto(`?action=replay&replayId=${REPLAY_ID_INVALID}`);
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(500);
       const showsToast = await showsNotFoundToast(page);
@@ -104,15 +107,32 @@ test.describe('Phase K Wave 12 — ?action=replay&replayId=<id> routing', () => 
 
   test('missing replayId falls back to lobby OR forward-staged',
     async ({ page }, testInfo) => {
-      await page.goto('/?action=replay');
+      await page.goto('?action=replay');
       await page.waitForLoadState('domcontentloaded');
-      const hash = await page.evaluate(() => window.location.hash || '');
+      // The router may history.replaceState the URL on the next
+      // microtask; tolerate a transient "execution context destroyed"
+      // by retrying the evaluate after a brief settle.
+      await page.waitForTimeout(300);
+      let hash = '';
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          hash = await page.evaluate(() => window.location.hash || '');
+          break;
+        } catch {
+          await page.waitForTimeout(250);
+        }
+      }
       const path = new URL(page.url()).pathname;
+      // The Playwright baseURL is `/autotable/`, so the lobby root
+      // path is `/autotable/` (no trailing query); accept both the
+      // bare-origin shape `'/'` for environments without the path
+      // prefix and the autotable-scoped variant.
       const fellBackToLobby =
         hash.includes('#/lobby')
         || hash.includes('#/new-game')
         || path === '/'
-        || path === '';
+        || path === ''
+        || /\/autotable\/?$/.test(path);
       if (!fellBackToLobby) {
         testInfo.annotations.push({
           type: 'forward-staged',

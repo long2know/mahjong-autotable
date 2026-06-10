@@ -1772,31 +1772,44 @@ function scheduleSpectatorFollowLazyMount(): void {
 function scheduleSettingsDrawerLazyMount(): void {
   const btn = document.getElementById('settings-button');
   if (btn === null) return;
-  let loaded = false;
   // First-click pre-warm: the module's own click handler is attached
   // inside `installSettingsDrawerV2()`, so the very first click only
   // triggers the load.  We re-fire `openDrawer()` post-import so the
   // user's first click also opens the drawer (no double-tap).
-  const load = async (opts: { openOnLoad: boolean } = { openOnLoad: false }): Promise<void> => {
-    if (loaded) return;
-    loaded = true;
-    const mod = await import('./settings-drawer');
-    mod.installSettingsDrawerV2();
-    if (opts.openOnLoad) {
-      // The module's openDrawer/closeDrawer are file-private; we get
-      // the same effect by dispatching a synthetic click after install.
-      const reBtn = document.getElementById('settings-button') as HTMLButtonElement | null;
-      // Use the drawer's open class to detect whether the install's
-      // own listener already opened it (e.g. fast user double-fired
-      // click → install's listener captured the second one).
-      const drawer = document.getElementById('settings-drawer-v2');
-      const alreadyOpen = drawer?.classList.contains('settings-drawer-v2-open') ?? false;
-      if (!alreadyOpen && reBtn !== null) reBtn.click();
-    }
+  //
+  // Race-fix (Ferro K-W27): keep the load promise sticky so the click
+  // handler can always `await` it before synthesising the post-install
+  // open click.  The previous shape early-returned from `load()` when
+  // the hover/focus pre-warm had already started the import, dropping
+  // the `openOnLoad` intent on the floor — so users who hovered the
+  // gear before clicking ended up with a closed drawer (and so did the
+  // Playwright `click()` action, which moves the mouse first and
+  // therefore fires `mouseenter` before `click`).
+  let loadPromise: Promise<void> | null = null;
+  const load = (): Promise<void> => {
+    if (loadPromise !== null) return loadPromise;
+    loadPromise = (async (): Promise<void> => {
+      const mod = await import('./settings-drawer');
+      mod.installSettingsDrawerV2();
+    })();
+    return loadPromise;
   };
   btn.addEventListener('mouseenter', () => { void load(); }, { once: true });
   btn.addEventListener('focus', () => { void load(); }, { once: true });
-  btn.addEventListener('click', () => { void load({ openOnLoad: true }); }, { once: true });
+  btn.addEventListener('click', () => {
+    void load().then(() => {
+      // After install completes (or right away when the pre-warm
+      // already finished it), synth-click the button so the freshly
+      // bound install handler opens the drawer.  Skip when the drawer
+      // is already open (e.g. the install's own handler captured a
+      // queued click before us).
+      const drawer = document.getElementById('settings-drawer-v2');
+      const alreadyOpen = drawer?.classList.contains('settings-drawer-v2-open') ?? false;
+      if (alreadyOpen) return;
+      const reBtn = document.getElementById('settings-button') as HTMLButtonElement | null;
+      reBtn?.click();
+    });
+  }, { once: true });
 }
 
 function scheduleProfilePageLazyMount(): void {
