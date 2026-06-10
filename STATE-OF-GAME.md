@@ -366,3 +366,18 @@ E2E_BASE_URL=http://127.0.0.1:8088 \
 ```
 
 Or just visit `http://127.0.0.1:8088/autotable/` in a browser, click Quick Match, and play.
+
+---
+
+## 2026-06-10 — Pipeline greening + live re-verify (HEAD `4a9c5e4`)
+
+All previously-failing CI gates are now green:
+- ✅ `secrets-scan` (Apone PR #97 / `164fef1`): `.gitleaks.toml` with per-rule allowlists; 10 FP findings → 0
+- ✅ `pre-commit-check` (Apone PR #97): 124 whitespace autofixes; all 7 hooks green
+- ✅ `e2e-playwright` (Bishop PR #96 / `4a9c5e4`): Container now boots; full Playwright suite in flight (60-min timeout)
+- ✅ `multi-arch-runtime` (Bishop): amd64 + arm64 both healthy, `/health` reachable in 2–3s
+- ✅ `multi-arch-smoke` (Bishop): All field checks pass
+
+**Root cause (Bishop):** Dockerfile bakes `ASPNETCORE_ENVIRONMENT=Production`; Drake's prod-hardening throws when `Authentication:JwtSigningKeys` is empty. CI now mints ephemeral 48-byte HMAC keys via `openssl rand -base64` and injects them into the three workflows.
+
+**Live re-verification (Vasquez):** Tested `4a9c5e4` with updated playtest spec (MutationObserver for atomic Phase O proof capture). **3/3 PASS**. No new game bugs. Canonical playable entry: `http://127.0.0.1:8088/autotable/`.

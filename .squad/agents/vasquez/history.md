@@ -3311,3 +3311,10 @@ Re-ran the spec against bundled fixes (gameId minting, dealMode=auto, tour opt-i
 Extended the spec with Phase H3 autoplay driver (state-driven emits every 250ms) and Phase N continuous-play measurement (90s window, PASS = ≥5 discards OR gameCompleted). All 3 runs reached game completion with the turn-banner and cursor affordances live (Phase O proof). Also patched Phase I/K to gate on `window.__autoplay.gameCompleteAt` so a Hu/draw resolution is no longer mis-reported as a frozen table.
 
 **Key learning:** The banner-grace tick (250ms pause after detecting `hasExtraHandTile()`) is critical — without it the discard banner is never captured by the autoplay observer because the runtime's state update races the reactive banner render. One-tick patience makes the observation reliable.
+
+### 2026-06-10 — Live re-verification on `4a9c5e4`: 3/3 PASS with spec hardening (test artifacts only)
+- Re-proved bare-URL `http://127.0.0.1:8088/autotable/` playability on main.
+- Initial runs showed 4 P0s in Phase O; root cause: test race, not game bug. Test's 250ms-poll-based fallback was snapshotting stale claim state.
+- Fix (test code only): MutationObserver on `#turn-banner` for atomic proof capture on state change; Phase O proof is now deterministic.
+- Verified: 3 consecutive runs, all Phase O assertions passing, no new game bugs.
+- **Key learning:** `MutationObserver` on target banner for atomic discard-cue snapshot beats polling for race-free Phase O proof capture.

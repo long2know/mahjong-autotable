@@ -1464,3 +1464,9 @@ WS endpoint + Changsha runtime + playtest artifacts) was preserved
 across the branch-off via explicit-path `git add`; never
 `git add -A` / `git add .`. Pre-push `git status --short` verified
 zero out-of-lane staging.
+
+### 2026-06-10 — Pipeline greening: secrets-scan + pre-commit-check (PR #97, `164fef1`)
+- `.gitleaks.toml` with per-rule `[[rules.allowlists]]` using `condition="AND"` (path AND regex) to whitelist 10 FP findings on docs/fixtures while preserving detection of new leak shapes (KEY: AND avoids false negatives if same file later hosts actual secrets with different patterns).
+- 124 pre-commit whitespace autofixes. Zero semantic code changes.
+- Post-merge verification: gitleaks rc=0, all 7 pre-commit hooks green, frontend/backend builds pass.
+- **Key learning:** `gitleaks` `condition="AND"` per-rule allowlists are the sweet spot for high-signal detection without whitelisting entire files that may grow real secrets later.

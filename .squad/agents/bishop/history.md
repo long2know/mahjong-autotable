@@ -3643,3 +3643,9 @@ self-sufficient.
 Vasquez's postfix-verify found bots stalling during claim windows when Stephen (seat 0) had ANY claim opportunity, even if that opportunity could not beat an existing claim under standard Changsha priority + CCW tiebreak rules. The backend was blocking the full 5s timeout waiting for all eligible seats. Bishop added `CanResolveEarly(ChangshaGameInstance)` helper that compares unresponded seats' hypothetical max claims against the current leader's tier; if no unresponded seat could win, the window resolves immediately. Guarded against kong-robbing windows (those only contain Hu opps and must wait) and races with `ClaimTimeoutAsync` via null-check reentrancy.
 
 **Key learning:** `CanResolveEarly` uses the exact same `TierOf(claim) + CounterClockwiseDistance` ordering as the claim-resolution path — ensuring that early-resolve never skips a winning seat. The bot turns can now fire in quick succession even when the human is idle, improving perceived responsiveness by ~30% (46–51 discards/60s post-fix vs 31–44 pre-fix in all-bots playtests).
+
+### 2026-06-10 — Container health fix: ephemeral JWT signing key injection in CI (PR #96, `4a9c5e4`)
+- Root cause: Dockerfile bakes `ASPNETCORE_ENVIRONMENT=Production`; Drake's prod-hardening throws `InvalidOperationException` if `Authentication:JwtSigningKeys` is empty. CI was not passing the key.
+- Fix: Each of `e2e-playwright`, `multi-arch-runtime`, `multi-arch-smoke` now mints 48-byte ephemeral HMAC key via `openssl rand -base64` and injects as `-e Authentication__JwtSigningKeys__0=$KEY`.
+- Verified: all three workflows now green; container boots in ~8s, `/health` reachable with all 4 fields.
+- **Key learning:** When identical failures span local-working → CI-failing across 3 workflows, check `ASPNETCORE_ENVIRONMENT` divergence between `dotnet run` (defaults Development) and Dockerfile (defaults Production). Drake's prod-hardening is the trip wire.

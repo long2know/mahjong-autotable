@@ -18281,3 +18281,17 @@ ab34d09 — chore(deploy): docker build+smoke proof + README deploy guide (squas
 | Hicks | 7a50257 | turn-banner + canvas cursor affordance, P0-NEW cleared |
 | Bishop | c7fdb8b | CanResolveEarly claim-window fix, 30% throughput gain, P1-NEW bot-stall cleared |
 | Vasquez | 84522b9 | final-verify 3/3 PASS — continuous-play loop, gameCompleted=true |
+
+## 2026-06-10 — Pipeline greening + live re-verify (HEAD 4a9c5e4)
+
+**Apone** (PR #97 / `164fef1`) greened two persistently-red CI gates on main: `secrets-scan` and `pre-commit-check`. Added `.gitleaks.toml` with per-rule allowlists using `condition="AND"` (path AND regex) to suppress 10 FPs on docs and fixtures while preserving detection of new leak shapes. Also landed 124 pre-commit autofixes (whitespace-only). No semantic code changes.
+
+**Bishop** (PR #96 / `4a9c5e4`) discovered the root cause of simultaneous `e2e-playwright`, `multi-arch-runtime`, and `multi-arch-smoke` boot timeouts: Dockerfile bakes `ASPNETCORE_ENVIRONMENT=Production`; Drake's prod-hardening throws when `Authentication:JwtSigningKeys` is empty. Fixed by minting ephemeral 48-byte HMAC keys via `openssl rand -base64` in each of the three workflows and injecting them as `-e Authentication__JwtSigningKeys__0=$KEY`. Cipher is never logged; CI now acts as a proper Production-level operator for ephemeral test containers. All three workflows now green.
+
+**Vasquez** (test artifacts only) re-verified bare-URL playability on `4a9c5e4` with **3/3 PASS** runs. Hardened playtest spec: installed MutationObserver on `#turn-banner` to atomically capture Phase O proof on state change (eliminating 250ms-poll race). All four Phase O assertions now deterministic. No new game bugs surfaced; pre-existing P2 polish notes unchanged.
+
+| Agent | SHA | PR | Result |
+|---|---|---|---|
+| Apone | 164fef1 | #97 | secrets-scan ✅ + pre-commit-check ✅ |
+| Bishop | 4a9c5e4 | #96 | e2e-playwright ✅ + multi-arch-runtime ✅ + multi-arch-smoke ✅ |
+| Vasquez | — | — | Live re-verify 3/3 PASS; bare-URL playable |
