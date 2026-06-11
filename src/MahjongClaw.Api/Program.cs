@@ -2834,8 +2834,7 @@ static async Task ExecuteMeldClaimAsync(
             var matchingTile = game.Tiles.FirstOrDefault(te =>
                 te.PlayerId == claim.PlayerId &&
                 string.Equals(te.Location, "Hand", StringComparison.OrdinalIgnoreCase) &&
-                te.Suit == claimTile.Suit.ToString() &&
-                te.Rank == claimTile.Rank);
+                TileEntityMatches(te, claimTile));
 
             if (matchingTile is not null)
             {
