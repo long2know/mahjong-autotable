@@ -4140,6 +4140,46 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_AllowsKongThreatDiscard_WhenOnlyWinningPathHasMultipleCopies()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 9)
+        };
+
+        var opponentMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9)
+        };
+
+        var visibleTiles = opponentMeldTiles
+            .Concat(new[]
+            {
+                new Tile(TileSuit.Dots, 3),
+                new Tile(TileSuit.Dots, 3),
+                new Tile(TileSuit.Dots, 3),
+                new Tile(TileSuit.Dots, 3)
+            })
+            .ToList();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            opponentMeldTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 9));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_ProtectsLastLiveChangshaSmallWinSingleton_WhenNoStrongAlternatives()
     {
         var handTiles = new List<Tile>

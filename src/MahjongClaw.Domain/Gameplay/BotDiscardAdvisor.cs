@@ -264,6 +264,31 @@ public static class BotDiscardAdvisor
             allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
         }
 
+        if (allowBreakingSoleChangshaSmallWinPairForPureSuitLean
+            && !hasDominantSuitLiveSmallWinCandidate
+            && changshaDominantSuit.HasValue)
+        {
+            var hasDeadDominantSuitSmallWinSingleton = handCounts.Any(entry =>
+            {
+                if (entry.Value != 1
+                    || !Changsha258Ruleset.IsSmallWinPair(entry.Key)
+                    || entry.Key.Suit != changshaDominantSuit.Value)
+                {
+                    return false;
+                }
+
+                ownedCounts.TryGetValue(entry.Key, out var ownedCount);
+                visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+
+                return 4 - ownedCount - visibleCount == 0;
+            });
+
+            if (hasDeadDominantSuitSmallWinSingleton)
+            {
+                allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+            }
+        }
+
         var candidates = handTiles
             .Select((tile, index) =>
             {
@@ -1322,7 +1347,20 @@ public static class BotDiscardAdvisor
                         && multiCopyThreatCount > 1
                         && bestThreatCandidate.WinningDrawOuts <= 1;
 
-                    if (canAvoidThreatWhenOnlyMultiCopyThreatHasOuts
+                    var multiCopyThreatCandidates = candidates
+                        .Where(candidate => opponentKongThreatTiles.Contains(candidate.Tile)
+                            && handCounts.TryGetValue(candidate.Tile, out var threatCount)
+                            && threatCount > 1)
+                        .ToList();
+
+                    var allowThreatWhenNoWinningOuts = bestOverallOuts == 0
+                        && multiCopyThreatCandidates.Count > 0;
+
+                    if (allowThreatWhenNoWinningOuts)
+                    {
+                        candidates = multiCopyThreatCandidates;
+                    }
+                    else if (canAvoidThreatWhenOnlyMultiCopyThreatHasOuts
                         || (!losesAllWinningOuts && ((withinOutsTolerance && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies)))
                     {
                         candidates = nonThreatCandidates;
