@@ -289,6 +289,23 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (allowBreakingSoleChangshaSmallWinPairForPureSuitLean
+            && changshaDominantSuit.HasValue
+            && visibleCounts.Count > 0
+            && !HasDominantSuitStrongSmallWinCandidate(
+                changshaDominantSuit.Value,
+                handCounts,
+                ownedCounts,
+                visibleCounts)
+            && HasNearDeadDominantSuitSmallWinSingleton(
+                changshaDominantSuit.Value,
+                handCounts,
+                ownedCounts,
+                visibleCounts))
+        {
+            allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+        }
+
         var candidates = handTiles
             .Select((tile, index) =>
             {
@@ -2702,6 +2719,78 @@ public static class BotDiscardAdvisor
                 }
             }
             else if (remainingCopies >= 2)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasDominantSuitStrongSmallWinCandidate(
+        TileSuit dominantSuit,
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        foreach (var tile in Changsha258SmallWinPairTiles)
+        {
+            if (tile.Suit != dominantSuit)
+            {
+                continue;
+            }
+
+            handCounts.TryGetValue(tile, out var handCount);
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+
+            var remainingCopies = 4 - ownedCount - visibleCount;
+            if (handCount >= 2)
+            {
+                return true;
+            }
+
+            if (handCount == 1)
+            {
+                if (remainingCopies >= 2)
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (remainingCopies >= 3)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasNearDeadDominantSuitSmallWinSingleton(
+        TileSuit dominantSuit,
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        foreach (var tile in Changsha258SmallWinPairTiles)
+        {
+            if (tile.Suit != dominantSuit)
+            {
+                continue;
+            }
+
+            if (!handCounts.TryGetValue(tile, out var handCount) || handCount != 1)
+            {
+                continue;
+            }
+
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+
+            if (4 - ownedCount - visibleCount == 1)
             {
                 return true;
             }
