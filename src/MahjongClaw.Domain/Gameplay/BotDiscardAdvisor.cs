@@ -1564,39 +1564,25 @@ public static class BotDiscardAdvisor
                 }
 
                 var distinctOrphanTypes = orphanTiles.Distinct().Count();
-                if (nonOrphanCount is > 0 and <= 3)
+                if (nonOrphanCount is > 0 and <= 3 && distinctOrphanTypes >= 8)
                 {
-                    if (distinctOrphanTypes >= 9)
+                    var hasLiveThirteenOrphansPath = HasLiveThirteenOrphansPath(
+                        ownedCounts,
+                        visibleCounts,
+                        distinctOrphanTypes);
+
+                    if (hasLiveThirteenOrphansPath)
                     {
-                        var hasLiveThirteenOrphansPath = HasLiveThirteenOrphansPath(
-                            ownedCounts,
-                            visibleCounts,
-                            distinctOrphanTypes);
+                        var nonOrphanCandidates = candidates
+                            .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
+                            .ToList();
 
-                        if (hasLiveThirteenOrphansPath)
+                        if (nonOrphanCandidates.Count > 0)
                         {
-                            var nonOrphanCandidates = candidates
-                                .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
-                                .ToList();
-
-                            if (nonOrphanCandidates.Count > 0)
-                            {
-                                candidates = nonOrphanCandidates;
-                            }
-                        }
-                        else
-                        {
-                            var orphanCandidates = candidates
-                                .Where(candidate => candidate.Tile.IsHonor || IsTerminalSuitedTile(candidate.Tile))
-                                .ToList();
-
-                            if (orphanCandidates.Count > 0)
-                            {
-                                candidates = orphanCandidates;
-                            }
+                            candidates = nonOrphanCandidates;
                         }
                     }
-                    else if (distinctOrphanTypes >= 8)
+                    else
                     {
                         var orphanCandidates = candidates
                             .Where(candidate => candidate.Tile.IsHonor || IsTerminalSuitedTile(candidate.Tile))

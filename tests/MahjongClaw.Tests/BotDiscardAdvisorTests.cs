@@ -2859,6 +2859,27 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithChineseOfficialEightDistinctOrphans_DiscardsNonOrphanTile()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().BeOneOf(new Tile(TileSuit.Dots, 4), new Tile(TileSuit.Dots, 5), new Tile(TileSuit.Dots, 6));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithChineseOfficialNearThirteenOrphans_WhenMissingOrphanIsDead_DiscardsOrphanTile()
     {
         var handTiles = new List<Tile>
