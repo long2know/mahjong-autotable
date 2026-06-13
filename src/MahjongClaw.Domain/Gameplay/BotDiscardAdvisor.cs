@@ -1134,7 +1134,8 @@ public static class BotDiscardAdvisor
                             return false;
                         }
 
-                        return !HasInHandSequenceAnchor(candidate.Tile, handCounts);
+                        return !HasInHandSequenceAnchor(candidate.Tile, handCounts)
+                            && !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
                     })
                     .ToList();
 
