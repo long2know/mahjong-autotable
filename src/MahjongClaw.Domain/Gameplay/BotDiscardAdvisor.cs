@@ -268,24 +268,31 @@ public static class BotDiscardAdvisor
             && !hasDominantSuitLiveSmallWinCandidate
             && changshaDominantSuit.HasValue)
         {
-            var hasDeadDominantSuitSmallWinSingleton = handCounts.Any(entry =>
-            {
-                if (entry.Value != 1
-                    || !Changsha258Ruleset.IsSmallWinPair(entry.Key)
-                    || entry.Key.Suit != changshaDominantSuit.Value)
-                {
-                    return false;
-                }
-
-                ownedCounts.TryGetValue(entry.Key, out var ownedCount);
-                visibleCounts.TryGetValue(entry.Key, out var visibleCount);
-
-                return 4 - ownedCount - visibleCount == 0;
-            });
-
-            if (hasDeadDominantSuitSmallWinSingleton)
+            if (visibleCounts.Count > 0)
             {
                 allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+            }
+            else
+            {
+                var hasDeadDominantSuitSmallWinSingleton = handCounts.Any(entry =>
+                {
+                    if (entry.Value != 1
+                        || !Changsha258Ruleset.IsSmallWinPair(entry.Key)
+                        || entry.Key.Suit != changshaDominantSuit.Value)
+                    {
+                        return false;
+                    }
+
+                    ownedCounts.TryGetValue(entry.Key, out var ownedCount);
+                    visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+
+                    return 4 - ownedCount - visibleCount == 0;
+                });
+
+                if (hasDeadDominantSuitSmallWinSingleton)
+                {
+                    allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+                }
             }
         }
 
