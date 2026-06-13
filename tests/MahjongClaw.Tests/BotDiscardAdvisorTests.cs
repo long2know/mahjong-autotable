@@ -679,6 +679,45 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotBreakOffSuitSmallWinPair_WhenDominantSuitSmallWinOutsNearlyDead()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6)
+        };
+
+        var visibleTiles = new List<Tile>();
+        foreach (var rank in new[] { 2, 5 })
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                visibleTiles.Add(new Tile(TileSuit.Characters, rank));
+            }
+        }
+
+        for (var i = 0; i < 3; i++)
+        {
+            visibleTiles.Add(new Tile(TileSuit.Characters, 8));
+        }
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 5));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_AllowsDiscardingExtraCopyOfSoleSmallWinPair_WhenTriplet()
     {
         var tiles = new List<Tile>

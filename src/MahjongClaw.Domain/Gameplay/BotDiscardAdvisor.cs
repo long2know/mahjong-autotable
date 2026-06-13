@@ -297,11 +297,15 @@ public static class BotDiscardAdvisor
                 handCounts,
                 ownedCounts,
                 visibleCounts)
-            && HasNearDeadDominantSuitSmallWinSingleton(
-                changshaDominantSuit.Value,
-                handCounts,
-                ownedCounts,
-                visibleCounts))
+            && (HasNearDeadDominantSuitSmallWinSingleton(
+                    changshaDominantSuit.Value,
+                    handCounts,
+                    ownedCounts,
+                    visibleCounts)
+                || HasNearDeadDominantSuitSmallWinOuts(
+                    changshaDominantSuit.Value,
+                    ownedCounts,
+                    visibleCounts)))
         {
             allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
         }
@@ -2797,6 +2801,33 @@ public static class BotDiscardAdvisor
         }
 
         return false;
+    }
+
+    private static bool HasNearDeadDominantSuitSmallWinOuts(
+        TileSuit dominantSuit,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        var remainingCopies = 0;
+
+        foreach (var tile in Changsha258SmallWinPairTiles)
+        {
+            if (tile.Suit != dominantSuit)
+            {
+                continue;
+            }
+
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+
+            remainingCopies += Math.Max(0, 4 - ownedCount - visibleCount);
+            if (remainingCopies > 1)
+            {
+                return false;
+            }
+        }
+
+        return remainingCopies <= 1;
     }
 
     private static int? TrySelectChangshaDeadSmallWinSingletonDiscardIndex(
