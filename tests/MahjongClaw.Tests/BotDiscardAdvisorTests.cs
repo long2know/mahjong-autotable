@@ -4787,5 +4787,46 @@ public class BotDiscardAdvisorTests
             new Tile(TileSuit.Characters, 7),
             new Tile(TileSuit.Characters, 8));
     }
+
+    [Fact]
+    public void SelectDiscardIndex_PrioritizesWinningOuts_WhenHeuristicsCollapseToZero()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 8),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Characters, 8),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Bamboos, 4)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Characters, 8),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Characters, 3)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 7));
+    }
 }
 

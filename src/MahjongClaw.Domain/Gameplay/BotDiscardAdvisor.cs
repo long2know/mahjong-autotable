@@ -380,6 +380,8 @@ public static class BotDiscardAdvisor
             })
             .ToList();
 
+        var allCandidates = candidates;
+
         if (ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias && visibleCounts.Count > 0)
         {
             var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
@@ -1780,6 +1782,22 @@ public static class BotDiscardAdvisor
                         .Where(candidate => candidate.BigWinningDrawOutCopies == maxBigWinCopies)
                         .ToList();
                 }
+            }
+        }
+
+        if (prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts) == 0)
+        {
+            var bestOverallOuts = allCandidates.Max(candidate => candidate.WinningDrawOuts);
+            if (bestOverallOuts > 0)
+            {
+                prioritizedCandidates = allCandidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                    .ToList();
+
+                var bestOverallOutCopies = prioritizedCandidates.Max(candidate => candidate.WinningDrawOutCopies);
+                prioritizedCandidates = prioritizedCandidates
+                    .Where(candidate => candidate.WinningDrawOutCopies == bestOverallOutCopies)
+                    .ToList();
             }
         }
 
