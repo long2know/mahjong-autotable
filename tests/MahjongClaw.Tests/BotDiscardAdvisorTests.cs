@@ -400,6 +400,27 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotBreakSoleSmallWinPair_WhenOffSuitMeldBlocksPureSuit()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2)
+        };
+        var meldTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5), new(TileSuit.Characters, 5)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, meldTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Bamboos, 2));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesKeepingConcealedKong_WhenChangsha258Ruleset()
     {
         var tiles = new List<Tile>

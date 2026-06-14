@@ -113,6 +113,15 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (hasChangshaPureSuitLean && meldTiles.Count > 0 && changshaDominantSuit.HasValue)
+        {
+            if (meldTiles.Any(tile => tile.IsHonor || tile.Suit != changshaDominantSuit.Value))
+            {
+                hasChangshaPureSuitLean = false;
+                changshaDominantSuit = null;
+            }
+        }
+
         var sevenPairsPairCount = meldTiles.Count == 0
             ? handCounts.Sum(static entry => entry.Value / 2)
             : 0;
