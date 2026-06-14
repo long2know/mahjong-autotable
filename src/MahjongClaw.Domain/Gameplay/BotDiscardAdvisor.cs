@@ -280,7 +280,31 @@ public static class BotDiscardAdvisor
         {
             if (visibleCounts.Count > 0)
             {
-                allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+                var dominantSuitSmallWinOutsDead = AreDominantSuitSmallWinOutsDead(
+                    changshaDominantSuit.Value,
+                    ownedCounts,
+                    visibleCounts);
+                var hasDeadDominantSuitSmallWinSingleton = handCounts.Any(entry =>
+                {
+                    if (entry.Value != 1
+                        || !Changsha258Ruleset.IsSmallWinPair(entry.Key)
+                        || entry.Key.Suit != changshaDominantSuit.Value)
+                    {
+                        return false;
+                    }
+
+                    ownedCounts.TryGetValue(entry.Key, out var ownedCount);
+                    visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+
+                    return 4 - ownedCount - visibleCount == 0;
+                });
+
+                if (!hasChangshaDominantSuitTriplet
+                    || !dominantSuitSmallWinOutsDead
+                    || hasDeadDominantSuitSmallWinSingleton)
+                {
+                    allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+                }
             }
             else
             {
@@ -381,6 +405,11 @@ public static class BotDiscardAdvisor
             .ToList();
 
         var allCandidates = candidates;
+        var filteredByPureSuit = false;
+        var filteredByNearDeadOffRankPair = false;
+        var filteredByDeadPair = false;
+        var filteredByDeadSuitedSingleton = false;
+        var filteredByKongThreatAvoidance = false;
 
         if (ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias && visibleCounts.Count > 0)
         {
@@ -934,9 +963,10 @@ public static class BotDiscardAdvisor
                 var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
                     || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadOffRankPairOutsTolerance;
 
-                if (withinOutsTolerance && withinCopyTolerance)
+                if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
                 {
                     candidates = nearDeadOffRankPairCandidates;
+                    filteredByNearDeadOffRankPair = true;
                 }
             }
         }
@@ -1096,7 +1126,7 @@ public static class BotDiscardAdvisor
 
         if (ruleset == MahjongRuleset.ChineseOfficial && visibleCounts.Count > 0 && sevenPairsPairCount < 6)
         {
-            var filteredByDeadSuitedSingleton = false;
+            filteredByDeadSuitedSingleton = false;
             var deadSingletonCandidates = candidates
                 .Where(candidate =>
                 {
@@ -1134,7 +1164,7 @@ public static class BotDiscardAdvisor
             }
 
             var pairCount = handCounts.Count(entry => entry.Value >= 2 && !entry.Key.IsFlower);
-            var filteredByDeadPair = false;
+            filteredByDeadPair = false;
             if (!filteredByDeadSuitedSingleton && pairCount >= 2)
             {
                 var deadPairCandidates = candidates
@@ -1147,7 +1177,8 @@ public static class BotDiscardAdvisor
                         }
 
                         return !HasInHandSequenceAnchor(candidate.Tile, handCounts)
-                            && !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                            && (IsTerminalSuitedTile(candidate.Tile)
+                                || !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts));
                     })
                     .ToList();
 
@@ -1450,6 +1481,7 @@ public static class BotDiscardAdvisor
                         || (!losesAllWinningOuts && ((withinOutsTolerance && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies)))
                     {
                         candidates = nonThreatCandidates;
+                        filteredByKongThreatAvoidance = true;
                     }
                 }
             }
@@ -1507,6 +1539,7 @@ public static class BotDiscardAdvisor
                     if (offSuitCandidates.Count > 0)
                     {
                         candidates = offSuitCandidates;
+                        filteredByPureSuit = true;
                     }
                 }
             }
@@ -1785,7 +1818,15 @@ public static class BotDiscardAdvisor
             }
         }
 
-        if (prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts) == 0)
+        var allowWinningOutsOverride = !(filteredByPureSuit
+            || filteredByNearDeadOffRankPair
+            || filteredByDeadPair
+            || filteredByDeadOffRankPair
+            || filteredByDeadSingleton
+            || filteredByDeadSuitedSingleton
+            || filteredByKongThreatAvoidance);
+
+        if (allowWinningOutsOverride && prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts) == 0)
         {
             var bestOverallOuts = allCandidates.Max(candidate => candidate.WinningDrawOuts);
             if (bestOverallOuts > 0)
@@ -2908,7 +2949,31 @@ public static class BotDiscardAdvisor
             }
         }
 
-        return remainingCopies <= 1;
+        return remainingCopies == 1;
+    }
+
+    private static bool AreDominantSuitSmallWinOutsDead(
+        TileSuit dominantSuit,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        foreach (var tile in Changsha258SmallWinPairTiles)
+        {
+            if (tile.Suit != dominantSuit)
+            {
+                continue;
+            }
+
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+
+            if (4 - ownedCount - visibleCount > 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static int? TrySelectChangshaDeadSmallWinSingletonDiscardIndex(
