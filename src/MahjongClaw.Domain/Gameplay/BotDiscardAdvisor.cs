@@ -2950,16 +2950,19 @@ public static class BotDiscardAdvisor
             .Where(entry => entry.RemainingCopies <= 0)
             .ToList();
 
-        if (liveSmallWinSingletons.Count != 1 || deadSmallWinSingletons.Count == 0)
+        if (deadSmallWinSingletons.Count == 0)
         {
             return null;
         }
 
         var pairCount = handCounts.Count(entry => entry.Value >= 2);
-        var liveSingleton = liveSmallWinSingletons[0];
-        if (liveSingleton.RemainingCopies < 2 && pairCount > 0)
+        if (liveSmallWinSingletons.Count == 1)
         {
-            return null;
+            var liveSingleton = liveSmallWinSingletons[0];
+            if (liveSingleton.RemainingCopies < 2 && pairCount > 0)
+            {
+                return null;
+            }
         }
 
         var deadTiles = deadSmallWinSingletons.Select(entry => entry.Tile).ToHashSet();
