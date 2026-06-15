@@ -103,6 +103,9 @@ public static class BotDiscardAdvisor
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
         var ownedTiles = handTiles.Concat(meldTiles).ToList();
+        var discardOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(handTiles, meldTiles, visibleCounts, index, ruleset))
+            .ToList();
         var hasChangshaPureSuitLean = false;
         TileSuit? changshaDominantSuit = null;
         if (ruleset == MahjongRuleset.Changsha258)
@@ -154,11 +157,21 @@ public static class BotDiscardAdvisor
             }
         }
 
-        var enforceSmallWinPairBias = ruleset == MahjongRuleset.Changsha258
-            && !Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
-
-        var hasLiveSmallWinPairCandidate = enforceSmallWinPairBias
+        var bigWinCandidate = ruleset == MahjongRuleset.Changsha258
+            && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
+        var enforceSmallWinPairBias = ruleset == MahjongRuleset.Changsha258 && !bigWinCandidate;
+        var hasPotentialSmallWinPairCandidate = ruleset == MahjongRuleset.Changsha258
             && HasLiveSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts, ruleset);
+
+        if (ruleset == MahjongRuleset.Changsha258
+            && !enforceSmallWinPairBias
+            && hasPotentialSmallWinPairCandidate
+            && discardOutSummaries.Max(summary => summary.BigWinTileTypes) == 0)
+        {
+            enforceSmallWinPairBias = true;
+        }
+
+        var hasLiveSmallWinPairCandidate = enforceSmallWinPairBias && hasPotentialSmallWinPairCandidate;
 
         if (enforceSmallWinPairBias && !hasLiveSmallWinPairCandidate)
         {
@@ -365,7 +378,7 @@ public static class BotDiscardAdvisor
         var candidates = handTiles
             .Select((tile, index) =>
             {
-                var winningOutSummary = CountWinningDrawOutsAfterDiscard(handTiles, meldTiles, visibleCounts, index, ruleset);
+                var winningOutSummary = discardOutSummaries[index];
                 ownedCounts.TryGetValue(tile, out var ownedCount);
                 visibleCounts.TryGetValue(tile, out var visibleCount);
                 var remainingCopies = Math.Max(0, 4 - ownedCount - visibleCount);
