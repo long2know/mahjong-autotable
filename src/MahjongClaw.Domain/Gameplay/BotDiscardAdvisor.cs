@@ -298,6 +298,39 @@ public static class BotDiscardAdvisor
             allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
         }
 
+        if (!allowBreakingSoleChangshaSmallWinPairForPureSuitLean
+            && hasChangshaPureSuitLean
+            && soleChangshaSmallWinPairTile is not null
+            && changshaDominantSuit.HasValue
+            && soleChangshaSmallWinPairTile.Suit != changshaDominantSuit.Value
+            && !hasDominantSuitLiveSmallWinCandidate
+            && visibleCounts.Count > 0)
+        {
+            var dominantSuitSmallWinOutsDead = AreDominantSuitSmallWinOutsDead(
+                changshaDominantSuit.Value,
+                ownedCounts,
+                visibleCounts);
+            var hasDeadDominantSuitSmallWinSingleton = handCounts.Any(entry =>
+            {
+                if (entry.Value != 1
+                    || !Changsha258Ruleset.IsSmallWinPair(entry.Key)
+                    || entry.Key.Suit != changshaDominantSuit.Value)
+                {
+                    return false;
+                }
+
+                ownedCounts.TryGetValue(entry.Key, out var ownedCount);
+                visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+
+                return 4 - ownedCount - visibleCount == 0;
+            });
+
+            if (dominantSuitSmallWinOutsDead && !hasDeadDominantSuitSmallWinSingleton)
+            {
+                allowBreakingSoleChangshaSmallWinPairForPureSuitLean = true;
+            }
+        }
+
         if (allowBreakingSoleChangshaSmallWinPairForPureSuitLean
             && !hasDominantSuitLiveSmallWinCandidate
             && changshaDominantSuit.HasValue)
@@ -323,8 +356,7 @@ public static class BotDiscardAdvisor
                     return 4 - ownedCount - visibleCount == 0;
                 });
 
-                if (!hasChangshaDominantSuitTriplet
-                    || !dominantSuitSmallWinOutsDead
+                if (!dominantSuitSmallWinOutsDead
                     || hasDeadDominantSuitSmallWinSingleton)
                 {
                     allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
@@ -1576,6 +1608,27 @@ public static class BotDiscardAdvisor
                     {
                         candidates = offSuitCandidates;
                         filteredByPureSuit = true;
+
+                        if (ruleset == MahjongRuleset.Changsha258
+                            && allowBreakingSoleChangshaSmallWinPairForPureSuitLean
+                            && soleChangshaSmallWinPairTile is not null
+                            && changshaDominantSuit.HasValue
+                            && !hasDominantSuitLiveSmallWinCandidate
+                            && visibleCounts.Count > 0
+                            && AreDominantSuitSmallWinOutsDead(
+                                changshaDominantSuit.Value,
+                                ownedCounts,
+                                visibleCounts))
+                        {
+                            var offSuitSmallWinPairCandidates = candidates
+                                .Where(candidate => candidate.Tile.Equals(soleChangshaSmallWinPairTile))
+                                .ToList();
+
+                            if (offSuitSmallWinPairCandidates.Count > 0)
+                            {
+                                candidates = offSuitSmallWinPairCandidates;
+                            }
+                        }
                     }
                 }
             }
