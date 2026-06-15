@@ -716,6 +716,32 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PrioritizesInvalidTile_WhenSmallWinSingletonAnchorsChow()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Dots, 9)
+        };
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 9)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), visibleTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesKeepingRequiredSmallWinPair_WhenChangsha258Ruleset()
     {
         var tiles = new List<Tile>

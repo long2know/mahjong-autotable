@@ -76,6 +76,17 @@ public static class BotDiscardAdvisor
             throw new ArgumentException("Tiles cannot contain null values.", nameof(handTiles));
         }
 
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            for (var i = 0; i < handTiles.Count; i++)
+            {
+                if (!Changsha258Ruleset.IsAllowedTile(handTiles[i]))
+                {
+                    return i;
+                }
+            }
+        }
+
         // visibleTiles should represent all visible tiles (discards + melds). visibleMeldTiles
         // is reserved for kong-threat weighting, so avoid double-counting meld visibility here.
         var visibleCounts = visibleTiles
