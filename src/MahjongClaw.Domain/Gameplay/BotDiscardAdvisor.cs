@@ -1153,7 +1153,12 @@ public static class BotDiscardAdvisor
                         return false;
                     }
 
-                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                    if (Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
+                    {
+                        return false;
+                    }
+
+                    return !HasInHandSequenceAnchor(candidate.Tile, handCounts);
                 })
                 .ToList();
 

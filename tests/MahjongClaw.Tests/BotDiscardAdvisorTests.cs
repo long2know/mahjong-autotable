@@ -2426,6 +2426,37 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleTiles_DiscardsNearDeadSingleton_WhenChangshaPairSecuredAndNoSequenceAnchor()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 9)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 7)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), visibleTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 7));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleTiles_DoesNotDiscardDeadOffRankPair_WhenChowPotentialExists()
     {
         var handTiles = new List<Tile>
