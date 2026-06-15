@@ -202,6 +202,16 @@ public static class BotDiscardAdvisor
             && soleChangshaSmallWinPairTile.Suit != changshaDominantSuit.Value
             && hasChangshaDominantSuitTriplet;
 
+        if (allowBreakingSoleChangshaSmallWinPairForPureSuitLean
+            && enforceSmallWinPairBias
+            && changshaDominantSuit.HasValue
+            && visibleCounts.Count == 0
+            && !handTiles.Any(tile => Changsha258Ruleset.IsSmallWinPair(tile)
+                && tile.Suit == changshaDominantSuit.Value))
+        {
+            allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+        }
+
         var hasSmallWinTileInHand = enforceSmallWinPairBias
             && handTiles.Any(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
 
