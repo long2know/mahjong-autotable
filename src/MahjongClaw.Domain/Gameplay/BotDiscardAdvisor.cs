@@ -1394,6 +1394,18 @@ public static class BotDiscardAdvisor
             });
         }
 
+        if (promotableKongTiles.Count > 0)
+        {
+            var nonPromotableKongCandidates = candidates
+                .Where(candidate => !promotableKongTiles.Contains(candidate.Tile))
+                .ToList();
+
+            if (nonPromotableKongCandidates.Count > 0)
+            {
+                candidates = nonPromotableKongCandidates;
+            }
+        }
+
         if (concealedKongTiles.Count > 0 || promotableKongTiles.Count > 0)
         {
             var protectedKongTiles = new HashSet<Tile>(concealedKongTiles);
@@ -1914,6 +1926,18 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (promotableKongTiles.Count > 0)
+        {
+            var nonPromotableKongCandidates = prioritizedCandidates
+                .Where(candidate => !promotableKongTiles.Contains(candidate.Tile))
+                .ToList();
+
+            if (nonPromotableKongCandidates.Count > 0)
+            {
+                prioritizedCandidates = nonPromotableKongCandidates;
+            }
+        }
+
         var lowestScore = prioritizedCandidates.Min(candidate => candidate.Score);
         var lowestScoreCandidates = prioritizedCandidates
             .Where(candidate => candidate.Score == lowestScore)
@@ -1928,7 +1952,7 @@ public static class BotDiscardAdvisor
                 || (maxSmallWinOuts == 0 && !hasSmallWinTileInHand)
                 || (ruleset == MahjongRuleset.Changsha258 && !lowestScoreHasSmallWinTile));
 
-        return prioritizedCandidates
+        var orderedPrioritizedCandidates = prioritizedCandidates
             .OrderBy(candidate => candidate.Score)
             .ThenBy(candidate => useRemainingCopyTieBreaker ? candidate.RemainingCopies : 0)
             .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
@@ -1938,8 +1962,33 @@ public static class BotDiscardAdvisor
             .ThenBy(candidate => candidate.Tile.Wind.HasValue ? (int)candidate.Tile.Wind.Value : -1)
             .ThenBy(candidate => candidate.Tile.Dragon.HasValue ? (int)candidate.Tile.Dragon.Value : -1)
             .ThenBy(candidate => candidate.Index)
-            .First()
-            .Index;
+            .ToList();
+
+        var selectedCandidate = orderedPrioritizedCandidates[0];
+        if (promotableKongTiles.Count > 0 && promotableKongTiles.Contains(selectedCandidate.Tile))
+        {
+            var alternateCandidate = orderedPrioritizedCandidates
+                .FirstOrDefault(candidate => !promotableKongTiles.Contains(candidate.Tile));
+
+            alternateCandidate ??= allCandidates
+                .OrderBy(candidate => candidate.Score)
+                .ThenBy(candidate => useRemainingCopyTieBreaker ? candidate.RemainingCopies : 0)
+                .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
+                .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
+                .ThenBy(candidate => candidate.Tile.Suit)
+                .ThenBy(candidate => candidate.Tile.Rank)
+                .ThenBy(candidate => candidate.Tile.Wind.HasValue ? (int)candidate.Tile.Wind.Value : -1)
+                .ThenBy(candidate => candidate.Tile.Dragon.HasValue ? (int)candidate.Tile.Dragon.Value : -1)
+                .ThenBy(candidate => candidate.Index)
+                .FirstOrDefault(candidate => !promotableKongTiles.Contains(candidate.Tile));
+
+            if (alternateCandidate is not null)
+            {
+                selectedCandidate = alternateCandidate;
+            }
+        }
+
+        return selectedCandidate.Index;
     }
 
     private static int GetBotTileKeepScore(
