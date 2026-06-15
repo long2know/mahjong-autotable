@@ -229,7 +229,7 @@ public static class BotDiscardAdvisor
 
         var hasStrongSmallWinPairCandidate = enforceSmallWinPairBias && visibleCounts.Count > 0
             ? HasStrongSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts)
-            : hasSmallWinTileInHand;
+            : enforceSmallWinPairBias;
 
         var liveSmallWinPairCandidates = enforceSmallWinPairBias && visibleCounts.Count > 0
             ? BuildLiveSmallWinPairCandidates(handCounts, ownedCounts, visibleCounts)
