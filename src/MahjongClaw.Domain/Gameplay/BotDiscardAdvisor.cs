@@ -3151,16 +3151,6 @@ public static class BotDiscardAdvisor
             return null;
         }
 
-        var pairCount = handCounts.Count(entry => entry.Value >= 2);
-        if (liveSmallWinSingletons.Count == 1)
-        {
-            var liveSingleton = liveSmallWinSingletons[0];
-            if (liveSingleton.RemainingCopies < 2 && pairCount > 0)
-            {
-                return null;
-            }
-        }
-
         var deadTiles = deadSmallWinSingletons.Select(entry => entry.Tile).ToHashSet();
         for (var i = 0; i < handTiles.Count; i++)
         {
