@@ -1,0 +1,17 @@
+{
+  "backend": "docker-gold-8094",
+  "lobbyUrl": "http://127.0.0.1:8094/autotable/",
+  "httpStatus": 200,
+  "cspHeader": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; media-src 'self'; font-src 'self' data:; connect-src 'self' ws: wss: blob:; worker-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; report-uri /api/csp-report",
+  "styleSrc": "style-src 'self'",
+  "strictCsp": true,
+  "cspViolationCount": 0,
+  "cspViolations": [],
+  "consoleErrorCount": 0,
+  "consoleErrors": [],
+  "pageErrorCount": 0,
+  "pageErrors": [],
+  "cspReportSinkProbe": "405",
+  "screenshot": "/data/source/mat-vasquez-verify/playtest-artifacts/screenshots/vasquez-prod-csp-verify-2026-06-15T1910-finishline/lobby-load-docker_gold_8094.png",
+  "finishedAt": "2026-06-16T02:14:12.318Z"
+}

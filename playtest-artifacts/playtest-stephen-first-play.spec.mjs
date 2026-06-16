@@ -944,6 +944,20 @@ await phase('Phase H3: Install autoplay driver (banner-driven loop)', async () =
       seatEmits:     { 0: 0, 1: 0, 2: 0, 3: 0 },
       bannerSeen:    { discard: 0, pickup: 0, claim: 0 },
       discardProofCaptured: null,
+      // Vasquez 2026-06-15 (prod-csp finish-line) — count of grace ticks
+      // spent waiting for `#turn-banner` to flip to the discard cue before
+      // we capture the Phase-O proof.  Replaces the old single-tick boolean
+      // grace, which was too short: when our discard turn opens right after
+      // a just-passed claim window, the banner's reactive repaint lags the
+      // `hasExtraHandTile()` predicate by a few hundred ms, so the 1-tick
+      // (250 ms) grace captured a stale CLAIM frame ~2/3 of the time
+      // (false-positive P0s).  We now hold off the auto-discard for up to
+      // BANNER_GRACE_MAX ticks so the primary capture path (which only
+      // fires on the real `turn-banner-discard` class) can land
+      // deterministically.  A genuine regression that never shows the
+      // discard cue still falls through to the fallback after the grace
+      // expires, so Phase O keeps its bug-detecting teeth.
+      bannerGraceTicks: 0,
       paused: false,
       ticks: 0,
       lastDiscardCounts: snapDiscardCounts(),
@@ -1075,18 +1089,25 @@ await phase('Phase H3: Install autoplay driver (banner-driven loop)', async () =
       let hasExtra = false;
       try { hasExtra = g.world.hasExtraHandTile(); } catch {}
       if (hasExtra) {
-        // ── Banner-grace tick (Phase O proof) ────────────────────
+        // ── Banner-grace window (Phase O proof) ──────────────────
         // `refreshTurnBanner` runs reactively in response to world
         // changes and may not have applied the discard kind yet on
-        // the very first tick we see hasExtra.  If we have NOT yet
-        // captured the proof, wait exactly one more tick (250 ms)
-        // to let the runtime apply the discard cue and snapshot —
-        // then on the following tick we actually emit.  Only once.
+        // the first ticks we see hasExtra — especially when our
+        // discard turn opens immediately after a claim window we just
+        // passed (the banner repaint lags the world predicate). If we
+        // have NOT yet captured the proof, hold off the discard for up
+        // to BANNER_GRACE_MAX ticks (≈4s) so the primary capture path
+        // (gated on the real `turn-banner-discard` class, above) can
+        // land deterministically. Run-2 ground truth: the cue does
+        // appear within this window; runs that captured a stale CLAIM
+        // frame did so only because the old 1-tick grace was too short.
+        const BANNER_GRACE_MAX = 16; // 16 × 250ms ≈ 4s
         if (!window.__autoplay.discardProofCaptured
-            && !window.__autoplay.bannerGraceUsed) {
-          window.__autoplay.bannerGraceUsed = true;
+            && window.__autoplay.bannerGraceTicks < BANNER_GRACE_MAX) {
+          window.__autoplay.bannerGraceTicks++;
           logEvent('banner_grace_wait', selfSeat,
-            { bannerVisible, bannerHasDiscardClass });
+            { tick: window.__autoplay.bannerGraceTicks,
+              bannerVisible, bannerHasDiscardClass });
           return;
         }
         // Fallback: if after the grace tick the banner still hasn't
