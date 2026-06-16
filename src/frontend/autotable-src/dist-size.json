@@ -469,12 +469,12 @@
     {
       "wave": "K22",
       "bundler": "vite",
-      "recordedAt": "2026-06-10T21:02:55.791Z",
+      "recordedAt": "2026-06-16T01:56:27.176Z",
       "chunks": {
-        "autotable-src-eager": 108688,
+        "autotable-src-eager": 109069,
         "game-bootstrap": 174693,
         "scene-shell": 2572,
-        "scene-effects": 62141,
+        "scene-effects": 62242,
         "three-renderer-big": 406736,
         "three-renderer-small": 79068,
         "gltf-loader": 44223,
@@ -506,7 +506,7 @@
         "spectator-follow": 3602,
         "matchmaking": 2681,
         "rule-presets": 9817,
-        "auth": 21629,
+        "auth": 21799,
         "identity-onboarding": 3293,
         "identity-avatar-migration": 2329
       }

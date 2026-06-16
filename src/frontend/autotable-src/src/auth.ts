@@ -568,7 +568,7 @@ function ensureSignInModal(): void {
         <button id="signin-modal-close" type="button" class="signin-modal-close"
                 data-testid="signin-modal-close" aria-label="Close sign-in">×</button>
       </header>
-      <div id="signin-modal-error" class="signin-modal-error" style="display:none"
+      <div id="signin-modal-error" class="signin-modal-error"
            role="alert" aria-live="assertive"></div>
 
       <section id="signin-providers-panel"
@@ -615,7 +615,7 @@ function ensureSignInModal(): void {
       </section>
 
       <section id="signin-email-success" class="signin-email-success"
-               data-testid="signin-email-success" style="display:none">
+               data-testid="signin-email-success">
         <h4>Check your inbox</h4>
         <p>We sent a magic link to <strong id="signin-email-success-email"></strong>.
            Open it on this device to finish signing in.</p>
@@ -624,7 +624,7 @@ function ensureSignInModal(): void {
       </section>
 
       <section id="signin-placeholder" class="signin-placeholder"
-               data-testid="signin-placeholder" style="display:none">
+               data-testid="signin-placeholder">
         <p>Sign-in is not available on this server yet — the API
            hasn't been deployed.  All other features still work; you
            just won't be able to link an account.</p>
@@ -632,6 +632,17 @@ function ensureSignInModal(): void {
     </div>
   `;
   document.body.appendChild(modal);
+
+  // CSP-safe initial visibility.  Production runs strict CSP
+  // (style-src 'self', no 'unsafe-inline'), which blocks inline
+  // `style="display:none"` attributes — Development's relaxed policy
+  // hid this divergence.  Seed the hidden state through the CSSOM
+  // (not subject to style-src) instead; showSignInPanel() and
+  // setModalError() reveal these via `el.style.display = ''`.
+  for (const id of ['signin-modal-error', 'signin-email-success', 'signin-placeholder']) {
+    const el = modal.querySelector('#' + id) as HTMLElement | null;
+    if (el !== null) el.style.display = 'none';
+  }
 }
 
 function ensureMagicLinkLanding(): void {
@@ -642,13 +653,13 @@ function ensureMagicLinkLanding(): void {
   root.setAttribute('aria-hidden', 'true');
   root.innerHTML = `
     <div class="magic-link-card" role="document">
-      <div id="magic-link-success" style="display:none">
+      <div id="magic-link-success">
         <h3>You're signed in!</h3>
         <p>Welcome back, <strong id="magic-link-success-email"></strong>.</p>
         <button id="magic-link-dismiss" type="button"
                 class="btn btn-success btn-sm">Continue</button>
       </div>
-      <div id="magic-link-failure" style="display:none">
+      <div id="magic-link-failure">
         <h3>Magic link couldn't sign you in</h3>
         <p id="magic-link-failure-message" class="magic-link-failure-message"></p>
         <button id="magic-link-dismiss-failure" type="button"
@@ -657,6 +668,15 @@ function ensureMagicLinkLanding(): void {
     </div>
   `;
   document.body.appendChild(root);
+
+  // CSP-safe initial visibility (see ensureSignInModal): strict
+  // style-src blocks inline `style="display:none"`, so hide the result
+  // panels through the CSSOM.  handleMagicLinkLanding() toggles them
+  // with `el.style.display`.
+  for (const id of ['magic-link-success', 'magic-link-failure']) {
+    const el = root.querySelector('#' + id) as HTMLElement | null;
+    if (el !== null) el.style.display = 'none';
+  }
 }
 
 // ── Provider icon SVGs ─────────────────────────────────────────────

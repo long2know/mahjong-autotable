@@ -863,6 +863,13 @@ export function initLobby(client?: Client): void {
   _renderSeatPreview = renderSeatPreview;
   if (_attachedClient !== null) {
     bindLiveListeners(_attachedClient);
+  } else {
+    // No Client yet (bare lobby cold path — the renderer/scene chunk only
+    // mounts once the URL carries game params).  Render the seat-preview
+    // grid in its default "all Open" state so the lobby surface is visible
+    // immediately; a later attachLobbyClient() re-renders it with live
+    // seat/nick data via bindLiveListeners().
+    renderSeatPreviewEmpty();
   }
 
   // Phase J Wave 5 — install the profile drawer + open-profile shortcut
@@ -1099,6 +1106,27 @@ function renderSeatPreview(client: Client): void {
         ? `🤖 ${occupant.nick}`
         : occupant.nick;
     }
+  }
+  showEl(preview);
+}
+
+// Render the seat-preview grid in its default empty state (all four seats
+// "Open") without a live Client.  Used on the bare-lobby cold path so the
+// seat grid is visible before (or without) a game scene mounting.  Once a
+// Client attaches, renderSeatPreview() overwrites these cells with live
+// seat/nick data.
+function renderSeatPreviewEmpty(): void {
+  const preview = document.getElementById('lobby-seat-preview');
+  if (preview === null) return;
+  for (let seat = 0; seat < 4; seat++) {
+    const cell = preview.querySelector<HTMLElement>(
+      `.lobby-seat-preview-cell[data-seat="${seat}"]`);
+    if (cell === null) continue;
+    const occupantEl = cell.querySelector<HTMLElement>(
+      '.lobby-seat-preview-occupant');
+    if (occupantEl !== null) occupantEl.textContent = 'Open';
+    cell.classList.add('lobby-seat-preview-empty');
+    cell.classList.remove('lobby-seat-preview-bot');
   }
   showEl(preview);
 }

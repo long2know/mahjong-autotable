@@ -2032,6 +2032,17 @@ export class GameUi {
     }
     this.client.gameComplete.on('update', this.onGameCompleteUpdate.bind(this));
 
+    // Collection.on() does not replay existing entries to late subscribers.
+    // GameUi mounts inside the lazily-imported `scene-effects` chunk, which
+    // can finish loading *after* the server has already pushed
+    // gameComplete["current"] (e.g. reconnecting / JOIN-replaying into an
+    // already-finished game).  Surface the completion modal for any entry
+    // that landed before this handler was wired.
+    const pendingComplete = this.client.gameComplete.get('current');
+    if (pendingComplete !== null) {
+      this.onGameCompleteUpdate([['current', pendingComplete]]);
+    }
+
     // Also re-evaluate on every new JOIN: clear any stale history (we may
     // be reconnecting to a fresh game) and re-arm the modal-shown guard.
     this.client.on('connect', () => {
