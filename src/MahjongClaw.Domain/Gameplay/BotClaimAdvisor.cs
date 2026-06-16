@@ -34,6 +34,12 @@ public static class BotClaimAdvisor
             .Append(discardedTile)
             .ToList();
 
-        return RulesetHandAnalyzer.IsWinningHand(candidateTiles, ruleset);
+        if (!RulesetHandAnalyzer.TryGetWinningHand(candidateTiles, ruleset, out var winningHand)
+            || winningHand is null)
+        {
+            return false;
+        }
+
+        return ScoreCalculator.MeetsRulesetMinimumFan(winningHand, ruleset);
     }
 }
