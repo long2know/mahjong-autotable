@@ -1,0 +1,126 @@
+{
+  "mission": "Production-CSP finish-line verification (d92bab2)",
+  "author": "Vasquez",
+  "finishedAt": "2026-06-16T03:01:34.699Z",
+  "backends": {
+    "dotnetProd": "http://127.0.0.1:8093 (ASPNETCORE_ENVIRONMENT=Production, CspStrictStyles=true)",
+    "dockerGold": "http://127.0.0.1:8094 (mat-verify:d92bab2, byte-identical deploy image)"
+  },
+  "cspHeader": "default-src self; script-src self wasm-unsafe-eval; style-src self (NO unsafe-inline); ... report-uri /api/csp-report",
+  "cspStrictConfirmed": true,
+  "lobbyCspViolations": {
+    "dotnetProd": 0,
+    "dockerGold": 0
+  },
+  "playtestRuns": [
+    {
+      "run": "vasquez-prodcsp-run1",
+      "gameCompleted": true,
+      "cumulativeDiscards": 32,
+      "seat0Emits": 7,
+      "emitFailures": 0,
+      "claimPasses": 9,
+      "handSumMax": 50,
+      "phaseO_pass": false,
+      "phaseO_fallbackCapture": true,
+      "phaseO_bannerText": "Claim opportunity — Chow2.6s",
+      "cspConsoleErrors": 0,
+      "benignConsoleErrors": [
+        "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "run": "vasquez-prodcsp-run2",
+      "gameCompleted": true,
+      "cumulativeDiscards": 25,
+      "seat0Emits": 6,
+      "emitFailures": 0,
+      "claimPasses": 1,
+      "handSumMax": 53,
+      "phaseO_pass": true,
+      "phaseO_fallbackCapture": false,
+      "phaseO_bannerText": "Your turn — click a tile to discard",
+      "cspConsoleErrors": 0,
+      "benignConsoleErrors": [
+        "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "run": "vasquez-prodcsp-run3",
+      "gameCompleted": true,
+      "cumulativeDiscards": 22,
+      "seat0Emits": 5,
+      "emitFailures": 0,
+      "claimPasses": 5,
+      "handSumMax": 53,
+      "phaseO_pass": false,
+      "phaseO_fallbackCapture": true,
+      "phaseO_bannerText": "Claim opportunity — Chow3.1s",
+      "cspConsoleErrors": 0,
+      "benignConsoleErrors": [
+        "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "run": "vasquez-hardened-run1",
+      "gameCompleted": true,
+      "cumulativeDiscards": 59,
+      "seat0Emits": 15,
+      "emitFailures": 0,
+      "claimPasses": 4,
+      "handSumMax": 53,
+      "phaseO_pass": true,
+      "phaseO_fallbackCapture": false,
+      "phaseO_bannerText": "Your turn — click a tile to discard",
+      "cspConsoleErrors": 0,
+      "benignConsoleErrors": [
+        "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "run": "vasquez-hardened-run2",
+      "gameCompleted": true,
+      "cumulativeDiscards": 53,
+      "seat0Emits": 13,
+      "emitFailures": 0,
+      "claimPasses": 6,
+      "handSumMax": 53,
+      "phaseO_pass": true,
+      "phaseO_fallbackCapture": false,
+      "phaseO_bannerText": "Your turn — click a tile to discard",
+      "cspConsoleErrors": 0,
+      "benignConsoleErrors": [
+        "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "run": "vasquez-hardened-run3",
+      "gameCompleted": true,
+      "cumulativeDiscards": 23,
+      "seat0Emits": 7,
+      "emitFailures": 0,
+      "claimPasses": 6,
+      "handSumMax": 53,
+      "phaseO_pass": true,
+      "phaseO_fallbackCapture": false,
+      "phaseO_bannerText": "Your turn — click a tile to discard",
+      "cspConsoleErrors": 0,
+      "benignConsoleErrors": [
+        "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    }
+  ],
+  "note": "Pre-hardening runs 1&3 reported 4 Phase-O P0s each — a transient sampling race in the autoplay fallback proof-capture (caught a live claim-window frame), NOT a game bug. Run2 (pre-hardening) captured the real discard cue and passed. After hardening the banner-grace window, all 3 hardened runs capture the real discard cue via the primary path (fallback=false) and pass with 0 P0s. ALL runs reach gameCompleted=true with real motion."
+}

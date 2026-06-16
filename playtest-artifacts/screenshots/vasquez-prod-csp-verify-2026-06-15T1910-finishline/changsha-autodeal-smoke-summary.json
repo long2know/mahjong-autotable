@@ -1,0 +1,65 @@
+{
+  "spectator": {
+    "url": "http://127.0.0.1:8093/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Easy&handCount=4&gameId=vasq-spec-1781578669688",
+    "passed": true,
+    "handSum": 53,
+    "totalDiscard": 1,
+    "handBySeat": [
+      13,
+      14,
+      13,
+      13
+    ],
+    "handFaceUpBySeat": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "foreignHandFaceUp": 0,
+    "discardBySeat": [
+      1,
+      0,
+      0,
+      0
+    ],
+    "seatsWithHand": 4,
+    "wallFaceUp": 0,
+    "wallFaceDown": 54,
+    "handPrivacyOk": true,
+    "trajectory": [
+      {
+        "atSec": 0,
+        "handSum": 53,
+        "totalDiscard": 1,
+        "myHandFaceUp": 0,
+        "foreignHandFaceUp": 0,
+        "seatsWithHand": 4
+      }
+    ]
+  },
+  "seated": {
+    "url": "http://127.0.0.1:8093/autotable/?variant=changsha&seat=0&dealMode=auto&botCount=3&botDifficulty=Easy&handCount=4&gameId=vasq-seat-1781578671344",
+    "note": "face-up rendering check; seat-0 discard motion is parked-by-design (no active player) and proven by the full-flow playtests",
+    "passed": true,
+    "handBySeat0": 14,
+    "seat0FaceUp": 14,
+    "foreignFaceUpPrivacyOk": true,
+    "handSum": 53,
+    "worldSeat": null,
+    "trajectory": [
+      {
+        "atSec": 0,
+        "handSum": 53,
+        "totalDiscard": 0,
+        "myHandFaceUp": 0,
+        "foreignHandFaceUp": 14,
+        "seatsWithHand": 4
+      }
+    ]
+  },
+  "cspViolations": [],
+  "cspViolationCount": 0,
+  "backend": "http://127.0.0.1:8093",
+  "finishedAt": "2026-06-16T02:57:52.631Z"
+}
