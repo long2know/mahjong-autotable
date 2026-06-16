@@ -34,7 +34,7 @@ async function mockTournamentBackend(page: Page): Promise<void> {
     id: TOURNAMENT_ID,
     name: 'Wave 10 Pilot',
     format: 'single-elim',
-    status: 'draft',
+    status: 'registration-open',
     createdByPlayerId: 'p-creator',
     createdAt: new Date().toISOString(),
   };
@@ -55,7 +55,9 @@ async function mockTournamentBackend(page: Page): Promise<void> {
   await page.route('**/api/tournaments?**', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({ tournaments: [state] }),
+    body: JSON.stringify({
+      tournaments: [{ ...state, viewerRegistered: registered, playersRegistered: registered ? 1 : 0, maxPlayers: 8 }],
+    }),
   }));
 
   await page.route('**/api/tournaments', async (route, req) => {
@@ -76,7 +78,9 @@ async function mockTournamentBackend(page: Page): Promise<void> {
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ tournaments: [state] }),
+      body: JSON.stringify({
+        tournaments: [{ ...state, viewerRegistered: registered, playersRegistered: registered ? 1 : 0, maxPlayers: 8 }],
+      }),
     });
   });
 
@@ -136,10 +140,68 @@ async function mockTournamentBackend(page: Page): Promise<void> {
       }),
     }));
 
+  // Tournament detail: GET /api/tournaments/{id}.  Selecting a row opens
+  // the detail pane (src/tournaments.ts openDetail → fetchDetail), which is
+  // where the start button, bracket/matches table and standings/leaderboard
+  // live.  Returns a registration-open tournament the viewer can start, with
+  // a one-match bracket and a zeroed standings table.
+  await page.route(`**/api/tournaments/${TOURNAMENT_ID}`, (route, req) => {
+    if (req.method() !== 'GET') return route.fallback();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        tournament: {
+          id: TOURNAMENT_ID,
+          name: state.name,
+          format: 'single-elim',
+          status: 'registration-open',
+          playersRegistered: 2,
+          maxPlayers: 8,
+          viewerRegistered: false,
+          viewerCanStart: true,
+        },
+        matches: [{
+          id: 'm-0', round: 1, matchIndex: 0,
+          player1Id: 'p-creator', player2Id: 'p-other', status: 'pending',
+        }],
+        standings: [
+          { playerId: 'p-creator', displayName: 'Creator', wins: matchPlayed ? 1 : 0, losses: 0, draws: 0 },
+          { playerId: 'p-other', displayName: 'Other', wins: 0, losses: matchPlayed ? 1 : 0, draws: 0 },
+        ],
+        players: [{ playerId: 'p-creator' }, { playerId: 'p-other' }],
+      }),
+    });
+  });
+
   await page.route(`**/api/tournaments/matches/${MATCH_ID}/result`, (route) => {
     matchPlayed = true;
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
+}
+
+// Tournament features live in the lobby's Tournaments tab, which is
+// lazy-mounted by design: src/index.ts (scheduleTournamentsLazyMount) only
+// imports + installs the tournaments module on the first
+// mouseenter/focus/click of `lobby-tournaments-tab`, and the lobby tab
+// strip only un-hides the `#lobby-tab-tournaments` pane
+// (data-testid="lobby-tournament-card") once that tab is activated.  A real
+// user clicks the tab to reach tournaments; these specs must do the same
+// before asserting on any tournament surface.
+async function openTournamentsTab(page: Page): Promise<void> {
+  await page.getByTestId('lobby-tournaments-tab').click();
+  await page.waitForTimeout(500);
+}
+
+// Start/leaderboard surfaces live in the per-tournament detail pane, reached
+// by clicking a tournament row (src/tournaments.ts openDetail).  Opens the
+// Tournaments tab, then selects the first tournament.
+async function openTournamentDetail(page: Page): Promise<void> {
+  await openTournamentsTab(page);
+  // Click the tournament name (not the row's action buttons, which
+  // stopPropagation) to open the per-tournament detail pane.
+  await page.getByTestId('tournament-row-0').locator('.tournament-row-name').click();
+  await page.waitForTimeout(500);
 }
 
 test.describe('Mahjong Autotable — Wave 10 tournament flow', () => {
@@ -154,6 +216,7 @@ test.describe('Mahjong Autotable — Wave 10 tournament flow', () => {
     await mockTournamentBackend(page);
     await page.goto('');
     await page.waitForLoadState('domcontentloaded');
+    await openTournamentsTab(page);
 
     const card = page.getByTestId('lobby-tournament-card');
     if (await card.count() === 0) {
@@ -171,6 +234,7 @@ test.describe('Mahjong Autotable — Wave 10 tournament flow', () => {
     await mockTournamentBackend(page);
     await page.goto('');
     await page.waitForLoadState('domcontentloaded');
+    await openTournamentsTab(page);
 
     const createBtn = page.getByTestId('lobby-tournament-create');
     const nameInput = page.getByTestId('lobby-tournament-name');
@@ -194,6 +258,7 @@ test.describe('Mahjong Autotable — Wave 10 tournament flow', () => {
     await mockTournamentBackend(page);
     await page.goto('');
     await page.waitForLoadState('domcontentloaded');
+    await openTournamentsTab(page);
 
     const registerBtn = page.getByTestId('tournament-register-btn');
     if (await registerBtn.count() === 0) {
@@ -215,6 +280,7 @@ test.describe('Mahjong Autotable — Wave 10 tournament flow', () => {
     await mockTournamentBackend(page);
     await page.goto('');
     await page.waitForLoadState('domcontentloaded');
+    await openTournamentDetail(page);
 
     const startBtn = page.getByTestId('tournament-start-btn');
     if (await startBtn.count() === 0) {
@@ -242,6 +308,7 @@ test.describe('Mahjong Autotable — Wave 10 tournament flow', () => {
     await mockTournamentBackend(page);
     await page.goto('');
     await page.waitForLoadState('domcontentloaded');
+    await openTournamentDetail(page);
 
     const lb = page.getByTestId('tournament-leaderboard');
     if (await lb.count() === 0) {

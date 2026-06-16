@@ -61,7 +61,13 @@ async function mockSpectatorBackend(page: Page): Promise<void> {
 }
 
 async function gotoAsSpectator(page: Page): Promise<void> {
-  await page.goto('?seat=-1');
+  // Spectator joined into a *live game* (per this spec's contract): the
+  // chat panel is per-game, so the URL must carry a gameId — the app only
+  // mounts the chat panel when `getGameIdFromUrl()` is non-null
+  // (src/chat.ts) and game-bootstrap only imports the chat chunk when the
+  // URL has `gameId=` (src/game-bootstrap.ts).  `seat=-1` marks the
+  // spectator seat.  Backend chat/auth are mocked in mockSpectatorBackend.
+  await page.goto('?gameId=spectator-demo&seat=-1');
   await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(1000);
 }
