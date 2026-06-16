@@ -588,7 +588,7 @@ public static class BotDiscardAdvisor
                 {
                     var bestSingleton = liveSmallWinSingletons
                         .OrderByDescending(entry => entry.RemainingCopies)
-                        .ThenByDescending(entry => HasAdjacentSmallWinSingletonInHand(handCounts, entry.Tile) ? 1 : 0)
+                        .ThenByDescending(entry => HasAdjacentSuitedTile(handCounts, entry.Tile) ? 1 : 0)
                         .First();
 
                     var nonProtectedCandidates = candidates
