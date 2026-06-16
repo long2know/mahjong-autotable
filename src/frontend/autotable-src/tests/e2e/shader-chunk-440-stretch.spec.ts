@@ -11,6 +11,7 @@
 // See `tests/selectors.md` § Phase K Wave 13 → shader-chunk-440-stretch.
 
 import { test, expect } from '@playwright/test';
+import { safeContent } from './_helpers';
 
 const STRETCH_LIMIT_BYTES = 440;
 
@@ -22,7 +23,10 @@ test.describe('Phase K Wave 13 — shader chunk 440-byte stretch goal', () => {
 
   test('shader chunk ≤ 440 bytes OR forward-staged',
     async ({ page }, testInfo) => {
-      const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
+      // Relative goto resolves against the `/autotable/` baseURL and
+      // skips the bare-origin meta-refresh bouncer (which would leave the
+      // page navigating when we read its content below).
+      const response = await page.goto('./', { waitUntil: 'domcontentloaded' });
       if (!response || response.status() >= 500) {
         testInfo.annotations.push({
           type: 'forward-stage',
@@ -32,7 +36,7 @@ test.describe('Phase K Wave 13 — shader chunk 440-byte stretch goal', () => {
         return;
       }
 
-      const html = await page.content();
+      const html = await safeContent(page);
       const m = html.match(/(assets|js)\/(shader[\w\-]*)\.([a-f0-9]+)\.js/i);
       if (!m) {
         testInfo.annotations.push({

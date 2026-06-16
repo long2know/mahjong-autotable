@@ -8,17 +8,24 @@
 //
 // Pre-flight per `docs/test-architecture.md §5`:
 //   - chromium-only
-//   - animations frozen via addStyleTag
+//   - animations frozen via Playwright's native `animations: 'disabled'`
+//     screenshot option (the prior inline-<style> freeze is blocked by the
+//     deployed origin's strict `style-src 'self'` CSP)
 //   - fonts ready awaited
 //
 // See `tests/selectors.md` § Phase K Wave 14 → visual-regression-real-captures.
 
 import { test, expect } from '@playwright/test';
+import { existsSync } from 'node:fs';
 
+// Routes are RELATIVE so they resolve against the `/autotable/` baseURL.
+// The earlier absolute `'/'` form hit the bare-origin meta-refresh bouncer,
+// which navigated the page out from under `addStyleTag()` ("Execution
+// context was destroyed, most likely because of a navigation").
 const ROUTES = [
-  { path: '/',                             slug: 'home' },
-  { path: '/?action=bracket',              slug: 'bracket' },
-  { path: '/?action=replays',              slug: 'replays' },
+  { path: './',                            slug: 'home' },
+  { path: './?action=bracket',             slug: 'bracket' },
+  { path: './?action=replays',             slug: 'replays' },
 ];
 
 const MAX_DIFF_PIXEL_RATIO = 0.02;
@@ -50,16 +57,14 @@ test.describe('Phase K Wave 14 — visual regression on real captures (<= 2% dif
           return;
         }
 
-        await page.addStyleTag({
-          content: `
-            *, *::before, *::after {
-              animation-duration: 0s !important;
-              animation-delay: 0s !important;
-              transition-duration: 0s !important;
-              transition-delay: 0s !important;
-            }
-          `,
-        });
+        // Let the initial document settle before snapshotting.
+        await page.waitForLoadState('load');
+        // CSP note: the deployed origin ships a strict `style-src 'self'`
+        // policy (no 'unsafe-inline'), so injecting an inline <style> to
+        // freeze animations is *blocked by CSP*. Playwright's native
+        // `animations: 'disabled'` screenshot option freezes CSS
+        // animations, transitions and Web Animations without violating the
+        // page CSP, so we rely on it below instead of `page.addStyleTag()`.
         await page.evaluate(async () => {
           if (document.fonts && document.fonts.ready) {
             await document.fonts.ready;
@@ -67,23 +72,34 @@ test.describe('Phase K Wave 14 — visual regression on real captures (<= 2% dif
         });
         await page.waitForLoadState('networkidle');
 
-        try {
-          await expect(page).toHaveScreenshot(
-            `phase-k-w14-${r.slug}.png`,
-            { maxDiffPixelRatio: MAX_DIFF_PIXEL_RATIO, fullPage: false },
-          );
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          if (msg.includes('Writing actual') || msg.includes('--update-snapshots')
-              || msg.includes('A snapshot doesn')) {
-            testInfo.annotations.push({
-              type: 'forward-stage',
-              description: `Recorded baseline for phase-k-w14-${r.slug}.png.`,
-            });
-          } else {
-            throw e;
-          }
+        const baselineName = `phase-k-w14-${r.slug}.png`;
+
+        // Forward-stage tolerance, done correctly: `toHaveScreenshot()`
+        // registers an UN-catchable soft error when the baseline is missing
+        // (default `updateSnapshots: 'missing'`), so the historical
+        // try/catch around it could never actually pass a first run. Gate on
+        // baseline existence instead — annotate + pass when none is pinned,
+        // and enforce the <=2% diff only when a reviewed baseline IS
+        // committed. (These are LIVE app captures — perpetual "Loading…"
+        // canvas, a transient auto-dismissing toast, a randomised display
+        // name — so baselines must be captured and reviewed deliberately,
+        // never auto-recorded in CI, to stay deterministic.)
+        if (!existsSync(testInfo.snapshotPath(baselineName))) {
+          testInfo.annotations.push({
+            type: 'forward-stage',
+            description: `No committed baseline for ${baselineName}; W14 surface converging.`,
+          });
+          return;
         }
+
+        await expect(page).toHaveScreenshot(
+          baselineName,
+          {
+            maxDiffPixelRatio: MAX_DIFF_PIXEL_RATIO,
+            fullPage: false,
+            animations: 'disabled',
+          },
+        );
       });
   }
 });
