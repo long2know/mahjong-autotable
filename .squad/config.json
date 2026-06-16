@@ -1,4 +1,6 @@
 {
-  "defaultModel": "claude-opus-4.7-xhigh",
-  "notes": "Stephen's standing directive 2026-05-22: ALL spawns (including Scribe + mechanical ops) use claude-opus-4.7-xhigh. No model downgrades."
+  "defaultModel": "claude-opus-4.8",
+  "defaultReasoningEffort": "max",
+  "defaultContextTier": "long_context",
+  "notes": "Stephen's standing directive 2026-06-15: ALL spawns (including Scribe + mechanical ops) use claude-opus-4.8 at max reasoning effort with long_context (1M). No model downgrades. Supersedes the 2026-05-22 opus-4.7-xhigh directive."
 }

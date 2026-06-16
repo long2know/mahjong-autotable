@@ -36,7 +36,7 @@
 
 ## Model
 
-- **Preferred:** auto (coordinator picks; team default is currently `claude-opus-4.7-xhigh` per Stephen's directive)
+- **Preferred:** auto (coordinator picks; team default is currently `claude-opus-4.8` at max reasoning effort + long_context (1M) per Stephen's directive)
 - **Rationale:** Container work is code-adjacent — high-quality model preferred
 - **Fallback:** Standard chain — the coordinator handles fallback automatically
 

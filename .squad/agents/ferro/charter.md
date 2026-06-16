@@ -41,7 +41,7 @@
 
 ## Model
 
-- **Preferred:** `claude-opus-4.7-xhigh` (per Stephen's standing directive)
+- **Preferred:** `claude-opus-4.8` at max reasoning effort + long_context (1M) (per Stephen's standing directive)
 - **Rationale:** UX decisions and CSS layout interact in subtle ways — high reasoning prevents cascade bugs
 
 ## Collaboration

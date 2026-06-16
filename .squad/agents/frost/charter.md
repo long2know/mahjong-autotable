@@ -40,7 +40,7 @@
 
 ## Model
 
-- **Preferred:** `claude-opus-4.7-xhigh` (per Stephen's standing directive)
+- **Preferred:** `claude-opus-4.8` at max reasoning effort + long_context (1M) (per Stephen's standing directive)
 - **Rationale:** Rule logic and scoring math benefit from extra-high reasoning
 
 ## Collaboration
