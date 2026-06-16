@@ -412,3 +412,29 @@ The running backend serves the frontend dist from `/data/source/mahjong-autotabl
 |---|---|
 | secrets-scan, pre-commit, multi-arch-runtime ×2, multi-arch-smoke, docker-build, container-scan, sbom, sign-image, slsa-provenance, Squad Release | ✅ |
 | e2e-playwright | 🟡 final verification run in flight on `1cfff41` (~42 min) |
+
+---
+
+## 2026-06-15 — pipeline green + PLAYABLE under Production CSP (HEAD `53d61b0`)
+
+**Model default change:** All squad agents now default to **claude-opus-4.8 at max reasoning effort + long_context (1M)** (`6abfc7c`; `.squad/config.json` + apone/ferro/frost charters). Supersedes the 2026-05-22 opus-4.7-xhigh directive.
+
+**5 PRs merged** to take the build pipelines green and prove the game playable under the real deploy config:
+
+| PR | SHA | Agent | What |
+|---|---|---|---|
+| #101 | `9435742` | Apone | slsa-drift: pin 10 drifted action refs to SHAs (drift 10→0) |
+| #102 | `7a399b5` | Apone | slsa-drift: pin 12 inline `- uses:` refs + broaden scanner regex (closed blind spot) |
+| #103 | `dce81a3` | Ferro | e2e: harden `page.content()` nav-race + CSP-safe visual harness (5 tests) |
+| #104 | `d92bab2` | Hicks | e2e: eliminate CSP inline-style + 10 independent real bugs (11 tests) |
+| #105 | `53d61b0` | Vasquez | Production-CSP live verification + Phase-O flakiness hardening |
+
+**Finish-line verdict (Vasquez, against the byte-identical Production Docker image):** ✅ **PLAYABLE.** Strict CSP confirmed (`style-src 'self'`, no `'unsafe-inline'`), **0** lobby CSP errors, **3/3** end-to-end playtests reach `gameCompleted: true`, full e2e suite **242 passed / 0 failed / 234 skipped**, no new blockers. CI e2e-playwright on `d92bab2` independently = ✅ success.
+
+### 5 Discoveries (durable)
+
+1. **Dev-vs-Prod CSP divergence (major — same class as the JWT boot bug).** `appsettings.Production.json` sets `Security:CspStrictStyles: true` → `SecurityHeadersMiddleware.DropStyleUnsafeInline` strips `'unsafe-inline'` → `style-src 'self'`. Development keeps `'unsafe-inline'`, so inline styles work locally but are BLOCKED in the deployed Docker container. **Reproduce Prod-only failures against a Production-CSP backend (`ASPNETCORE_ENVIRONMENT=Production` + a JWT key), not Dev.**
+2. **CSP-cascade hypothesis was FALSE.** Only 1 of 11 "cascade" tests was truly CSP (`auth.ts` `innerHTML` with `style="display:none"` → fixed via CSSOM after appendChild, CSP not weakened). The other 10 were independent pre-existing bugs: signin-modal close interception (backdrop z-index over card), seat-preview only rendered on game-scene mount, mobile-toggle a11y over-reach from PR #100's `body.lobby-active`, replay `Collection.on()` not replaying current entry (also fixed reconnect-into-finished-game), spectator-chat test `?seat=-1` with no gameId, tournament lazy-mount tab activation + duplicate `tournament-register-btn` testid (detail renamed `tournament-detail-register-btn`).
+3. **slsa-drift scanner blind spot.** Scanner regex `^[[:space:]]*uses:` missed the inline-list `- uses:` form → 12 unpinned refs invisible. Fixed: pin all 12 + broaden regex to `^[[:space:]]*-?[[:space:]]*uses:`. Convention: ALL `uses:` (step AND inline-list) must be 40-char SHA pinned with `# vX.Y.Z`.
+4. **CSSOM vs inline-style under CSP.** `el.style.x` / `el.style.cssText` (CSSOM property API) is NOT subject to `style-src`; `<style>` injection, `setAttribute('style')`, and `innerHTML` with `style="..."` ARE blocked. Use CSSOM/classList for dynamic visibility under strict CSP.
+5. **Static dist serving (verified).** Backend serves `ContentRoot/../../../frontend/autotable` — relative to ContentRoot. Each worktree's `dotnet run` serves THAT worktree's dist, so parallel frontend agents can each run their own Production-CSP backend (ports 8091/8092/8093) without rsync-to-main.

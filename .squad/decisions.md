@@ -18327,3 +18327,25 @@ Backend serves the dist from `/data/source/mahjong-autotable/src/frontend/autota
 | Ferro | #98 | `b1fccd2` | 15/15 | `lobby.ts`, `i18n/*`, `pwa*`, `deep-link*`, `replay*`, `commentary*`, 6 specs | 23 min |
 | Bishop | #99 | `693ca79` | 7/7 | `auth.ts`, `leaderboard.ts`, `AuthTokenController.cs`, `sign-in-modal.ts`, 3 specs | 41 min |
 | Hicks | #100 | `1cfff41` | 20/20 | `settings-drawer.ts`, `lobby.ts`, `game-ui.ts`, `style.css`, `index.html`, 8 specs | 43 min |
+
+## 2026-06-15 — pipeline-green + finish-line (model→opus-4.8; PRs #101–#105)
+
+**Model default:** All agents → `claude-opus-4.8` at max reasoning effort + `long_context` (1M). `.squad/config.json` defaultModel/defaultReasoningEffort/defaultContextTier + apone/ferro/frost charters (`6abfc7c`). Supersedes 2026-05-22 opus-4.7-xhigh.
+
+**Outcome:** All build pipelines green; game verified PLAYABLE under Production CSP (Vasquez: 242 passed/0 failed, 3/3 playtests complete, 0 lobby CSP errors). CI e2e-playwright ✅ on `d92bab2`.
+
+### DISCOVERIES
+
+1. **Dev-vs-Prod CSP divergence (major).** `appsettings.Production.json` `Security:CspStrictStyles:true` → `DropStyleUnsafeInline` strips `'unsafe-inline'` → `style-src 'self'`. Dev keeps unsafe-inline. Inline styles work locally, blocked in deployed container. Reproduce Prod-only bugs against `ASPNETCORE_ENVIRONMENT=Production` + JWT key, NOT Dev. (Same class as the JWT boot divergence.)
+2. **CSP-cascade hypothesis FALSE (Hicks #104).** Only 1/11 truly CSP (`auth.ts` innerHTML `style="display:none"` → CSSOM fix). Other 10 independent: signin-modal close interception (backdrop z-index), seat-preview render-on-scene-mount, mobile-toggle a11y over-reach (PR #100 `body.lobby-active`), replay `Collection.on()` no-replay (+ reconnect-into-finished-game), spectator-chat `?seat=-1` no-gameId test, tournament lazy-mount tab + duplicate `tournament-register-btn` testid (→ `tournament-detail-register-btn`).
+3. **slsa-drift scanner blind spot (Apone #102).** Regex `^[[:space:]]*uses:` missed inline-list `- uses:` → 12 unpinned refs invisible. Pinned all + broadened to `^[[:space:]]*-?[[:space:]]*uses:`. Convention: ALL uses: (step + inline-list) = 40-char SHA + `# vX.Y.Z`.
+4. **CSSOM vs inline-style under CSP.** `el.style.x`/`cssText` NOT subject to style-src; `<style>` injection / `setAttribute('style')` / `innerHTML style=` ARE blocked. Use CSSOM/classList for dynamic visibility under strict CSP.
+5. **Static dist serving (Ferro/Hicks).** Backend serves `ContentRoot/../../../frontend/autotable` (ContentRoot-relative). Each worktree's `dotnet run` serves its own dist → parallel agents run isolated Production-CSP backends (8091/8092/8093), no rsync-to-main needed.
+
+| PR | SHA | Agent | Tests/scope |
+|---|---|---|---|
+| #101 | `9435742` | Apone | 10 drifted action SHA pins |
+| #102 | `7a399b5` | Apone | 12 inline pins + scanner regex |
+| #103 | `dce81a3` | Ferro | nav-race harness + visual (5) |
+| #104 | `d92bab2` | Hicks | CSP `auth.ts` + 10 real bugs (11) |
+| #105 | `53d61b0` | Vasquez | Production-CSP verification, 242/0 |
