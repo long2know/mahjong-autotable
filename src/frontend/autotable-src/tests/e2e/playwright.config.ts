@@ -35,14 +35,20 @@ export default defineConfig({
   reporter: process.env.CI ? 'github' : 'list',
   // W15 — canonical baseline tree.  Tokens documented at
   // https://playwright.dev/docs/api/class-testconfig#test-config-snapshot-path-template
-  //   {testFileDir}        → tests/e2e
+  //   {testDir}            → <abs>/tests/e2e  (absolute testDir root)
   //   {testFileName}       → manifest-screenshots-visual.spec.ts
   //   {arg}                → first arg of toHaveScreenshot (sans extension)
   //   {ext}                → .png (or whatever the arg's extension was)
+  // NB: the leading segment MUST be an absolute-base token (`{testDir}`),
+  // NOT `{testFileDir}` — the latter is the test file's dir *relative to
+  // testDir*, which is empty for specs that live directly in `tests/e2e`,
+  // collapsing the template to the filesystem-root path `/__screenshots__/…`
+  // (mkdir EACCES for non-root runners).  `{testDir}` yields the intended
+  // `tests/e2e/__screenshots__/<spec>/<arg>.png` tree.
   // Pinned WITHOUT `{projectName}` / `{platform}` to keep baselines stable
   // across local-vs-CI runs; visual-regression specs already skip non-
   // chromium projects via testInfo.project.name guards.
-  snapshotPathTemplate: '{testFileDir}/__screenshots__/{testFileName}/{arg}{ext}',
+  snapshotPathTemplate: '{testDir}/__screenshots__/{testFileName}/{arg}{ext}',
   use: {
     baseURL: process.env.E2E_BASE_URL || 'http://localhost:8080/autotable/',
     trace: 'on-first-retry',

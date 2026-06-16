@@ -13,6 +13,7 @@
 // See `tests/selectors.md` § Phase K Wave 13 → spectate-deep-link.
 
 import { test, expect } from '@playwright/test';
+import { safeContent } from './_helpers';
 
 test.describe('Phase K Wave 13 — spectate deep-link routes to live view', () => {
   test.beforeEach(async ({}, testInfo) => {
@@ -22,10 +23,15 @@ test.describe('Phase K Wave 13 — spectate deep-link routes to live view', () =
 
   test('Spectate deep-link routes to the spectate view OR forward-staged',
     async ({ page }, testInfo) => {
+      // Relative candidates resolve against the `/autotable/` baseURL so we
+      // never land on the bare-origin meta-refresh bouncer. The spectate
+      // action-router still issues a client-side redirect to the sign-in
+      // lobby for unauthenticated sessions, so `page.content()` is read via
+      // `safeContent()` to survive that in-flight navigation.
       const candidates = [
-        '/spectate?room=demo-room',
-        '/spectate/demo-room',
-        '/?action=spectate&room=demo-room',
+        'spectate?room=demo-room',
+        'spectate/demo-room',
+        './?action=spectate&room=demo-room',
       ];
 
       let landed = false;
@@ -34,7 +40,7 @@ test.describe('Phase K Wave 13 — spectate deep-link routes to live view', () =
         if (!response) continue;
         const status = response.status();
         if (status === 404) continue;
-        const html = await page.content();
+        const html = await safeContent(page);
         if (html.toLowerCase().includes('spectate')
             || page.url().toLowerCase().includes('spectate')) {
           landed = true;
