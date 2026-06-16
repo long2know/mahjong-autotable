@@ -114,10 +114,18 @@ jobs:
           DRIFT_FILE="$RUNNER_TEMP/drift-hits.txt"
           : > "$DRIFT_FILE"
           for wf in .github/workflows/*.yml; do
-            # `grep -nE 'uses:'` lines: capture the action ref
-            # and the file:line for the drift report.
+            # `grep -nE` lines: capture the action ref and
+            # the file:line for the drift report. The regex
+            # catches BOTH the `uses:` step form AND the
+            # `- uses:` inline-list form (the optional `-?`)
+            # so inline-list drift is no longer a blind spot.
             while IFS= read -r line; do
-              # `line` shape: `<file>:<lineno>:    uses: <action>@<ref>`
+              # `line` shape, either step form
+              #   `<file>:<lineno>:    uses: <action>@<ref>`
+              # or inline-list form
+              #   `<file>:<lineno>:    - uses: <action>@<ref>`.
+              # The `sed` below anchors on `uses:` so it
+              # extracts the ref from both shapes.
               ref=$(echo "$line" | sed -E 's/.*uses:[[:space:]]+([^[:space:]]+).*/\1/')
               # Allow-list 1 — SLSA reusable workflow tag.
               if echo "$ref" | grep -qE '^slsa-framework/slsa-github-generator/'; then
@@ -139,7 +147,7 @@ jobs:
               # Semver tag drift shape: `v<digits>(.<digits>)*` OR
               # branch/ref shape (anything not a 40-char SHA).
               echo "DRIFT: $line" | tee -a "$DRIFT_FILE"
-            done < <(grep -nE '^[[:space:]]*uses:[[:space:]]+[^[:space:]#]+' "$wf" | sed "s|^|$wf:|")
+            done < <(grep -nE '^[[:space:]]*-?[[:space:]]*uses:[[:space:]]+[^[:space:]#]+' "$wf" | sed "s|^|$wf:|")
           done
 
           drift_count=$(wc -l < "$DRIFT_FILE")
