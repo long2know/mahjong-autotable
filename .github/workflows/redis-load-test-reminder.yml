@@ -54,14 +54,20 @@
 name: redis-load-test-reminder
 
 on:
-  schedule:
-    # 14:00 UTC on the 1st of every month. Picks an hour that
-    # doesn't collide with other Apone-lane cron triggers:
-    #   * hsts-readiness-check: 13:00 UTC daily.
-    #   * jwt-rotation-rehearsal-scheduled: 02:00 UTC quarterly.
-    #   * load-test-nightly: 03:00 UTC daily (nightly k6 against
-    #     staging; unrelated to this monthly prod-baseline path).
-    - cron: "0 14 1 * *"
+  # CI-noise fix (2026-06-17): monthly schedule disabled. In
+  # playability-first mode there is no prod Redis / k8s / k6
+  # infrastructure to load-test, so the monthly reminder issue +
+  # its stale-close cycle was pure noise — and the github-script
+  # body carried an unescaped-backtick syntax error that failed
+  # every cron firing, emailing Stephen. workflow_dispatch retained
+  # so the reminder can be fired manually once a real Redis prod
+  # shape exists. Re-enable by uncommenting the schedule block.
+  #   * hsts-readiness-check: 13:00 UTC daily.
+  #   * jwt-rotation-rehearsal-scheduled: 02:00 UTC quarterly.
+  #   * load-test-nightly: 03:00 UTC daily.
+  # schedule:
+  #   # 14:00 UTC on the 1st of every month.
+  #   - cron: "0 14 1 * *"
   workflow_dispatch:
     inputs:
       open_issue:
@@ -144,7 +150,7 @@ jobs:
             const body = [
               `📅 **Monthly Redis load-test reminder — ${MONTH}**`,
               ``,
-              `Phase K Wave 12 baselined the prod Redis shape via [`infra/load-tests/redis-load-test.yml`](../blob/main/infra/load-tests/redis-load-test.yml). The cadence pinned in [`docs/redis-cluster.md` §4.6 "Monthly cadence — reminder workflow"](../blob/main/docs/redis-cluster.md) is **one operator-initiated run per month against the prod shape**, recorded in the corresponding monthly retro.`,
+              `Phase K Wave 12 baselined the prod Redis shape via [\`infra/load-tests/redis-load-test.yml\`](../blob/main/infra/load-tests/redis-load-test.yml). The cadence pinned in [\`docs/redis-cluster.md\` §4.6 "Monthly cadence — reminder workflow"](../blob/main/docs/redis-cluster.md) is **one operator-initiated run per month against the prod shape**, recorded in the corresponding monthly retro.`,
               ``,
               `## W12 baseline (current SLO floor)`,
               ``,
