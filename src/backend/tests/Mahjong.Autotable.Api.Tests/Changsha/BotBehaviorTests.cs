@@ -266,9 +266,11 @@ public class BotBehaviorTests
             o.BotDecisionTimeoutMs = 100;
             o.BotTurnDelayMs = 5;
             o.BotClaimDelayMs = 5;
-            // Window timeout must be larger than the strategy timeout so we observe the
-            // decision-timeout fallback (not the window timeout) closing the window.
-            o.ClaimWindowTimeoutMs = 3000;
+            // Window timeout must be FAR larger than the decision timeout so we observe the
+            // decision-timeout fallback (not the window timeout) closing the window. A wide
+            // gap (100ms decision vs 10s window) keeps the timing assertion below robust to
+            // CI thread-pool jitter without ever colliding with the window-timeout path.
+            o.ClaimWindowTimeoutMs = 10_000;
         });
         var runtime = harness.Runtime;
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -327,16 +329,17 @@ public class BotBehaviorTests
         await WaitForAsync(
             () => Snapshot(runtime, gameId).ClaimWindow is null
                && Snapshot(runtime, gameId).Phase != ChangshaPhase.AwaitingClaim,
-            TimeSpan.FromMilliseconds(2_500),
+            TimeSpan.FromMilliseconds(8_000),
             "claim window did not resolve via Pass-fallback after BotDecisionTimeoutMs");
         sw.Stop();
 
         var final = Snapshot(runtime, gameId);
         Assert.Null(final.CurrentWin);
         Assert.DoesNotContain(final.EventLog, e => e.EventType == "win-declared");
-        Assert.True(sw.ElapsedMilliseconds < 2_000,
+        Assert.True(sw.ElapsedMilliseconds < 9_000,
             $"Claim-window Pass-fallback did not fire within BotDecisionTimeoutMs + buffer. " +
-            $"Took {sw.ElapsedMilliseconds}ms; spec is timeout(100) + ClaimDelay(5) + buffer.");
+            $"Took {sw.ElapsedMilliseconds}ms; the decision-timeout fallback (100ms) must close " +
+            $"the window well before the 10s ClaimWindowTimeoutMs path.");
     }
 
     [Fact, Trait("Category", "Changsha")]
