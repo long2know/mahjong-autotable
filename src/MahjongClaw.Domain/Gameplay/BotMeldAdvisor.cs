@@ -47,6 +47,10 @@ public static class BotMeldAdvisor
         var handCounts = handTiles
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
+        var ownedCounts = handTiles
+            .Concat(meldTiles)
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
         var visibleCounts = BuildVisibleCounts(visibleTiles);
 
         var candidates = handCounts
@@ -77,7 +81,7 @@ public static class BotMeldAdvisor
                     .ToHashSet();
 
                 candidates = candidates
-                    .Where(candidate => !ShouldAvoidChangshaSmallWinKong(candidate, smallWinPairs))
+                    .Where(candidate => !ShouldAvoidChangshaSmallWinKong(candidate, smallWinPairs, handCounts, ownedCounts, visibleCounts))
                     .ToList();
 
                 if (candidates.Count == 0)
@@ -154,6 +158,10 @@ public static class BotMeldAdvisor
         var meldCounts = meldTiles
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
+        var ownedCounts = handTiles
+            .Concat(meldTiles)
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
         var visibleCounts = BuildVisibleCounts(visibleTiles);
 
         var candidates = meldCounts
@@ -178,7 +186,7 @@ public static class BotMeldAdvisor
                     .ToHashSet();
 
                 candidates = candidates
-                    .Where(candidate => !ShouldAvoidChangshaSmallWinKong(candidate, smallWinPairs))
+                    .Where(candidate => !ShouldAvoidChangshaSmallWinKong(candidate, smallWinPairs, handCounts, ownedCounts, visibleCounts))
                     .ToList();
 
                 if (candidates.Count == 0)
@@ -377,7 +385,12 @@ public static class BotMeldAdvisor
             .ToArray();
     }
 
-    private static bool ShouldAvoidChangshaSmallWinKong(Tile candidate, IReadOnlySet<Tile> smallWinPairs)
+    private static bool ShouldAvoidChangshaSmallWinKong(
+        Tile candidate,
+        IReadOnlySet<Tile> smallWinPairs,
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
     {
         if (!Changsha258Ruleset.IsSmallWinPair(candidate))
         {
@@ -386,12 +399,65 @@ public static class BotMeldAdvisor
 
         if (smallWinPairs.Count == 0)
         {
+            if (HasLiveAlternateSmallWinSingleton(candidate, handCounts, ownedCounts, visibleCounts))
+            {
+                return false;
+            }
+
             return true;
         }
 
         if (smallWinPairs.Count == 1 && smallWinPairs.Contains(candidate))
         {
-            return true;
+            return !HasLiveAlternateSmallWinSingleton(candidate, handCounts, ownedCounts, visibleCounts);
+        }
+
+        return false;
+    }
+
+    private static bool HasLiveAlternateSmallWinSingleton(
+        Tile candidate,
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        var liveAlternateCount = 0;
+
+        foreach (var entry in handCounts)
+        {
+            if (entry.Value != 1)
+            {
+                continue;
+            }
+
+            if (!Changsha258Ruleset.IsSmallWinPair(entry.Key))
+            {
+                continue;
+            }
+
+            if (entry.Key.Equals(candidate))
+            {
+                continue;
+            }
+
+            if (visibleCounts.Count == 0)
+            {
+                liveAlternateCount++;
+            }
+            else
+            {
+                ownedCounts.TryGetValue(entry.Key, out var ownedCount);
+                visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+                if (4 - ownedCount - visibleCount > 0)
+                {
+                    liveAlternateCount++;
+                }
+            }
+
+            if (liveAlternateCount >= 2)
+            {
+                return true;
+            }
         }
 
         return false;
