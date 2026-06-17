@@ -247,7 +247,7 @@ gameGroup.MapPost("/{id:guid}/start", async (
 
     var response = new StartGameResponse(game.Id, game.Status, game.DealerId, game.CurrentPlayerId);
     await SendToGameWithAliases(hubContext, game.Id, "GameStarted", response, cancellationToken);
-    await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
+    await ExecuteBotTurnChainAsync(game, dbContext, hubContext, missedWinLocks, cancellationToken);
     return Results.Ok(response);
 });
 
@@ -668,7 +668,7 @@ gameGroup.MapPost("/{id:guid}/bot/turn", async (
         return Results.NotFound();
     }
 
-    var botTurnResult = await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
+    var botTurnResult = await ExecuteBotTurnAsync(game, dbContext, hubContext, missedWinLocks, cancellationToken);
     if (!botTurnResult.Success)
     {
         return botTurnResult.StatusCode switch
@@ -1400,6 +1400,7 @@ static async Task ExecuteBotTurnChainAsync(
     GameEntity game,
     MahjongClawDbContext dbContext,
     IHubContext<GameHub> hubContext,
+    Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks,
     CancellationToken cancellationToken)
 {
     const int maxTurns = 4;
@@ -1415,7 +1416,7 @@ static async Task ExecuteBotTurnChainAsync(
             break;
         }
 
-        var result = await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
+        var result = await ExecuteBotTurnAsync(game, dbContext, hubContext, missedWinLocks, cancellationToken);
         if (!result.Success || result.Response is null || result.Response.Won)
         {
             break;
@@ -1429,6 +1430,7 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
     GameEntity game,
     MahjongClawDbContext dbContext,
     IHubContext<GameHub> hubContext,
+    Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks,
     CancellationToken cancellationToken)
 {
     if (!string.Equals(game.Status, "Active", StringComparison.OrdinalIgnoreCase))
@@ -1483,7 +1485,9 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
             }
 
             var discardedTile = discardedTileHand[0];
-            if (BotClaimAdvisor.ShouldClaimDiscardWin(botConcealedHand, botMeldHand, discardedTile, ruleset))
+            missedWinLocks.TryGetValue(game.Id, out var gameLocks);
+            gameLocks?.TryGetValue(botPlayer.Id, out var missedWinLock);
+            if (BotClaimAdvisor.ShouldClaimDiscardWin(botConcealedHand, botMeldHand, discardedTile, ruleset, missedWinLock))
             {
                 ChangshaWinEvaluation? changshaEvaluation = null;
                 IReadOnlyList<PlayerScoreDelta>? scoreDeltas = null;
@@ -1701,7 +1705,7 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
 
             if (kongApplied)
             {
-                return await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
+                return await ExecuteBotTurnAsync(game, dbContext, hubContext, missedWinLocks, cancellationToken);
             }
         }
 
@@ -1725,7 +1729,7 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
 
                 if (kongApplied)
                 {
-                    return await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
+                    return await ExecuteBotTurnAsync(game, dbContext, hubContext, missedWinLocks, cancellationToken);
                 }
             }
         }
@@ -2303,7 +2307,7 @@ static async Task OpenClaimWindowAsync(
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
         }
-        await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
+        await ExecuteBotTurnChainAsync(game, dbContext, hubContext, missedWinLocks, cancellationToken);
         return;
     }
 
@@ -2319,7 +2323,7 @@ static async Task OpenClaimWindowAsync(
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
         }
-        await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
+        await ExecuteBotTurnChainAsync(game, dbContext, hubContext, missedWinLocks, cancellationToken);
         return;
     }
 
@@ -2489,7 +2493,7 @@ static async Task ResolveClaimWindowAsync(
             }
         }
 
-        await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
+        await ExecuteBotTurnChainAsync(game, dbContext, hubContext, missedWinLocks, cancellationToken);
         return;
     }
 
@@ -2527,7 +2531,7 @@ static async Task ResolveClaimWindowAsync(
                 }
             }
 
-            await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
+            await ExecuteBotTurnChainAsync(game, dbContext, hubContext, missedWinLocks, cancellationToken);
             return;
         }
 
@@ -2558,7 +2562,7 @@ static async Task ResolveClaimWindowAsync(
                 }
             }
 
-            await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
+            await ExecuteBotTurnChainAsync(game, dbContext, hubContext, missedWinLocks, cancellationToken);
             return;
         }
     }
