@@ -1034,6 +1034,15 @@ gameGroup.MapPost("/{id:guid}/win", async (
         return Results.Conflict(new { message = "Player tiles are invalid." });
     }
 
+    if (isDiscardWinClaim && claimableDiscardTile is not null)
+    {
+        var discardedTile = tileHand[^1];
+        if (IsBlockedByMissedWinLock(game.Id, request.PlayerId, discardedTile, missedWinLocks))
+        {
+            return Results.Conflict(new { message = "Win is blocked by missed-win lock." });
+        }
+    }
+
     var ruleset = RulesetResolver.Resolve(game.Ruleset);
     if (!RulesetHandAnalyzer.TryGetWinningHand(tileHand, ruleset, out var winningHand) || winningHand is null)
     {
