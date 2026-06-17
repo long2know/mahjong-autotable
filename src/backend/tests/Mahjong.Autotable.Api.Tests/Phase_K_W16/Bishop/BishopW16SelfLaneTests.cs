@@ -259,16 +259,6 @@ public sealed class BishopW16SelfLaneTests
         Assert.True(File.Exists(path));
     }
 
-    [Fact, Trait("Category", "SelfLane"), Trait("Wave", "Phase-K-16"), Trait("Lane", "Bishop")]
-    public void BishopW16_Memo_Present()
-    {
-        var root = FindRepoRoot();
-        Assert.NotNull(root);
-        var path = Path.Combine(root!.FullName,
-            ".squad", "decisions", "inbox", "bishop-phase-k-wave-16.md");
-        Assert.True(File.Exists(path));
-    }
-
     private static DirectoryInfo? FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

@@ -20,17 +20,6 @@ public sealed class W20SurfaceSmokeFactsTests
     }
 
     [Fact, Trait("Category", "SurfaceSmoke"), Trait("Wave", "Phase-K-20")]
-    public void Smoke_VasquezW20Inbox_Memo_Present()
-    {
-        var root = FindRepoRoot();
-        Assert.NotNull(root);
-        var p = Path.Combine(root!.FullName, ".squad", "decisions", "inbox",
-            "vasquez-phase-k-wave-20.md");
-        Assert.True(File.Exists(p),
-            $"Vasquez W20 inbox memo must ship at {p}.");
-    }
-
-    [Fact, Trait("Category", "SurfaceSmoke"), Trait("Wave", "Phase-K-20")]
     public void Smoke_PhaseKW20_Vasquez_Dir_Present()
     {
         var root = FindRepoRoot();

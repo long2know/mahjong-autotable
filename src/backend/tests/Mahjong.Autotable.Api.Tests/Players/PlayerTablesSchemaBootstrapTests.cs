@@ -98,6 +98,26 @@ public class PlayerTablesSchemaBootstrapTests : IAsyncLifetime
     private sealed record SqliteColumn(string Name, string Type, bool NotNull, bool PrimaryKey);
     private sealed record SqliteForeignKey(string Table, string From, string To, string OnDelete);
 
+    // Phase L — Frost (Backend). SQLite-provider guard for the db-providers
+    // matrix. The three schema-drift assertions below introspect the live
+    // table via raw SQLite `PRAGMA table_info` / `PRAGMA foreign_key_list`
+    // and validate the hand-rolled SQLite bootstrap
+    // (DatabaseBootstrapper.EnsureSqlitePlayerTablesAsync). Under the
+    // Postgres matrix cell (Persistence__Provider=Postgres) the factory binds
+    // Npgsql — env vars override the UseSetting Sqlite connection string — and
+    // `PRAGMA` is a Postgres syntax error (Npgsql 42601). The Postgres schema
+    // comes from the EF migration set, not this bootstrap, so these tests are
+    // meaningless there. We gate them to the SQLite provider with a deliberate
+    // early `return;` (the suite's zero-skip convention — no Assert.Skip).
+    private static bool RunningOnSqlite()
+    {
+        var provider = Environment.GetEnvironmentVariable("Persistence__Provider")
+            ?? Environment.GetEnvironmentVariable("Persistence:Provider");
+        // Unset defaults to SQLite (see Persistence/ServiceCollectionExtensions).
+        return string.IsNullOrWhiteSpace(provider)
+            || string.Equals(provider, "Sqlite", StringComparison.OrdinalIgnoreCase);
+    }
+
     private async Task<IReadOnlyDictionary<string, SqliteColumn>> ReadSqliteColumnsAsync(string tableName)
     {
         Assert.NotNull(_factory);
@@ -178,6 +198,8 @@ public class PlayerTablesSchemaBootstrapTests : IAsyncLifetime
     [Fact]
     public async Task PlayerProfiles_Sqlite_Schema_MatchesEfModel()
     {
+        if (!RunningOnSqlite()) return; // SQLite-only PRAGMA schema check; skipped on the Postgres matrix cell.
+
         var entity = GetEntityType(typeof(PlayerProfile));
         var liveColumns = await ReadSqliteColumnsAsync("PlayerProfiles");
 
@@ -209,6 +231,8 @@ public class PlayerTablesSchemaBootstrapTests : IAsyncLifetime
     [Fact]
     public async Task PlayerStats_Sqlite_Schema_MatchesEfModel()
     {
+        if (!RunningOnSqlite()) return; // SQLite-only PRAGMA schema check; skipped on the Postgres matrix cell.
+
         var entity = GetEntityType(typeof(PlayerStats));
         var liveColumns = await ReadSqliteColumnsAsync("PlayerStats");
 
@@ -244,6 +268,8 @@ public class PlayerTablesSchemaBootstrapTests : IAsyncLifetime
     [Fact]
     public async Task PlayerStats_ForeignKey_To_PlayerProfiles_IsCascadeDelete()
     {
+        if (!RunningOnSqlite()) return; // SQLite-only PRAGMA foreign-key check; skipped on the Postgres matrix cell.
+
         // The EF model declares:
         //   .HasOne<PlayerProfile>().WithOne()
         //   .HasForeignKey<PlayerStats>(x => x.PlayerId)

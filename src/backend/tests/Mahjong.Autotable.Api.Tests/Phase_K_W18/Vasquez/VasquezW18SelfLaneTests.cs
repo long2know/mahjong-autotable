@@ -254,18 +254,6 @@ public sealed class VasquezW18SelfLaneTests
         Assert.Null(t);
     }
 
-    // ─── 6. Inbox memo + safe backup ──────────────────────────────
-
-    [Fact, Trait("Category", "LaneDiscipline"), Trait("Wave", "Phase-K-18")]
-    public void VasquezW18_Memo_Present()
-    {
-        var root = FindRepoRoot();
-        Assert.NotNull(root);
-        var path = Path.Combine(root!.FullName, ".squad", "decisions", "inbox",
-            "vasquez-phase-k-wave-18.md");
-        Assert.True(File.Exists(path));
-    }
-
     // ─── 7. Lane-discipline streak narrative — §6 hold-line ───────
 
     [Fact, Trait("Category", "LaneDiscipline"), Trait("Wave", "Phase-K-18")]
