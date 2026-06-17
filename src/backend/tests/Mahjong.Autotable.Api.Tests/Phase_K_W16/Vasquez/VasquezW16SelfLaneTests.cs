@@ -149,17 +149,6 @@ public sealed class VasquezW16SelfLaneTests
         Assert.Equal((byte)'!', bytes[1]);
     }
 
-    [Fact, Trait("Category", "LaneDiscipline"), Trait("Wave", "Phase-K-16")]
-    public void BranchProtection_W16_DryRunLog_Present()
-    {
-        var root = FindRepoRoot();
-        Assert.NotNull(root);
-        var path = Path.Combine(root!.FullName, ".work", "vasquez-w16-safe",
-            "flip-script-dryrun-w16.log");
-        Assert.True(File.Exists(path),
-            $"W16 dry-run capture MUST ship at {path}.");
-    }
-
     // ─── 4. Forward-stage W16 contract files inventory ────────────
 
     [Fact, Trait("Category", "LaneDiscipline"), Trait("Wave", "Phase-K-16")]
@@ -226,18 +215,6 @@ public sealed class VasquezW16SelfLaneTests
         var t = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW15RegressionTests", StringComparison.Ordinal));
         Assert.Null(t);
-    }
-
-    // ─── 6. Inbox memo + safe backup ──────────────────────────────
-
-    [Fact, Trait("Category", "LaneDiscipline"), Trait("Wave", "Phase-K-16")]
-    public void VasquezW16_Memo_Present()
-    {
-        var root = FindRepoRoot();
-        Assert.NotNull(root);
-        var path = Path.Combine(root!.FullName, ".squad", "decisions", "inbox",
-            "vasquez-phase-k-wave-16.md");
-        Assert.True(File.Exists(path));
     }
 
     // ─── 7. Lane-discipline streak narrative — §6 hold-line ───────

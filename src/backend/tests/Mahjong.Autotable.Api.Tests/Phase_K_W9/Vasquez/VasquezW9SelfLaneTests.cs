@@ -88,7 +88,14 @@ public sealed class VasquezW9SelfLaneTests
             root.FullName, ".github", "workflows", "lane-discipline-nightly.yml");
         if (!File.Exists(path)) return;
         var text = File.ReadAllText(path);
-        Assert.Matches(new Regex(@"^\s*schedule:", RegexOptions.Multiline), text);
+        // Phase L — Frost (Backend). The nightly schedule was intentionally
+        // commented out during the CI-noise iter2 suppression (commit
+        // 0b591d4); workflow_dispatch is retained and the `schedule:` /
+        // `cron:` block is kept commented for one-line re-enablement. Accept
+        // the active OR the disabled (commented) schedule form so this
+        // contract tolerates the noise-suppression state instead of forcing
+        // the nightly cron back on (which is exactly the CI noise we removed).
+        Assert.Matches(new Regex(@"^\s*#?\s*schedule:", RegexOptions.Multiline), text);
         Assert.Contains("--repo-mode", text);
         Assert.Contains("cron:", text);
     }

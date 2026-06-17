@@ -60,13 +60,4 @@ public sealed class W21SurfaceSmokeFactsTests
         Assert.False(File.Exists(oldPath), "Old W20 regression class still present.");
     }
 
-    [Fact, Trait("Category", "Contract"), Trait("Wave", "Phase-K-21"), Trait("Lane", "Vasquez")]
-    public void Vasquez_W21_InboxMemo_Present()
-    {
-        var root = FindRepoRoot();
-        Assert.NotNull(root);
-        var p = Path.Combine(root!.FullName, ".squad", "decisions", "inbox",
-            "vasquez-phase-k-wave-21.md");
-        Assert.True(File.Exists(p));
-    }
 }

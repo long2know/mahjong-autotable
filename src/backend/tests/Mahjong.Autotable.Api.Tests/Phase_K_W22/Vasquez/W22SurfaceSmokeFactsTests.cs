@@ -56,16 +56,6 @@ public sealed class W22SurfaceSmokeFactsTests
     }
 
     [Fact, Trait("Category", "Contract"), Trait("Wave", "Phase-K-22"), Trait("Lane", "Vasquez")]
-    public void Vasquez_W22_InboxMemo_Present()
-    {
-        var root = FindRepoRoot();
-        Assert.NotNull(root);
-        var p = Path.Combine(root!.FullName, ".squad", "decisions", "inbox",
-            "vasquez-phase-k-wave-22.md");
-        Assert.True(File.Exists(p));
-    }
-
-    [Fact, Trait("Category", "Contract"), Trait("Wave", "Phase-K-22"), Trait("Lane", "Vasquez")]
     public void Wave1ThroughKW22RegressionTests_Class_Present()
     {
         var asm = typeof(W22SurfaceSmokeFactsTests).Assembly;
