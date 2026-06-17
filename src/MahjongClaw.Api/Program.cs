@@ -2403,7 +2403,15 @@ static async Task ProcessBotClaimsAsync(
         }
 
         var ruleset = RulesetResolver.Resolve(game.Ruleset);
-        var shouldClaimWin = BotClaimAdvisor.ShouldClaimDiscardWin(hand, melds, claimWindow.DiscardedTile, ruleset);
+        missedWinLocks.TryGetValue(game.Id, out var gameLocks);
+        gameLocks?.TryGetValue(botPlayerId, out var missedWinLock);
+
+        var shouldClaimWin = BotClaimAdvisor.ShouldClaimDiscardWin(
+            hand,
+            melds,
+            claimWindow.DiscardedTile,
+            ruleset,
+            missedWinLock);
 
         if (shouldClaimWin)
         {

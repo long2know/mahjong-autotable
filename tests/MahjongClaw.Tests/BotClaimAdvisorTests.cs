@@ -131,6 +131,74 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void ShouldClaimDiscardWin_ReturnsFalse_WhenMissedWinLockBlocksDiscard()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 5)
+        };
+
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dragons, 0, null, Dragon.White);
+        var missedWinLock = new MissedWinLock(new HashSet<Tile> { discardedTile });
+
+        var shouldClaim = BotClaimAdvisor.ShouldClaimDiscardWin(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            MahjongRuleset.ChineseOfficial,
+            missedWinLock);
+
+        shouldClaim.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ShouldClaimDiscardWin_ReturnsTrue_WhenMissedWinLockDoesNotBlockDiscard()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 5)
+        };
+
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dragons, 0, null, Dragon.White);
+        var missedWinLock = new MissedWinLock(new HashSet<Tile> { new Tile(TileSuit.Dots, 9) });
+
+        var shouldClaim = BotClaimAdvisor.ShouldClaimDiscardWin(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            MahjongRuleset.ChineseOfficial,
+            missedWinLock);
+
+        shouldClaim.Should().BeTrue();
+    }
+
+    [Fact]
     public void ShouldClaimDiscardWin_ReturnsFalse_WhenChineseOfficialMinimumFanNotMet()
     {
         var handTiles = new List<Tile>

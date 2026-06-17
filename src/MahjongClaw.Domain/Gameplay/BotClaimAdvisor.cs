@@ -9,11 +9,17 @@ public static class BotClaimAdvisor
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
         Tile discardedTile,
-        MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
+        MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial,
+        MissedWinLock? missedWinLock = null)
     {
         ArgumentNullException.ThrowIfNull(handTiles);
         ArgumentNullException.ThrowIfNull(meldTiles);
         ArgumentNullException.ThrowIfNull(discardedTile);
+
+        if (missedWinLock is not null && missedWinLock.IsLockedOnTile(discardedTile))
+        {
+            return false;
+        }
 
         if (handTiles.Any(static tile => tile is null) || meldTiles.Any(static tile => tile is null))
         {
