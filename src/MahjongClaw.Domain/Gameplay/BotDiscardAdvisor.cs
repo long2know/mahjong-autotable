@@ -107,6 +107,21 @@ public static class BotDiscardAdvisor
         var discardOutSummaries = handTiles
             .Select((_, index) => CountWinningDrawOutsAfterDiscard(handTiles, meldTiles, visibleCounts, index, ruleset))
             .ToList();
+        var noPotentialOutsIgnoringMinimumFan = false;
+        if (visibleMeldCounts.Count > 0 && discardOutSummaries.Max(summary => summary.TileTypes) == 0)
+        {
+            var potentialOutSummaries = handTiles
+                .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                    handTiles,
+                    meldTiles,
+                    visibleCounts,
+                    index,
+                    ruleset,
+                    requireMinimumFan: false))
+                .ToList();
+            noPotentialOutsIgnoringMinimumFan = potentialOutSummaries.Max(summary => summary.TileTypes) == 0;
+        }
+
         var hasChangshaPureSuitLean = false;
         TileSuit? changshaDominantSuit = null;
         if (ruleset == MahjongRuleset.Changsha258)
@@ -942,6 +957,7 @@ public static class BotDiscardAdvisor
 
         var filteredByDeadOffRankPair = false;
         var filteredByDeadSingleton = false;
+        var filteredByNearDeadSmallWinSingleton = false;
         var filteredByIsolatedOffRankPair = false;
 
         if (changshaSmallWinPairCount >= 1)
@@ -1222,6 +1238,56 @@ public static class BotDiscardAdvisor
             && changshaSmallWinPairCount >= 1
             && !filteredByDeadOffRankPair
             && !filteredByDeadSingleton)
+        {
+            var nearDeadSmallWinSingletonCandidates = candidates
+                .Where(candidate =>
+                {
+                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                    if (handCount != 1 || candidate.RemainingCopies != 1)
+                    {
+                        return false;
+                    }
+
+                    if (!Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
+                    {
+                        return false;
+                    }
+
+                    return !HasInHandSequenceAnchor(candidate.Tile, handCounts);
+                })
+                .ToList();
+
+            if (nearDeadSmallWinSingletonCandidates.Count > 0)
+            {
+                var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestOverallOutCopies = candidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                var bestNearDeadOuts = nearDeadSmallWinSingletonCandidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestNearDeadOutCopies = nearDeadSmallWinSingletonCandidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestNearDeadOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                var withinOutsTolerance = bestNearDeadOuts >= bestOverallOuts - NearDeadSingletonOutsTolerance;
+                var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
+                    || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadSingletonOutsTolerance;
+
+                if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                {
+                    candidates = nearDeadSmallWinSingletonCandidates;
+                    filteredByNearDeadSmallWinSingleton = true;
+                }
+            }
+        }
+
+        if (ruleset == MahjongRuleset.Changsha258
+            && enforceSmallWinPairBias
+            && visibleCounts.Count > 0
+            && changshaSmallWinPairCount >= 1
+            && !filteredByDeadOffRankPair
+            && !filteredByDeadSingleton
+            && !filteredByNearDeadSmallWinSingleton)
         {
             var nearDeadSingletonCandidates = candidates
                 .Where(candidate =>
@@ -1623,9 +1689,15 @@ public static class BotDiscardAdvisor
                         .ToList();
 
                     var allowThreatWhenNoWinningOuts = bestOverallOuts == 0
-                        && multiCopyThreatCandidates.Count > 0;
+                        && multiCopyThreatCandidates.Count > 0
+                        && !noPotentialOutsIgnoringMinimumFan;
 
-                    if (allowThreatWhenNoWinningOuts)
+                    if (bestOverallOuts == 0 && noPotentialOutsIgnoringMinimumFan)
+                    {
+                        candidates = nonThreatCandidates;
+                        filteredByKongThreatAvoidance = true;
+                    }
+                    else if (allowThreatWhenNoWinningOuts)
                     {
                         candidates = multiCopyThreatCandidates;
                     }
@@ -2736,7 +2808,8 @@ public static class BotDiscardAdvisor
         IReadOnlyList<Tile> meldTiles,
         IReadOnlyDictionary<Tile, int> visibleCounts,
         int discardIndex,
-        MahjongRuleset ruleset)
+        MahjongRuleset ruleset,
+        bool requireMinimumFan = true)
     {
         var drawTileTypes = ruleset == MahjongRuleset.Changsha258
             ? Changsha258DrawTileTypes
@@ -2785,7 +2858,12 @@ public static class BotDiscardAdvisor
                 continue;
             }
 
-            if (winningHand is null || !ScoreCalculator.MeetsRulesetMinimumFan(winningHand, ruleset))
+            if (winningHand is null)
+            {
+                continue;
+            }
+
+            if (requireMinimumFan && !ScoreCalculator.MeetsRulesetMinimumFan(winningHand, ruleset))
             {
                 continue;
             }

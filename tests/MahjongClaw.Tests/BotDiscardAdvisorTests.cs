@@ -3078,6 +3078,35 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleMeldTiles_AvoidsKongFeed_WhenNoWinningOutsExist()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7)
+        };
+
+        var visibleMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7)
+        };
+
+        var visibleTiles = BuildExhaustedVisibleTiles();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            visibleMeldTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 7));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleMeldTiles_UsesRemainingCopyTieBreaker()
     {
         var handTiles = new List<Tile>
@@ -4572,7 +4601,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_AllowsKongThreatDiscard_WhenOnlyWinningPathHasMultipleCopies()
+    public void SelectDiscardIndex_AvoidsKongThreatDiscard_WhenNoWinningOutsExistWithMultiCopyThreat()
     {
         var handTiles = new List<Tile>
         {
@@ -4608,7 +4637,7 @@ public class BotDiscardAdvisorTests
             opponentMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
-        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 9));
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 9));
     }
 
     [Fact]
@@ -5158,6 +5187,40 @@ public class BotDiscardAdvisorTests
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.ChineseOfficial);
 
         handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 4));
+    }
+
+    private static List<Tile> BuildExhaustedVisibleTiles()
+    {
+        var tiles = new List<Tile>();
+
+        foreach (var suit in new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos })
+        {
+            for (var rank = 1; rank <= 9; rank++)
+            {
+                for (var i = 0; i < 4; i++)
+                {
+                    tiles.Add(new Tile(suit, rank));
+                }
+            }
+        }
+
+        foreach (var wind in Enum.GetValues<Wind>())
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                tiles.Add(new Tile(TileSuit.Winds, 0, wind));
+            }
+        }
+
+        foreach (var dragon in Enum.GetValues<Dragon>())
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                tiles.Add(new Tile(TileSuit.Dragons, 0, null, dragon));
+            }
+        }
+
+        return tiles;
     }
 }
 
