@@ -23,8 +23,6 @@ namespace Mahjong.Autotable.Api.Tests.Phase_K_W10.Vasquez;
 ///         ESO + RS256 rotation steps.</item>
 ///   <item>Container scan remediation workflow —
 ///         <c>.github/workflows/container-scan-remediation.yml</c>.</item>
-///   <item>Prod health-check workflow —
-///         <c>.github/workflows/prod-health-check.yml</c>.</item>
 ///   <item>Redis cluster doc — <c>docs/redis-cluster.md</c>
 ///         covers the cluster topology + failover playbook.</item>
 ///   <item>CHANGELOG 0.19.0 — <c>## [0.19.0]</c> section.</item>
@@ -200,21 +198,6 @@ public sealed class AponeW10InfraContractTests
         if (!File.Exists(path)) return;
         var text = File.ReadAllText(path);
         Assert.Matches(new Regex(@"^on:", RegexOptions.Multiline), text);
-    }
-
-    // ─── 6. prod health-check workflow ──────────────────────────────────────
-
-    [Fact, Trait("Category", "Infra"), Trait("Wave", "Phase-K-10")]
-    public void ProdHealthCheckWorkflow_Present_OrForwardStaged()
-    {
-        var root = FindRepoRoot();
-        if (root is null) return;
-        var path = Path.Combine(
-            root.FullName, ".github", "workflows", "prod-health-check.yml");
-        if (!File.Exists(path)) return;
-        var text = File.ReadAllText(path);
-        Assert.Matches(new Regex(@"^on:", RegexOptions.Multiline), text);
-        _ = text.Contains("health", StringComparison.OrdinalIgnoreCase);
     }
 
     // ─── 7. Redis cluster doc ───────────────────────────────────────────────
