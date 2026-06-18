@@ -1451,6 +1451,32 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleTiles_DiscardsIsolatedOffRankPair_WhenSmallWinPairSecured()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 8),
+            new(TileSuit.Bamboos, 9)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7), new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 8), new(TileSuit.Characters, 8), new(TileSuit.Characters, 8), new(TileSuit.Characters, 8)
+        };
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>()).Should().BeFalse();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), visibleTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 9));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleTiles_DoesNotDiscardNearDeadOffRankPair_WhenChowPotentialExists()
     {
         var handTiles = new List<Tile>

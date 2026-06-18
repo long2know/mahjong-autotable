@@ -18,6 +18,7 @@ public static class BotDiscardAdvisor
     private const int NearDeadOffRankPairOutsTolerance = 1;
     private const int NearDeadSingletonOutsTolerance = 1;
     private const int OffRankPairOutsTolerance = 1;
+    private const int IsolatedOffRankPairOutsTolerance = 1;
     private const int DeadPairOutsTolerance = 1;
     private const int NearDeadPairOutsTolerance = 1;
     private const int DeadHonorSingletonOutsTolerance = 1;
@@ -927,6 +928,7 @@ public static class BotDiscardAdvisor
 
         var filteredByDeadOffRankPair = false;
         var filteredByDeadSingleton = false;
+        var filteredByIsolatedOffRankPair = false;
 
         if (changshaSmallWinPairCount >= 1)
         {
@@ -1033,6 +1035,59 @@ public static class BotDiscardAdvisor
                 {
                     candidates = nearDeadOffRankPairCandidates;
                     filteredByNearDeadOffRankPair = true;
+                }
+            }
+        }
+
+        if (ruleset == MahjongRuleset.Changsha258
+            && enforceSmallWinPairBias
+            && visibleCounts.Count > 0
+            && changshaSmallWinPairCount >= 1
+            && !filteredByDeadOffRankPair
+            && !filteredByNearDeadOffRankPair
+            && !filteredByDeadSingleton
+            && !hasChangshaSevenPairsLean)
+        {
+            var isolatedOffRankPairCandidates = candidates
+                .Where(candidate =>
+                {
+                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                    if (handCount != 2 || Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
+                    {
+                        return false;
+                    }
+
+                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                })
+                .ToList();
+
+            if (hasChangshaPureSuitLean && changshaDominantSuit.HasValue && isolatedOffRankPairCandidates.Count > 0)
+            {
+                isolatedOffRankPairCandidates = isolatedOffRankPairCandidates
+                    .Where(candidate => candidate.Tile.Suit != changshaDominantSuit.Value)
+                    .ToList();
+            }
+
+            if (isolatedOffRankPairCandidates.Count > 0)
+            {
+                var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestOverallOutCopies = candidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                var bestIsolatedOuts = isolatedOffRankPairCandidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestIsolatedOutCopies = isolatedOffRankPairCandidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestIsolatedOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                var withinOutsTolerance = bestIsolatedOuts >= bestOverallOuts - IsolatedOffRankPairOutsTolerance;
+                var withinCopyTolerance = bestIsolatedOuts < bestOverallOuts
+                    || bestIsolatedOutCopies >= bestOverallOutCopies - IsolatedOffRankPairOutsTolerance;
+
+                if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                {
+                    candidates = isolatedOffRankPairCandidates;
+                    filteredByIsolatedOffRankPair = true;
                 }
             }
         }
@@ -1924,6 +1979,7 @@ public static class BotDiscardAdvisor
 
         var allowWinningOutsOverride = !(filteredByPureSuit
             || filteredByNearDeadOffRankPair
+            || filteredByIsolatedOffRankPair
             || filteredByDeadPair
             || filteredByDeadOffRankPair
             || filteredByDeadSingleton
