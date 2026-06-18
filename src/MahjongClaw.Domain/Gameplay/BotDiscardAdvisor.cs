@@ -587,7 +587,21 @@ public static class BotDiscardAdvisor
 
                 if (liveSmallWinSingletons.Count > 1 && deadSmallWinSingletons.Count == 0)
                 {
-                    var bestSingleton = liveSmallWinSingletons
+                    var bestSingletonCandidates = liveSmallWinSingletons;
+
+                    if (hasChangshaPureSuitLean && changshaDominantSuit.HasValue)
+                    {
+                        var dominantSuitSingletons = liveSmallWinSingletons
+                            .Where(entry => entry.Tile.Suit == changshaDominantSuit.Value)
+                            .ToList();
+
+                        if (dominantSuitSingletons.Count > 0)
+                        {
+                            bestSingletonCandidates = dominantSuitSingletons;
+                        }
+                    }
+
+                    var bestSingleton = bestSingletonCandidates
                         .OrderByDescending(entry => entry.RemainingCopies)
                         .ThenByDescending(entry => HasAdjacentSuitedTile(handCounts, entry.Tile) ? 1 : 0)
                         .First();
