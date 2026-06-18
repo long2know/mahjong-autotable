@@ -177,16 +177,6 @@ public sealed class W10SurfaceSmokeFactsTests
     }
 
     [Fact, Trait("Category", "Smoke"), Trait("Wave", "Phase-K-10")]
-    public void Smoke_W10_ProdHealthCheckWorkflow_OrForwardStaged()
-    {
-        var root = FindRepoRoot();
-        if (root is null) return;
-        var path = Path.Combine(
-            root.FullName, ".github", "workflows", "prod-health-check.yml");
-        _ = File.Exists(path);
-    }
-
-    [Fact, Trait("Category", "Smoke"), Trait("Wave", "Phase-K-10")]
     public void Smoke_W10_Changelog_0_19_0_OrForwardStaged()
     {
         var root = FindRepoRoot();

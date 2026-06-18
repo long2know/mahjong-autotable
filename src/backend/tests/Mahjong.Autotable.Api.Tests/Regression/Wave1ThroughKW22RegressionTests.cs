@@ -1988,19 +1988,6 @@ public class Wave1ThroughKW22RegressionTests
     }
 
     // ────────────────────────────────────────────────────────────
-    //  Phase K Wave 10 — prod-health-check workflow (Apone).
-    // ────────────────────────────────────────────────────────────
-    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
-    public void PhaseK10_ProdHealthCheck_FileOrForwardStaged()
-    {
-        var root = FindRepoRootStatic();
-        if (root is null) return;
-        var path = Path.Combine(
-            root.FullName, ".github", "workflows", "prod-health-check.yml");
-        _ = File.Exists(path);
-    }
-
-    // ────────────────────────────────────────────────────────────
     //  Phase K Wave 10 — Redis Terraform module directory (Apone).
     // ────────────────────────────────────────────────────────────
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]

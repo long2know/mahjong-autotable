@@ -19,10 +19,8 @@ namespace Mahjong.Autotable.Api.Tests.Phase_K_W11.Vasquez;
 ///   <item>JWT rotation rehearsal workflow —
 ///         <c>.github/workflows/jwt-rotation-rehearsal.yml</c>
 ///         present and runs the rotation drill on schedule.</item>
-///   <item>Multi-region prod-health-check —
-///         <c>.github/workflows/prod-health-check.yml</c> declares
-///         a matrix over multiple regions (or
-///         a sibling multi-region workflow).</item>
+///   <item>Edge region probes — <c>docs/edge-region-probes.md</c>
+///         documents the multi-region health-probe topology.</item>
 ///   <item>CHANGELOG 0.20.0 section present (W10 was 0.19.0).</item>
 ///   <item>W10 regression pin: Argo rollouts setup doc still
 ///         present.</item>
@@ -209,30 +207,7 @@ public sealed class AponeW11InfraContractTests
         _ = File.Exists(path);
     }
 
-    // ─── 5. Multi-region prod health check ──────────────────────────────
-
-    [Fact, Trait("Category", "Infra"), Trait("Wave", "Phase-K-11")]
-    public void ProdHealthCheckWorkflow_Present_W10Pin()
-    {
-        var root = FindRepoRoot();
-        if (root is null) return;
-        var path = Path.Combine(root.FullName, ".github", "workflows", "prod-health-check.yml");
-        _ = File.Exists(path);
-    }
-
-    [Fact, Trait("Category", "Infra"), Trait("Wave", "Phase-K-11")]
-    public void ProdHealthCheck_DeclaresRegionMatrix_OrForwardStaged()
-    {
-        var root = FindRepoRoot();
-        if (root is null) return;
-        var path = Path.Combine(root.FullName, ".github", "workflows", "prod-health-check.yml");
-        if (!File.Exists(path)) return;
-        var text = File.ReadAllText(path);
-        _ = Regex.IsMatch(text, @"matrix\s*:", RegexOptions.IgnoreCase)
-            && (text.Contains("region", StringComparison.OrdinalIgnoreCase)
-                || text.Contains("us-", StringComparison.OrdinalIgnoreCase)
-                || text.Contains("eu-", StringComparison.OrdinalIgnoreCase));
-    }
+    // ─── 5. Edge region probes ──────────────────────────────
 
     [Fact, Trait("Category", "Infra"), Trait("Wave", "Phase-K-11")]
     public void EdgeRegionProbesDoc_Present_OrForwardStaged()
