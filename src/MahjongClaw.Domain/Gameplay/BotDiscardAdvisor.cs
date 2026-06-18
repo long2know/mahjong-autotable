@@ -489,6 +489,7 @@ public static class BotDiscardAdvisor
         var allCandidates = candidates;
         var filteredByPureSuit = false;
         var filteredByNearDeadOffRankPair = false;
+        var filteredByNearDeadSmallWinSingleton = false;
         var filteredByDeadPair = false;
         var filteredByDeadSuitedSingleton = false;
         var filteredByKongThreatAvoidance = false;
@@ -509,10 +510,21 @@ public static class BotDiscardAdvisor
                     ownedCounts.TryGetValue(singletonTile, out var ownedCount);
                     visibleCounts.TryGetValue(singletonTile, out var visibleCount);
 
-                    var shouldProtectSingleton = !hasDominantSuitLiveSmallWinCandidate
-                        || singletonTile.Suit == changshaDominantSuit.GetValueOrDefault();
+                    var remainingCopies = 4 - ownedCount - visibleCount;
+                    var hasAlternateStrongSmallWinCandidate = HasAlternateStrongSmallWinPairCandidate(
+                        singletonTile,
+                        handCounts,
+                        ownedCounts,
+                        visibleCounts);
 
-                    if (shouldProtectSingleton && 4 - ownedCount - visibleCount > 0)
+                    var shouldProtectSingleton = (!hasDominantSuitLiveSmallWinCandidate
+                        || singletonTile.Suit == changshaDominantSuit.GetValueOrDefault())
+                        && !(remainingCopies == 1
+                            && handTiles.Count >= 10
+                            && hasAlternateStrongSmallWinCandidate
+                            && !HasInHandSequenceAnchor(singletonTile, handCounts));
+
+                    if (shouldProtectSingleton && remainingCopies > 0)
                     {
                         var nonProtectedCandidates = candidates
                             .Where(candidate => !candidate.Tile.Equals(singletonTile))
@@ -788,17 +800,46 @@ public static class BotDiscardAdvisor
 
                 if (liveSmallWinSingletons.Count == 1 && liveSmallWinSingletons[0].RemainingCopies == 1)
                 {
-                    var offRankPairCandidates = candidates
-                        .Where(candidate =>
-                        {
-                            handCounts.TryGetValue(candidate.Tile, out var handCount);
-                            return handCount == 2 && !Changsha258Ruleset.IsSmallWinPair(candidate.Tile);
-                        })
-                        .ToList();
+                    var liveSingleton = liveSmallWinSingletons[0];
+                    var preserveDominantSuitSingleton = hasChangshaPureSuitLean
+                        && changshaDominantSuit.HasValue
+                        && liveSingleton.Tile.Suit == changshaDominantSuit.Value;
+                    var hasAlternateStrongSmallWinCandidate = HasAlternateStrongSmallWinPairCandidate(
+                        liveSingleton.Tile,
+                        handCounts,
+                        ownedCounts,
+                        visibleCounts);
+                    var shouldDiscardSingleton = !preserveDominantSuitSingleton
+                        && handTiles.Count >= 10
+                        && hasAlternateStrongSmallWinCandidate
+                        && !HasInHandSequenceAnchor(liveSingleton.Tile, handCounts);
 
-                    if (offRankPairCandidates.Count > 0)
+                    if (shouldDiscardSingleton)
                     {
-                        candidates = offRankPairCandidates;
+                        var singletonCandidates = candidates
+                            .Where(candidate => candidate.Tile.Equals(liveSingleton.Tile))
+                            .ToList();
+
+                        if (singletonCandidates.Count > 0)
+                        {
+                            candidates = singletonCandidates;
+                            filteredByNearDeadSmallWinSingleton = true;
+                        }
+                    }
+                    else
+                    {
+                        var offRankPairCandidates = candidates
+                            .Where(candidate =>
+                            {
+                                handCounts.TryGetValue(candidate.Tile, out var handCount);
+                                return handCount == 2 && !Changsha258Ruleset.IsSmallWinPair(candidate.Tile);
+                            })
+                            .ToList();
+
+                        if (offRankPairCandidates.Count > 0)
+                        {
+                            candidates = offRankPairCandidates;
+                        }
                     }
                 }
             }
@@ -847,7 +888,8 @@ public static class BotDiscardAdvisor
         if (ruleset == MahjongRuleset.Changsha258
             && enforceSmallWinPairBias
             && changshaSmallWinPairCount == 0
-            && !hasChangshaPureSuitLean)
+            && !hasChangshaPureSuitLean
+            && !filteredByNearDeadSmallWinSingleton)
         {
             var pairCount = handCounts.Count(entry => entry.Value >= 2);
             if (pairCount >= 2)
@@ -957,7 +999,6 @@ public static class BotDiscardAdvisor
 
         var filteredByDeadOffRankPair = false;
         var filteredByDeadSingleton = false;
-        var filteredByNearDeadSmallWinSingleton = false;
         var filteredByIsolatedOffRankPair = false;
 
         if (changshaSmallWinPairCount >= 1)
@@ -2065,6 +2106,7 @@ public static class BotDiscardAdvisor
 
         var allowWinningOutsOverride = !(filteredByPureSuit
             || filteredByNearDeadOffRankPair
+            || filteredByNearDeadSmallWinSingleton
             || filteredByIsolatedOffRankPair
             || filteredByDeadPair
             || filteredByDeadOffRankPair
@@ -3050,6 +3092,55 @@ public static class BotDiscardAdvisor
         }
 
         return candidates;
+    }
+
+    private static bool HasAlternateStrongSmallWinPairCandidate(
+        Tile excludedTile,
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        var pairCount = handCounts.Count(entry => entry.Value >= 2);
+
+        foreach (var tile in Changsha258SmallWinPairTiles)
+        {
+            if (tile.Equals(excludedTile))
+            {
+                continue;
+            }
+
+            handCounts.TryGetValue(tile, out var handCount);
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+
+            var remainingCopies = 4 - ownedCount - visibleCount;
+            if (handCount >= 2)
+            {
+                return true;
+            }
+
+            if (handCount == 1)
+            {
+                if (remainingCopies >= 2)
+                {
+                    return true;
+                }
+
+                if (remainingCopies >= 1 && HasAdjacentSuitedTile(handCounts, tile) && pairCount == 0)
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (remainingCopies >= 3)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool HasStrongSmallWinPairCandidate(
