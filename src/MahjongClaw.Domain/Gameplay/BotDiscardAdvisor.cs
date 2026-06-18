@@ -1855,7 +1855,28 @@ public static class BotDiscardAdvisor
 
                 if (nonTerminalCandidates.Count > 0)
                 {
-                    candidates = nonTerminalCandidates;
+                    if (soleChineseOfficialPairTile is not null
+                        && !soleChineseOfficialPairTile.IsHonor
+                        && !IsTerminalSuitedTile(soleChineseOfficialPairTile))
+                    {
+                        var nonTerminalSingletonCandidates = nonTerminalCandidates
+                            .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var count) && count == 1)
+                            .ToList();
+
+                        if (nonTerminalSingletonCandidates.Count > 0)
+                        {
+                            allowBreakingSolePairForTerminalHonorLean = false;
+                            candidates = nonTerminalSingletonCandidates;
+                        }
+                        else
+                        {
+                            candidates = nonTerminalCandidates;
+                        }
+                    }
+                    else
+                    {
+                        candidates = nonTerminalCandidates;
+                    }
                 }
             }
             else
