@@ -8,6 +8,7 @@
     "e2e:install": "playwright install --with-deps chromium",
     "build": "npm run build:vite",
     "build:vite": "vite build",
+    "watch": "vite build --watch",
     "build:metric": "node scripts/build-with-cache-metric.js",
     "build:post": "node scripts/generate-sw-manifest.js",
     "capture:screenshots": "node scripts/capture-screenshots.js"

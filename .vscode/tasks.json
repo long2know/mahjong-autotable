@@ -47,17 +47,10 @@
     {
       "label": "autotable: watch",
       "type": "process",
-      "command": "npx",
+      "command": "npm",
       "args": [
-        "parcel",
-        "watch",
-        "index.html",
-        "about.html",
-        "--public-url",
-        ".",
-        "--no-source-maps",
-        "--dist-dir",
-        "../autotable"
+        "run",
+        "watch"
       ],
       "options": {
         "cwd": "${workspaceFolder}/src/frontend/autotable-src"

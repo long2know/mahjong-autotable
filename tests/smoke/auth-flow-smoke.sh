@@ -54,8 +54,13 @@ else
 fi
 
 echo "==> [start] launching container on port $PORT"
+# Production image refuses to boot without Authentication:JwtSigningKeys[0]
+# (JwtSigningKeyProvider.cs:121). Mint a per-run HMAC key so the container
+# starts and /health responds — mirrors Bishop's #96 fix.
+JWT_KEY="$(openssl rand -base64 48)"
 docker run -d --name "$CONTAINER_NAME" -p "$PORT:8080" \
     -e ASPNETCORE_ENVIRONMENT=Production \
+    -e Authentication__JwtSigningKeys__0="$JWT_KEY" \
     "$IMAGE" >/dev/null
 
 echo "==> [wait] /health"
