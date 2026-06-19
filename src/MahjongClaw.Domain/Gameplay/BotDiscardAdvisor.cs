@@ -79,12 +79,31 @@ public static class BotDiscardAdvisor
 
         if (ruleset == MahjongRuleset.Changsha258)
         {
+            int? firstInvalidIndex = null;
+            int? bonusInvalidIndex = null;
+
             for (var i = 0; i < handTiles.Count; i++)
             {
                 if (!Changsha258Ruleset.IsAllowedTile(handTiles[i]))
                 {
-                    return i;
+                    firstInvalidIndex ??= i;
+
+                    if (handTiles[i].IsFlower)
+                    {
+                        bonusInvalidIndex = i;
+                        break;
+                    }
                 }
+            }
+
+            if (bonusInvalidIndex.HasValue)
+            {
+                return bonusInvalidIndex.Value;
+            }
+
+            if (firstInvalidIndex.HasValue)
+            {
+                return firstInvalidIndex.Value;
             }
         }
 
