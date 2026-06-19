@@ -62,7 +62,7 @@ docs/
      `src/backend/src/Mahjong.Autotable.Api` (listens on
      `http://localhost:5000` / `https://localhost:7135` per
      `launchSettings.json`).
-   - `Autotable (Parcel/Vite watch)` — rebuilds the frontend bundle
+   - `Autotable (Vite watch)` — rebuilds the frontend bundle
      into `src/frontend/autotable/` on save.
 4. The `serverReadyAction` opens the browser at `/autotable/`
    automatically when the backend reports `Now listening on …`.
@@ -71,7 +71,7 @@ Other launch configs in `.vscode/launch.json`:
 
 - `.NET Backend` — backend only (no frontend rebuild).
 - `Backend + Autotable Baseline` — backend only, opens `/autotable/`.
-- `Autotable (Parcel watch)` — frontend watcher only.
+- `Autotable (Vite watch)` — frontend watcher only.
 
 CLI equivalents:
 

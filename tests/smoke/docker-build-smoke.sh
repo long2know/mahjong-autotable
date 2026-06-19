@@ -57,7 +57,16 @@ fi
 echo "✅ build succeeded"
 
 echo "==> [2/4] Starting container..."
-docker run -d --name "$CONTAINER_NAME" -p "$PORT:8080" "$IMAGE_TAG" > /dev/null
+# The runtime image bakes ASPNETCORE_ENVIRONMENT=Production; the host
+# refuses to boot when Authentication:JwtSigningKeys[0] is empty
+# (JwtSigningKeyProvider.cs:121) — without a key the .NET host crashes,
+# the port mapping tears down, and /health never responds. CI is the
+# "operator" for ephemeral smoke containers, so mint a per-run HMAC key
+# (mirrors Bishop's #96 fix in e2e-playwright.yml / multi-arch-smoke.yml).
+JWT_KEY="$(openssl rand -base64 48)"
+docker run -d --name "$CONTAINER_NAME" -p "$PORT:8080" \
+    -e Authentication__JwtSigningKeys__0="$JWT_KEY" \
+    "$IMAGE_TAG" > /dev/null
 
 echo "==> [3/4] Waiting for /health..."
 HEALTH_OK=0

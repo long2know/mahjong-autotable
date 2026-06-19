@@ -22,6 +22,18 @@ on:
   # churns under playability-first mode. workflow_dispatch
   # retained for on-demand smokes. Re-enable by uncommenting the
   # schedule block below once the docker stack stabilizes.
+  #
+  # Apone D4 regression (2026-06-19): boot-crash gap fixed. The smoke
+  # scripts now mint a per-run Authentication__JwtSigningKeys__0 so the
+  # Production image actually starts (it was crashing immediately on an
+  # empty signing key — JwtSigningKeyProvider.cs:121 — so /health was
+  # unreachable). docker-build / auth-flow / chat-flow / token-rotation
+  # smokes pass locally against e5eb6f0. STILL blocked on
+  # jwt-rotation-smoke: POST /api/auth/token is now admin-session-gated
+  # (AuthTokenController.cs:71-75 — 401 to the anonymous probe), so the
+  # mint→rotate→validate flow needs an admin-cookie bootstrap before it
+  # can green. Re-enable the schedule once jwt-rotation-smoke.sh
+  # establishes an admin session (Bishop's auth lane).
   # schedule:
   #   - cron: "0 8 * * *"
   workflow_dispatch:

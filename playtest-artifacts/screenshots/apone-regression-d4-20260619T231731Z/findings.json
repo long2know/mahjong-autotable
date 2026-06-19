@@ -1,0 +1,74 @@
+{
+  "timestamp": "2026-06-19T23:17:09.248Z",
+  "runTag": "ripley-docker-proof-1781911029247",
+  "baseUrl": "http://127.0.0.1:8096",
+  "health": {
+    "status": 200,
+    "ok": true,
+    "latencyMs": 26,
+    "body": {
+      "status": "healthy",
+      "buildSha": "dev",
+      "uptime": "00:04:22.0601976",
+      "version": "0.31.0.0",
+      "db": {
+        "connected": true,
+        "latencyMs": 0,
+        "providerName": "Microsoft.EntityFrameworkCore.Sqlite",
+        "canQuery": true,
+        "migrationsApplied": 0
+      },
+      "activeGames": 0,
+      "oauth": {
+        "providers": {}
+      }
+    }
+  },
+  "staticHtml": {
+    "status": 200,
+    "ok": true,
+    "latencyMs": 12,
+    "bytes": 93171,
+    "hasTitle": true,
+    "bundleAsset": "autotable-src.69d7a533.js",
+    "snippet": "<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"utf-8\">\n    <title>Autotable</title>\n    <meta name=\"viewport\"\n          content=\"width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no\">\n    <!-- Phase J Wave 8 — Sentry DSN injection point.  Empty content\n         keeps Sentry as a no-op; ops can swap the value in via\n         envsubst / k8s ConfigMap mount without rebuilding the bundle. -->\n    <meta name=\"sentry-dsn\" content=\"\">\n    <meta name=\"sentry-environment\" content=\"production\">\n    <!-- Phase K Wave 2 — PWA manifest + theme.  Service worker is\n         registered at "
+  },
+  "screenshot": "playtest-artifacts/screenshots/ripley-docker-proof-1781911029247/docker-game-running.png",
+  "worldSnapshot": {
+    "seat": null,
+    "handBySeat": [
+      13,
+      14,
+      10,
+      13
+    ],
+    "meldBySeat": [
+      0,
+      0,
+      3,
+      0
+    ],
+    "discardBySeat": [
+      1,
+      0,
+      1,
+      1
+    ],
+    "wallCount": 52,
+    "totalDiscard": 3,
+    "totalMeld": 3,
+    "handSum": 50,
+    "thingsCount": 109,
+    "connected": true
+  },
+  "pageErrors": [],
+  "consoleErrors": [
+    "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-6V8vzu+1Se1PyiP7XR5V3z6V5X01j75c9l6+l8XeEag='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked.",
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "ignoredWarnings": 0,
+  "pass": true,
+  "failReason": null
+}

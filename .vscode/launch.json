@@ -36,10 +36,10 @@
       }
     },
     {
-      "name": "Autotable (Parcel watch)",
+      "name": "Autotable (Vite watch)",
       "type": "node-terminal",
       "request": "launch",
-      "command": "npx parcel watch index.html about.html --public-url . --no-source-maps --dist-dir ../autotable",
+      "command": "npm run watch",
       "cwd": "${workspaceFolder}/src/frontend/autotable-src"
     }
   ],
@@ -48,7 +48,7 @@
       "name": "F5 Full Stack (Backend + Autotable)",
       "configurations": [
         ".NET Backend",
-        "Autotable (Parcel watch)"
+        "Autotable (Vite watch)"
       ],
       "stopAll": true
     }
