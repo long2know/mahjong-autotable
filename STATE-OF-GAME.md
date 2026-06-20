@@ -438,3 +438,33 @@ The running backend serves the frontend dist from `/data/source/mahjong-autotabl
 3. **slsa-drift scanner blind spot.** Scanner regex `^[[:space:]]*uses:` missed the inline-list `- uses:` form → 12 unpinned refs invisible. Fixed: pin all 12 + broaden regex to `^[[:space:]]*-?[[:space:]]*uses:`. Convention: ALL `uses:` (step AND inline-list) must be 40-char SHA pinned with `# vX.Y.Z`.
 4. **CSSOM vs inline-style under CSP.** `el.style.x` / `el.style.cssText` (CSSOM property API) is NOT subject to `style-src`; `<style>` injection, `setAttribute('style')`, and `innerHTML` with `style="..."` ARE blocked. Use CSSOM/classList for dynamic visibility under strict CSP.
 5. **Static dist serving (verified).** Backend serves `ContentRoot/../../../frontend/autotable` — relative to ContentRoot. Each worktree's `dotnet run` serves THAT worktree's dist, so parallel frontend agents can each run their own Production-CSP backend (ports 8091/8092/8093) without rsync-to-main.
+
+## 2026-06-19 — full regression sweep: ALL CRITERIA PASS / PLAYABLE (from `main @ e5eb6f0`)
+
+Stephen asked the team to regression-test the game against **every original criterion** and prove playability. Five domain agents (claude-opus-4.8, max effort, long_context) ran in parallel, each in its own worktree. **Verdict: ✅ all criteria pass; game PLAYABLE; 0 P0/P1 open.**
+
+### Original-criteria coverage (all GREEN)
+- **.NET 10** — toolchain 10.0.100; backend builds + full xUnit suite green (5249 passed on both DB providers).
+- **F5 local dev (VS Code)** — was broken by stale Parcel refs after the Vite swap; **FIXED** (Apone, #110): restored the missing watch script + workspace file.
+- **EF Core provider flexibility** — SQLite ↔ Postgres swap with NO source change (17 migrations apply on Postgres); restart-hydration resumes non-terminal games.
+- **Single Docker image** — boots + `/health` + in-container 4-bot smoke.
+- **Vite frontend** — `npm run build` healthy; served bundle byte-identical modulo embedded timestamps.
+- **Flat + perspective views** — orthographic ↔ perspective camera toggle verified (new e2e spec); tiles + dice render in both.
+- **Full Changsha rules observed live** — dice/walls, deal, draw→discard loop, peng/chow/kong + kong replacement, Hu + fan scoring (result modal w/ per-seat score Δ), missed-win 过胡, exhaustive draw (流局), dealer rotation, 16-hand structure.
+- **Bots** — autoplay to game completion.
+- **CI** — board all-active-green; strict Production CSP (`style-src 'self'`, no `'unsafe-inline'`) clean.
+
+### 5-domain verdict
+| Domain | Agent | Result | PR |
+|---|---|---|---|
+| D1 backend rules (both DB providers) | Bishop | ✅ 5249 passed each on SQLite + Postgres, 0 real regressions, 0 flaky; canonical-spec criteria table GREEN; 81 excluded = `.git`-file worktree env (green in CI) | none (verification) |
+| D2 live playtest ×3 (Production Docker, strict CSP) | Vasquez | ✅ PLAYABLE; 3/3 `gameCompleted`; full Changsha behavior observed live; 0 CSP errors, 0 P0 | #111 (test-only) |
+| D3 frontend e2e + views | Hicks | ✅ 243 passed / 0 failed (114 specs); flat↔perspective new spec; Vite build healthy | #109 |
+| D4 platform/Docker/F5/CI | Apone | ✅ .NET 10.0.100; single image boots + `/health` + 4-bot smoke; FIXED P1 F5 drift; CI all-green | #110 |
+| D5 persistence/provider-swap | Frost | ✅ SQLite↔Postgres (no code change, 17 migrations); hydration; prior NOT-NULL/UNIQUE faults fixed (race-safe 24/24); 263/7 each | none (verification) |
+
+PRs this wave: **#109** (D3 e2e + view-mode), **#110** (D4 platform/F5), **#111** (D2 playtest evidence).
+
+### P2 follow-ups (non-blocking)
+1. **Lobby bot-difficulty banner** shows "Medium" when the URL requests `botDifficulty=Hard` — cosmetic; gameplay (claims/wins) fires normally. Needs a display-only vs param-parse check.
+2. **`docker-smoke` workflow kept DISABLED** — 4/5 smoke scripts' JWT-key boot crash fixed, but `jwt-rotation-smoke` needs an admin-cookie bootstrap (`POST /api/auth/token` is now admin-session-gated, `AuthTokenController.cs:71-75`, Bishop's lane). Re-enable once wired.
