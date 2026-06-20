@@ -1736,12 +1736,6 @@ public static class BotDiscardAdvisor
                         && bestNonThreatOutCopies == bestOverallOutCopies;
                     var losesAllWinningOuts = bestOverallOuts > 0 && bestNonThreatOuts == 0;
 
-                    var canAvoidThreatWhenOnlyMultiCopyThreatHasOuts = losesAllWinningOuts
-                        && bestThreatCandidate is not null
-                        && handCounts.TryGetValue(bestThreatCandidate.Tile, out var multiCopyThreatCount)
-                        && multiCopyThreatCount > 1
-                        && bestThreatCandidate.WinningDrawOuts <= 1;
-
                     var multiCopyThreatCandidates = candidates
                         .Where(candidate => opponentKongThreatTiles.Contains(candidate.Tile)
                             && handCounts.TryGetValue(candidate.Tile, out var threatCount)
@@ -1761,8 +1755,8 @@ public static class BotDiscardAdvisor
                     {
                         candidates = multiCopyThreatCandidates;
                     }
-                    else if (canAvoidThreatWhenOnlyMultiCopyThreatHasOuts
-                        || (!losesAllWinningOuts && ((withinOutsTolerance && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies)))
+                    else if (!losesAllWinningOuts
+                        && ((withinOutsTolerance && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies))
                     {
                         candidates = nonThreatCandidates;
                         filteredByKongThreatAvoidance = true;

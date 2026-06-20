@@ -4675,6 +4675,46 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_AllowsMultiCopyKongThreatDiscard_WhenItPreservesOnlyWinningPath()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Characters, 2)
+        };
+
+        var opponentMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 8)
+        };
+
+        var visibleTiles = opponentMeldTiles.ToList();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            opponentMeldTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 8));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_AvoidsKongThreatDiscard_WhenNoWinningOutsExistWithMultiCopyThreat()
     {
         var handTiles = new List<Tile>

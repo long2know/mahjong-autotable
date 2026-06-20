@@ -1485,8 +1485,9 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
             }
 
             var discardedTile = discardedTileHand[0];
+            MissedWinLock? missedWinLock = null;
             missedWinLocks.TryGetValue(game.Id, out var gameLocks);
-            gameLocks?.TryGetValue(botPlayer.Id, out var missedWinLock);
+            gameLocks?.TryGetValue(botPlayer.Id, out missedWinLock);
             if (BotClaimAdvisor.ShouldClaimDiscardWin(botConcealedHand, botMeldHand, discardedTile, ruleset, missedWinLock))
             {
                 ChangshaWinEvaluation? changshaEvaluation = null;
@@ -2416,8 +2417,9 @@ static async Task ProcessBotClaimsAsync(
         }
 
         var ruleset = RulesetResolver.Resolve(game.Ruleset);
+        MissedWinLock? missedWinLock = null;
         missedWinLocks.TryGetValue(game.Id, out var gameLocks);
-        gameLocks?.TryGetValue(botPlayerId, out var missedWinLock);
+        gameLocks?.TryGetValue(botPlayerId, out missedWinLock);
 
         var shouldClaimWin = BotClaimAdvisor.ShouldClaimDiscardWin(
             hand,
