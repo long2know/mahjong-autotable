@@ -1,0 +1,273 @@
+{
+  "backend": "http://127.0.0.1:8094",
+  "startedAt": "2026-06-19T23:34:28.295Z",
+  "views": {
+    "perspective": {
+      "checkbox": true,
+      "mainViewPerspective": true,
+      "canvas": 2,
+      "usable": true
+    },
+    "flat": {
+      "checkbox": false,
+      "mainViewPerspective": false,
+      "canvas": 2,
+      "usable": true
+    },
+    "bothUsable": true
+  },
+  "claims": {
+    "windowTypesSeen": [
+      "Chow",
+      "Pung",
+      "Kong",
+      "Hu"
+    ],
+    "windows": [
+      {
+        "type": "Chow",
+        "by": "Seat 1 (Bot 1):",
+        "tile": "5万",
+        "from": "Seat 0"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 3 (Bot 3):",
+        "tile": "4条",
+        "from": "Seat 2"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 3 (Bot 3):",
+        "tile": "6万",
+        "from": "Seat 2"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 0 (Bot 0):",
+        "tile": "7筒",
+        "from": "Seat 3"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 2 (Bot 2):",
+        "tile": "8万",
+        "from": "Seat 1"
+      },
+      {
+        "type": "Pung",
+        "by": "Seat 0 (Bot 0):",
+        "tile": "2筒",
+        "from": "Seat 3"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 0 (Bot 0):",
+        "tile": "9条",
+        "from": "Seat 3"
+      },
+      {
+        "type": "Pung",
+        "by": "Seat 0 (Bot 0):",
+        "tile": "9筒",
+        "from": "Seat 1"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 3 (Bot 3):",
+        "tile": "8筒",
+        "from": "Seat 2"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 2 (Bot 2):",
+        "tile": "3筒",
+        "from": "Seat 1"
+      },
+      {
+        "type": "Pung",
+        "by": "Seat 3 (Bot 3):",
+        "tile": "3筒",
+        "from": "Seat 1"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 0 (Bot 0):",
+        "tile": "5条",
+        "from": "Seat 3"
+      },
+      {
+        "type": "Pung",
+        "by": "Seat 2 (Bot 2):",
+        "tile": "5条",
+        "from": "Seat 3"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 1 (Bot 1):",
+        "tile": "8万",
+        "from": "Seat 0"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 3 (Bot 3):",
+        "tile": "9万",
+        "from": "Seat 2"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 0 (Bot 0):",
+        "tile": "6万",
+        "from": "Seat 3"
+      },
+      {
+        "type": "Pung",
+        "by": "Seat 1 (Bot 1):",
+        "tile": "2条",
+        "from": "Seat 0"
+      },
+      {
+        "type": "Kong",
+        "by": "Seat 0 (Bot 0):",
+        "tile": "9条",
+        "from": "Seat 3"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 1 (Bot 1):",
+        "tile": "6万",
+        "from": "Seat 0"
+      },
+      {
+        "type": "Hu",
+        "by": "Seat 1 (Bot 1):",
+        "tile": "3筒",
+        "from": "Seat 3"
+      },
+      {
+        "type": "Pung",
+        "by": "Seat 0 (Bot 0):",
+        "tile": "9筒",
+        "from": "Seat 3"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 2 (Bot 2):",
+        "tile": "3万",
+        "from": "Seat 1"
+      },
+      {
+        "type": "Kong",
+        "by": "Seat 3 (Bot 3):",
+        "tile": "3万",
+        "from": "Seat 1"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 1 (Bot 1):",
+        "tile": "3条",
+        "from": "Seat 0"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 0 (Bot 0):",
+        "tile": "6筒",
+        "from": "Seat 3"
+      },
+      {
+        "type": "Pung",
+        "by": "Seat 3 (Bot 3):",
+        "tile": "5筒",
+        "from": "Seat 0"
+      },
+      {
+        "type": "Pung",
+        "by": "Seat 0 (Bot 0):",
+        "tile": "5条",
+        "from": "Seat 2"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 3 (Bot 3):",
+        "tile": "5条",
+        "from": "Seat 2"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 2 (Bot 2):",
+        "tile": "8条",
+        "from": "Seat 1"
+      },
+      {
+        "type": "Pung",
+        "by": "Seat 1 (Bot 1):",
+        "tile": "9万",
+        "from": "Seat 2"
+      },
+      {
+        "type": "Pung",
+        "by": "Seat 1 (Bot 1):",
+        "tile": "6万",
+        "from": "Seat 3"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 3 (Bot 3):",
+        "tile": "1万",
+        "from": "Seat 2"
+      },
+      {
+        "type": "Hu",
+        "by": "Seat 0 (Bot 0):",
+        "tile": "4筒",
+        "from": "Seat 1"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 2 (Bot 2):",
+        "tile": "7万",
+        "from": "Seat 1"
+      },
+      {
+        "type": "Chow",
+        "by": "Seat 2 (Bot 2):",
+        "tile": "3条",
+        "from": "Seat 1"
+      }
+    ],
+    "executed": [],
+    "diceBreakEntries": [
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10",
+      "Dice rolled: 6 + 6 = 12",
+      "Dice rolled: 5 + 5 = 10"
+    ]
+  },
+  "cspViolations": [],
+  "cspViolationCount": 0,
+  "finishedAt": "2026-06-19T23:35:11.266Z"
+}

@@ -1,0 +1,252 @@
+[
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-discard",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "discarded 1筒"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-discard",
+    "seat": "Seat 1 (Bot 1):",
+    "action": "discarded 7万"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-claim",
+    "seat": "Seat 2 (Bot 2):",
+    "action": "claim window — Chow on 7万 (from Seat 1)"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-discard",
+    "seat": "Seat 2 (Bot 2):",
+    "action": "discarded 5条"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-discard",
+    "seat": "Seat 3 (Bot 3):",
+    "action": "discarded 8万"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-discard",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "discarded 3万"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-discard",
+    "seat": "Seat 1 (Bot 1):",
+    "action": "discarded 3条"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-claim",
+    "seat": "Seat 2 (Bot 2):",
+    "action": "claim window — Chow on 3条 (from Seat 1)"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 6 + 6 = 12"
+  },
+  {
+    "cls": "move-log-entry move-log-dice",
+    "seat": "System:",
+    "action": "Dice rolled: 5 + 5 = 10"
+  },
+  {
+    "cls": "move-log-entry move-log-win",
+    "seat": "Seat 0 (Bot 0):",
+    "action": "🎯 won the hand"
+  }
+]

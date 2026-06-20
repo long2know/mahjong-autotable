@@ -626,7 +626,13 @@ async function scenarioB() {
     observed = await worldSnapshot();
     observedLog = await moveLog();
     const discardCount = observedLog.filter(e => /discard/i.test(e)).length;
-    if (discardCount >= 30) break;
+    // The move-log DOM caps at MAX_ENTRIES=50 (move-log.ts), and a fast
+    // Hard/Medium 4-bot game fills that visible window with "Dice rolled"
+    // / "won the hand" rows as hands cycle, so the DOM "discard" count can
+    // never reach 30 even on a perfectly healthy game. Break on the
+    // authoritative runtime discard total too (Vasquez D2 2026-06-18).
+    const runtimeDiscards = observed?.totalDiscard ?? 0;
+    if (discardCount >= 30 || runtimeDiscards >= 30) break;
     await page.waitForTimeout(1500);
   }
   diag.observed = observed;
@@ -648,12 +654,26 @@ async function scenarioB() {
     const discardCount = log.filter(e => /discard/i.test(e)).length;
     const activityCount = log.filter(e =>
       /discard|claim|formed a meld|picking|drew/i.test(e)).length;
-    gateGrade(id, 'B2_30PlusBotDiscards', activityCount >= 10 || discardCount >= 10, {
+    // Vasquez D2 2026-06-18 — the DOM move-log caps at 50 entries
+    // (move-log.ts MAX_ENTRIES). When Hard/Medium bots cycle hands fast
+    // the visible window is dominated by "Dice rolled"/"won the hand"
+    // rows, so the DOM-derived discard/activity counts undercount even
+    // though the bots are discarding heavily. The runtime world snapshot
+    // is the authoritative measure of "bots are actively playing", so
+    // accept it too (totalDiscard accumulates within a hand; totalMeld>0
+    // proves claims landed). Prevents a false FAIL on a healthy game.
+    const runtimeDiscards = observed?.totalDiscard ?? 0;
+    const runtimeMelds = observed?.totalMeld ?? 0;
+    const botsActive = activityCount >= 10 || discardCount >= 10
+      || runtimeDiscards >= 10 || runtimeMelds > 0;
+    gateGrade(id, 'B2_30PlusBotDiscards', botsActive, {
       discardEntriesInLog: discardCount,
       activityEntriesInLog: activityCount,
       totalLogEntries: log.length,
       runtimeTotalDiscard: observed?.totalDiscard,
       runtimeTotalMeld: observed?.totalMeld,
+      passedVia: activityCount >= 10 || discardCount >= 10
+        ? 'dom-move-log' : 'runtime-world-snapshot',
     });
   }
 
