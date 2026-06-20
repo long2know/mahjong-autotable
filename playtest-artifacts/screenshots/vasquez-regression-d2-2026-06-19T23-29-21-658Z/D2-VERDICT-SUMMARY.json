@@ -1,0 +1,165 @@
+{
+  "mission": "D2 — Live full-game playtest against REAL Production Docker image (strict CSP, Production env)",
+  "engineer": "Vasquez",
+  "generatedAt": "2026-06-20T00:03:39.083Z",
+  "backend": {
+    "mode": "Production Docker image mat-d2:e5eb6f0",
+    "container": "mat-d2",
+    "port": 8094,
+    "url": "http://127.0.0.1:8094",
+    "aspnetEnvironment": "Production",
+    "health": "healthy",
+    "version": "0.31.0.0"
+  },
+  "cspStrict": {
+    "styleSrc": "self (no unsafe-inline)",
+    "scriptSrc": "self wasm-unsafe-eval (no unsafe-inline/eval)",
+    "confirmed": true
+  },
+  "playtest3x": {
+    "spec": "playtest-stephen-first-play.spec.mjs (bare-URL fresh-user, Phases A-O, seated seat0 + autoplay)",
+    "allGameCompleted": true,
+    "runs": [
+      {
+        "runTag": "vasquez-d2-run1-2026-06-19T23-12-01-241Z",
+        "gameCompleted": true,
+        "seat0Emits": 6,
+        "totalDiscards": 27,
+        "claimPasses": 3,
+        "blockersP0": 0,
+        "confusionsP1": 0,
+        "pageErrors": 0,
+        "cspErrors": 0,
+        "phaseFailures": []
+      },
+      {
+        "runTag": "vasquez-d2-run2-2026-06-19T23-18-24-934Z",
+        "gameCompleted": true,
+        "seat0Emits": 7,
+        "totalDiscards": 30,
+        "claimPasses": 1,
+        "blockersP0": 0,
+        "confusionsP1": 0,
+        "pageErrors": 0,
+        "cspErrors": 0,
+        "phaseFailures": []
+      },
+      {
+        "runTag": "vasquez-d2-run3-2026-06-19T23-22-55-535Z",
+        "gameCompleted": true,
+        "seat0Emits": 16,
+        "totalDiscards": 61,
+        "claimPasses": 5,
+        "blockersP0": 0,
+        "confusionsP1": 0,
+        "pageErrors": 0,
+        "cspErrors": 0,
+        "phaseFailures": []
+      }
+    ]
+  },
+  "rulesetObserved": {
+    "lobbyZeroCsp": true,
+    "diceWallBreak": "Dice rolled: 4 + 5 = 9",
+    "fourWallsFaceDownPreDeal": {
+      "wallFaceDown": 55,
+      "wallFaceUp": 0,
+      "handSum": 49,
+      "note": "captured at dice"
+    },
+    "dealerHandFaceUpPostDeal": {
+      "handBySeat": [
+        10,
+        13,
+        14,
+        13
+      ],
+      "dealerSeat": null,
+      "dealerHandCount": null,
+      "handSum": 50
+    },
+    "claimTypesSeen": [
+      "Chow",
+      "Pung",
+      "Kong",
+      "Hu"
+    ],
+    "handResult": {
+      "headline": "胡! Bot 3 赢了 wins!点炮 Discard",
+      "isDraw": false,
+      "resultType": "Hu",
+      "winner": 3,
+      "modalVisible": true,
+      "text": "胡! Bot 3 赢了 wins!点炮 Discard ← Seat 0 (Bot 0) 🎉 Seat 3 (Bot 3) — SMALL WIN Base: 2 Total: 2 to claim Payments: Seat 0 → Seat 3: 2 座位 Seat 玩家 Player 分 Score Δ 0 Bot 0 -2 1 Bot 1 0 2 Bot 2 0 3 Bot 3 +2 胡牌 Winning hand 7p 8m 1p 2p 8s 9p 2m 9m 1s 2s 3s 2s 7s 1m 下一局 Next Hand"
+    },
+    "dealerRotation": {
+      "dealers": [
+        {
+          "label": "Seat 0",
+          "phase": "first",
+          "action": "Match started — dealer is Seat 0"
+        },
+        {
+          "label": "Seat 3 (Bot 3)",
+          "phase": "new",
+          "action": "New hand — dealer is Seat 3 (Bot 3)"
+        }
+      ],
+      "distinct": [
+        "Seat 0",
+        "Seat 3 (Bot 3)"
+      ],
+      "rotated": true
+    },
+    "perspectiveView": true,
+    "flatView": true,
+    "bothViewsUsable": true,
+    "cspViolationCount": 0
+  },
+  "liveMatchCompletion": {
+    "handEndCount": 4,
+    "recentHandEnds": [
+      "hand ended in a draw (流局)",
+      "hand ended in a draw (流局)",
+      "hand ended in a draw (流局)",
+      "hand ended in a draw (流局)"
+    ],
+    "modalShownLive": false,
+    "isComplete": null
+  },
+  "gameCompleteModal": "08b-game-complete-modal-verified.png (integration Scenario E — #game-complete-modal modal('show') with Final Scores, verified visible)",
+  "canonicalSmoke": {
+    "spectatorPass": true,
+    "seatedFaceUpPass": true,
+    "seatedDealerFaceUp": 14,
+    "cspViolationCount": 0
+  },
+  "integrationSpec": {
+    "spec": "playtest-full-game-integration.spec.mjs (5 scenarios)",
+    "scenarios": {
+      "A_manualDealRoundRobin": "PASS",
+      "B_autoDealBotAutoplay": "PASS",
+      "C_tileSelectionDom": "PASS",
+      "D_claimWindow": "PASS",
+      "E_winDetection": "PASS"
+    },
+    "allPassed": true,
+    "pageErrors": 0,
+    "note": "Scenario B2 gate hardened (test-only) to accept runtime world-snapshot discard/meld totals; DOM move-log caps at 50 entries so fast 4-bot games scroll discards out of view."
+  },
+  "screenshots": [
+    "01-lobby-zero-csp.png",
+    "02-walls-facedown-predeal.png",
+    "03-dealt-dealer-hand-14.png",
+    "04-claim-in-movelog.png",
+    "05-midgame-discards.png",
+    "06-result-modal-score.png",
+    "07-dealer-rotation.png",
+    "08-live-match-end.png",
+    "08b-game-complete-modal-verified.png",
+    "09-perspective-view.png",
+    "10-flat-view.png"
+  ],
+  "p0Blockers": [],
+  "verdict": "PLAYABLE under strict Production CSP"
+}

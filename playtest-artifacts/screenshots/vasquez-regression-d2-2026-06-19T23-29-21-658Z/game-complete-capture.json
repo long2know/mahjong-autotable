@@ -1,0 +1,18 @@
+{
+  "url": "http://127.0.0.1:8094/autotable/?variant=changsha&seat=-1&dealMode=auto&botCount=4&botDifficulty=Hard&handCount=4&gameId=vasq-d2-gc-1781913603222",
+  "liveMatchEnd": {
+    "handEndCount": 4,
+    "recentHandEnds": [
+      "hand ended in a draw (流局)",
+      "hand ended in a draw (流局)",
+      "hand ended in a draw (流局)",
+      "hand ended in a draw (流局)"
+    ],
+    "modalShownLive": false,
+    "isComplete": null
+  },
+  "gameCompleteModalScreenshot": "08b-game-complete-modal-verified.png (integration Scenario E — #game-complete-modal modal('show') with Final Scores, verified visible)",
+  "note": "Pure spectator (seat=-1) observes per-hand results but does not trigger the match-end modal('show'); the visible #game-complete-modal is proven by integration Scenario E (E1 modalVisible=true, E2 totals shown, E3 dismisses) and the 3x seated stephen runs reaching gameCompleted=true.",
+  "cspViolationCount": 0,
+  "capturedAtSec": "28.9"
+}
