@@ -452,6 +452,16 @@ public static class BotDiscardAdvisor
             allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
         }
 
+        if (allowBreakingSoleChangshaSmallWinPairForPureSuitLean
+            && enforceSmallWinPairBias
+            && soleChangshaSmallWinPairTile is not null
+            && liveSmallWinPairCandidates is not null
+            && liveSmallWinPairCandidates.Count == 1
+            && liveSmallWinPairCandidates.Contains(soleChangshaSmallWinPairTile))
+        {
+            allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+        }
+
         var candidates = handTiles
             .Select((tile, index) =>
             {

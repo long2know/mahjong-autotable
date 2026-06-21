@@ -1012,6 +1012,48 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotBreakOffSuitSmallWinPair_WhenPureSuitLeanHasNoAlternateSmallWinCandidates()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 4), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 6), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        var visibleTiles = new List<Tile>();
+        foreach (var suit in new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos })
+        {
+            foreach (var rank in new[] { 2, 5, 8 })
+            {
+                if (suit == TileSuit.Dots && rank == 2)
+                {
+                    continue;
+                }
+
+                for (var i = 0; i < 4; i++)
+                {
+                    visibleTiles.Add(new Tile(suit, rank));
+                }
+            }
+        }
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>()).Should().BeFalse();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_AllowsDiscardingExtraCopyOfSoleSmallWinPair_WhenTriplet()
     {
         var tiles = new List<Tile>
