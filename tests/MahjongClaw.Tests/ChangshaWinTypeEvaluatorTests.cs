@@ -143,6 +143,32 @@ public sealed class ChangshaWinTypeEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_TreatsBigWinAsNotSmallWin_WhenSmallWinPatternAlsoPresent()
+    {
+        List<Tile> tiles =
+        [
+            new Tile(TileSuit.Characters, 1), new Tile(TileSuit.Characters, 1), new Tile(TileSuit.Characters, 1),
+            new Tile(TileSuit.Dots, 3), new Tile(TileSuit.Dots, 3), new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Bamboos, 4), new Tile(TileSuit.Bamboos, 4), new Tile(TileSuit.Bamboos, 4),
+            new Tile(TileSuit.Characters, 6), new Tile(TileSuit.Characters, 6), new Tile(TileSuit.Characters, 6),
+            new Tile(TileSuit.Dots, 7), new Tile(TileSuit.Dots, 7)
+        ];
+
+        var hand = ResolveWinningHand(tiles);
+        hand.Pattern.Should().Be(WinningPattern.AllPungs);
+
+        var evaluation = ChangshaWinTypeEvaluator.Evaluate(
+            tiles,
+            hand,
+            new ChangshaWinContext(IsInitialDeal: true));
+
+        evaluation.WinTypes.Should().Contain(ChangshaWinType.AllPungs);
+        evaluation.WinTypes.Should().Contain(ChangshaWinType.Banhu);
+        evaluation.IsBigWin.Should().BeTrue();
+        evaluation.IsSmallWin.Should().BeFalse();
+    }
+
+    [Fact]
     public void Evaluate_DetectsSevenPairsAndLuxurySevenPairs_WhenQuadExists()
     {
         List<Tile> tiles =

@@ -145,7 +145,7 @@ public static class ChangshaWinTypeEvaluator
             .ToList();
 
         var isBigWin = orderedTypes.Any(type => BigWinTypes.Contains(type));
-        var isSmallWin = orderedTypes.Any(type => !BigWinTypes.Contains(type));
+        var isSmallWin = !isBigWin;
 
         return new ChangshaWinEvaluation(orderedTypes, isBigWin, isSmallWin);
     }
