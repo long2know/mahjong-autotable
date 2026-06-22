@@ -16551,3 +16551,32 @@ F5-from-VS-Code local dev was **broken** after the earlier Parcel→Vite fronten
 **Bishop — removed 5 prod-infra CI workflows + their contract tests (PR #107, squash `8f6c974`; PR #108).** Stephen runs a single hobby container and approved deleting workflows targeting prod infra he'll never have: `prod-health-check.yml`, `hsts-readiness-check.yml`, `load-test-nightly.yml`, `redis-load-test-reminder.yml`, `us-east-1-auto-rollback.yml` (+ orphaned `docs/us-east-1-auto-rollback-runbook.md`). `docker-smoke.yml` KEPT. Deleted/edited 6 coupled `File.Exists` contract-test files across 4 phase-wave dirs. **Anti-pattern codified:** contract tests that `File.Exists`-assert a workflow/doc make that file undeletable without a coupled test edit — prefer a single directory-enumerating meta-test or a soft forward-staged pin outside the blocking gate.
 
 **Other already-merged fixes this session:** `redis-load-test-reminder` syntax + schedule fix (`a06ba12`, since deleted with the prod-infra sweep); de-flaked `Bot_Timeout` test (`9f3557e`).
+
+---
+
+## 2026-06-21 — re-enabled docker-smoke (jwt-rotation admin bootstrap) [Bishop; PRs #112, #113]
+
+**By:** Bishop (Backend, auth lane). Requested by Stephen ("address everything" — the 2 P2 follow-ups).
+**What:** Cleared the last `docker-smoke` blocker (P2 #2 from the 2026-06-19 sweep) and re-enabled the nightly schedule.
+**Proof:** docker-smoke `workflow_dispatch` run **27924748154** on `main` — **GREEN**: all 5 smokes (docker-build / auth-flow / chat-flow / token-rotation / jwt-rotation) + the PWA-asset gate pass.
+
+### Admin-bootstrap approach (Option A — no Production-security change)
+`POST /api/auth/token` is admin-session-gated (`AuthTokenController.Issue` — 401 anon / 403 non-admin). `jwt-rotation-smoke.sh` now boots **its** container in **Development posture** (`ASPNETCORE_ENVIRONMENT=Development`) and `POST /api/auth/dev-login {role:"admin"}` to stamp an admin session into `$COOKIE_JAR` before minting. dev-login is registered **only when `IsDevelopment()`** (404 in Production), so this is the lowest-risk way to exercise rotation on the same binary. The admin session is re-established **after every boot** — the default SQLite store is a file inside the container with **no volume mount**, so the Phase-3 rotate (stop + rm + re-run) wipes `PlayerAuthSessions`.
+
+### Production posture UNCHANGED
+The runtime `Dockerfile` still pins `ASPNETCORE_ENVIRONMENT=Production`; real Production images keep `dev-login` → 404 and `/api/auth/token` admin-gated. Only this one smoke runs in Dev posture, by design. No admin-token minting or dev-login is exposed in any Production deploy.
+
+### Two latent smoke contract bugs the now-reachable flow exposed (also fixed)
+1. The mint body needs a non-empty `subject` (`Issue` → 400 without it): `-d '{}'` → `-d '{"subject":"jwt-rotation-smoke"}'`.
+2. `POST /api/auth/validate` reads the token from the **JSON body** `{ token }` (unauthenticated), **not** an `Authorization: Bearer` header — the smoke was sending the header and getting `{valid:false,error:"malformed"}`.
+
+### DISCOVERY — smoke scripts must be committed executable (PR #113)
+The first dispatch died at step 1: `tests/smoke/docker-build-smoke.sh: Permission denied`. `docker-smoke.yml` execs the scripts **directly** (`tests/smoke/<name>.sh`), which needs the git executable bit — but **all seven** `tests/smoke/*.sh` were tracked `100644`. That is why prior scheduled runs were also red, independent of the JWT gate. Fix: `git update-index --chmod=+x tests/smoke/*.sh` (mode-only `100644 → 100755`). **Convention:** any script a workflow execs directly must be committed `100755`; the local filesystem +x bit does NOT survive a clean checkout.
+
+### Config note (carried over, re-confirmed)
+JWT signing keys bind from BOTH `Auth:JwtSigningKeys` (preferred) and `Authentication:JwtSigningKeys` via `FirstNonEmptyArray` (`Program.cs`) — `Auth:` wins, and a non-null empty `[]` from `appsettings.json` correctly falls through. `jwt-rotation-smoke.sh` uses `Auth__JwtSigningKeys__{0,1}`; the other smokes use `Authentication__JwtSigningKeys__0` — both boot fine.
+
+| PR | SHA | Scope |
+|---|---|---|
+| #112 | `6f09bb4` | jwt-rotation admin bootstrap + validate/subject fixes + schedule re-enabled |
+| #113 | `eda7907` | `+x` on all `tests/smoke/*.sh` (mode-only) |
