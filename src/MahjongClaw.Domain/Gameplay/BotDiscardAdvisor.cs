@@ -2136,6 +2136,19 @@ public static class BotDiscardAdvisor
             {
                 prioritizedCandidates = deadSingletonCandidates;
             }
+            else
+            {
+                var nearDeadSingletonCandidates = prioritizedCandidates
+                    .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var count)
+                        && count == 1
+                        && candidate.RemainingCopies == 1)
+                    .ToList();
+
+                if (nearDeadSingletonCandidates.Count > 0)
+                {
+                    prioritizedCandidates = nearDeadSingletonCandidates;
+                }
+            }
         }
 
         var appliedSevenPairsTripletFocus = false;
