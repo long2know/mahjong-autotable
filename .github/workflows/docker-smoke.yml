@@ -15,27 +15,24 @@
 name: docker-smoke
 
 on:
-  # CI-noise iter2 (Apone, 2027-02-XX): schedule disabled.
-  # The smoke test builds the multi-stage image + boots a
-  # container + probes /health — it has been failing on the
-  # nightly run while the backend / docker-compose configuration
-  # churns under playability-first mode. workflow_dispatch
-  # retained for on-demand smokes. Re-enable by uncommenting the
-  # schedule block below once the docker stack stabilizes.
+  # Re-enabled 2026-06-21 (Bishop, auth lane): jwt-rotation admin
+  # bootstrap fixed — the last docker-smoke blocker is cleared. POST
+  # /api/auth/token is admin-session-gated (AuthTokenController.Issue —
+  # 401 anon / 403 non-admin), so jwt-rotation-smoke.sh now bootstraps an
+  # admin session via POST /api/auth/dev-login {role:"admin"} and boots
+  # THAT smoke's container in Development posture (the only posture where
+  # dev-login is registered). All 5 smokes (docker-build / auth-flow /
+  # chat-flow / token-rotation / jwt-rotation) pass end-to-end; the
+  # Production image posture is unchanged (dev-login stays 404, the token
+  # endpoint stays admin-gated). History: D4 (2026-06-19) fixed the
+  # boot-crash by minting a per-run Authentication__JwtSigningKeys__0
+  # (JwtSigningKeyProvider.cs rejected an empty key in Production); the
+  # schedule had been disabled under CI-noise iter2 (Apone) while the
+  # docker stack churned.
   #
-  # Apone D4 regression (2026-06-19): boot-crash gap fixed. The smoke
-  # scripts now mint a per-run Authentication__JwtSigningKeys__0 so the
-  # Production image actually starts (it was crashing immediately on an
-  # empty signing key — JwtSigningKeyProvider.cs:121 — so /health was
-  # unreachable). docker-build / auth-flow / chat-flow / token-rotation
-  # smokes pass locally against e5eb6f0. STILL blocked on
-  # jwt-rotation-smoke: POST /api/auth/token is now admin-session-gated
-  # (AuthTokenController.cs:71-75 — 401 to the anonymous probe), so the
-  # mint→rotate→validate flow needs an admin-cookie bootstrap before it
-  # can green. Re-enable the schedule once jwt-rotation-smoke.sh
-  # establishes an admin session (Bishop's auth lane).
-  # schedule:
-  #   - cron: "0 8 * * *"
+  # 08:00 UTC = 03:00 CST (UTC-5) / 04:00 CDT — see the header rationale.
+  schedule:
+    - cron: "0 8 * * *"
   workflow_dispatch:
 
 permissions:
@@ -99,12 +96,24 @@ jobs:
       # Asserts the fallback-key list behaviour documented in
       # docs/jwt-rotation.md (key0 active → rotate to key1 active +
       # key0 fallback → old token still validates, new tokens signed
-      # by key1). Forward-compatible (soft-passes when Bishop's
-      # /api/auth/{token,validate} surface returns 404 — Wave 4/5
-      # lands the code-side binding). See
+      # by key1). The mint endpoint (POST /api/auth/token) is
+      # admin-session-gated, so the script bootstraps an admin session
+      # via POST /api/auth/dev-login {role:"admin"} — a surface the API
+      # registers ONLY in Development. We therefore run THIS smoke's
+      # container in Development posture (ASPNETCORE_ENVIRONMENT below;
+      # the script forwards it into its own `docker run`). The image
+      # binary is identical to the Production smokes — only the env flag
+      # differs — and the real Production posture is unchanged (dev-login
+      # 404 + token endpoint admin-gated). See
       # tests/smoke/jwt-rotation-smoke.sh.
       - name: Run jwt-rotation smoke
         id: jwt-rotation-smoke
+        env:
+          # Dev posture for this smoke only — unlocks the dev-login admin
+          # bootstrap that the admin-gated mint endpoint requires. Does
+          # NOT change the Production image default (the Dockerfile pins
+          # ASPNETCORE_ENVIRONMENT=Production).
+          ASPNETCORE_ENVIRONMENT: Development
         run: |
           mkdir -p smoke-logs
           set -o pipefail
