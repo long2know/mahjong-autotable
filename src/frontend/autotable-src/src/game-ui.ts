@@ -227,7 +227,7 @@ interface PhaseFParams {
   variant?:       GameType;
   dealMode?:      DealMode;
   botCount?:      number;
-  botDifficulty?: 'easy' | 'medium' | 'hard';
+  botDifficulty?: 'easy' | 'medium' | 'hard' | 'master';
   fives?:         Fives;
   points?:        Points;
 }
@@ -260,8 +260,14 @@ function parseUrlParams(): PhaseFParams {
     if (!isNaN(n) && n >= 0 && n <= 4) out.botCount = n;
   }
 
-  const diff = p.get('botDifficulty');
-  if (diff === 'easy' || diff === 'medium' || diff === 'hard') {
+  // Parse case-insensitively across all four tiers.  The lobby's URL
+  // contract is capitalized (Easy/Medium/Hard/Master — see lobby.ts
+  // BotDifficulty), so a strict lowercase-only match silently dropped
+  // `?botDifficulty=Hard` and let resolvePhaseFParams fall back to the
+  // 'medium' default — which is exactly what made the bot banner / legacy
+  // difficulty select display a stale "Medium" while the JOIN ran Hard.
+  const diff = p.get('botDifficulty')?.toLowerCase();
+  if (diff === 'easy' || diff === 'medium' || diff === 'hard' || diff === 'master') {
     out.botDifficulty = diff;
   }
 
@@ -304,8 +310,8 @@ function readLocalStorage(): PhaseFParams {
       const n = parseInt(b, 10);
       if (!isNaN(n) && n >= 0 && n <= 4) out.botCount = n;
     }
-    const diff = localStorage.getItem(LS_BOT_DIFFICULTY);
-    if (diff === 'easy' || diff === 'medium' || diff === 'hard') out.botDifficulty = diff;
+    const diff = localStorage.getItem(LS_BOT_DIFFICULTY)?.toLowerCase();
+    if (diff === 'easy' || diff === 'medium' || diff === 'hard' || diff === 'master') out.botDifficulty = diff;
     const f = localStorage.getItem(LS_FIVES);
     if (f === '000' || f === '111' || f === '121') out.fives = f;
     const pts = localStorage.getItem(LS_POINTS);
@@ -1540,7 +1546,7 @@ export class GameUi {
     };
 
     this.elements.botDifficulty.onchange = () => {
-      const v = this.elements.botDifficulty.value as 'easy' | 'medium' | 'hard';
+      const v = this.elements.botDifficulty.value as 'easy' | 'medium' | 'hard' | 'master';
       this.phaseF.botDifficulty = v;
       writeLocalStorage(LS_BOT_DIFFICULTY, v);
       this.refreshBotBanner();
