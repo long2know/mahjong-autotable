@@ -422,6 +422,7 @@ public static class BotMeldAdvisor
         IReadOnlyDictionary<Tile, int> visibleCounts)
     {
         var liveAlternateCount = 0;
+        var hasStrongAlternateSingleton = false;
 
         foreach (var entry in handCounts)
         {
@@ -448,9 +449,15 @@ public static class BotMeldAdvisor
             {
                 ownedCounts.TryGetValue(entry.Key, out var ownedCount);
                 visibleCounts.TryGetValue(entry.Key, out var visibleCount);
-                if (4 - ownedCount - visibleCount > 0)
+                var remainingCopies = 4 - ownedCount - visibleCount;
+                if (remainingCopies > 0)
                 {
                     liveAlternateCount++;
+                }
+
+                if (remainingCopies >= 2)
+                {
+                    hasStrongAlternateSingleton = true;
                 }
             }
 
@@ -460,7 +467,7 @@ public static class BotMeldAdvisor
             }
         }
 
-        return false;
+        return hasStrongAlternateSingleton;
     }
 
     private static bool IsTerminalSuitedTile(Tile tile)
