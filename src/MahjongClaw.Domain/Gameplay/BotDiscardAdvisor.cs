@@ -2097,7 +2097,27 @@ public static class BotDiscardAdvisor
 
                         if (orphanCandidates.Count > 0)
                         {
-                            candidates = orphanCandidates;
+                            if (visibleCounts.Count > 0)
+                            {
+                                var deadOrphanSingletonCandidates = orphanCandidates
+                                    .Where(candidate => candidate.RemainingCopies == 0
+                                        && handCounts.TryGetValue(candidate.Tile, out var count)
+                                        && count == 1)
+                                    .ToList();
+
+                                if (deadOrphanSingletonCandidates.Count > 0)
+                                {
+                                    candidates = deadOrphanSingletonCandidates;
+                                }
+                                else
+                                {
+                                    candidates = orphanCandidates;
+                                }
+                            }
+                            else
+                            {
+                                candidates = orphanCandidates;
+                            }
                         }
                     }
                 }
