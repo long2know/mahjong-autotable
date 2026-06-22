@@ -35,6 +35,8 @@ echo "[pwa-smoke] booting $IMAGE on host port $HOST_PORT…"
 docker run -d --rm \
   --name "$CONTAINER" \
   -p "${HOST_PORT}:8080" \
+  -e ASPNETCORE_URLS="http://0.0.0.0:8080" \
+  -e Authentication__JwtSigningKeys__0="$(openssl rand -base64 48)" \
   "$IMAGE" >/dev/null
 
 deadline=$(( $(date +%s) + BOOT_TIMEOUT_S ))
