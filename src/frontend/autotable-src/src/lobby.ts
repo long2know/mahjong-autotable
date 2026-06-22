@@ -674,7 +674,7 @@ export function initLobby(client?: Client): void {
       variant: isVariant(v) ? v : DEFAULTS.variant,
       dealMode: (dm === 'auto' ? 'auto' : 'manual'),
       botCount: clampBotCountForSeat(botCount, seat),
-      botDifficulty: (bd === 'Easy' || bd === 'Medium' || bd === 'Master') ? bd : 'Hard',
+      botDifficulty: (bd === 'Easy' || bd === 'Medium' || bd === 'Hard' || bd === 'Master') ? bd : 'Hard',
       handCount: isHandCount(hcNum) ? hcNum : DEFAULTS.handCount,
       seed,
       seat,
