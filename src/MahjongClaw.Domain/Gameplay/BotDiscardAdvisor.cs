@@ -2239,8 +2239,7 @@ public static class BotDiscardAdvisor
             }
         }
 
-        var allowWinningOutsOverride = !(filteredByPureSuit
-            || filteredByNearDeadOffRankPair
+        var allowOutsOverride = !(filteredByNearDeadOffRankPair
             || filteredByNearDeadSmallWinSingleton
             || filteredByIsolatedOffRankPair
             || filteredByDeadPair
@@ -2248,8 +2247,11 @@ public static class BotDiscardAdvisor
             || filteredByDeadSingleton
             || filteredByDeadSuitedSingleton
             || filteredByKongThreatAvoidance);
+        var allowWinningOutsOverride = allowOutsOverride && !filteredByPureSuit;
+        var allowPureSuitOutsOverride = allowOutsOverride && filteredByPureSuit;
+        var maxPrioritizedOuts = prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts);
 
-        if (allowWinningOutsOverride && prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts) == 0)
+        if ((allowWinningOutsOverride || allowPureSuitOutsOverride) && maxPrioritizedOuts == 0)
         {
             var bestOverallOuts = allCandidates.Max(candidate => candidate.WinningDrawOuts);
             if (bestOverallOuts > 0)
