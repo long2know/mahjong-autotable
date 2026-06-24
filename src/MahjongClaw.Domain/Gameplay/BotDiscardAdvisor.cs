@@ -1756,14 +1756,17 @@ public static class BotDiscardAdvisor
                         && multiCopyThreatCandidates.Count > 0
                         && !noPotentialOutsIgnoringMinimumFan;
 
-                    if (bestOverallOuts == 0 && noPotentialOutsIgnoringMinimumFan)
+                    if (bestOverallOuts == 0)
                     {
-                        candidates = nonThreatCandidates;
-                        filteredByKongThreatAvoidance = true;
-                    }
-                    else if (allowThreatWhenNoWinningOuts)
-                    {
-                        candidates = multiCopyThreatCandidates;
+                        if (nonThreatCandidates.Count > 0)
+                        {
+                            candidates = nonThreatCandidates;
+                            filteredByKongThreatAvoidance = true;
+                        }
+                        else if (allowThreatWhenNoWinningOuts)
+                        {
+                            candidates = multiCopyThreatCandidates;
+                        }
                     }
                     else if (!losesAllWinningOuts
                         && ((withinOutsTolerance && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies))
