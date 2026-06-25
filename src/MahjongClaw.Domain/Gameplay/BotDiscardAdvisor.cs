@@ -1498,7 +1498,30 @@ public static class BotDiscardAdvisor
                     var withinCopyTolerance = bestDeadOuts < bestOverallOuts
                         || bestDeadOutCopies >= bestOverallOutCopies - DeadPairOutsTolerance;
 
-                    if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                    var shouldPreferDeadPairs = bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance);
+                    if (shouldPreferDeadPairs && bestOverallOuts == 0 && potentialOutSummaries is not null)
+                    {
+                        var bestPotentialOuts = candidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+                        if (bestPotentialOuts > 0)
+                        {
+                            var bestPotentialOutCopies = candidates
+                                .Where(candidate => candidate.PotentialWinningDrawOuts == bestPotentialOuts)
+                                .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+
+                            var bestDeadPotentialOuts = deadPairCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+                            var bestDeadPotentialOutCopies = deadPairCandidates
+                                .Where(candidate => candidate.PotentialWinningDrawOuts == bestDeadPotentialOuts)
+                                .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+
+                            var withinPotentialTolerance = bestDeadPotentialOuts >= bestPotentialOuts;
+                            var withinPotentialCopyTolerance = bestDeadPotentialOuts < bestPotentialOuts
+                                || bestDeadPotentialOutCopies >= bestPotentialOutCopies - DeadPairOutsTolerance;
+
+                            shouldPreferDeadPairs = withinPotentialTolerance && withinPotentialCopyTolerance;
+                        }
+                    }
+
+                    if (shouldPreferDeadPairs)
                     {
                         candidates = deadPairCandidates;
                         filteredByDeadPair = true;
