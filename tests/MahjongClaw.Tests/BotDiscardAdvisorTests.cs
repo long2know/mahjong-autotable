@@ -3283,6 +3283,75 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleMeldTiles_KeepsPotentialOuts_WhenMinimumFanBlocksWinningOuts()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
+            new(TileSuit.Bamboos, 9)
+        };
+
+        var visibleMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9)
+        };
+
+        var visibleTiles = visibleMeldTiles.ToList();
+        var visibleCounts = visibleTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var winningOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                handTiles,
+                visibleCounts,
+                index,
+                MahjongRuleset.ChineseOfficial,
+                requireMinimumFan: true))
+            .ToList();
+
+        winningOutSummaries.Max(summary => summary.TileTypes).Should().Be(0);
+
+        var potentialOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                handTiles,
+                visibleCounts,
+                index,
+                MahjongRuleset.ChineseOfficial,
+                requireMinimumFan: false))
+            .ToList();
+
+        var maxPotentialOuts = potentialOutSummaries.Max(summary => summary.TileTypes);
+        maxPotentialOuts.Should().BeGreaterThan(0);
+
+        var maxPotentialCopies = potentialOutSummaries
+            .Where(summary => summary.TileTypes == maxPotentialOuts)
+            .Max(summary => summary.RemainingCopies);
+
+        var bestIndices = potentialOutSummaries
+            .Select((summary, index) => new { summary, index })
+            .Where(entry => entry.summary.TileTypes == maxPotentialOuts
+                && entry.summary.RemainingCopies == maxPotentialCopies)
+            .Select(entry => entry.index)
+            .ToHashSet();
+
+        bestIndices.Should().OnlyContain(index => handTiles[index].Equals(new Tile(TileSuit.Bamboos, 9)));
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            visibleMeldTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 9));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleMeldTiles_UsesRemainingCopyTieBreaker()
     {
         var handTiles = new List<Tile>
@@ -5554,6 +5623,61 @@ public class BotDiscardAdvisorTests
         handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 4));
     }
 
+    [Fact]
+    public void SelectDiscardIndex_UsesPotentialOuts_WhenMinimumFanBlocksAllWinningOuts()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5)
+        };
+
+        var visibleCounts = new Dictionary<Tile, int>();
+        var winningOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                handTiles,
+                visibleCounts,
+                index,
+                MahjongRuleset.ChineseOfficial,
+                requireMinimumFan: true))
+            .ToList();
+
+        winningOutSummaries.Max(summary => summary.TileTypes).Should().Be(0);
+
+        var potentialOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                handTiles,
+                visibleCounts,
+                index,
+                MahjongRuleset.ChineseOfficial,
+                requireMinimumFan: false))
+            .ToList();
+
+        var maxPotentialOuts = potentialOutSummaries.Max(summary => summary.TileTypes);
+        maxPotentialOuts.Should().BeGreaterThan(0);
+
+        var maxPotentialCopies = potentialOutSummaries
+            .Where(summary => summary.TileTypes == maxPotentialOuts)
+            .Max(summary => summary.RemainingCopies);
+
+        var bestIndices = potentialOutSummaries
+            .Select((summary, index) => new { summary, index })
+            .Where(entry => entry.summary.TileTypes == maxPotentialOuts
+                && entry.summary.RemainingCopies == maxPotentialCopies)
+            .Select(entry => entry.index)
+            .ToHashSet();
+
+        bestIndices.Count.Should().BeLessThan(handTiles.Count);
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.ChineseOfficial);
+
+        bestIndices.Should().Contain(discardIndex);
+    }
+
     private static List<Tile> BuildExhaustedVisibleTiles()
     {
         var tiles = new List<Tile>();
@@ -5587,5 +5711,102 @@ public class BotDiscardAdvisorTests
 
         return tiles;
     }
+
+    private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
+        int discardIndex,
+        MahjongRuleset ruleset,
+        bool requireMinimumFan)
+    {
+        var drawTileTypes = BuildDrawTileTypes(ruleset);
+        var discardTile = handTiles[discardIndex];
+        var reducedHand = handTiles
+            .Where((_, index) => index != discardIndex)
+            .ToList();
+        var ownedTiles = reducedHand.ToList();
+        var ownedCounts = ownedTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var winningDrawOuts = 0;
+        var winningDrawOutCopies = 0;
+
+        foreach (var drawTileType in drawTileTypes)
+        {
+            ownedCounts.TryGetValue(drawTileType, out var drawTileCount);
+            visibleCounts.TryGetValue(drawTileType, out var visibleCount);
+            if (drawTileType.Equals(discardTile))
+            {
+                visibleCount++;
+            }
+
+            var remainingCopies = 4 - drawTileCount - visibleCount;
+            if (remainingCopies <= 0)
+            {
+                continue;
+            }
+
+            var candidateHand = ownedTiles
+                .Append(drawTileType)
+                .ToList();
+
+            WinningHand? winningHand;
+            if (ruleset == MahjongRuleset.ChineseOfficial && !requireMinimumFan)
+            {
+                if (!HandAnalyzer.TryGetWinningHand(candidateHand, out winningHand))
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                if (!RulesetHandAnalyzer.TryGetWinningHand(candidateHand, ruleset, out winningHand))
+                {
+                    continue;
+                }
+            }
+
+            if (winningHand is null)
+            {
+                continue;
+            }
+
+            if (requireMinimumFan && !ScoreCalculator.MeetsRulesetMinimumFan(winningHand, ruleset))
+            {
+                continue;
+            }
+
+            winningDrawOuts++;
+            winningDrawOutCopies += remainingCopies;
+        }
+
+        return new WinningDrawOutSummary(winningDrawOuts, winningDrawOutCopies);
+    }
+
+    private static IReadOnlyList<Tile> BuildDrawTileTypes(MahjongRuleset ruleset)
+    {
+        var suitedTiles = new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos }
+            .SelectMany(static suit => Enumerable.Range(1, 9).Select(rank => new Tile(suit, rank)));
+
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            return suitedTiles.ToArray();
+        }
+
+        var windTiles = Enum
+            .GetValues<Wind>()
+            .Select(wind => new Tile(TileSuit.Winds, 0, wind));
+        var dragonTiles = Enum
+            .GetValues<Dragon>()
+            .Select(dragon => new Tile(TileSuit.Dragons, 0, null, dragon));
+
+        return suitedTiles
+            .Concat(windTiles)
+            .Concat(dragonTiles)
+            .ToArray();
+    }
+
+    private readonly record struct WinningDrawOutSummary(int TileTypes, int RemainingCopies);
 }
 

@@ -126,10 +126,11 @@ public static class BotDiscardAdvisor
         var discardOutSummaries = handTiles
             .Select((_, index) => CountWinningDrawOutsAfterDiscard(handTiles, meldTiles, visibleCounts, index, ruleset))
             .ToList();
-        var noPotentialOutsIgnoringMinimumFan = false;
-        if (visibleMeldCounts.Count > 0 && discardOutSummaries.Max(summary => summary.TileTypes) == 0)
+        var maxWinningOuts = discardOutSummaries.Max(summary => summary.TileTypes);
+        IReadOnlyList<WinningDrawOutSummary>? potentialOutSummaries = null;
+        if (maxWinningOuts == 0 && visibleMeldCounts.Count > 0)
         {
-            var potentialOutSummaries = handTiles
+            potentialOutSummaries = handTiles
                 .Select((_, index) => CountWinningDrawOutsAfterDiscard(
                     handTiles,
                     meldTiles,
@@ -138,7 +139,25 @@ public static class BotDiscardAdvisor
                     ruleset,
                     requireMinimumFan: false))
                 .ToList();
+        }
+
+        var noPotentialOutsIgnoringMinimumFan = false;
+        if (visibleMeldCounts.Count > 0 && potentialOutSummaries is not null)
+        {
             noPotentialOutsIgnoringMinimumFan = potentialOutSummaries.Max(summary => summary.TileTypes) == 0;
+        }
+
+        if (ruleset == MahjongRuleset.ChineseOfficial && maxWinningOuts == 0 && potentialOutSummaries is null)
+        {
+            potentialOutSummaries = handTiles
+                .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                    handTiles,
+                    meldTiles,
+                    visibleCounts,
+                    index,
+                    ruleset,
+                    requireMinimumFan: false))
+                .ToList();
         }
 
         var hasChangshaPureSuitLean = false;
@@ -466,6 +485,9 @@ public static class BotDiscardAdvisor
             .Select((tile, index) =>
             {
                 var winningOutSummary = discardOutSummaries[index];
+                var potentialOutSummary = potentialOutSummaries is not null
+                    ? potentialOutSummaries[index]
+                    : default;
                 ownedCounts.TryGetValue(tile, out var ownedCount);
                 visibleCounts.TryGetValue(tile, out var visibleCount);
                 var remainingCopies = Math.Max(0, 4 - ownedCount - visibleCount);
@@ -507,6 +529,8 @@ public static class BotDiscardAdvisor
                     RemainingCopies = remainingCopies,
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies,
+                    PotentialWinningDrawOuts = potentialOutSummary.TileTypes,
+                    PotentialWinningDrawOutCopies = potentialOutSummary.RemainingCopies,
                     SmallWinningDrawOuts = winningOutSummary.SmallWinTileTypes,
                     SmallWinningDrawOutCopies = winningOutSummary.SmallWinRemainingCopies,
                     BigWinningDrawOuts = winningOutSummary.BigWinTileTypes,
@@ -1760,8 +1784,58 @@ public static class BotDiscardAdvisor
                     {
                         if (nonThreatCandidates.Count > 0)
                         {
-                            candidates = nonThreatCandidates;
-                            filteredByKongThreatAvoidance = true;
+                            var bestPotentialOuts = 0;
+                            var bestPotentialOutCopies = 0;
+                            var bestNonThreatPotentialOuts = 0;
+                            var bestNonThreatPotentialOutCopies = 0;
+                            var hasPotentialOuts = false;
+
+                            if (ruleset == MahjongRuleset.ChineseOfficial)
+                            {
+                                bestPotentialOuts = candidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+                                if (bestPotentialOuts > 0)
+                                {
+                                    hasPotentialOuts = true;
+                                    bestPotentialOutCopies = candidates
+                                        .Where(candidate => candidate.PotentialWinningDrawOuts == bestPotentialOuts)
+                                        .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+                                    bestNonThreatPotentialOuts = nonThreatCandidates
+                                        .Max(candidate => candidate.PotentialWinningDrawOuts);
+                                    bestNonThreatPotentialOutCopies = nonThreatCandidates
+                                        .Where(candidate => candidate.PotentialWinningDrawOuts == bestNonThreatPotentialOuts)
+                                        .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+                                }
+                            }
+
+                            if (hasPotentialOuts)
+                            {
+                                var losesAllPotentialOuts = bestPotentialOuts > 0 && bestNonThreatPotentialOuts == 0;
+                                var withinPotentialTolerance = bestNonThreatPotentialOuts >= bestPotentialOuts - OpponentKongFeedOutsTolerance;
+                                var matchesPotentialCopies = bestNonThreatPotentialOuts == bestPotentialOuts
+                                    && bestNonThreatPotentialOutCopies == bestPotentialOutCopies;
+
+                                if (losesAllPotentialOuts)
+                                {
+                                    var threatCandidates = candidates
+                                        .Where(candidate => opponentKongThreatTiles.Contains(candidate.Tile))
+                                        .ToList();
+
+                                    if (threatCandidates.Count > 0)
+                                    {
+                                        candidates = threatCandidates;
+                                    }
+                                }
+                                else if (withinPotentialTolerance || matchesPotentialCopies)
+                                {
+                                    candidates = nonThreatCandidates;
+                                    filteredByKongThreatAvoidance = true;
+                                }
+                            }
+                            else
+                            {
+                                candidates = nonThreatCandidates;
+                                filteredByKongThreatAvoidance = true;
+                            }
                         }
                         else if (allowThreatWhenNoWinningOuts)
                         {
@@ -2252,6 +2326,7 @@ public static class BotDiscardAdvisor
             || filteredByKongThreatAvoidance);
         var allowWinningOutsOverride = allowOutsOverride && !filteredByPureSuit;
         var allowPureSuitOutsOverride = allowOutsOverride && filteredByPureSuit;
+
         var maxPrioritizedOuts = prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts);
 
         if ((allowWinningOutsOverride || allowPureSuitOutsOverride) && maxPrioritizedOuts == 0)
@@ -2267,6 +2342,27 @@ public static class BotDiscardAdvisor
                 prioritizedCandidates = prioritizedCandidates
                     .Where(candidate => candidate.WinningDrawOutCopies == bestOverallOutCopies)
                     .ToList();
+            }
+        }
+
+        if (ruleset == MahjongRuleset.ChineseOfficial
+            && potentialOutSummaries is not null
+            && prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts) == 0)
+        {
+            var maxPotentialOuts = prioritizedCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+            if (maxPotentialOuts > 0)
+            {
+                prioritizedCandidates = prioritizedCandidates
+                    .Where(candidate => candidate.PotentialWinningDrawOuts == maxPotentialOuts)
+                    .ToList();
+
+                var maxPotentialCopies = prioritizedCandidates.Max(candidate => candidate.PotentialWinningDrawOutCopies);
+                if (maxPotentialCopies > 0)
+                {
+                    prioritizedCandidates = prioritizedCandidates
+                        .Where(candidate => candidate.PotentialWinningDrawOutCopies == maxPotentialCopies)
+                        .ToList();
+                }
             }
         }
 
@@ -3035,9 +3131,20 @@ public static class BotDiscardAdvisor
                 .Append(drawTileType)
                 .ToList();
 
-            if (!RulesetHandAnalyzer.TryGetWinningHand(candidateHand, ruleset, out var winningHand))
+            WinningHand? winningHand;
+            if (ruleset == MahjongRuleset.ChineseOfficial && !requireMinimumFan)
             {
-                continue;
+                if (!HandAnalyzer.TryGetWinningHand(candidateHand, out winningHand))
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                if (!RulesetHandAnalyzer.TryGetWinningHand(candidateHand, ruleset, out winningHand))
+                {
+                    continue;
+                }
             }
 
             if (winningHand is null)
