@@ -24,6 +24,7 @@ public static class BotDiscardAdvisor
     private const int DeadHonorSingletonOutsTolerance = 1;
     private const int NearDeadHonorSingletonOutsTolerance = 1;
     private const int DeadSuitedSingletonOutsTolerance = 1;
+    private const int NearDeadSuitedSingletonOutsTolerance = 1;
     private const int OffRankConcealedKongOutsTolerance = 0;
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
@@ -1460,6 +1461,45 @@ public static class BotDiscardAdvisor
                 {
                     candidates = deadSingletonCandidates;
                     filteredByDeadSuitedSingleton = true;
+                }
+            }
+
+            if (!filteredByDeadSuitedSingleton)
+            {
+                var nearDeadSingletonCandidates = candidates
+                    .Where(candidate =>
+                    {
+                        handCounts.TryGetValue(candidate.Tile, out var handCount);
+                        if (handCount != 1 || candidate.Tile.IsHonor || candidate.RemainingCopies != 1)
+                        {
+                            return false;
+                        }
+
+                        return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                    })
+                    .ToList();
+
+                if (nearDeadSingletonCandidates.Count > 0)
+                {
+                    var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestOverallOutCopies = candidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var bestNearDeadOuts = nearDeadSingletonCandidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestNearDeadOutCopies = nearDeadSingletonCandidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestNearDeadOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var withinOutsTolerance = bestNearDeadOuts >= bestOverallOuts - NearDeadSuitedSingletonOutsTolerance;
+                    var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
+                        || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadSuitedSingletonOutsTolerance;
+
+                    if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                    {
+                        candidates = nearDeadSingletonCandidates;
+                        filteredByDeadSuitedSingleton = true;
+                    }
                 }
             }
 
