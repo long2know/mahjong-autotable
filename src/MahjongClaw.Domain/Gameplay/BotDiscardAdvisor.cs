@@ -1755,23 +1755,42 @@ public static class BotDiscardAdvisor
 
             if (opponentKongThreatTiles.Count > 0)
             {
-                var nonThreatCandidates = candidates
+                var threatCandidatePool = candidates;
+                var nonThreatCandidates = threatCandidatePool
                     .Where(candidate => !opponentKongThreatTiles.Contains(candidate.Tile))
                     .ToList();
 
+                if (nonThreatCandidates.Count == 0 && allCandidates.Count != threatCandidatePool.Count)
+                {
+                    threatCandidatePool = allCandidates;
+                    nonThreatCandidates = threatCandidatePool
+                        .Where(candidate => !opponentKongThreatTiles.Contains(candidate.Tile))
+                        .ToList();
+                }
+
+                var bestOverallOuts = threatCandidatePool.Max(candidate => candidate.WinningDrawOuts);
+                var bestOverallOutCopies = threatCandidatePool
+                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                var multiCopyThreatCandidates = threatCandidatePool
+                    .Where(candidate => opponentKongThreatTiles.Contains(candidate.Tile)
+                        && handCounts.TryGetValue(candidate.Tile, out var threatCount)
+                        && threatCount > 1)
+                    .ToList();
+
+                var allowThreatWhenNoWinningOuts = bestOverallOuts == 0
+                    && multiCopyThreatCandidates.Count > 0
+                    && !noPotentialOutsIgnoringMinimumFan;
+
                 if (nonThreatCandidates.Count > 0)
                 {
-                    var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
-                    var bestOverallOutCopies = candidates
-                        .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
-                        .Max(candidate => candidate.WinningDrawOutCopies);
-
                     var bestNonThreatOuts = nonThreatCandidates.Max(candidate => candidate.WinningDrawOuts);
                     var bestNonThreatOutCopies = nonThreatCandidates
                         .Where(candidate => candidate.WinningDrawOuts == bestNonThreatOuts)
                         .Max(candidate => candidate.WinningDrawOutCopies);
 
-                    var bestThreatCandidate = candidates
+                    var bestThreatCandidate = threatCandidatePool
                         .Where(candidate => opponentKongThreatTiles.Contains(candidate.Tile))
                         .OrderByDescending(candidate => candidate.WinningDrawOuts)
                         .ThenByDescending(candidate => candidate.WinningDrawOutCopies)
@@ -1793,76 +1812,59 @@ public static class BotDiscardAdvisor
                         && bestNonThreatOutCopies == bestOverallOutCopies;
                     var losesAllWinningOuts = bestOverallOuts > 0 && bestNonThreatOuts == 0;
 
-                    var multiCopyThreatCandidates = candidates
-                        .Where(candidate => opponentKongThreatTiles.Contains(candidate.Tile)
-                            && handCounts.TryGetValue(candidate.Tile, out var threatCount)
-                            && threatCount > 1)
-                        .ToList();
-
-                    var allowThreatWhenNoWinningOuts = bestOverallOuts == 0
-                        && multiCopyThreatCandidates.Count > 0
-                        && !noPotentialOutsIgnoringMinimumFan;
-
                     if (bestOverallOuts == 0)
                     {
-                        if (nonThreatCandidates.Count > 0)
+                        var bestPotentialOuts = 0;
+                        var bestPotentialOutCopies = 0;
+                        var bestNonThreatPotentialOuts = 0;
+                        var bestNonThreatPotentialOutCopies = 0;
+                        var hasPotentialOuts = false;
+
+                        if (ruleset == MahjongRuleset.ChineseOfficial)
                         {
-                            var bestPotentialOuts = 0;
-                            var bestPotentialOutCopies = 0;
-                            var bestNonThreatPotentialOuts = 0;
-                            var bestNonThreatPotentialOutCopies = 0;
-                            var hasPotentialOuts = false;
-
-                            if (ruleset == MahjongRuleset.ChineseOfficial)
+                            bestPotentialOuts = threatCandidatePool.Max(candidate => candidate.PotentialWinningDrawOuts);
+                            if (bestPotentialOuts > 0)
                             {
-                                bestPotentialOuts = candidates.Max(candidate => candidate.PotentialWinningDrawOuts);
-                                if (bestPotentialOuts > 0)
+                                hasPotentialOuts = true;
+                                bestPotentialOutCopies = threatCandidatePool
+                                    .Where(candidate => candidate.PotentialWinningDrawOuts == bestPotentialOuts)
+                                    .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+                                bestNonThreatPotentialOuts = nonThreatCandidates
+                                    .Max(candidate => candidate.PotentialWinningDrawOuts);
+                                bestNonThreatPotentialOutCopies = nonThreatCandidates
+                                    .Where(candidate => candidate.PotentialWinningDrawOuts == bestNonThreatPotentialOuts)
+                                    .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+                            }
+                        }
+
+                        if (hasPotentialOuts)
+                        {
+                            var losesAllPotentialOuts = bestPotentialOuts > 0 && bestNonThreatPotentialOuts == 0;
+                            var withinPotentialTolerance = bestNonThreatPotentialOuts >= bestPotentialOuts - OpponentKongFeedOutsTolerance;
+                            var matchesPotentialCopies = bestNonThreatPotentialOuts == bestPotentialOuts
+                                && bestNonThreatPotentialOutCopies == bestPotentialOutCopies;
+
+                            if (losesAllPotentialOuts)
+                            {
+                                var threatCandidates = threatCandidatePool
+                                    .Where(candidate => opponentKongThreatTiles.Contains(candidate.Tile))
+                                    .ToList();
+
+                                if (threatCandidates.Count > 0)
                                 {
-                                    hasPotentialOuts = true;
-                                    bestPotentialOutCopies = candidates
-                                        .Where(candidate => candidate.PotentialWinningDrawOuts == bestPotentialOuts)
-                                        .Max(candidate => candidate.PotentialWinningDrawOutCopies);
-                                    bestNonThreatPotentialOuts = nonThreatCandidates
-                                        .Max(candidate => candidate.PotentialWinningDrawOuts);
-                                    bestNonThreatPotentialOutCopies = nonThreatCandidates
-                                        .Where(candidate => candidate.PotentialWinningDrawOuts == bestNonThreatPotentialOuts)
-                                        .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+                                    candidates = threatCandidates;
                                 }
                             }
-
-                            if (hasPotentialOuts)
-                            {
-                                var losesAllPotentialOuts = bestPotentialOuts > 0 && bestNonThreatPotentialOuts == 0;
-                                var withinPotentialTolerance = bestNonThreatPotentialOuts >= bestPotentialOuts - OpponentKongFeedOutsTolerance;
-                                var matchesPotentialCopies = bestNonThreatPotentialOuts == bestPotentialOuts
-                                    && bestNonThreatPotentialOutCopies == bestPotentialOutCopies;
-
-                                if (losesAllPotentialOuts)
-                                {
-                                    var threatCandidates = candidates
-                                        .Where(candidate => opponentKongThreatTiles.Contains(candidate.Tile))
-                                        .ToList();
-
-                                    if (threatCandidates.Count > 0)
-                                    {
-                                        candidates = threatCandidates;
-                                    }
-                                }
-                                else if (withinPotentialTolerance || matchesPotentialCopies)
-                                {
-                                    candidates = nonThreatCandidates;
-                                    filteredByKongThreatAvoidance = true;
-                                }
-                            }
-                            else
+                            else if (withinPotentialTolerance || matchesPotentialCopies)
                             {
                                 candidates = nonThreatCandidates;
                                 filteredByKongThreatAvoidance = true;
                             }
                         }
-                        else if (allowThreatWhenNoWinningOuts)
+                        else
                         {
-                            candidates = multiCopyThreatCandidates;
+                            candidates = nonThreatCandidates;
+                            filteredByKongThreatAvoidance = true;
                         }
                     }
                     else if (!losesAllWinningOuts
@@ -1871,6 +1873,10 @@ public static class BotDiscardAdvisor
                         candidates = nonThreatCandidates;
                         filteredByKongThreatAvoidance = true;
                     }
+                }
+                else if (allowThreatWhenNoWinningOuts)
+                {
+                    candidates = multiCopyThreatCandidates;
                 }
             }
         }

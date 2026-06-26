@@ -3170,6 +3170,60 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleMeldTiles_AvoidsKongThreat_WhenDeadSingletonFilterLeavesOnlyThreatTiles()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 5), new(TileSuit.Characters, 8),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 6), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 7),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Green)
+        };
+
+        var visibleMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        var visibleTiles = visibleMeldTiles.ToList();
+        var visibleCounts = visibleTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var winningOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                handTiles,
+                visibleCounts,
+                index,
+                MahjongRuleset.ChineseOfficial,
+                requireMinimumFan: true))
+            .ToList();
+
+        winningOutSummaries.Max(summary => summary.TileTypes).Should().Be(0);
+
+        var potentialOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                handTiles,
+                visibleCounts,
+                index,
+                MahjongRuleset.ChineseOfficial,
+                requireMinimumFan: false))
+            .ToList();
+
+        potentialOutSummaries.Max(summary => summary.TileTypes).Should().Be(0);
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            visibleMeldTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 9));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleMeldTiles_AvoidsFeedingOpponentKong_WhenMultiplePungsPresent()
     {
         var handTiles = new List<Tile>
