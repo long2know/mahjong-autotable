@@ -5736,6 +5736,44 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PreservesCompletedChow_WhenHonorHeavyAndHonorSingletonPresent()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        new[]
+        {
+            new Tile(TileSuit.Dots, 7),
+            new Tile(TileSuit.Dots, 8),
+            new Tile(TileSuit.Dots, 9)
+        }.Should().NotContain(handTiles[discardIndex]);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_UsesPotentialOuts_WhenMinimumFanBlocksAllWinningOuts()
     {
         var handTiles = new List<Tile>

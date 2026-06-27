@@ -2176,6 +2176,15 @@ public static class BotDiscardAdvisor
 
                     if (suitedSingletonCandidates.Count > 0)
                     {
+                        var nonChowSingletonCandidates = suitedSingletonCandidates
+                            .Where(candidate => !HasCompleteChowInHand(handCounts, candidate.Tile))
+                            .ToList();
+
+                        if (nonChowSingletonCandidates.Count > 0)
+                        {
+                            suitedSingletonCandidates = nonChowSingletonCandidates;
+                        }
+
                         candidates = suitedSingletonCandidates;
                     }
                 }
