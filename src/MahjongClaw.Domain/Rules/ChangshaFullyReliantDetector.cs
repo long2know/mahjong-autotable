@@ -13,6 +13,11 @@ public static class ChangshaFullyReliantDetector
             return false;
         }
 
+        if (melds.Count == 0)
+        {
+            return false;
+        }
+
         return melds.All(meld => meld.Source == TileSource.ClaimedDiscard);
     }
 }

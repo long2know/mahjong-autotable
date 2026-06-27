@@ -51,13 +51,13 @@ public sealed class ChangshaFullyReliantDetectorTests
     }
 
     [Fact]
-    public void IsFullyReliant_ReturnsTrue_WhenNoMeldsButWinFromDiscard()
+    public void IsFullyReliant_ReturnsFalse_WhenNoMeldsButWinFromDiscard()
     {
         var melds = new List<MeldInfo>();
 
         var result = ChangshaFullyReliantDetector.IsFullyReliant(melds, TileSource.ClaimedDiscard);
 
-        result.Should().BeTrue();
+        result.Should().BeFalse();
     }
 
     [Fact]
