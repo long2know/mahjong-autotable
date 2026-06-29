@@ -285,7 +285,9 @@ public static class BotDiscardAdvisor
         var offRankKongDiscardIndex = TrySelectChangshaIsolatedOffRankConcealedKongDiscardIndex(
             handTiles,
             handCounts,
-            enforceSmallWinPairBias);
+            enforceSmallWinPairBias,
+            hasChangshaPureSuitLean,
+            changshaDominantSuit);
 
         if (offRankKongDiscardIndex.HasValue)
         {
@@ -1027,6 +1029,13 @@ public static class BotDiscardAdvisor
                     return handCount >= 4 && !Changsha258Ruleset.IsSmallWinPair(candidate.Tile);
                 })
                 .ToList();
+
+            if (hasChangshaPureSuitLean && changshaDominantSuit.HasValue)
+            {
+                offRankConcealedKongCandidates = offRankConcealedKongCandidates
+                    .Where(candidate => candidate.Tile.Suit != changshaDominantSuit.Value)
+                    .ToList();
+            }
 
             if (offRankConcealedKongCandidates.Count > 0)
             {
@@ -3748,7 +3757,9 @@ public static class BotDiscardAdvisor
     private static int? TrySelectChangshaIsolatedOffRankConcealedKongDiscardIndex(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyDictionary<Tile, int> handCounts,
-        bool enforceSmallWinPairBias)
+        bool enforceSmallWinPairBias,
+        bool hasChangshaPureSuitLean,
+        TileSuit? changshaDominantSuit)
     {
         if (!enforceSmallWinPairBias)
         {
@@ -3773,6 +3784,13 @@ public static class BotDiscardAdvisor
 
         var kongTile = offRankKongTiles[0];
         if (HasAdjacentSuitedTile(handCounts, kongTile))
+        {
+            return null;
+        }
+
+        if (hasChangshaPureSuitLean
+            && changshaDominantSuit.HasValue
+            && kongTile.Suit == changshaDominantSuit.Value)
         {
             return null;
         }
