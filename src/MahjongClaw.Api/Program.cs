@@ -1113,39 +1113,13 @@ gameGroup.MapPost("/{id:guid}/win", async (
         if (playerMelds.Any())
         {
             var meldInfos = new List<MeldInfo>();
-            
+
             foreach (var meld in playerMelds)
             {
-                var meldType = meld.Type;
-                var meldKind = meld.Kind;
-                
-                // Determine if meld came from claimed discard or self-drawn
-                // Chow, Pung: assumed from claimed discard in standard play
-                // ExposedKong: from claimed discard
-                // ConcealedKong: self-drawn (all 4 tiles)
-                // PromotedKong: original pung from discard, 4th tile self-drawn
-                TileSource meldSource;
-                if (string.Equals(meldType, "Kong", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (string.Equals(meldKind, "ConcealedKong", StringComparison.OrdinalIgnoreCase))
-                    {
-                        meldSource = TileSource.SelfDrawn;
-                    }
-                    else
-                    {
-                        // ExposedKong and PromotedKong: original tiles from discard
-                        meldSource = TileSource.ClaimedDiscard;
-                    }
-                }
-                else
-                {
-                    // Chow, Pung: assumed from claimed discard
-                    meldSource = TileSource.ClaimedDiscard;
-                }
-                
+                var meldSource = ChangshaMeldSourceResolver.Resolve(meld.Type, meld.Kind);
                 meldInfos.Add(new MeldInfo(meldSource));
             }
-            
+
             var winningTileSource = request.IsSelfDraw ? TileSource.SelfDrawn : TileSource.ClaimedDiscard;
             isFullyReliant = ChangshaFullyReliantDetector.IsFullyReliant(meldInfos, winningTileSource);
         }
@@ -2111,26 +2085,7 @@ static bool TryApplyChangshaBotWin(
 
         foreach (var meld in playerMelds)
         {
-            var meldType = meld.Type;
-            var meldKind = meld.Kind;
-
-            TileSource meldSource;
-            if (string.Equals(meldType, "Kong", StringComparison.OrdinalIgnoreCase))
-            {
-                if (string.Equals(meldKind, "ConcealedKong", StringComparison.OrdinalIgnoreCase))
-                {
-                    meldSource = TileSource.SelfDrawn;
-                }
-                else
-                {
-                    meldSource = TileSource.ClaimedDiscard;
-                }
-            }
-            else
-            {
-                meldSource = TileSource.ClaimedDiscard;
-            }
-
+            var meldSource = ChangshaMeldSourceResolver.Resolve(meld.Type, meld.Kind);
             meldInfos.Add(new MeldInfo(meldSource));
         }
 
