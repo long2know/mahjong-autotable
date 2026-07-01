@@ -2414,7 +2414,9 @@ public static class BotDiscardAdvisor
             || filteredByDeadSuitedSingleton
             || filteredByKongThreatAvoidance);
         var allowWinningOutsOverride = allowOutsOverride && !filteredByPureSuit;
-        var allowPureSuitOutsOverride = allowOutsOverride && filteredByPureSuit;
+        var allowPureSuitOutsOverride = allowOutsOverride
+            && filteredByPureSuit
+            && !(ruleset == MahjongRuleset.Changsha258 && hasChangshaPureSuitLean);
 
         var maxPrioritizedOuts = prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts);
 
