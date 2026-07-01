@@ -275,7 +275,9 @@ public static class BotDiscardAdvisor
             handCounts,
             ownedCounts,
             visibleCounts,
-            enforceSmallWinPairBias);
+            enforceSmallWinPairBias,
+            hasChangshaPureSuitLean,
+            changshaDominantSuit);
 
         if (forcedDiscardIndex.HasValue)
         {
@@ -3695,7 +3697,9 @@ public static class BotDiscardAdvisor
         IReadOnlyDictionary<Tile, int> handCounts,
         IReadOnlyDictionary<Tile, int> ownedCounts,
         IReadOnlyDictionary<Tile, int> visibleCounts,
-        bool enforceSmallWinPairBias)
+        bool enforceSmallWinPairBias,
+        bool hasChangshaPureSuitLean,
+        TileSuit? changshaDominantSuit)
     {
         if (!enforceSmallWinPairBias || visibleCounts.Count == 0)
         {
@@ -3735,6 +3739,25 @@ public static class BotDiscardAdvisor
         }
 
         var deadTiles = deadSmallWinSingletons.Select(entry => entry.Tile).ToHashSet();
+        if (hasChangshaPureSuitLean && changshaDominantSuit.HasValue)
+        {
+            for (var i = 0; i < handTiles.Count; i++)
+            {
+                var tile = handTiles[i];
+                if (!deadTiles.Contains(tile) || tile.Suit == changshaDominantSuit.Value)
+                {
+                    continue;
+                }
+
+                if (HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
+                {
+                    continue;
+                }
+
+                return i;
+            }
+        }
+
         for (var i = 0; i < handTiles.Count; i++)
         {
             var tile = handTiles[i];
