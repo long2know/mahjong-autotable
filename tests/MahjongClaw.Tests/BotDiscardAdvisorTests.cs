@@ -1206,6 +1206,23 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PreservesOffRankPair_WhenSmallWinSingletonIsGapAdjacentWithBridge()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 9)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.Changsha258);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 9));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_DoesNotBreakNonSmallWinPair_WhenPureSuitBigWinCandidate()
     {
         var tiles = new List<Tile>

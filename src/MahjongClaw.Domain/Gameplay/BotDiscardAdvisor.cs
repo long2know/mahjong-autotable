@@ -962,6 +962,26 @@ public static class BotDiscardAdvisor
 
                 if (offRankPairCandidates.Count > 0)
                 {
+                    if (offRankPairCandidates.Count > 1)
+                    {
+                        var protectedTiles = offRankPairCandidates
+                            .Where(candidate => HasGapAdjacentSmallWinSingletonWithBridge(candidate.Tile, handCounts))
+                            .Select(candidate => candidate.Tile)
+                            .ToHashSet();
+
+                        if (protectedTiles.Count > 0)
+                        {
+                            var unprotectedCandidates = offRankPairCandidates
+                                .Where(candidate => !protectedTiles.Contains(candidate.Tile))
+                                .ToList();
+
+                            if (unprotectedCandidates.Count > 0)
+                            {
+                                offRankPairCandidates = unprotectedCandidates;
+                            }
+                        }
+                    }
+
                     var offRankPairsWithoutSequence = offRankPairCandidates
                         .Where(candidate => !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts))
                         .ToList();
@@ -4047,6 +4067,59 @@ public static class BotDiscardAdvisor
         }
 
         return HasPair(rank - 1) || HasPair(rank + 1);
+    }
+
+    private static bool HasGapAdjacentSmallWinSingletonWithBridge(
+        Tile pairTile,
+        IReadOnlyDictionary<Tile, int> handCounts)
+    {
+        if (!IsSuitedTile(pairTile) || Changsha258Ruleset.IsSmallWinPair(pairTile))
+        {
+            return false;
+        }
+
+        if (!handCounts.TryGetValue(pairTile, out var pairCount) || pairCount < 2)
+        {
+            return false;
+        }
+
+        var suit = pairTile.Suit;
+        var rank = pairTile.Rank;
+
+        bool HasSingletonSmallWinAt(int targetRank)
+        {
+            if (targetRank is < Changsha258Ruleset.MinSuitedRank or > Changsha258Ruleset.MaxSuitedRank)
+            {
+                return false;
+            }
+
+            var candidate = new Tile(suit, targetRank);
+            return Changsha258Ruleset.IsSmallWinPair(candidate)
+                && handCounts.TryGetValue(candidate, out var count)
+                && count == 1;
+        }
+
+        bool HasBridgeAt(int bridgeRank)
+        {
+            if (bridgeRank is < Changsha258Ruleset.MinSuitedRank or > Changsha258Ruleset.MaxSuitedRank)
+            {
+                return false;
+            }
+
+            return handCounts.TryGetValue(new Tile(suit, bridgeRank), out var count) && count > 0;
+        }
+
+        if (HasSingletonSmallWinAt(rank + 2) && HasBridgeAt(rank + 1))
+        {
+            return true;
+        }
+
+        if (HasSingletonSmallWinAt(rank - 2) && HasBridgeAt(rank - 1))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static int GetChangshaSmallWinPairVisibilityAdjustment(
