@@ -1653,7 +1653,8 @@ public static class BotDiscardAdvisor
 
         if (visibleCounts.Count > 0)
         {
-            var deadHonorSingletonCandidates = candidates
+            var honorCandidatePool = candidates;
+            var deadHonorSingletonCandidates = honorCandidatePool
                 .Where(candidate =>
                 {
                     if (!candidate.Tile.IsHonor || candidate.RemainingCopies > 0)
@@ -1671,10 +1672,32 @@ public static class BotDiscardAdvisor
                 })
                 .ToList();
 
+            if (deadHonorSingletonCandidates.Count == 0 && filteredByDeadSuitedSingleton)
+            {
+                honorCandidatePool = allCandidates;
+                deadHonorSingletonCandidates = honorCandidatePool
+                    .Where(candidate =>
+                    {
+                        if (!candidate.Tile.IsHonor || candidate.RemainingCopies > 0)
+                        {
+                            return false;
+                        }
+
+                        if (promotableKongTiles.Contains(candidate.Tile))
+                        {
+                            return false;
+                        }
+
+                        handCounts.TryGetValue(candidate.Tile, out var handCount);
+                        return handCount == 1;
+                    })
+                    .ToList();
+            }
+
             if (deadHonorSingletonCandidates.Count > 0)
             {
-                var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
-                var bestOverallOutCopies = candidates
+                var bestOverallOuts = honorCandidatePool.Max(candidate => candidate.WinningDrawOuts);
+                var bestOverallOutCopies = honorCandidatePool
                     .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
                     .Max(candidate => candidate.WinningDrawOutCopies);
 
