@@ -2500,6 +2500,27 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (ruleset == MahjongRuleset.Changsha258
+            && potentialOutSummaries is not null
+            && prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts) == 0)
+        {
+            var maxPotentialOuts = prioritizedCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+            if (maxPotentialOuts > 0)
+            {
+                prioritizedCandidates = prioritizedCandidates
+                    .Where(candidate => candidate.PotentialWinningDrawOuts == maxPotentialOuts)
+                    .ToList();
+
+                var maxPotentialCopies = prioritizedCandidates.Max(candidate => candidate.PotentialWinningDrawOutCopies);
+                if (maxPotentialCopies > 0)
+                {
+                    prioritizedCandidates = prioritizedCandidates
+                        .Where(candidate => candidate.PotentialWinningDrawOutCopies == maxPotentialCopies)
+                        .ToList();
+                }
+            }
+        }
+
         var maxWinningDrawOuts = prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts);
         if (maxWinningDrawOuts > 0)
         {
@@ -3266,7 +3287,7 @@ public static class BotDiscardAdvisor
                 .ToList();
 
             WinningHand? winningHand;
-            if (ruleset == MahjongRuleset.ChineseOfficial && !requireMinimumFan)
+            if (!requireMinimumFan)
             {
                 if (!HandAnalyzer.TryGetWinningHand(candidateHand, out winningHand))
                 {

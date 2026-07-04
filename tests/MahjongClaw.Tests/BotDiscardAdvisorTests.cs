@@ -3494,6 +3494,75 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleMeldTiles_UsesPotentialOuts_WhenChangshaSmallWinBlocksWinningOuts()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1)
+        };
+
+        var visibleMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2)
+        };
+
+        var visibleTiles = visibleMeldTiles.ToList();
+        var visibleCounts = visibleTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var winningOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                handTiles,
+                visibleCounts,
+                index,
+                MahjongRuleset.Changsha258,
+                requireMinimumFan: true))
+            .ToList();
+
+        winningOutSummaries.Max(summary => summary.TileTypes).Should().Be(0);
+
+        var potentialOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                handTiles,
+                visibleCounts,
+                index,
+                MahjongRuleset.Changsha258,
+                requireMinimumFan: false))
+            .ToList();
+
+        var maxPotentialOuts = potentialOutSummaries.Max(summary => summary.TileTypes);
+        maxPotentialOuts.Should().BeGreaterThan(0);
+
+        var maxPotentialCopies = potentialOutSummaries
+            .Where(summary => summary.TileTypes == maxPotentialOuts)
+            .Max(summary => summary.RemainingCopies);
+
+        var bestIndices = potentialOutSummaries
+            .Select((summary, index) => new { summary, index })
+            .Where(entry => entry.summary.TileTypes == maxPotentialOuts
+                && entry.summary.RemainingCopies == maxPotentialCopies)
+            .Select(entry => entry.index)
+            .ToHashSet();
+
+        bestIndices.Count.Should().BeLessThan(handTiles.Count);
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            visibleMeldTiles,
+            MahjongRuleset.Changsha258);
+
+        bestIndices.Should().Contain(discardIndex);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleMeldTiles_UsesRemainingCopyTieBreaker()
     {
         var handTiles = new List<Tile>
@@ -6021,7 +6090,7 @@ public class BotDiscardAdvisorTests
                 .ToList();
 
             WinningHand? winningHand;
-            if (ruleset == MahjongRuleset.ChineseOfficial && !requireMinimumFan)
+            if (!requireMinimumFan)
             {
                 if (!HandAnalyzer.TryGetWinningHand(candidateHand, out winningHand))
                 {
