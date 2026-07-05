@@ -3494,7 +3494,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_WithVisibleMeldTiles_UsesPotentialOuts_WhenChangshaSmallWinBlocksWinningOuts()
+    public void SelectDiscardIndex_WithVisibleMeldTiles_DoesNotUsePotentialOuts_WhenChangshaSmallWinBlocksWinningOuts()
     {
         var handTiles = new List<Tile>
         {
@@ -3536,21 +3536,7 @@ public class BotDiscardAdvisorTests
                 requireMinimumFan: false))
             .ToList();
 
-        var maxPotentialOuts = potentialOutSummaries.Max(summary => summary.TileTypes);
-        maxPotentialOuts.Should().BeGreaterThan(0);
-
-        var maxPotentialCopies = potentialOutSummaries
-            .Where(summary => summary.TileTypes == maxPotentialOuts)
-            .Max(summary => summary.RemainingCopies);
-
-        var bestIndices = potentialOutSummaries
-            .Select((summary, index) => new { summary, index })
-            .Where(entry => entry.summary.TileTypes == maxPotentialOuts
-                && entry.summary.RemainingCopies == maxPotentialCopies)
-            .Select(entry => entry.index)
-            .ToHashSet();
-
-        bestIndices.Count.Should().BeLessThan(handTiles.Count);
+        potentialOutSummaries.Max(summary => summary.TileTypes).Should().Be(0);
 
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
             handTiles,
@@ -3559,7 +3545,7 @@ public class BotDiscardAdvisorTests
             visibleMeldTiles,
             MahjongRuleset.Changsha258);
 
-        bestIndices.Should().Contain(discardIndex);
+        Changsha258Ruleset.IsSmallWinPair(handTiles[discardIndex]).Should().BeFalse();
     }
 
     [Fact]
@@ -6092,9 +6078,19 @@ public class BotDiscardAdvisorTests
             WinningHand? winningHand;
             if (!requireMinimumFan)
             {
-                if (!HandAnalyzer.TryGetWinningHand(candidateHand, out winningHand))
+                if (ruleset == MahjongRuleset.Changsha258)
                 {
-                    continue;
+                    if (!Changsha258Ruleset.TryGetWinningHand(candidateHand, out winningHand))
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    if (!HandAnalyzer.TryGetWinningHand(candidateHand, out winningHand))
+                    {
+                        continue;
+                    }
                 }
             }
             else

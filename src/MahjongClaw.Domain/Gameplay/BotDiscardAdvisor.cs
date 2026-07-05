@@ -3289,9 +3289,19 @@ public static class BotDiscardAdvisor
             WinningHand? winningHand;
             if (!requireMinimumFan)
             {
-                if (!HandAnalyzer.TryGetWinningHand(candidateHand, out winningHand))
+                if (ruleset == MahjongRuleset.Changsha258)
                 {
-                    continue;
+                    if (!Changsha258Ruleset.TryGetWinningHand(candidateHand, out winningHand))
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    if (!HandAnalyzer.TryGetWinningHand(candidateHand, out winningHand))
+                    {
+                        continue;
+                    }
                 }
             }
             else
