@@ -40,7 +40,7 @@ public class GameDealerTests
         var rng = new Random(101);
         var state = GameDealer.InitializeGame(new[] { "Alice", "Bob", "Chris", "Dana" }, rng, MahjongRuleset.ChineseOfficial);
 
-        state.Wall.RemainingCount.Should().Be(144 - 53);
+        state.Wall.RemainingCount.Should().Be(136 - 53);
     }
 
     [Fact]

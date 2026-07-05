@@ -7,11 +7,11 @@ namespace MahjongClaw.Tests;
 public class TileFactoryTests
 {
     [Fact]
-    public void CreateStandardSet_Returns144Tiles()
+    public void CreateStandardSet_Returns136Tiles()
     {
         var tiles = TileFactory.CreateStandardSet();
 
-        tiles.Should().HaveCount(144);
+        tiles.Should().HaveCount(136);
     }
 
     [Fact]
@@ -45,29 +45,11 @@ public class TileFactoryTests
     }
 
     [Fact]
-    public void CreateStandardSet_IncludesOneCopyOfEachFlowerRank()
+    public void CreateStandardSet_ExcludesFlowersAndSeasons()
     {
         var tiles = TileFactory.CreateStandardSet();
 
-        for (var rank = 1; rank <= 4; rank++)
-        {
-            tiles.Count(t => t.Suit == TileSuit.Flowers && t.Rank == rank).Should().Be(1);
-        }
-
-        tiles.Count(t => t.Suit == TileSuit.Flowers).Should().Be(4);
-    }
-
-    [Fact]
-    public void CreateStandardSet_IncludesOneCopyOfEachSeasonRank()
-    {
-        var tiles = TileFactory.CreateStandardSet();
-
-        for (var rank = 1; rank <= 4; rank++)
-        {
-            tiles.Count(t => t.Suit == TileSuit.Seasons && t.Rank == rank).Should().Be(1);
-        }
-
-        tiles.Count(t => t.Suit == TileSuit.Seasons).Should().Be(4);
+        tiles.Should().NotContain(tile => tile.Suit == TileSuit.Flowers || tile.Suit == TileSuit.Seasons);
     }
 
     [Fact]

@@ -26,7 +26,7 @@ public class WallBuilderTests
     }
 
     [Theory]
-    [InlineData(MahjongRuleset.ChineseOfficial, 144)]
+    [InlineData(MahjongRuleset.ChineseOfficial, 136)]
     [InlineData(MahjongRuleset.Changsha258, 108)]
     public void GetWallTotal_ReturnsExpectedCounts(MahjongRuleset ruleset, int expected)
     {

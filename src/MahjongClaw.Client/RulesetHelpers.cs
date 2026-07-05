@@ -40,7 +40,7 @@ public static class RulesetHelpers
         var wallTotal = WallBuilder.GetWallTotal(resolved);
         return resolved == MahjongRuleset.Changsha258
             ? $"{wallTotal} suited tiles only (characters/dots/bamboos, no honors, flowers, or seasons). Supports standard hand evaluation ({Changsha258Ruleset.RequiredMelds} melds + pair, {Changsha258Ruleset.MinTiles}-{Changsha258Ruleset.MaxTiles} tiles with kongs) with suited {FormatSmallWinPairRanks()} pair requirement for small wins, plus seven pairs and all-pungs big-win recognition. Random-eye wins are allowed for all-pungs and pure-suit hands. Exposes Changsha win-type classification output for xiao hu/da hu tagging (including Big Four Happiness, Banhu, Missing One Suit, Six Six Straight, All 2/5/8, Pure Suit, Luxury Seven Pairs, and event-context flags such as Heavenly/Earthly/last-tile/kong variants). Kongs add one tile each (up to {Changsha258Ruleset.MaxKongs}, {Changsha258Ruleset.MaxTiles} tiles total). Includes Changsha settlement accounting for small/big wins, bird catch payouts, dealer progression, and per-player score deltas. No minimum fan gate. Default ruleset."
-            : $"{wallTotal} tiles with honors/flowers. Standard Chinese Official rules (8-fan minimum to win).";
+            : $"{wallTotal} tiles with honors (no flowers/seasons). Standard Chinese Official rules (8-fan minimum to win).";
     }
 
     private static string FormatSmallWinPairRanks()

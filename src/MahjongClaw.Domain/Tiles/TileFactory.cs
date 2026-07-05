@@ -13,7 +13,7 @@ public static class TileFactory
 
     public static IReadOnlyList<Tile> CreateStandardSet()
     {
-        var tiles = new List<Tile>(144);
+        var tiles = new List<Tile>(136);
 
         AddSuitedTiles(tiles, StandardSuitedSuits, 1, 9);
 
@@ -33,13 +33,6 @@ public static class TileFactory
             {
                 tiles.Add(new Tile(TileSuit.Dragons, 0, null, dragon));
             }
-        }
-
-        // Flowers & Seasons: one copy each
-        for (var rank = 1; rank <= 4; rank++)
-        {
-            tiles.Add(new Tile(TileSuit.Flowers, rank));
-            tiles.Add(new Tile(TileSuit.Seasons, rank));
         }
 
         return tiles;
