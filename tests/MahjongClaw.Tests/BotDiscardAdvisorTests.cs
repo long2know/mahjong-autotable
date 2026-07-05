@@ -6002,6 +6002,38 @@ public class BotDiscardAdvisorTests
         bestIndices.Should().Contain(discardIndex);
     }
 
+    [Fact]
+    public void SelectDiscardIndex_AvoidsOpponentKongThreat_WhenAlternateDiscardExists()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.South)
+        };
+
+        var baselineIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.ChineseOfficial);
+        handTiles[baselineIndex].Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
+
+        var visibleMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            visibleMeldTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Winds, 0, Wind.South));
+    }
+
     private static List<Tile> BuildExhaustedVisibleTiles()
     {
         var tiles = new List<Tile>();
