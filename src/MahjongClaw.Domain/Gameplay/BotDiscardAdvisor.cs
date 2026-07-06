@@ -1849,18 +1849,24 @@ public static class BotDiscardAdvisor
 
             if (opponentKongThreatTiles.Count > 0)
             {
-                var threatCandidatePool = candidates;
+                var threatCandidatePool = allCandidates;
+                if (concealedKongTiles.Count > 0 || promotableKongTiles.Count > 0)
+                {
+                    var protectedKongTiles = new HashSet<Tile>(concealedKongTiles);
+                    protectedKongTiles.UnionWith(promotableKongTiles);
+                    threatCandidatePool = threatCandidatePool
+                        .Where(candidate => !protectedKongTiles.Contains(candidate.Tile))
+                        .ToList();
+
+                    if (threatCandidatePool.Count == 0)
+                    {
+                        threatCandidatePool = allCandidates;
+                    }
+                }
+
                 var nonThreatCandidates = threatCandidatePool
                     .Where(candidate => !opponentKongThreatTiles.Contains(candidate.Tile))
                     .ToList();
-
-                if (nonThreatCandidates.Count == 0 && allCandidates.Count != threatCandidatePool.Count)
-                {
-                    threatCandidatePool = allCandidates;
-                    nonThreatCandidates = threatCandidatePool
-                        .Where(candidate => !opponentKongThreatTiles.Contains(candidate.Tile))
-                        .ToList();
-                }
 
                 var bestOverallOuts = threatCandidatePool.Max(candidate => candidate.WinningDrawOuts);
                 var bestOverallOutCopies = threatCandidatePool
