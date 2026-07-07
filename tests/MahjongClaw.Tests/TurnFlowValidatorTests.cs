@@ -120,4 +120,40 @@ public sealed class TurnFlowValidatorTests
     {
         TurnFlowValidator.CanDeclareWin(handTileCount: 11, meldTileCount: 4, declaredKongCount: 0).Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData(-1, 14)]
+    [InlineData(14, -1)]
+    [InlineData(-3, -2)]
+    public void CanDiscard_WhenTileCountsAreNegative_ReturnsFalse(int handTileCount, int meldTileCount)
+    {
+        TurnFlowValidator.CanDiscard(handTileCount, meldTileCount).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(-1, 13)]
+    [InlineData(13, -1)]
+    [InlineData(-2, -3)]
+    public void CanDraw_WhenTileCountsAreNegative_ReturnsFalse(int handTileCount, int meldTileCount)
+    {
+        TurnFlowValidator.CanDraw(handTileCount, meldTileCount).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(-1, 14)]
+    [InlineData(14, -1)]
+    [InlineData(-2, -3)]
+    public void CanDeclareWin_WhenTileCountsAreNegative_ReturnsFalse(int handTileCount, int meldTileCount)
+    {
+        TurnFlowValidator.CanDeclareWin(handTileCount, meldTileCount).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(-1, 14, 3)]
+    [InlineData(14, -1, 3)]
+    [InlineData(-2, -3, 3)]
+    public void CanDeclareMeld_WhenTileCountsAreNegative_ReturnsFalse(int handTileCount, int meldTileCount, int meldTileRequirement)
+    {
+        TurnFlowValidator.CanDeclareMeld(handTileCount, meldTileCount, meldTileRequirement).Should().BeFalse();
+    }
 }

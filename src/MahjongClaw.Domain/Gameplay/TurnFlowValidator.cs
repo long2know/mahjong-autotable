@@ -26,6 +26,11 @@ public static class TurnFlowValidator
             return false;
         }
 
+        if (handTileCount < 0 || meldTileCount < 0)
+        {
+            return false;
+        }
+
         if (handTileCount < requiredHandTiles)
         {
             return false;
