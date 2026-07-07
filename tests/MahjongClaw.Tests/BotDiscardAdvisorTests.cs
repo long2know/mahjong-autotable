@@ -1685,6 +1685,90 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleTiles_PreservesNearDeadOffRankPair_WhenItWouldEliminateWinningOuts()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 4), new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 9)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7), new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 8), new(TileSuit.Characters, 8), new(TileSuit.Characters, 8), new(TileSuit.Characters, 8)
+        };
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>()).Should().BeFalse();
+
+        var winningCandidate = handTiles
+            .Where(tile => tile != new Tile(TileSuit.Bamboos, 9))
+            .Append(new Tile(TileSuit.Characters, 9))
+            .ToList();
+        RulesetHandAnalyzer.TryGetWinningHand(winningCandidate, MahjongRuleset.Changsha258, out _).Should().BeTrue();
+
+        int CountWinningOuts(int discardIndex)
+        {
+            var discardTile = handTiles[discardIndex];
+            var reducedHand = handTiles
+                .Where((_, index) => index != discardIndex)
+                .ToList();
+            var ownedCounts = reducedHand
+                .GroupBy(tile => tile)
+                .ToDictionary(group => group.Key, group => group.Count());
+            var visibleCounts = visibleTiles
+                .GroupBy(tile => tile)
+                .ToDictionary(group => group.Key, group => group.Count());
+            var winningOuts = 0;
+
+            foreach (var suit in Changsha258Ruleset.AllowedSuits)
+            {
+                for (var rank = 1; rank <= 9; rank++)
+                {
+                    var drawTile = new Tile(suit, rank);
+                    ownedCounts.TryGetValue(drawTile, out var ownedCount);
+                    visibleCounts.TryGetValue(drawTile, out var visibleCount);
+                    if (drawTile.Equals(discardTile))
+                    {
+                        visibleCount++;
+                    }
+
+                    var remainingCopies = 4 - ownedCount - visibleCount;
+                    if (remainingCopies <= 0)
+                    {
+                        continue;
+                    }
+
+                    var candidateHand = reducedHand.Append(drawTile).ToList();
+                    if (!RulesetHandAnalyzer.TryGetWinningHand(candidateHand, MahjongRuleset.Changsha258, out _))
+                    {
+                        continue;
+                    }
+
+                    winningOuts++;
+                }
+            }
+
+            return winningOuts;
+        }
+
+        var bambooDiscardIndex = handTiles.FindIndex(tile => tile.Equals(new Tile(TileSuit.Bamboos, 9)));
+        var characterDiscardIndex = handTiles.FindIndex(tile => tile.Equals(new Tile(TileSuit.Characters, 9)));
+
+        CountWinningOuts(bambooDiscardIndex).Should().BeGreaterThan(0);
+        CountWinningOuts(characterDiscardIndex).Should().Be(0);
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), visibleTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 9));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleTiles_DiscardsNearDeadSingleton_WhenSmallWinPairSecured()
     {
         var handTiles = new List<Tile>

@@ -1186,8 +1186,9 @@ public static class BotDiscardAdvisor
                 var withinOutsTolerance = bestNearDeadOuts >= bestOverallOuts - NearDeadOffRankPairOutsTolerance;
                 var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
                     || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadOffRankPairOutsTolerance;
+                var losesAllWinningOuts = bestOverallOuts > 0 && bestNearDeadOuts == 0;
 
-                if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                if ((bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance)) && !losesAllWinningOuts)
                 {
                     candidates = nearDeadOffRankPairCandidates;
                     filteredByNearDeadOffRankPair = true;
@@ -1239,8 +1240,9 @@ public static class BotDiscardAdvisor
                 var withinOutsTolerance = bestIsolatedOuts >= bestOverallOuts - IsolatedOffRankPairOutsTolerance;
                 var withinCopyTolerance = bestIsolatedOuts < bestOverallOuts
                     || bestIsolatedOutCopies >= bestOverallOutCopies - IsolatedOffRankPairOutsTolerance;
+                var losesAllWinningOuts = bestOverallOuts > 0 && bestIsolatedOuts == 0;
 
-                if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                if ((bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance)) && !losesAllWinningOuts)
                 {
                     candidates = isolatedOffRankPairCandidates;
                     filteredByIsolatedOffRankPair = true;
