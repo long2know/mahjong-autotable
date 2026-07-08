@@ -2005,7 +2005,8 @@ public static class BotDiscardAdvisor
                 var hasSevenPairsPotential = ruleset == MahjongRuleset.ChineseOfficial
                     && meldTiles.Count == 0
                     && sevenPairsPairCount >= 3
-                    && (ownedTiles.Any(tile => !tile.IsHonor && tile.Suit != dominantSuit)
+                    && (sevenPairsPairCount >= 6
+                        || ownedTiles.Any(tile => !tile.IsHonor && tile.Suit != dominantSuit)
                         || ownedTiles
                             .GroupBy(static tile => tile)
                             .Any(group => group.Key.IsHonor && group.Count() >= 3));
