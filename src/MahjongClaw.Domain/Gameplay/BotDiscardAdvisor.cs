@@ -3941,6 +3941,31 @@ public static class BotDiscardAdvisor
             return i;
         }
 
+        if (liveSmallWinSingletons.Count > 0)
+        {
+            if (hasChangshaPureSuitLean && changshaDominantSuit.HasValue)
+            {
+                for (var i = 0; i < handTiles.Count; i++)
+                {
+                    var tile = handTiles[i];
+                    if (!deadTiles.Contains(tile) || tile.Suit == changshaDominantSuit.Value)
+                    {
+                        continue;
+                    }
+
+                    return i;
+                }
+            }
+
+            for (var i = 0; i < handTiles.Count; i++)
+            {
+                if (deadTiles.Contains(handTiles[i]))
+                {
+                    return i;
+                }
+            }
+        }
+
         return null;
     }
 
