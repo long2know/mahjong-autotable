@@ -2092,10 +2092,6 @@ static bool TryApplyChangshaBotWin(
         var winningTileSource = isSelfDraw ? TileSource.SelfDrawn : TileSource.ClaimedDiscard;
         isFullyReliant = ChangshaFullyReliantDetector.IsFullyReliant(meldInfos, winningTileSource);
     }
-    else if (!isSelfDraw)
-    {
-        isFullyReliant = true;
-    }
 
     changshaEvaluation = ChangshaWinTypeEvaluator.Evaluate(
         tileHand,
