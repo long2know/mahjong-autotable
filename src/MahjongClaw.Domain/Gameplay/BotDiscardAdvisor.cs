@@ -1173,22 +1173,25 @@ public static class BotDiscardAdvisor
 
             if (nearDeadOffRankPairCandidates.Count > 0)
             {
-                var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestOverallOuts = candidates.Max(candidate => candidate.SmallWinningDrawOuts);
                 var bestOverallOutCopies = candidates
-                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
-                    .Max(candidate => candidate.WinningDrawOutCopies);
+                    .Where(candidate => candidate.SmallWinningDrawOuts == bestOverallOuts)
+                    .Max(candidate => candidate.SmallWinningDrawOutCopies);
 
-                var bestNearDeadOuts = nearDeadOffRankPairCandidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestNearDeadOuts = nearDeadOffRankPairCandidates.Max(candidate => candidate.SmallWinningDrawOuts);
                 var bestNearDeadOutCopies = nearDeadOffRankPairCandidates
-                    .Where(candidate => candidate.WinningDrawOuts == bestNearDeadOuts)
-                    .Max(candidate => candidate.WinningDrawOutCopies);
+                    .Where(candidate => candidate.SmallWinningDrawOuts == bestNearDeadOuts)
+                    .Max(candidate => candidate.SmallWinningDrawOutCopies);
 
                 var withinOutsTolerance = bestNearDeadOuts >= bestOverallOuts - NearDeadOffRankPairOutsTolerance;
                 var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
                     || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadOffRankPairOutsTolerance;
                 var losesAllWinningOuts = bestOverallOuts > 0 && bestNearDeadOuts == 0;
+                var hasNonTerminalNearDeadPair = nearDeadOffRankPairCandidates.Any(candidate =>
+                    !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile));
 
-                if ((bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance)) && !losesAllWinningOuts)
+                if ((bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                    && (!losesAllWinningOuts || hasNonTerminalNearDeadPair))
                 {
                     candidates = nearDeadOffRankPairCandidates;
                     filteredByNearDeadOffRankPair = true;
@@ -1227,22 +1230,26 @@ public static class BotDiscardAdvisor
 
             if (isolatedOffRankPairCandidates.Count > 0)
             {
-                var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestOverallOuts = candidates.Max(candidate => candidate.SmallWinningDrawOuts);
                 var bestOverallOutCopies = candidates
-                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
-                    .Max(candidate => candidate.WinningDrawOutCopies);
+                    .Where(candidate => candidate.SmallWinningDrawOuts == bestOverallOuts)
+                    .Max(candidate => candidate.SmallWinningDrawOutCopies);
 
-                var bestIsolatedOuts = isolatedOffRankPairCandidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestIsolatedOuts = isolatedOffRankPairCandidates.Max(candidate => candidate.SmallWinningDrawOuts);
                 var bestIsolatedOutCopies = isolatedOffRankPairCandidates
-                    .Where(candidate => candidate.WinningDrawOuts == bestIsolatedOuts)
-                    .Max(candidate => candidate.WinningDrawOutCopies);
+                    .Where(candidate => candidate.SmallWinningDrawOuts == bestIsolatedOuts)
+                    .Max(candidate => candidate.SmallWinningDrawOutCopies);
 
                 var withinOutsTolerance = bestIsolatedOuts >= bestOverallOuts - IsolatedOffRankPairOutsTolerance;
                 var withinCopyTolerance = bestIsolatedOuts < bestOverallOuts
                     || bestIsolatedOutCopies >= bestOverallOutCopies - IsolatedOffRankPairOutsTolerance;
                 var losesAllWinningOuts = bestOverallOuts > 0 && bestIsolatedOuts == 0;
+                var hasOnlyNearDeadTerminalPairs = isolatedOffRankPairCandidates.All(candidate =>
+                    candidate.RemainingCopies == 1
+                    && (candidate.Tile.IsHonor || IsTerminalSuitedTile(candidate.Tile)));
 
-                if ((bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance)) && !losesAllWinningOuts)
+                if ((bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                    && (!losesAllWinningOuts || !hasOnlyNearDeadTerminalPairs))
                 {
                     candidates = isolatedOffRankPairCandidates;
                     filteredByIsolatedOffRankPair = true;
@@ -1586,7 +1593,10 @@ public static class BotDiscardAdvisor
                                 .Where(candidate => candidate.PotentialWinningDrawOuts == bestDeadPotentialOuts)
                                 .Max(candidate => candidate.PotentialWinningDrawOutCopies);
 
-                            var withinPotentialTolerance = bestDeadPotentialOuts >= bestPotentialOuts;
+                            var hasHonorDeadPairCandidate = deadPairCandidates.Any(candidate => candidate.Tile.IsHonor);
+                            var withinPotentialTolerance = hasHonorDeadPairCandidate
+                                ? bestDeadPotentialOuts >= bestPotentialOuts
+                                : bestDeadPotentialOuts >= bestPotentialOuts - DeadPairOutsTolerance;
                             var withinPotentialCopyTolerance = bestDeadPotentialOuts < bestPotentialOuts
                                 || bestDeadPotentialOutCopies >= bestPotentialOutCopies - DeadPairOutsTolerance;
 
@@ -1954,7 +1964,19 @@ public static class BotDiscardAdvisor
 
                                 if (threatCandidates.Count > 0)
                                 {
-                                    candidates = threatCandidates;
+                                    var hasSingleCopyThreat = threatCandidates.Any(candidate =>
+                                        handCounts.TryGetValue(candidate.Tile, out var threatHandCount)
+                                        && threatHandCount == 1);
+
+                                    if (!hasSingleCopyThreat)
+                                    {
+                                        candidates = nonThreatCandidates;
+                                        filteredByKongThreatAvoidance = true;
+                                    }
+                                    else
+                                    {
+                                        candidates = threatCandidates;
+                                    }
                                 }
                             }
                             else if (withinPotentialTolerance || matchesPotentialCopies)
@@ -1974,6 +1996,61 @@ public static class BotDiscardAdvisor
                     {
                         candidates = nonThreatCandidates;
                         filteredByKongThreatAvoidance = true;
+                    }
+                    else if (losesAllWinningOuts
+                        && !singleCopyThreatCarriesOnlyWinningPath
+                        && ruleset == MahjongRuleset.ChineseOfficial)
+                    {
+                        var bestPotentialOuts = threatCandidatePool.Max(candidate => candidate.PotentialWinningDrawOuts);
+                        var bestPotentialOutCopies = threatCandidatePool
+                            .Where(candidate => candidate.PotentialWinningDrawOuts == bestPotentialOuts)
+                            .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+
+                        var bestNonThreatPotentialOuts = nonThreatCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+                        var bestNonThreatPotentialOutCopies = nonThreatCandidates
+                            .Where(candidate => candidate.PotentialWinningDrawOuts == bestNonThreatPotentialOuts)
+                            .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+
+                        var nonThreatImprovesPotential = bestNonThreatPotentialOuts > bestPotentialOuts
+                            || (bestNonThreatPotentialOuts == bestPotentialOuts
+                                && bestNonThreatPotentialOutCopies >= bestPotentialOutCopies);
+
+                        if (nonThreatImprovesPotential)
+                        {
+                            candidates = nonThreatCandidates;
+                            filteredByKongThreatAvoidance = true;
+                        }
+                    }
+
+                    if (losesAllWinningOuts
+                        && ruleset == MahjongRuleset.ChineseOfficial)
+                    {
+                        var threatCandidates = threatCandidatePool
+                            .Where(candidate => opponentKongThreatTiles.Contains(candidate.Tile))
+                            .ToList();
+
+                        if (threatCandidates.Count > 0)
+                        {
+                            var bestThreatWinningOuts = threatCandidates.Max(candidate => candidate.WinningDrawOuts);
+                            var bestThreatWinningOutCopies = threatCandidates
+                                .Where(candidate => candidate.WinningDrawOuts == bestThreatWinningOuts)
+                                .Max(candidate => candidate.WinningDrawOutCopies);
+
+                            var bestNonThreatPotentialOuts = nonThreatCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+
+                            if (bestThreatWinningOuts > 0 && bestNonThreatPotentialOuts == 0)
+                            {
+                                var threatWinningPathCandidates = threatCandidates
+                                    .Where(candidate => candidate.WinningDrawOuts == bestThreatWinningOuts
+                                        && candidate.WinningDrawOutCopies == bestThreatWinningOutCopies)
+                                    .ToList();
+
+                                if (threatWinningPathCandidates.Count > 0)
+                                {
+                                    candidates = threatWinningPathCandidates;
+                                }
+                            }
+                        }
                     }
                 }
                 else if (allowThreatWhenNoWinningOuts)
@@ -2466,9 +2543,14 @@ public static class BotDiscardAdvisor
             || filteredByDeadSuitedSingleton
             || filteredByKongThreatAvoidance);
         var allowWinningOutsOverride = allowOutsOverride && !filteredByPureSuit;
-        var allowPureSuitOutsOverride = allowOutsOverride
-            && filteredByPureSuit
-            && !(ruleset == MahjongRuleset.Changsha258 && hasChangshaPureSuitLean);
+        var allowPureSuitOutsOverride = allowOutsOverride && filteredByPureSuit;
+
+        if (allowPureSuitOutsOverride
+            && ruleset == MahjongRuleset.Changsha258
+            && hasChangshaPureSuitLean)
+        {
+            allowPureSuitOutsOverride = prioritizedCandidates.All(candidate => candidate.RemainingCopies <= 0);
+        }
 
         var maxPrioritizedOuts = prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts);
 

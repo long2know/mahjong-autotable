@@ -3689,14 +3689,19 @@ public class BotDiscardAdvisorTests
     {
         var handTiles = new List<Tile>
         {
-            new(TileSuit.Characters, 2),
-            new(TileSuit.Characters, 4), new(TileSuit.Characters, 4),
-            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
-            new(TileSuit.Characters, 6), new(TileSuit.Characters, 6),
-            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
-            new(TileSuit.Characters, 8), new(TileSuit.Characters, 8),
-            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
-            new(TileSuit.Characters, 9)
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White)
         };
 
         var visibleMeldTiles = new List<Tile>
@@ -3705,6 +3710,27 @@ public class BotDiscardAdvisorTests
         };
 
         var visibleTiles = visibleMeldTiles.ToList();
+        var visibleCounts = visibleTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var winningOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                handTiles,
+                visibleCounts,
+                index,
+                MahjongRuleset.ChineseOfficial,
+                requireMinimumFan: true))
+            .ToList();
+
+        var bestOverallOuts = winningOutSummaries.Max(summary => summary.TileTypes);
+        var bestNonThreatOuts = winningOutSummaries
+            .Select((summary, index) => new { summary, index })
+            .Where(entry => !handTiles[entry.index].Equals(new Tile(TileSuit.Characters, 9)))
+            .Max(entry => entry.summary.TileTypes);
+
+        bestOverallOuts.Should().BeGreaterThan(0);
+        bestNonThreatOuts.Should().BeGreaterOrEqualTo(bestOverallOuts - 2);
 
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
             handTiles,
