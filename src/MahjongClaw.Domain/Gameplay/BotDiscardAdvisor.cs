@@ -2157,6 +2157,14 @@ public static class BotDiscardAdvisor
             if (terminalOrHonorCount >= 11 && nonTerminalSuitedCount > 0 && !nearThirteenOrphansShape)
             {
                 allowBreakingSolePairForTerminalHonorLean = true;
+                var protectSolePairBecauseExhausted = false;
+
+                if (soleChineseOfficialPairTile is not null)
+                {
+                    ownedCounts.TryGetValue(soleChineseOfficialPairTile, out var ownedPairCount);
+                    visibleCounts.TryGetValue(soleChineseOfficialPairTile, out var visiblePairCount);
+                    protectSolePairBecauseExhausted = 4 - ownedPairCount - visiblePairCount <= 0;
+                }
 
                 var nonTerminalCandidates = candidates
                     .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
@@ -2164,7 +2172,11 @@ public static class BotDiscardAdvisor
 
                 if (nonTerminalCandidates.Count > 0)
                 {
-                    if (soleChineseOfficialPairTile is not null
+                    if (protectSolePairBecauseExhausted)
+                    {
+                        allowBreakingSolePairForTerminalHonorLean = false;
+                    }
+                    else if (soleChineseOfficialPairTile is not null
                         && !soleChineseOfficialPairTile.IsHonor
                         && !IsTerminalSuitedTile(soleChineseOfficialPairTile))
                     {
