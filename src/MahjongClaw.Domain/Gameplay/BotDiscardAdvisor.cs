@@ -3953,16 +3953,29 @@ public static class BotDiscardAdvisor
                         continue;
                     }
 
+                    if (HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
+                    {
+                        continue;
+                    }
+
                     return i;
                 }
             }
 
             for (var i = 0; i < handTiles.Count; i++)
             {
-                if (deadTiles.Contains(handTiles[i]))
+                var tile = handTiles[i];
+                if (!deadTiles.Contains(tile))
                 {
-                    return i;
+                    continue;
                 }
+
+                if (HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
+                {
+                    continue;
+                }
+
+                return i;
             }
         }
 
