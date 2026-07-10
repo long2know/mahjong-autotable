@@ -3700,7 +3700,7 @@ public static class BotDiscardAdvisor
                 continue;
             }
 
-            if (remainingCopies >= 3)
+            if (remainingCopies >= 3 && pairCount == 0)
             {
                 return true;
             }

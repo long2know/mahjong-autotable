@@ -374,6 +374,31 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleTiles_PreservesOffRankPair_WhenNoSmallWinTilesInHand()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 9),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 4), new(TileSuit.Characters, 7)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 4)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 3));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleTiles_PrefersChowPotentialOverDeadOffRankPair_WhenChangsha258EyeAlreadySecured()
     {
         var handTiles = new List<Tile>
