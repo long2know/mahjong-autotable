@@ -80,15 +80,19 @@ public static class BotClaimAdvisor
 
         if (ruleset == MahjongRuleset.Changsha258 && Changsha258Ruleset.IsSmallWinPair(discardedTile))
         {
-            var hasAlternateSmallWinPair = handTiles
-                .GroupBy(static tile => tile)
-                .Any(group => group.Count() >= 2
-                    && !group.Key.Equals(discardedTile)
-                    && Changsha258Ruleset.IsSmallWinPair(group.Key));
-
-            if (!hasAlternateSmallWinPair)
+            var allowFlexibleEye = Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
+            if (!allowFlexibleEye)
             {
-                return false;
+                var hasAlternateSmallWinPair = handTiles
+                    .GroupBy(static tile => tile)
+                    .Any(group => group.Count() >= 2
+                        && !group.Key.Equals(discardedTile)
+                        && Changsha258Ruleset.IsSmallWinPair(group.Key));
+
+                if (!hasAlternateSmallWinPair)
+                {
+                    return false;
+                }
             }
         }
 
