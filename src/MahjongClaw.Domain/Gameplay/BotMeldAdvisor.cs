@@ -93,10 +93,12 @@ public static class BotMeldAdvisor
         }
 
         var bestPreKongOuts = CountBestWinningOutsWithoutKong(handTiles, meldTiles, visibleCounts, ruleset);
+        var candidateOuts = candidates
+            .ToDictionary(candidate => candidate, candidate => CountWinningOutsAfterConcealedKong(handTiles, meldTiles, visibleCounts, candidate, ruleset));
         if (bestPreKongOuts > 0)
         {
             var candidatesThatKeepOuts = candidates
-                .Where(candidate => CountWinningOutsAfterConcealedKong(handTiles, meldTiles, visibleCounts, candidate, ruleset) > 0)
+                .Where(candidate => candidateOuts[candidate] > 0)
                 .ToList();
 
             if (candidatesThatKeepOuts.Count == 0)
@@ -106,6 +108,17 @@ public static class BotMeldAdvisor
             }
 
             candidates = candidatesThatKeepOuts;
+        }
+
+        if (candidates.Count > 1)
+        {
+            var maxPostKongOuts = candidates.Max(candidate => candidateOuts[candidate]);
+            if (maxPostKongOuts > 0)
+            {
+                candidates = candidates
+                    .Where(candidate => candidateOuts[candidate] == maxPostKongOuts)
+                    .ToList();
+            }
         }
 
         var prioritizedCandidates = candidates
@@ -198,10 +211,12 @@ public static class BotMeldAdvisor
         }
 
         var bestPreKongOuts = CountBestWinningOutsWithoutKong(handTiles, meldTiles, visibleCounts, ruleset);
+        var candidateOuts = candidates
+            .ToDictionary(candidate => candidate, candidate => CountWinningOutsAfterPromotedKong(handTiles, meldTiles, visibleCounts, candidate, ruleset));
         if (bestPreKongOuts > 0)
         {
             var candidatesThatKeepOuts = candidates
-                .Where(candidate => CountWinningOutsAfterPromotedKong(handTiles, meldTiles, visibleCounts, candidate, ruleset) > 0)
+                .Where(candidate => candidateOuts[candidate] > 0)
                 .ToList();
 
             if (candidatesThatKeepOuts.Count == 0)
@@ -211,6 +226,17 @@ public static class BotMeldAdvisor
             }
 
             candidates = candidatesThatKeepOuts;
+        }
+
+        if (candidates.Count > 1)
+        {
+            var maxPostKongOuts = candidates.Max(candidate => candidateOuts[candidate]);
+            if (maxPostKongOuts > 0)
+            {
+                candidates = candidates
+                    .Where(candidate => candidateOuts[candidate] == maxPostKongOuts)
+                    .ToList();
+            }
         }
 
         var prioritizedCandidates = candidates
