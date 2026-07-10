@@ -2388,6 +2388,15 @@ static async Task ProcessBotClaimsAsync(
                 new { PlayerId = botPlayerId, ClaimType = "Win" }, 
                 cancellationToken);
         }
+        else if (BotClaimAdvisor.TrySelectExposedKongClaim(hand, melds, claimWindow.DiscardedTile, ruleset, out var kongTiles))
+        {
+            var kongClaim = new ClaimRequest(botPlayerId, ClaimType.ExposedKong, kongTiles, null);
+            claimWindow.SubmittedClaims.Add(kongClaim);
+
+            await SendToGameWithAliases(hubContext, game.Id, "ClaimSubmitted",
+                new { PlayerId = botPlayerId, ClaimType = "ExposedKong" },
+                cancellationToken);
+        }
         else
         {
             var passClaim = new ClaimRequest(botPlayerId, ClaimType.Pass);
@@ -2528,6 +2537,12 @@ static async Task ResolveClaimWindowAsync(
     }, cancellationToken);
 
     await ExecuteMeldClaimAsync(game, singleClaim, claimWindow, dbContext, hubContext, missedWinLocks, cancellationToken);
+
+    var claimPlayer = game.Players.FirstOrDefault(p => p.Id == singleClaim.PlayerId);
+    if (claimPlayer is not null && IsBotPlayer(claimPlayer))
+    {
+        await ExecuteBotTurnChainAsync(game, dbContext, hubContext, missedWinLocks, cancellationToken);
+    }
 }
 
 static async Task ExecuteMultiWinClaimAsync(
