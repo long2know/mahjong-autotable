@@ -26,6 +26,7 @@ public static class BotDiscardAdvisor
     private const int DeadSuitedSingletonOutsTolerance = 1;
     private const int NearDeadSuitedSingletonOutsTolerance = 1;
     private const int OffRankConcealedKongOutsTolerance = 0;
+    private const int ChangshaPureSuitBreakSmallWinPairThreshold = Changsha258Ruleset.BigWinPureSuitEyeFlexibleThreshold + 2;
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
         => SelectDiscardIndex(handTiles, Array.Empty<Tile>(), ruleset);
@@ -163,6 +164,7 @@ public static class BotDiscardAdvisor
 
         var hasChangshaPureSuitLean = false;
         TileSuit? changshaDominantSuit = null;
+        var changshaDominantSuitTileCount = 0;
         if (ruleset == MahjongRuleset.Changsha258)
         {
             var changshaSuitCounts = ownedTiles
@@ -178,6 +180,7 @@ public static class BotDiscardAdvisor
                 {
                     hasChangshaPureSuitLean = true;
                     changshaDominantSuit = changshaSuitCounts.First(entry => entry.Value == maxSuitCount).Key;
+                    changshaDominantSuitTileCount = maxSuitCount;
                 }
             }
         }
@@ -255,7 +258,8 @@ public static class BotDiscardAdvisor
             && soleChangshaSmallWinPairTile is not null
             && changshaDominantSuit.HasValue
             && soleChangshaSmallWinPairTile.Suit != changshaDominantSuit.Value
-            && hasChangshaDominantSuitTriplet;
+            && (hasChangshaDominantSuitTriplet
+                || changshaDominantSuitTileCount >= ChangshaPureSuitBreakSmallWinPairThreshold);
 
         if (allowBreakingSoleChangshaSmallWinPairForPureSuitLean
             && enforceSmallWinPairBias

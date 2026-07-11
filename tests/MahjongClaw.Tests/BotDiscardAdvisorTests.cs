@@ -956,6 +956,31 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_AllowsBreakingOffSuitSmallWinPair_WhenPureSuitLeanIsVeryStrong()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Bamboos, 8),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.Changsha258);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_DoesNotBreakOffSuitSmallWinPair_WhenPureSuitLeanHasNoDominantSmallWinTiles()
     {
         var handTiles = new List<Tile>
