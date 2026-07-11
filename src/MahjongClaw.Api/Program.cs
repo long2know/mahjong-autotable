@@ -1710,7 +1710,7 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         }
     }
 
-    var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand, botMeldHandForDiscard, visibleTiles, opponentKongThreatTiles, ruleset);
+    var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand, botMeldHandForDiscard, visibleTiles, visibleMeldTiles, opponentKongThreatTiles, ruleset);
     var discardTile = handTiles[discardIndex];
     discardTile.Location = "Discard";
 
