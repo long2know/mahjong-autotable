@@ -3452,6 +3452,35 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleMeldTiles_AccountsForMeldsWhenVisibleTilesOmitThem()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 9)
+        };
+
+        var visibleMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            visibleMeldTiles,
+            Array.Empty<Tile>(),
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 9));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleMeldTiles_DoesNotBreakConcealedKongToAvoidThreat()
     {
         var handTiles = new List<Tile>
@@ -6302,6 +6331,34 @@ public class BotDiscardAdvisorTests
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.ChineseOfficial);
 
         bestIndices.Should().Contain(discardIndex);
+    }
+
+    [Fact]
+    public void SelectDiscardIndex_AvoidsBreakingSolePair_WhenTerminalHonorLeanPreservesWinningOuts()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Winds, 0, Wind.West)
+        };
+
+        var meldTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, meldTiles, MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Winds, 0, Wind.West));
     }
 
     [Fact]

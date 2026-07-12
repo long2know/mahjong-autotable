@@ -141,6 +141,19 @@ public static class BotDiscardAdvisor
         var visibleMeldCounts = visibleMeldTiles
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
+
+        if (visibleMeldCounts.Count > 0)
+        {
+            foreach (var entry in visibleMeldCounts)
+            {
+                visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+                if (entry.Value > visibleCount)
+                {
+                    visibleCounts[entry.Key] = entry.Value;
+                }
+            }
+        }
+
         var kongThreatCounts = kongThreatTiles
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
@@ -281,12 +294,19 @@ public static class BotDiscardAdvisor
             && changshaDominantSuit.HasValue
             && ownedCounts.Any(entry => entry.Value >= 3 && entry.Key.Suit == changshaDominantSuit.Value);
 
+        var hasChangshaDominantSuitHighPair = hasChangshaPureSuitLean
+            && changshaDominantSuit.HasValue
+            && handCounts.Any(entry => entry.Value >= 2
+                && entry.Key.Suit == changshaDominantSuit.Value
+                && entry.Key.Rank >= ChangshaPureSuitBreakSmallWinPairHighPairRankThreshold);
+
         var allowBreakingSoleChangshaSmallWinPairForPureSuitLean = hasChangshaPureSuitLean
             && soleChangshaSmallWinPairTile is not null
             && changshaDominantSuit.HasValue
             && soleChangshaSmallWinPairTile.Suit != changshaDominantSuit.Value
             && (hasChangshaDominantSuitTriplet
-                || changshaDominantSuitTileCount >= ChangshaPureSuitBreakSmallWinPairThreshold);
+                || (changshaDominantSuitTileCount >= ChangshaPureSuitBreakSmallWinPairThreshold
+                    && hasChangshaDominantSuitHighPair));
 
         if (allowBreakingSoleChangshaSmallWinPairForPureSuitLean
             && enforceSmallWinPairBias
@@ -297,6 +317,7 @@ public static class BotDiscardAdvisor
         {
             allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
         }
+
 
         var hasSmallWinTileInHand = enforceSmallWinPairBias
             && handTiles.Any(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
@@ -574,6 +595,30 @@ public static class BotDiscardAdvisor
                 };
             })
             .ToList();
+
+        if (ruleset == MahjongRuleset.Changsha258
+            && allowBreakingSoleChangshaSmallWinPairForPureSuitLean
+            && soleChangshaSmallWinPairTile is not null)
+        {
+            var pairCandidates = candidates
+                .Where(candidate => candidate.Tile.Equals(soleChangshaSmallWinPairTile))
+                .ToList();
+
+            if (pairCandidates.Count > 0)
+            {
+                var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestPairOuts = pairCandidates.Max(candidate => candidate.WinningDrawOuts);
+
+                var losesAllWinningOuts = bestOverallOuts > 0 && bestPairOuts == 0;
+
+                if (losesAllWinningOuts
+                    && !hasChangshaDominantSuitTriplet
+                    && !hasChangshaDominantSuitHighPair)
+                {
+                    allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+                }
+            }
+        }
 
         var allCandidates = candidates;
         var filteredByPureSuit = false;
@@ -2203,7 +2248,54 @@ public static class BotDiscardAdvisor
 
                 if (nonTerminalCandidates.Count > 0)
                 {
-                    if (protectSolePairBecauseExhausted)
+                    var bestLeanOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestLeanOverallOutCopies = candidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestLeanOverallOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var bestLeanNonTerminalOuts = nonTerminalCandidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestLeanNonTerminalOutCopies = nonTerminalCandidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestLeanNonTerminalOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var reducesWinningOuts = bestLeanOverallOuts > bestLeanNonTerminalOuts
+                        || (bestLeanOverallOuts == bestLeanNonTerminalOuts
+                            && bestLeanOverallOutCopies > bestLeanNonTerminalOutCopies);
+
+                    var reducesPotentialOuts = false;
+                    if (!reducesWinningOuts && bestLeanOverallOuts == 0 && potentialOutSummaries is not null)
+                    {
+                        var bestPotentialOuts = candidates
+                            .Max(candidate => potentialOutSummaries[candidate.Index].TileTypes);
+                        var bestPotentialOutCopies = candidates
+                            .Where(candidate => potentialOutSummaries[candidate.Index].TileTypes == bestPotentialOuts)
+                            .Max(candidate => potentialOutSummaries[candidate.Index].RemainingCopies);
+
+                        var bestNonTerminalPotentialOuts = nonTerminalCandidates
+                            .Max(candidate => potentialOutSummaries[candidate.Index].TileTypes);
+                        var bestNonTerminalPotentialOutCopies = nonTerminalCandidates
+                            .Where(candidate => potentialOutSummaries[candidate.Index].TileTypes == bestNonTerminalPotentialOuts)
+                            .Max(candidate => potentialOutSummaries[candidate.Index].RemainingCopies);
+
+                        reducesPotentialOuts = bestPotentialOuts > bestNonTerminalPotentialOuts
+                            || (bestPotentialOuts == bestNonTerminalPotentialOuts
+                                && bestPotentialOutCopies > bestNonTerminalPotentialOutCopies);
+                    }
+
+                    if (reducesWinningOuts || reducesPotentialOuts)
+                    {
+                        allowBreakingSolePairForTerminalHonorLean = false;
+
+                        var honorTerminalCandidates = candidates
+                            .Where(candidate => candidate.Tile.IsHonor || IsTerminalSuitedTile(candidate.Tile))
+                            .ToList();
+
+                        if (honorTerminalCandidates.Count > 0)
+                        {
+                            candidates = honorTerminalCandidates;
+                        }
+                    }
+                    else if (protectSolePairBecauseExhausted)
                     {
                         allowBreakingSolePairForTerminalHonorLean = false;
                     }
