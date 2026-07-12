@@ -611,9 +611,7 @@ public static class BotDiscardAdvisor
 
                 var losesAllWinningOuts = bestOverallOuts > 0 && bestPairOuts == 0;
 
-                if (losesAllWinningOuts
-                    && !hasChangshaDominantSuitTriplet
-                    && !hasChangshaDominantSuitHighPair)
+                if (losesAllWinningOuts)
                 {
                     allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
                 }
