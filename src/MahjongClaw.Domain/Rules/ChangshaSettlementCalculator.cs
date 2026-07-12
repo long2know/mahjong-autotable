@@ -223,6 +223,11 @@ public static class ChangshaSettlementCalculator
             }
         }
 
+        if (request.IsSelfDraw && request.Winners.Count > 1)
+        {
+            throw new ArgumentException("Multiple winners are not supported for self-draw wins.", nameof(request));
+        }
+
         if (!request.IsSelfDraw)
         {
             if (request.DiscarderId is null)

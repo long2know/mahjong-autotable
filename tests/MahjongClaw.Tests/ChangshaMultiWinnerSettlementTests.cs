@@ -19,6 +19,27 @@ public sealed class ChangshaMultiWinnerSettlementTests
     };
 
     [Fact]
+    public void CalculateMultiWinner_ThrowsWhenSelfDrawHasMultipleWinners()
+    {
+        var winners = new[]
+        {
+            new ChangshaWinnerInfo(Player2, Array.Empty<ChangshaWinType>(), IsBigWin: false),
+            new ChangshaWinnerInfo(Player3, Array.Empty<ChangshaWinType>(), IsBigWin: false)
+        };
+
+        var request = new ChangshaSettlementRequestMulti(
+            StandardSeats,
+            winners,
+            DealerId: Player1,
+            IsSelfDraw: true);
+
+        var rng = new Random(42);
+
+        var error = Assert.Throws<ArgumentException>(() => ChangshaSettlementCalculator.CalculateMultiWinner(request, rng));
+        Assert.Contains("Multiple winners are not supported for self-draw wins", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CalculateMultiWinner_TwoWinnersSmallWin_DiscarderPaysEach()
     {
         // Player1 discards, Player2 and Player3 both win (small win, no bird)
