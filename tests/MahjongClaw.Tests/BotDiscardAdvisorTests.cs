@@ -868,6 +868,35 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotDiscardNearDeadSmallWinSingleton_WhenItBreaksOnlyWinningWait()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 7)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8)
+        };
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>()).Should().BeFalse();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 7));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesDiscardingInvalidTile_WhenChangsha258Ruleset()
     {
         var tiles = new List<Tile>

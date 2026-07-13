@@ -1481,8 +1481,9 @@ public static class BotDiscardAdvisor
                 var withinOutsTolerance = bestNearDeadOuts >= bestOverallOuts - NearDeadSingletonOutsTolerance;
                 var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
                     || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadSingletonOutsTolerance;
+                var losesAllWinningOuts = bestOverallOuts > 0 && bestNearDeadOuts == 0;
 
-                if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                if (bestOverallOuts == 0 || ((withinOutsTolerance && withinCopyTolerance) && !losesAllWinningOuts))
                 {
                     candidates = nearDeadSmallWinSingletonCandidates;
                     filteredByNearDeadSmallWinSingleton = true;
