@@ -144,12 +144,18 @@ public static class BotDiscardAdvisor
 
         if (visibleMeldCounts.Count > 0)
         {
-            foreach (var entry in visibleMeldCounts)
+            var meldsAlreadyIncluded = visibleMeldCounts.All(entry =>
             {
                 visibleCounts.TryGetValue(entry.Key, out var visibleCount);
-                if (entry.Value > visibleCount)
+                return visibleCount >= entry.Value;
+            });
+
+            if (!meldsAlreadyIncluded)
+            {
+                foreach (var entry in visibleMeldCounts)
                 {
-                    visibleCounts[entry.Key] = entry.Value;
+                    visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+                    visibleCounts[entry.Key] = visibleCount + entry.Value;
                 }
             }
         }
