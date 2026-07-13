@@ -608,8 +608,36 @@ public static class BotDiscardAdvisor
             {
                 var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
                 var bestPairOuts = pairCandidates.Max(candidate => candidate.WinningDrawOuts);
-
                 var losesAllWinningOuts = bestOverallOuts > 0 && bestPairOuts == 0;
+
+                var nonPairCandidates = candidates
+                    .Where(candidate => !candidate.Tile.Equals(soleChangshaSmallWinPairTile))
+                    .ToList();
+
+                if (nonPairCandidates.Count > 0)
+                {
+                    var bestNonPairSmallWinOuts = nonPairCandidates.Max(candidate => candidate.SmallWinningDrawOuts);
+                    if (bestNonPairSmallWinOuts > 0)
+                    {
+                        var bestNonPairSmallWinCopies = nonPairCandidates
+                            .Where(candidate => candidate.SmallWinningDrawOuts == bestNonPairSmallWinOuts)
+                            .Max(candidate => candidate.SmallWinningDrawOutCopies);
+
+                        var bestPairBigWinOuts = pairCandidates.Max(candidate => candidate.BigWinningDrawOuts);
+                        var bestPairBigWinCopies = pairCandidates
+                            .Where(candidate => candidate.BigWinningDrawOuts == bestPairBigWinOuts)
+                            .Max(candidate => candidate.BigWinningDrawOutCopies);
+
+                        var bigWinLagsSmallWin = bestPairBigWinOuts < bestNonPairSmallWinOuts
+                            || (bestPairBigWinOuts == bestNonPairSmallWinOuts
+                                && bestPairBigWinCopies < bestNonPairSmallWinCopies);
+
+                        if (bigWinLagsSmallWin)
+                        {
+                            allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+                        }
+                    }
+                }
 
                 if (losesAllWinningOuts)
                 {
