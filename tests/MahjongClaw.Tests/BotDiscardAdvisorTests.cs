@@ -3474,6 +3474,7 @@ public class BotDiscardAdvisorTests
             Array.Empty<Tile>(),
             visibleTiles,
             visibleMeldTiles,
+            visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
         handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 9));
@@ -3590,6 +3591,7 @@ public class BotDiscardAdvisorTests
             Array.Empty<Tile>(),
             visibleTiles,
             visibleMeldTiles,
+            visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
         handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 9));
@@ -3644,6 +3646,7 @@ public class BotDiscardAdvisorTests
             Array.Empty<Tile>(),
             visibleTiles,
             visibleMeldTiles,
+            visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
         handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 9));
@@ -3671,6 +3674,7 @@ public class BotDiscardAdvisorTests
             Array.Empty<Tile>(),
             visibleTiles,
             visibleMeldTiles,
+            visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
         handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 5));
@@ -3697,6 +3701,7 @@ public class BotDiscardAdvisorTests
             handTiles,
             Array.Empty<Tile>(),
             visibleTiles,
+            visibleMeldTiles,
             visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
@@ -3727,6 +3732,7 @@ public class BotDiscardAdvisorTests
             Array.Empty<Tile>(),
             visibleTiles,
             visibleMeldTiles,
+            visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
         handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 7));
@@ -3756,6 +3762,7 @@ public class BotDiscardAdvisorTests
             handTiles,
             Array.Empty<Tile>(),
             visibleTiles,
+            visibleMeldTiles,
             visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
@@ -3826,6 +3833,7 @@ public class BotDiscardAdvisorTests
             Array.Empty<Tile>(),
             visibleTiles,
             visibleMeldTiles,
+            visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
         handTiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 9));
@@ -3881,6 +3889,7 @@ public class BotDiscardAdvisorTests
             Array.Empty<Tile>(),
             visibleTiles,
             visibleMeldTiles,
+            visibleMeldTiles,
             MahjongRuleset.Changsha258);
 
         Changsha258Ruleset.IsSmallWinPair(handTiles[discardIndex]).Should().BeFalse();
@@ -3906,6 +3915,7 @@ public class BotDiscardAdvisorTests
             handTiles,
             Array.Empty<Tile>(),
             visibleTiles,
+            visibleMeldTiles,
             visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
@@ -3965,6 +3975,7 @@ public class BotDiscardAdvisorTests
             Array.Empty<Tile>(),
             visibleTiles,
             visibleMeldTiles,
+            visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
         handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Characters, 9));
@@ -4001,6 +4012,7 @@ public class BotDiscardAdvisorTests
             Array.Empty<Tile>(),
             visibleTiles,
             visibleMeldTiles,
+            visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
         handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 2));
@@ -4027,6 +4039,7 @@ public class BotDiscardAdvisorTests
             Array.Empty<Tile>(),
             visibleTiles,
             visibleMeldTiles,
+            visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
         handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 9));
@@ -4052,6 +4065,7 @@ public class BotDiscardAdvisorTests
             handTiles,
             Array.Empty<Tile>(),
             visibleTiles,
+            visibleMeldTiles,
             visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
@@ -6495,6 +6509,7 @@ public class BotDiscardAdvisorTests
             handTiles,
             Array.Empty<Tile>(),
             Array.Empty<Tile>(),
+            visibleMeldTiles,
             visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
