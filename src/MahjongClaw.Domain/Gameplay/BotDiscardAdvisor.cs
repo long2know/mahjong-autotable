@@ -14,6 +14,7 @@ public static class BotDiscardAdvisor
     private const int OpponentKongFeedLastCopyAvoidBonus = 10;
     private const int OpponentKongFeedOutsTolerance = 2;
     private const int DeadSmallWinPairOutsTolerance = 1;
+    private const int ChangshaPureSuitSmallWinOutsTolerance = 1;
     private const int NearDeadSmallWinPairOutsTolerance = 1;
     private const int NearDeadOffRankPairOutsTolerance = 1;
     private const int NearDeadSingletonOutsTolerance = 1;
@@ -28,6 +29,7 @@ public static class BotDiscardAdvisor
     private const int OffRankConcealedKongOutsTolerance = 0;
     private const int ChangshaPureSuitBreakSmallWinPairThreshold = Changsha258Ruleset.BigWinPureSuitEyeFlexibleThreshold + 2;
     private const int ChangshaPureSuitBreakSmallWinPairHighPairRankThreshold = 5;
+    private const int ChangshaPureSuitBreakSmallWinPairDistinctRankThreshold = 8;
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
         => SelectDiscardIndex(handTiles, Array.Empty<Tile>(), ruleset);
@@ -305,6 +307,18 @@ public static class BotDiscardAdvisor
             && handCounts.Any(entry => entry.Value >= 2
                 && entry.Key.Suit == changshaDominantSuit.Value
                 && entry.Key.Rank >= ChangshaPureSuitBreakSmallWinPairHighPairRankThreshold);
+
+        var hasChangshaDominantSuitDistinctSpread = false;
+        if (hasChangshaPureSuitLean && changshaDominantSuit.HasValue)
+        {
+            var distinctRanks = ownedTiles
+                .Where(tile => !tile.IsHonor && tile.Suit == changshaDominantSuit.Value)
+                .Select(tile => tile.Rank)
+                .Distinct()
+                .Count();
+
+            hasChangshaDominantSuitDistinctSpread = distinctRanks >= ChangshaPureSuitBreakSmallWinPairDistinctRankThreshold;
+        }
 
         var allowBreakingSoleChangshaSmallWinPairForPureSuitLean = hasChangshaPureSuitLean
             && soleChangshaSmallWinPairTile is not null
@@ -634,11 +648,20 @@ public static class BotDiscardAdvisor
                             .Where(candidate => candidate.BigWinningDrawOuts == bestPairBigWinOuts)
                             .Max(candidate => candidate.BigWinningDrawOutCopies);
 
-                        var bigWinLagsSmallWin = bestPairBigWinOuts < bestNonPairSmallWinOuts
-                            || (bestPairBigWinOuts == bestNonPairSmallWinOuts
-                                && bestPairBigWinCopies < bestNonPairSmallWinCopies);
+                        var dominantSuitSmallWinOutsDead = changshaDominantSuit.HasValue
+                            && visibleCounts.Count > 0
+                            && AreDominantSuitSmallWinOutsDead(
+                                changshaDominantSuit.Value,
+                                ownedCounts,
+                                visibleCounts);
+                        var allowZeroOutsBreak = hasChangshaDominantSuitDistinctSpread
+                            || dominantSuitSmallWinOutsDead;
+                        var bigWinOutsMissing = bestPairBigWinOuts == 0 && bestNonPairSmallWinOuts > 0;
+                        var bigWinLagsSmallWin = bestPairBigWinOuts + ChangshaPureSuitSmallWinOutsTolerance < bestNonPairSmallWinOuts
+                            || (bestPairBigWinOuts + ChangshaPureSuitSmallWinOutsTolerance == bestNonPairSmallWinOuts
+                                && bestPairBigWinCopies + ChangshaPureSuitSmallWinOutsTolerance < bestNonPairSmallWinCopies);
 
-                        if (bigWinLagsSmallWin)
+                        if ((bigWinOutsMissing && !allowZeroOutsBreak) || (bigWinLagsSmallWin && !allowZeroOutsBreak))
                         {
                             allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
                         }

@@ -1010,6 +1010,27 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_AllowsBreakingOffSuitSmallWinPair_WhenPureSuitLeanHasDistinctRankSpread()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.Changsha258);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_DoesNotBreakOffSuitSmallWinPair_WhenPureSuitLeanHasNoDominantSmallWinTiles()
     {
         var handTiles = new List<Tile>
