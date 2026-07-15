@@ -4214,11 +4214,6 @@ public static class BotDiscardAdvisor
             return null;
         }
 
-        var hasSmallWinTileInHand = handCounts.Keys.Any(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
-        if (!hasSmallWinTileInHand)
-        {
-            return null;
-        }
 
         for (var i = 0; i < handTiles.Count; i++)
         {
