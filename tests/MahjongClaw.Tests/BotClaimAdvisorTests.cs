@@ -245,6 +245,32 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectExposedKongClaim_ReturnsTrue_WhenOnlyLowFanOutsExist()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Bamboos, 5)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 7);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            MahjongRuleset.ChineseOfficial,
+            out var claimTiles);
+
+        shouldClaim.Should().BeTrue();
+        claimTiles.Should().HaveCount(3);
+        claimTiles.Should().OnlyContain(tile => tile.Equals(discardedTile));
+    }
+
+    [Fact]
     public void TrySelectExposedKongClaim_ReturnsFalse_WhenClaimWouldRemoveOnlyWinningOut()
     {
         var handTiles = new List<Tile>

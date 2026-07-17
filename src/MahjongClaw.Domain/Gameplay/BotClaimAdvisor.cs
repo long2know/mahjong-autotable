@@ -140,10 +140,19 @@ public static class BotClaimAdvisor
                 .Append(drawTileType)
                 .ToList();
 
-            if (RulesetHandAnalyzer.IsWinningHand(candidateTiles, ruleset))
+            if (!RulesetHandAnalyzer.TryGetWinningHand(candidateTiles, ruleset, out var winningHand)
+                || winningHand is null)
             {
-                winningOuts++;
+                continue;
             }
+
+            if (!ScoreCalculator.MeetsRulesetMinimumFan(winningHand, ruleset))
+            {
+                continue;
+            }
+
+            winningOuts++;
+
         }
 
         return winningOuts;
