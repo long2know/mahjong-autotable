@@ -2372,6 +2372,16 @@ static async Task ProcessBotClaimsAsync(
         missedWinLocks.TryGetValue(game.Id, out var gameLocks);
         gameLocks?.TryGetValue(botPlayerId, out missedWinLock);
 
+        var visibleTileEntities = game.Tiles
+            .Where(tile => string.Equals(tile.Location, "Discard", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (!TryBuildTileHand(visibleTileEntities, out var visibleTiles))
+        {
+            visibleTiles = new List<Tile>();
+        }
+
         var shouldClaimWin = BotClaimAdvisor.ShouldClaimDiscardWin(
             hand,
             melds,
@@ -2388,7 +2398,7 @@ static async Task ProcessBotClaimsAsync(
                 new { PlayerId = botPlayerId, ClaimType = "Win" }, 
                 cancellationToken);
         }
-        else if (BotClaimAdvisor.TrySelectExposedKongClaim(hand, melds, claimWindow.DiscardedTile, ruleset, out var kongTiles))
+        else if (BotClaimAdvisor.TrySelectExposedKongClaim(hand, melds, claimWindow.DiscardedTile, visibleTiles, ruleset, out var kongTiles))
         {
             var kongClaim = new ClaimRequest(botPlayerId, ClaimType.ExposedKong, kongTiles, null);
             claimWindow.SubmittedClaims.Add(kongClaim);
