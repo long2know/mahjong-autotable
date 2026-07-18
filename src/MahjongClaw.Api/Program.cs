@@ -2374,7 +2374,8 @@ static async Task ProcessBotClaimsAsync(
 
         var visibleTileEntities = game.Tiles
             .Where(tile => string.Equals(tile.Location, "Discard", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase))
+                || (string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase)
+                    && tile.PlayerId != botPlayerId))
             .ToList();
 
         if (!TryBuildTileHand(visibleTileEntities, out var visibleTiles))
