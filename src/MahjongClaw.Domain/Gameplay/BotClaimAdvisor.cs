@@ -119,11 +119,43 @@ public static class BotClaimAdvisor
             }
         }
 
-        var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset);
-        var postClaimOuts = CountWinningDrawOutsAfterExposedKong(handTiles, meldTiles, discardedTile, visibleCounts, ruleset);
+        var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
+        var postClaimOuts = CountWinningDrawOutsAfterExposedKong(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            visibleCounts,
+            ruleset,
+            requireMinimumFan: true);
         if (preClaimOuts > 0 && postClaimOuts == 0)
         {
             return false;
+        }
+
+        if (ruleset == MahjongRuleset.ChineseOfficial && preClaimOuts == 0)
+        {
+            var preClaimPotentialOuts = CountWinningDrawOutsAfterDraw(
+                handTiles,
+                meldTiles,
+                visibleCounts,
+                ruleset,
+                requireMinimumFan: false);
+
+            if (preClaimPotentialOuts > 0)
+            {
+                var postClaimPotentialOuts = CountWinningDrawOutsAfterExposedKong(
+                    handTiles,
+                    meldTiles,
+                    discardedTile,
+                    visibleCounts,
+                    ruleset,
+                    requireMinimumFan: false);
+
+                if (postClaimPotentialOuts + ExposedKongOutsDropTolerance < preClaimPotentialOuts)
+                {
+                    return false;
+                }
+            }
         }
 
         var allowChangshaFlexibleEye = ruleset == MahjongRuleset.Changsha258
@@ -144,7 +176,8 @@ public static class BotClaimAdvisor
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
         IReadOnlyDictionary<Tile, int> visibleCounts,
-        MahjongRuleset ruleset)
+        MahjongRuleset ruleset,
+        bool requireMinimumFan)
     {
         var drawTileTypes = ruleset == MahjongRuleset.Changsha258
             ? Changsha258DrawTileTypes
@@ -173,13 +206,38 @@ public static class BotClaimAdvisor
                 .Append(drawTileType)
                 .ToList();
 
-            if (!RulesetHandAnalyzer.TryGetWinningHand(candidateTiles, ruleset, out var winningHand)
-                || winningHand is null)
+            WinningHand? winningHand;
+            if (!requireMinimumFan)
+            {
+                if (ruleset == MahjongRuleset.Changsha258)
+                {
+                    if (!Changsha258Ruleset.TryGetWinningHand(candidateTiles, out winningHand))
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    if (!HandAnalyzer.TryGetWinningHand(candidateTiles, out winningHand))
+                    {
+                        continue;
+                    }
+                }
+            }
+            else
+            {
+                if (!RulesetHandAnalyzer.TryGetWinningHand(candidateTiles, ruleset, out winningHand))
+                {
+                    continue;
+                }
+            }
+
+            if (winningHand is null)
             {
                 continue;
             }
 
-            if (!ScoreCalculator.MeetsRulesetMinimumFan(winningHand, ruleset))
+            if (requireMinimumFan && !ScoreCalculator.MeetsRulesetMinimumFan(winningHand, ruleset))
             {
                 continue;
             }
@@ -196,7 +254,8 @@ public static class BotClaimAdvisor
         IReadOnlyList<Tile> meldTiles,
         Tile discardedTile,
         IReadOnlyDictionary<Tile, int> visibleCounts,
-        MahjongRuleset ruleset)
+        MahjongRuleset ruleset,
+        bool requireMinimumFan)
     {
         var handAfterKong = new List<Tile>(handTiles);
 
@@ -215,7 +274,7 @@ public static class BotClaimAdvisor
             .Concat(Enumerable.Repeat(discardedTile, 4))
             .ToList();
 
-        return CountWinningDrawOutsAfterDraw(handAfterKong, meldAfterKong, visibleCounts, ruleset);
+        return CountWinningDrawOutsAfterDraw(handAfterKong, meldAfterKong, visibleCounts, ruleset, requireMinimumFan);
     }
 
     private static bool HasAlternateSmallWinPairCandidate(

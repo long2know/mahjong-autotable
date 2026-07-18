@@ -223,14 +223,20 @@ public class BotClaimAdvisorTests
     {
         var handTiles = new List<Tile>
         {
-            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
-            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
-            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
-            new(TileSuit.Characters, 3), new(TileSuit.Characters, 4), new(TileSuit.Characters, 5),
-            new(TileSuit.Dots, 9)
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5)
         };
         var meldTiles = new List<Tile>();
-        var discardedTile = new Tile(TileSuit.Dots, 7);
+        var discardedTile = new Tile(TileSuit.Dragons, 0, null, Dragon.Red);
 
         var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
             handTiles,
@@ -242,6 +248,49 @@ public class BotClaimAdvisorTests
         shouldClaim.Should().BeTrue();
         claimTiles.Should().HaveCount(3);
         claimTiles.Should().OnlyContain(tile => tile.Equals(discardedTile));
+    }
+
+    [Fact]
+    public void TrySelectExposedKongClaim_ReturnsFalse_WhenPotentialOutsDropWithoutMinimumFan()
+    {
+        var ruleset = MahjongRuleset.ChineseOfficial;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 4), new(TileSuit.Characters, 5),
+            new(TileSuit.Dots, 9)
+        };
+        var discardedTile = new Tile(TileSuit.Dots, 7);
+        var drawTileTypes = BuildDrawTileTypes(ruleset);
+        var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, Array.Empty<Tile>(), drawTileTypes, ruleset);
+        var preClaimPotentialOuts = CountWinningDrawOutsAfterDraw(
+            handTiles,
+            Array.Empty<Tile>(),
+            drawTileTypes,
+            ruleset,
+            requireMinimumFan: false);
+        var postClaimPotentialOuts = CountWinningDrawOutsAfterExposedKong(
+            handTiles,
+            Array.Empty<Tile>(),
+            discardedTile,
+            drawTileTypes,
+            ruleset,
+            requireMinimumFan: false);
+
+        preClaimOuts.Should().Be(0);
+        preClaimPotentialOuts.Should().BeGreaterThan(0);
+        postClaimPotentialOuts.Should().BeLessThan(preClaimPotentialOuts);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
+            handTiles,
+            Array.Empty<Tile>(),
+            discardedTile,
+            ruleset,
+            out _);
+
+        shouldClaim.Should().BeFalse();
     }
 
     [Fact]
@@ -515,7 +564,8 @@ public class BotClaimAdvisorTests
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
         IReadOnlyList<Tile> drawTileTypes,
-        MahjongRuleset ruleset)
+        MahjongRuleset ruleset,
+        bool requireMinimumFan = true)
     {
         var ownedTiles = handTiles
             .Concat(meldTiles)
@@ -539,13 +589,38 @@ public class BotClaimAdvisorTests
                 .Append(drawTileType)
                 .ToList();
 
-            if (!RulesetHandAnalyzer.TryGetWinningHand(candidateTiles, ruleset, out var winningHand)
-                || winningHand is null)
+            WinningHand? winningHand;
+            if (!requireMinimumFan)
+            {
+                if (ruleset == MahjongRuleset.Changsha258)
+                {
+                    if (!Changsha258Ruleset.TryGetWinningHand(candidateTiles, out winningHand))
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    if (!HandAnalyzer.TryGetWinningHand(candidateTiles, out winningHand))
+                    {
+                        continue;
+                    }
+                }
+            }
+            else
+            {
+                if (!RulesetHandAnalyzer.TryGetWinningHand(candidateTiles, ruleset, out winningHand))
+                {
+                    continue;
+                }
+            }
+
+            if (winningHand is null)
             {
                 continue;
             }
 
-            if (!ScoreCalculator.MeetsRulesetMinimumFan(winningHand, ruleset))
+            if (requireMinimumFan && !ScoreCalculator.MeetsRulesetMinimumFan(winningHand, ruleset))
             {
                 continue;
             }
@@ -561,7 +636,8 @@ public class BotClaimAdvisorTests
         IReadOnlyList<Tile> meldTiles,
         Tile discardedTile,
         IReadOnlyList<Tile> drawTileTypes,
-        MahjongRuleset ruleset)
+        MahjongRuleset ruleset,
+        bool requireMinimumFan = true)
     {
         var handAfterKong = new List<Tile>(handTiles);
 
@@ -580,7 +656,7 @@ public class BotClaimAdvisorTests
             .Concat(Enumerable.Repeat(discardedTile, 4))
             .ToList();
 
-        return CountWinningDrawOutsAfterDraw(handAfterKong, meldAfterKong, drawTileTypes, ruleset);
+        return CountWinningDrawOutsAfterDraw(handAfterKong, meldAfterKong, drawTileTypes, ruleset, requireMinimumFan);
     }
 
     private static IReadOnlyList<Tile> BuildDrawTileTypes(MahjongRuleset ruleset)
