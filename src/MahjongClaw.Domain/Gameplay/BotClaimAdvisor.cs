@@ -5,6 +5,7 @@ namespace MahjongClaw.Domain.Gameplay;
 
 public static class BotClaimAdvisor
 {
+    private const int ExposedKongOutsDropTolerance = 0;
     private static readonly IReadOnlyList<Tile> ChineseOfficialDrawTileTypes = BuildDrawTileTypes(MahjongRuleset.ChineseOfficial);
     private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
     public static bool ShouldClaimDiscardWin(
@@ -121,6 +122,16 @@ public static class BotClaimAdvisor
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset);
         var postClaimOuts = CountWinningDrawOutsAfterExposedKong(handTiles, meldTiles, discardedTile, visibleCounts, ruleset);
         if (preClaimOuts > 0 && postClaimOuts == 0)
+        {
+            return false;
+        }
+
+        var allowChangshaFlexibleEye = ruleset == MahjongRuleset.Changsha258
+            && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
+
+        if (!allowChangshaFlexibleEye
+            && preClaimOuts > 0
+            && postClaimOuts + ExposedKongOutsDropTolerance < preClaimOuts)
         {
             return false;
         }
