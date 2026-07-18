@@ -98,25 +98,26 @@ public static class BotClaimAdvisor
             return false;
         }
 
+        var visibleCounts = BuildVisibleCounts(visibleTiles);
+
         if (ruleset == MahjongRuleset.Changsha258 && Changsha258Ruleset.IsSmallWinPair(discardedTile))
         {
             var allowFlexibleEye = Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
             if (!allowFlexibleEye)
             {
-                var hasAlternateSmallWinPair = handTiles
-                    .GroupBy(static tile => tile)
-                    .Any(group => group.Count() >= 2
-                        && !group.Key.Equals(discardedTile)
-                        && Changsha258Ruleset.IsSmallWinPair(group.Key));
+                var hasAlternateSmallWinPairCandidate = HasAlternateSmallWinPairCandidate(
+                    handTiles,
+                    meldTiles,
+                    discardedTile,
+                    visibleCounts);
 
-                if (!hasAlternateSmallWinPair)
+                if (!hasAlternateSmallWinPairCandidate)
                 {
                     return false;
                 }
             }
         }
 
-        var visibleCounts = BuildVisibleCounts(visibleTiles);
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset);
         var postClaimOuts = CountWinningDrawOutsAfterExposedKong(handTiles, meldTiles, discardedTile, visibleCounts, ruleset);
         if (preClaimOuts > 0 && postClaimOuts == 0)
@@ -204,6 +205,47 @@ public static class BotClaimAdvisor
             .ToList();
 
         return CountWinningDrawOutsAfterDraw(handAfterKong, meldAfterKong, visibleCounts, ruleset);
+    }
+
+    private static bool HasAlternateSmallWinPairCandidate(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        Tile discardedTile,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        var handCounts = handTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var ownedCounts = handTiles
+            .Concat(meldTiles)
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        foreach (var entry in handCounts)
+        {
+            if (!Changsha258Ruleset.IsSmallWinPair(entry.Key) || entry.Key.Equals(discardedTile))
+            {
+                continue;
+            }
+
+            if (entry.Value >= 2)
+            {
+                return true;
+            }
+
+            if (entry.Value == 1)
+            {
+                ownedCounts.TryGetValue(entry.Key, out var ownedCount);
+                visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+
+                if (4 - ownedCount - visibleCount > 0)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static IReadOnlyDictionary<Tile, int> BuildVisibleCounts(IReadOnlyList<Tile> visibleTiles)
