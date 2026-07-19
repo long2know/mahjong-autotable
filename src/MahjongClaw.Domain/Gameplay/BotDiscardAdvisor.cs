@@ -2566,13 +2566,26 @@ public static class BotDiscardAdvisor
 
                     if (hasLiveThirteenOrphansPath)
                     {
+                        if (soleChineseOfficialPairTile is not null
+                            && !soleChineseOfficialPairTile.IsHonor
+                            && !IsTerminalSuitedTile(soleChineseOfficialPairTile))
+                        {
+                            allowBreakingSolePairForTerminalHonorLean = true;
+                        }
+
                         var nonOrphanCandidates = candidates
                             .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
                             .ToList();
 
                         if (nonOrphanCandidates.Count > 0)
                         {
-                            candidates = nonOrphanCandidates;
+                            var nonOrphanSingletonCandidates = nonOrphanCandidates
+                                .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var count) && count == 1)
+                                .ToList();
+
+                            candidates = nonOrphanSingletonCandidates.Count > 0
+                                ? nonOrphanSingletonCandidates
+                                : nonOrphanCandidates;
                         }
                     }
                     else
