@@ -307,8 +307,9 @@ public static class BotClaimAdvisor
             {
                 ownedCounts.TryGetValue(entry.Key, out var ownedCount);
                 visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+                var remainingCopies = 4 - ownedCount - visibleCount;
 
-                if (4 - ownedCount - visibleCount > 0)
+                if (remainingCopies >= 2)
                 {
                     return true;
                 }
