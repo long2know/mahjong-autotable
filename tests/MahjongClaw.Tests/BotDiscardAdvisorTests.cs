@@ -3741,7 +3741,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_WithVisibleMeldTiles_AvoidsFeedingOpponentKong_WhenMultiplePungsPresent()
+    public void SelectDiscardIndex_WithVisibleMeldTiles_AllowsDeadKongThreatDiscard_WhenMultiplePungsPresent()
     {
         var handTiles = new List<Tile>
         {
@@ -3765,11 +3765,11 @@ public class BotDiscardAdvisorTests
             visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
-        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 5));
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 9));
     }
 
     [Fact]
-    public void SelectDiscardIndex_WithVisibleMeldTiles_AvoidsDeadKongFeed_WhenOutsTie()
+    public void SelectDiscardIndex_WithVisibleMeldTiles_AvoidsFeedingOpponentKong_WhenOutsTie()
     {
         var handTiles = new List<Tile>
         {
@@ -3793,7 +3793,7 @@ public class BotDiscardAdvisorTests
             visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
-        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 9));
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 4));
     }
 
     [Fact]
@@ -4107,7 +4107,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_WithVisibleMeldTiles_AvoidsDeadKongFeedTiles()
+    public void SelectDiscardIndex_WithVisibleMeldTiles_AvoidsFeedingOpponentKong_WhenOnlyCopyInHand()
     {
         var handTiles = new List<Tile>
         {
@@ -4130,7 +4130,7 @@ public class BotDiscardAdvisorTests
             visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
-        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 9));
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 5));
     }
 
     [Fact]
@@ -5508,7 +5508,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_AvoidsLastCopyWhenOpponentHasPromotedKongThreat()
+    public void SelectDiscardIndex_AllowsLastCopyDiscardWhenOpponentHasPromotedKongThreat()
     {
         var handTiles = new List<Tile>
         {
@@ -5536,7 +5536,7 @@ public class BotDiscardAdvisorTests
             opponentMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
-        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Bamboos, 2));
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 2));
     }
 
     [Fact]

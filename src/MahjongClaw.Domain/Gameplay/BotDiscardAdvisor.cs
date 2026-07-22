@@ -11,7 +11,6 @@ public static class BotDiscardAdvisor
     private static readonly IReadOnlyList<Tile> ChineseOfficialOrphanTileTypes = BuildChineseOfficialOrphanTileTypes();
     private const int LastSmallWinSingletonKeepBonus = 12;
     private const int OpponentKongFeedAvoidBonus = 12;
-    private const int OpponentKongFeedLastCopyAvoidBonus = 10;
     private const int OpponentKongFeedOutsTolerance = 2;
     private const int DeadSmallWinPairOutsTolerance = 1;
     private const int ChangshaPureSuitSmallWinOutsTolerance = 1;
@@ -59,7 +58,7 @@ public static class BotDiscardAdvisor
             throw new ArgumentException("Tiles cannot contain null values.", nameof(visibleTiles));
         }
 
-        return SelectDiscardIndexInternal(handTiles, meldTiles, visibleTiles, visibleMeldTiles, Array.Empty<Tile>(), ruleset);
+        return SelectDiscardIndexInternal(handTiles, meldTiles, visibleTiles, visibleMeldTiles, visibleMeldTiles, ruleset);
     }
 
     public static int SelectDiscardIndex(
@@ -568,10 +567,10 @@ public static class BotDiscardAdvisor
                 ownedCounts.TryGetValue(tile, out var ownedCount);
                 visibleCounts.TryGetValue(tile, out var visibleCount);
                 var remainingCopies = Math.Max(0, 4 - ownedCount - visibleCount);
-                var opponentKongFeedBonus = GetOpponentMeldKongAvoidBonus(tile, kongThreatCounts);
-                var lastCopyKongFeedBonus = opponentKongFeedBonus > 0 && remainingCopies == 0
-                    ? OpponentKongFeedLastCopyAvoidBonus
-                    : 0;
+                var kongThreatIsDead = !IsKongThreatLive(tile, handCounts, ownedCounts, visibleCounts);
+                var opponentKongFeedBonus = kongThreatIsDead
+                    ? 0
+                    : GetOpponentMeldKongAvoidBonus(tile, kongThreatCounts);
 
                 return new
                 {
@@ -599,7 +598,6 @@ public static class BotDiscardAdvisor
                             ruleset,
                             enforceSmallWinPairBias)
                         + opponentKongFeedBonus
-                        + lastCopyKongFeedBonus
                         + (lastSmallWinSingleton is not null && tile.Equals(lastSmallWinSingleton)
                             ? LastSmallWinSingletonKeepBonus
                             : 0),
@@ -634,6 +632,15 @@ public static class BotDiscardAdvisor
                     .Where(candidate => !candidate.Tile.Equals(soleChangshaSmallWinPairTile))
                     .ToList();
 
+                var dominantSuitSmallWinOutsDead = changshaDominantSuit.HasValue
+                    && visibleCounts.Count > 0
+                    && AreDominantSuitSmallWinOutsDead(
+                        changshaDominantSuit.Value,
+                        ownedCounts,
+                        visibleCounts);
+                var allowZeroOutsBreak = hasChangshaDominantSuitDistinctSpread
+                    || dominantSuitSmallWinOutsDead;
+
                 if (nonPairCandidates.Count > 0)
                 {
                     var bestNonPairSmallWinOuts = nonPairCandidates.Max(candidate => candidate.SmallWinningDrawOuts);
@@ -648,14 +655,6 @@ public static class BotDiscardAdvisor
                             .Where(candidate => candidate.BigWinningDrawOuts == bestPairBigWinOuts)
                             .Max(candidate => candidate.BigWinningDrawOutCopies);
 
-                        var dominantSuitSmallWinOutsDead = changshaDominantSuit.HasValue
-                            && visibleCounts.Count > 0
-                            && AreDominantSuitSmallWinOutsDead(
-                                changshaDominantSuit.Value,
-                                ownedCounts,
-                                visibleCounts);
-                        var allowZeroOutsBreak = hasChangshaDominantSuitDistinctSpread
-                            || dominantSuitSmallWinOutsDead;
                         var bigWinOutsMissing = bestPairBigWinOuts == 0 && bestNonPairSmallWinOuts > 0;
                         var bigWinLagsSmallWin = bestPairBigWinOuts + ChangshaPureSuitSmallWinOutsTolerance < bestNonPairSmallWinOuts
                             || (bestPairBigWinOuts + ChangshaPureSuitSmallWinOutsTolerance == bestNonPairSmallWinOuts
@@ -668,7 +667,7 @@ public static class BotDiscardAdvisor
                     }
                 }
 
-                if (losesAllWinningOuts)
+                if (losesAllWinningOuts && !allowZeroOutsBreak)
                 {
                     allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
                 }
@@ -1989,6 +1988,7 @@ public static class BotDiscardAdvisor
             var opponentKongThreatTiles = kongThreatCounts
                 .Where(entry => entry.Value == 3 || entry.Value >= 6)
                 .Select(entry => entry.Key)
+                .Where(tile => IsKongThreatLive(tile, handCounts, ownedCounts, visibleCounts))
                 .ToHashSet();
 
             if (opponentKongThreatTiles.Count > 0)
@@ -4612,6 +4612,24 @@ public static class BotDiscardAdvisor
         }
 
         return 0;
+    }
+
+    private static bool IsKongThreatLive(
+        Tile tile,
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        handCounts.TryGetValue(tile, out var handCount);
+        visibleCounts.TryGetValue(tile, out var visibleCount);
+        if (visibleCount >= 4)
+        {
+            return false;
+        }
+
+        ownedCounts.TryGetValue(tile, out var ownedCount);
+        var remainingCopies = 4 - ownedCount - visibleCount;
+        return remainingCopies > 0 || handCount > 0;
     }
 
     private static int GetDeadAdjacencyPenalty(
