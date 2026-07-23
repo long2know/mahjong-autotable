@@ -4383,6 +4383,40 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithChineseOfficialTerminalHonorLean_PrefersDeadHonorSingleton()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Dots, 5)
+        };
+
+        var visibleTiles = BuildExhaustedVisibleTiles();
+        visibleTiles.RemoveAll(tile => tile.Equals(new Tile(TileSuit.Dots, 4))
+            || tile.Equals(new Tile(TileSuit.Dots, 6)));
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithChineseOfficialDuplicateOrphans_PrefersNonOrphanDiscard()
     {
         var handTiles = new List<Tile>
