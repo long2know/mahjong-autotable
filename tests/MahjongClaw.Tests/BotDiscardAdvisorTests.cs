@@ -6403,6 +6403,25 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithChangshaSevenPairsLean_PrefersTripletOverSingleton()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
+            new(TileSuit.Dots, 9)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 7));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithChangshaPureSuitLean_DoesNotBreakSoleSmallWinPair_WhenBigWinOutsLag()
     {
         var handTiles = new List<Tile>
