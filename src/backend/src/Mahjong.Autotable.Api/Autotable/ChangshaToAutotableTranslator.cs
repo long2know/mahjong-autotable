@@ -519,13 +519,18 @@ public static class ChangshaToAutotableTranslator
     {
         // thing-index intentionally equals the Changsha tile id (locked at
         // fives='000'). See class-level remarks.
-        return new CollectionEntry("things", changshaTileId, new
+        //
+        // Typed ThingInfo (not an anonymous object) so claimedBy / shiftSlotName carry an EXPLICIT
+        // null on the wire — the C-1 contract types them number|null / string|null (present), and
+        // the relay path already emits explicit null. An anonymous object's nulls are dropped by the
+        // shared WhenWritingNull serializer; ThingInfo's [JsonIgnore(Never)] overrides that.
+        return new CollectionEntry("things", changshaTileId, new ThingInfo
         {
-            slotName,
-            rotationIndex,
-            claimedBy = (int?)null,
-            heldRotation = IdentityQuaternion,
-            shiftSlotName = (string?)null
+            SlotName = slotName,
+            RotationIndex = rotationIndex,
+            ClaimedBy = null,
+            HeldRotation = IdentityQuaternion,
+            ShiftSlotName = null
         });
     }
 

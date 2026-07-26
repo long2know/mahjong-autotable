@@ -82,6 +82,81 @@ public class AutotableTranslatorTests
         Assert.Equal(108, things.Count);
     }
 
+    // ── #123 follow-up (Hicks P0): things carry an EXPLICIT claimedBy:null ─────────
+
+    [Fact, Trait("Category", "Phase5a"), Trait("Contract", "C-1")]
+    public void Things_EmitExplicitNull_ClaimedBy_And_ShiftSlotName_MatchingC1Contract()
+    {
+        // The C-1 ThingInfo wire type is `claimedBy: number|null` / `shiftSlotName: string|null`
+        // (present), and the relay path already emits explicit null (upstream describeThing +
+        // verbatim JsonElement clone). Pre-fix the changsha translator emitted an anonymous object
+        // whose null fields were dropped by the shared WhenWritingNull serializer, so ~108 tiles
+        // OMITTED claimedBy — inconsistent with the type + the relay path. Serialize each entry
+        // EXACTLY as the runtime broadcast does (AutotableGameState.CloneValue → AutotableJson.Options)
+        // and assert the fields are present with a null value.
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 7);
+        var things = ChangshaToAutotableTranslator.Translate(state, viewerSeat: 0)
+            .Where(e => e.Kind == "things")
+            .ToList();
+        Assert.Equal(108, things.Count);
+
+        foreach (var e in things)
+        {
+            var root = SerializeThing(e.Value!);
+            Assert.True(root.TryGetProperty("claimedBy", out var claimedBy),
+                "every things entry must carry an explicit claimedBy (C-1: number|null) — never omit it.");
+            Assert.Equal(JsonValueKind.Null, claimedBy.ValueKind);
+            Assert.True(root.TryGetProperty("shiftSlotName", out var shiftSlotName),
+                "every things entry must carry an explicit shiftSlotName (C-1: string|null).");
+            Assert.Equal(JsonValueKind.Null, shiftSlotName.ValueKind);
+        }
+    }
+
+    [Fact, Trait("Category", "Phase5a"), Trait("Contract", "C-1")]
+    public void Things_ExplicitClaimedByNull_PreservesSeat0_ViewerPrivacy()
+    {
+        // Preserve seat 0: the explicit-null normalization is orthogonal to viewer privacy. The
+        // viewer's own hand tiles (hand.*@0) stay face-up (HandRotFaceUp=1) with claimedBy:null,
+        // while a foreign seat's hand tiles (hand.*@1) stay face-down (HandRotFaceDown=2) — also
+        // with an explicit claimedBy:null.
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 7);
+        var things = ChangshaToAutotableTranslator.Translate(state, viewerSeat: 0)
+            .Where(e => e.Kind == "things")
+            .Select(e => SerializeThing(e.Value!))
+            .ToList();
+
+        var seat0Hand = things.Where(r => IsHandSlot(r, seat: 0)).ToList();
+        var seat1Hand = things.Where(r => IsHandSlot(r, seat: 1)).ToList();
+        Assert.NotEmpty(seat0Hand);
+        Assert.NotEmpty(seat1Hand);
+
+        foreach (var r in seat0Hand)
+        {
+            Assert.Equal(1, r.GetProperty("rotationIndex").GetInt32()); // HandRotFaceUp (viewer's own)
+            Assert.Equal(JsonValueKind.Null, r.GetProperty("claimedBy").ValueKind);
+        }
+        foreach (var r in seat1Hand)
+        {
+            Assert.Equal(2, r.GetProperty("rotationIndex").GetInt32()); // HandRotFaceDown (foreign)
+            Assert.Equal(JsonValueKind.Null, r.GetProperty("claimedBy").ValueKind);
+        }
+    }
+
+    private static JsonElement SerializeThing(object value)
+    {
+        // Mirrors AutotableGameState.CloneValue: an anonymous/typed value is serialized via
+        // AutotableJson.Options (WhenWritingNull) into the stored JsonElement that reaches the wire.
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(value, AutotableJson.Options));
+        return doc.RootElement.Clone();
+    }
+
+    private static bool IsHandSlot(JsonElement thing, int seat)
+    {
+        var slot = thing.GetProperty("slotName").GetString() ?? string.Empty;
+        return slot.StartsWith("hand.", StringComparison.Ordinal)
+            && slot.EndsWith("@" + seat, StringComparison.Ordinal);
+    }
+
     [Fact, Trait("Category", "Phase5a")]
     public void Snapshot_AfterStartGame_Contains_4_Seats_And_4_Nicks()
     {

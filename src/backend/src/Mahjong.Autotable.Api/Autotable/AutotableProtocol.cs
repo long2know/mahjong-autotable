@@ -436,6 +436,45 @@ public static class ChangshaCollectionEncoder
 }
 
 /// <summary>
+/// Server-emitted <c>things</c> collection value (one per tile). Maps 1:1 to the frontend C-1
+/// <c>ThingInfo</c> wire contract (<c>autotable-src/src/types.ts</c>).
+///
+/// <para><b>Why a typed DTO instead of an anonymous object:</b> <see cref="ClaimedBy"/>
+/// (<c>number|null</c>) and <see cref="ShiftSlotName"/> (<c>string|null</c>) are <b>required and
+/// present</b> in the C-1 type, and the relay path already emits them as explicit <c>null</c> (the
+/// upstream client's <c>describeThing</c> serializes <c>claimedBy: null</c>, and the relay stores
+/// the client JsonElement verbatim). The changsha translator previously emitted an anonymous object
+/// whose null <c>claimedBy</c>/<c>shiftSlotName</c> were dropped by the shared serializer
+/// (<see cref="AutotableJson"/> uses <see cref="JsonIgnoreCondition.WhenWritingNull"/>), so ~108
+/// unclaimed tiles omitted the field — inconsistent with both the type and the relay path (Hicks's
+/// P0). The <see cref="JsonIgnoreCondition.Never"/> on those two properties overrides the global
+/// null-drop so the wire always carries an explicit <c>null</c>, restoring byte-consistency.</para>
+/// </summary>
+public sealed class ThingInfo
+{
+    [JsonPropertyName("slotName")]
+    public string SlotName { get; set; } = string.Empty;
+
+    [JsonPropertyName("rotationIndex")]
+    public int RotationIndex { get; set; }
+
+    /// <summary>Owning seat while a client is dragging the tile; server play is authoritative, so
+    /// the translator always emits <c>null</c> — but explicitly (C-1 <c>claimedBy: number|null</c>).</summary>
+    [JsonPropertyName("claimedBy")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public int? ClaimedBy { get; set; }
+
+    [JsonPropertyName("heldRotation")]
+    public object HeldRotation { get; set; } = default!;
+
+    /// <summary>Shift-drag target slot; the translator emits <c>null</c> explicitly (C-1
+    /// <c>shiftSlotName: string|null</c>), matching the relay path.</summary>
+    [JsonPropertyName("shiftSlotName")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? ShiftSlotName { get; set; }
+}
+
+/// <summary>
 /// Server-emitted snapshot of the pickup cursor while a Manual deal is in progress.
 /// Maps to the <see cref="ChangshaCollectionKinds.Pickup"/> collection value under
 /// key <c>"current"</c>.
