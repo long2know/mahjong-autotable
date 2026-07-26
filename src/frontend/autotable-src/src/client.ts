@@ -126,7 +126,7 @@ export class Client extends BaseClient {
     super();
 
     // Make sure match is first, as it triggers reorganization of slots and things.
-    this.match = new Collection('match', this, { sendOnConnect: true }),
+    this.match = new Collection('match', this, { sendOnConnect: true });
 
     this.seats = new Collection('seats', this, { unique: 'seat', perPlayer: true });
     this.things = new Collection('things', this, { unique: 'slotName', sendOnConnect: true });

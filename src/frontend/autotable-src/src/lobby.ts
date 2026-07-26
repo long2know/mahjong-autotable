@@ -795,6 +795,18 @@ export function initLobby(client?: Client): void {
       writeLocalStorageDefaults(state);
     }
     const url = buildUrl(state);
+    // Ferro WP-E/#120 — mirror Quick Match's anti-strand guards on the
+    // primary Apply & Start path.  Without them a cached / service-worker
+    // replayed render (or any legacy state) can re-open `#lobby-panel`
+    // with the `.lobby-open` class after the reload, and that panel
+    // intercepts pointer events on the very controls the user needs next
+    // (#connect, the `.take-seat` buttons, and #deal) — stranding them at
+    // an un-seated / un-dealt table even though the WS auto-connected.
+    // `shouldShowOnLoad()` already keeps the panel closed on the normal
+    // params-present path; these two calls are belt-and-suspenders for the
+    // brief pre-replace() window and the cached-render edge case.
+    hidePanel();
+    markSkipOpenOnLoadFlag();
     // replace() instead of assign() so the browser back-button doesn't
     // bounce the user between game configurations.
     window.location.replace(url);

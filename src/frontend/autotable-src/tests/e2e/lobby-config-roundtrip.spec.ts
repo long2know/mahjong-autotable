@@ -1,0 +1,121 @@
+// Ferro — WP-E / #120 — lobby-config round-trip (URL params ↔ WS handshake).
+//
+// The URL is the single source of truth for the six-parameter lobby
+// handshake (C-2: gameId, seat, botCount, variant, dealMode, botDifficulty).
+// This spec drives the lobby pickers with **real clicks**, hits **Apply &
+// Start**, then proves the choices survive two hops without drift:
+//
+//   pickers → `buildUrl()` (page URL) → `buildWsUrl()` (the actual WS
+//   handshake query the backend reads at connect time).
+//
+// The WS query is observed via `page.on('websocket')` — that's the real
+// handshake the server sees, not a mocked/injected one, so this doubles as
+// a live proof that `client-ui.buildWsUrl` forwards every lobby param.
+
+import { test, expect, type Page } from '@playwright/test';
+
+async function landOnBareLobby(page: Page): Promise<void> {
+  await page.goto('', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => {
+    try {
+      localStorage.clear();
+      localStorage.setItem('mahjong.tour.completed.v1', 'true');
+      localStorage.setItem('mahjong.identity.onboarded.v1', 'true');
+    } catch { /* ignore */ }
+  });
+  await page.goto('', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(500);
+  const skip = page.getByTestId('onboarding-skip');
+  if (await skip.isVisible().catch(() => false)) await skip.click().catch(() => {});
+}
+
+async function pickRadio(page: Page, name: string, value: string): Promise<void> {
+  const radio = page.locator(`input[name="${name}"][value="${value}"]`);
+  await radio.scrollIntoViewIfNeeded().catch(() => {});
+  // check() clicks the underlying control and dispatches the change event
+  // the lobby listens on — a genuine user gesture, not a value poke.
+  await radio.check({ force: true });
+  await expect(radio).toBeChecked();
+}
+
+test.describe('WP-E/#120 — lobby config round-trips URL ↔ WS handshake (C-2)', () => {
+  test('non-default picks survive Apply into the page URL and the WS query', async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    const isMobile = testInfo.project.name !== 'chromium';
+
+    await landOnBareLobby(page);
+    await expect(page.locator('#lobby-panel.lobby-open')).toBeVisible({ timeout: 10_000 });
+
+    // ── Configure deliberately non-default values via real gestures ──
+    // Variant is left at its shipped default (changsha): the modern
+    // variant *picker* owns variant changes (its <select> onchange does a
+    // location.replace), and the legacy radio fieldset is CSS-hidden
+    // behind it — so we vary the other five visible pickers instead and
+    // assert the default variant rides through.
+    await pickRadio(page, 'lobby-deal-mode', 'manual');   // default is auto
+    await pickRadio(page, 'lobby-bot-count', '3');
+    await pickRadio(page, 'lobby-bot-difficulty', 'Hard'); // default is Medium
+    await pickRadio(page, 'lobby-seat', '0');              // explicit seat take
+
+    // Capture the real WS handshake the *next* page (post-replace) opens.
+    // Only the autotable game socket carries `gameId=`; the SignalR hub
+    // (/hubs/changsha) does not, so this filter isolates the game WS.
+    let gameWsUrl: string | null = null;
+    page.on('websocket', (ws) => {
+      const u = ws.url();
+      if (/[?&]gameId=/.test(u) && /\/ws(\?|$)/.test(u)) gameWsUrl = u;
+    });
+
+    // ── Apply & Start (real click) ──────────────────────────────────
+    const apply = page.locator('#lobby-apply');
+    await apply.scrollIntoViewIfNeeded().catch(() => {});
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20_000 }).catch(() => null),
+      apply.click({ force: isMobile }),
+    ]);
+
+    // ── 1. Page URL carries the frozen six-param handshake (C-2) ─────
+    const pageQ = new URL(page.url()).searchParams;
+    expect(pageQ.get('gameId')).toMatch(/^changsha-/);
+    expect(pageQ.get('variant')).toBe('changsha');
+    expect(pageQ.get('dealMode')).toBe('manual');
+    expect(pageQ.get('botCount')).toBe('3');
+    expect(pageQ.get('botDifficulty')).toBe('Hard'); // PascalCase per C-2
+    expect(pageQ.get('seat')).toBe('0');
+
+    // ── 2. The real WS handshake forwards the same six params ───────
+    await expect
+      .poll(() => gameWsUrl, { timeout: 20_000, message: 'game WebSocket never opened after Apply & Start' })
+      .not.toBeNull();
+
+    const wsQ = new URL(gameWsUrl!).searchParams;
+    expect(wsQ.get('gameId'), 'WS handshake must carry the page gameId').toBe(pageQ.get('gameId'));
+    expect(wsQ.get('variant')).toBe('changsha');
+    expect(wsQ.get('dealMode')).toBe('manual');
+    expect(wsQ.get('botCount')).toBe('3');
+    expect(wsQ.get('botDifficulty')).toBe('Hard');
+    expect(wsQ.get('seat')).toBe('0');
+  });
+
+  test('bare Apply mints a fresh gameId and defaults (auto / 3 bots) into the URL', async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    const isMobile = testInfo.project.name !== 'chromium';
+    await landOnBareLobby(page);
+    await expect(page.locator('#lobby-panel.lobby-open')).toBeVisible({ timeout: 10_000 });
+
+    const apply = page.locator('#lobby-apply');
+    await apply.scrollIntoViewIfNeeded().catch(() => {});
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20_000 }).catch(() => null),
+      apply.click({ force: isMobile }),
+    ]);
+
+    const q = new URL(page.url()).searchParams;
+    // The minted gameId is what lets client-ui.start() auto-connect — the
+    // exact regression the original P0 flagged (Apply produced no gameId).
+    expect(q.get('gameId'), 'Apply must always mint a gameId (auto-connect precondition)').toMatch(/^changsha-/);
+    expect(q.get('variant')).toBe('changsha');
+    expect(q.get('dealMode')).toBe('auto');
+    expect(q.get('botCount')).toBe('3');
+  });
+});
