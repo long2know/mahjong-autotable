@@ -102,47 +102,6 @@ async function currentSeat(page: Page): Promise<number | null> {
   );
 }
 
-// Click a real element.  If the element's centre is overlapped by a sibling
-// HUD control (the mobile lobby toggle sits over the left of #deal; the chat
-// header sits over the bottom Take-Seat button), fall back to a positioned
-// click on the first pixel that is *genuinely* the element's own hit-target.
-// This is still a real user gesture — we never dispatch a synthetic event and
-// never click a pixel that belongs to another element.
-async function realClick(page: Page, selector: string, timeout = 4000): Promise<boolean> {
-  const loc = page.locator(selector).first();
-  if (!(await loc.isVisible().catch(() => false))) return false;
-  await loc.scrollIntoViewIfNeeded().catch(() => { /* HUD button */ });
-  if (await loc.click({ timeout }).then(() => true).catch(() => false)) return true;
-  const pos = await page.evaluate((sel) => {
-    const el = document.querySelector(sel);
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
-    for (let dy = 4; dy < r.height; dy += 6) {
-      for (let dx = 4; dx < r.width; dx += 6) {
-        const top = document.elementFromPoint(r.left + dx, r.top + dy);
-        if (top === el || el.contains(top)) return { x: Math.round(dx), y: Math.round(dy) };
-      }
-    }
-    return null;
-  }, selector);
-  if (!pos) return false;
-  return loc.click({ position: pos, timeout }).then(() => true).catch(() => false);
-}
-
-// Take a seat through a real Take-Seat click.  Desktop lands seat 0; on
-// mobile the bottom (seat-0) button is fully overlapped by the chat header,
-// so we fall through to the first seat a genuine click can actually reach.
-async function takeReachableSeat(page: Page): Promise<number> {
-  for (let i = 0; i < 4; i++) {
-    if (!(await realClick(page, `.seat-button-${i} .take-seat`))) continue;
-    for (let t = 0; t < 12; t++) {
-      if ((await currentSeat(page)) === i) return i;
-      await page.waitForTimeout(300);
-    }
-  }
-  throw new Error('no seat could be taken via a real Take-Seat click');
-}
-
 test.describe('Changsha — real-UI connect flow (WP-E / #120 P0)', () => {
   test('bare URL → Apply & Start → auto-connect → take seat → Deal → hands', async ({ page }) => {
     test.setTimeout(90_000);
@@ -156,10 +115,9 @@ test.describe('Changsha — real-UI connect flow (WP-E / #120 P0)', () => {
     await expect(lobby, 'lobby must auto-open on a bare URL').toBeVisible({ timeout: 10_000 });
 
     // ── 2. Apply & Start with the shipped defaults (Changsha / auto /
-    //       3 bots / Auto seat).  Real click on the real button. ──────
-    const apply = page.locator('#lobby-apply');
+    //       3 bots / Auto seat).  Ordinary tap on the real button. ─────
+    const apply = page.getByTestId('lobby-apply');
     await expect(apply).toBeVisible();
-    await apply.scrollIntoViewIfNeeded().catch(() => { /* footer button */ });
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20_000 }).catch(() => null),
       apply.click(),
@@ -180,22 +138,27 @@ test.describe('Changsha — real-UI connect flow (WP-E / #120 P0)', () => {
     // DOM corroboration: the connected pill swaps #connect → #disconnect.
     await expect(page.locator('#disconnect.server-connected')).toBeVisible({ timeout: 10_000 });
 
-    // ── 5. Take a seat via a real Take-Seat click (seat 0 on desktop;
-    //       the first reachable seat on mobile, where the chat header
-    //       overlaps the bottom seat — a Hicks HUD hand-off). ─────────
-    await expect(
-      page.locator('.seat-button-0 .take-seat, .seat-button-1 .take-seat, .seat-button-2 .take-seat, .seat-button-3 .take-seat').first(),
-      'a Take Seat button must be reachable after connect',
-    ).toBeVisible({ timeout: 10_000 });
-    const seat = await takeReachableSeat(page);
-    expect(seat, 'a seat must be occupied via a real click').toBeGreaterThanOrEqual(0);
+    // ── 5. Take seat 0 with an ORDINARY tap on the Take Seat button —
+    //       no forced flag, no positioned/uncovered-pixel routing.  The
+    //       mobile HUD overlaps are fixed in production CSS so the button
+    //       is the genuine hit-target at its own centre on both viewports. ─
+    const takeSeat0 = page.locator('.seat-button-0 .take-seat');
+    await expect(takeSeat0, 'Take Seat 0 must be reachable after connect').toBeVisible({ timeout: 10_000 });
+    await takeSeat0.click();
+    await expect
+      .poll(async () => currentSeat(page), {
+        timeout: 10_000,
+        message: 'seat never became 0 after clicking Take Seat',
+      })
+      .toBe(0);
+    const seat = 0;
 
-    // ── 6. Deal via a real click on the #deal button (a seated human
-    //       triggers the bare match[0] deal; server is authoritative). ─
+    // ── 6. Deal with an ORDINARY tap on #deal (a seated human triggers
+    //       the bare match[0] deal; server is authoritative). ──────────
     const deal = page.locator('#deal');
     await expect(deal, 'Deal button must be visible + enabled for a seated player').toBeVisible({ timeout: 10_000 });
     await expect(deal).toBeEnabled();
-    expect(await realClick(page, '#deal'), 'Deal button must be clickable for a seated player').toBe(true);
+    await deal.click();
 
     // ── 7. Hands dealt — the authoritative `things` collection now holds
     //       a full 13/14-tile hand for every seat (server-dealt).  The

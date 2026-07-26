@@ -30,18 +30,18 @@ async function landOnBareLobby(page: Page): Promise<void> {
 }
 
 async function pickRadio(page: Page, name: string, value: string): Promise<void> {
-  const radio = page.locator(`input[name="${name}"][value="${value}"]`);
-  await radio.scrollIntoViewIfNeeded().catch(() => {});
-  // check() clicks the underlying control and dispatches the change event
-  // the lobby listens on — a genuine user gesture, not a value poke.
-  await radio.check({ force: true });
-  await expect(radio).toBeChecked();
+  // Click the visible label that wraps the radio — the genuine user gesture
+  // that works for both plain fieldset radios and the hidden-input card
+  // options (`.lobby-card-option input` is opacity:0 / pointer-events:none).
+  const label = page.locator(`label:has(input[name="${name}"][value="${value}"])`);
+  await label.scrollIntoViewIfNeeded().catch(() => {});
+  await label.click();
+  await expect(page.locator(`input[name="${name}"][value="${value}"]`)).toBeChecked();
 }
 
 test.describe('WP-E/#120 — lobby config round-trips URL ↔ WS handshake (C-2)', () => {
-  test('non-default picks survive Apply into the page URL and the WS query', async ({ page }, testInfo) => {
+  test('non-default picks survive Apply into the page URL and the WS query', async ({ page }) => {
     test.setTimeout(60_000);
-    const isMobile = testInfo.project.name !== 'chromium';
 
     await landOnBareLobby(page);
     await expect(page.locator('#lobby-panel.lobby-open')).toBeVisible({ timeout: 10_000 });
@@ -66,12 +66,12 @@ test.describe('WP-E/#120 — lobby config round-trips URL ↔ WS handshake (C-2)
       if (/[?&]gameId=/.test(u) && /\/ws(\?|$)/.test(u)) gameWsUrl = u;
     });
 
-    // ── Apply & Start (real click) ──────────────────────────────────
-    const apply = page.locator('#lobby-apply');
-    await apply.scrollIntoViewIfNeeded().catch(() => {});
+    // ── Apply & Start (ordinary tap) ────────────────────────────────
+    const apply = page.getByTestId('lobby-apply');
+    await expect(apply).toBeVisible();
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20_000 }).catch(() => null),
-      apply.click({ force: isMobile }),
+      apply.click(),
     ]);
 
     // ── 1. Page URL carries the frozen six-param handshake (C-2) ─────
@@ -97,17 +97,16 @@ test.describe('WP-E/#120 — lobby config round-trips URL ↔ WS handshake (C-2)
     expect(wsQ.get('seat')).toBe('0');
   });
 
-  test('bare Apply mints a fresh gameId and defaults (auto / 3 bots) into the URL', async ({ page }, testInfo) => {
+  test('bare Apply mints a fresh gameId and defaults (auto / 3 bots) into the URL', async ({ page }) => {
     test.setTimeout(60_000);
-    const isMobile = testInfo.project.name !== 'chromium';
     await landOnBareLobby(page);
     await expect(page.locator('#lobby-panel.lobby-open')).toBeVisible({ timeout: 10_000 });
 
-    const apply = page.locator('#lobby-apply');
-    await apply.scrollIntoViewIfNeeded().catch(() => {});
+    const apply = page.getByTestId('lobby-apply');
+    await expect(apply).toBeVisible();
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20_000 }).catch(() => null),
-      apply.click({ force: isMobile }),
+      apply.click(),
     ]);
 
     const q = new URL(page.url()).searchParams;

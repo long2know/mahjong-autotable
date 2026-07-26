@@ -2038,6 +2038,55 @@ body.spectating #roll-dice { display: none !important; }
         min-height: 44px;
     }
 
+    /* Ferro WP-E/#120 — the mobile connect-flow controls (four Take Seat
+       buttons + Deal) must be tappable with an ORDINARY tap: no forced /
+       positioned / uncovered-pixel routing.  The game HUD lives inside
+       `#full` (position:fixed → its own stacking context), so the body-
+       level chrome (chat z1450, #settings-toggle, #move-log-toggle,
+       #lobby-toggle) paints above the whole HUD regardless of any z-index
+       set inside #full.  We therefore fix each overlap at its real cause:
+
+       1) Seat pick vs. the in-#full sidebar.  The `.seat-buttons` layer
+          (shown only while unseated — a modal "pick your seat" step) had no
+          z-index, so #sidebar (later in the DOM) covered the left seat
+          button.  Raising it works here because both live inside #full.
+          Keep the dim non-interactive so the chrome underneath stays
+          reachable (never traps the user); when the lobby is open it owns
+          the foreground, so drop the dim back beneath the panel (z 90). */
+    .seat-buttons {
+        z-index: 1460;
+        pointer-events: none;
+    }
+    .seat-button {
+        pointer-events: auto;
+    }
+    body.lobby-active .seat-buttons {
+        z-index: auto;
+    }
+
+    /*    2) Seat buttons vs. body-level edge chrome.  z-index can't lift a
+          child of #full above body-level chrome, so separate them
+          positionally instead: pull the bottom (self) seat button up clear
+          of the chat header, and the top seat button down clear of the
+          settings / move-log toggle row.  Both stay horizontally centred. */
+    .seat-button-0 {
+        bottom: 84px;
+    }
+    .seat-button-2 {
+        top: 84px;
+    }
+
+    /*    3) Deal button.  #deal sits at the top of #sidebar (top-left),
+          directly under the fixed #lobby-toggle (top:12).  Drop the sidebar
+          below the toggle so #deal clears it and is tappable once seated;
+          cap the height + scroll so the taller sidebar never runs off the
+          bottom of the phone viewport. */
+    #sidebar {
+        top: 60px;
+        max-height: calc(100% - 60px);
+        overflow-y: auto;
+    }
+
     /* HUD elements stack instead of overlap */
     #pickup-hud {
         font-size: 0.85rem;

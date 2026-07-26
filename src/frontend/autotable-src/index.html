@@ -450,7 +450,7 @@
          can pick variant / dealMode / botCount / botDifficulty without
          editing the URL bar.  Hidden via body.lobby-active while the panel
          is open. -->
-    <button id="lobby-toggle" type="button" title="Open lobby">
+    <button id="lobby-toggle" type="button" title="Open lobby" data-testid="lobby-toggle">
         <span class="lobby-toggle-icon">☰</span>
         <span class="lobby-toggle-label">Lobby</span>
     </button>
@@ -1151,7 +1151,7 @@
                 </div>
             </section>
 
-            <fieldset class="lobby-fieldset" id="lobby-variant-fieldset">
+            <fieldset class="lobby-fieldset" id="lobby-variant-fieldset" data-testid="lobby-variant-fieldset">
                 <legend>Variant</legend>
                 <label><input type="radio" name="lobby-variant" value="changsha" checked> Changsha</label>
                 <label><input type="radio" name="lobby-variant" value="four-player"> Riichi — 4 player</label>
@@ -1211,7 +1211,7 @@
                 </p>
             </fieldset>
 
-            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-bot-difficulty-fieldset">
+            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-bot-difficulty-fieldset" data-testid="lobby-bot-difficulty-fieldset">
                 <legend>Bot difficulty</legend>
                 <label class="lobby-card-option">
                     <input type="radio" name="lobby-bot-difficulty" value="Easy">
@@ -1235,7 +1235,7 @@
                  backend reads this off the URL and pins it to MaxHands.
                  Phase J Wave 4 — promoted to lobby-card-group with icon
                  hints so the visual weight matches Variant + Bots. -->
-            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-hand-count-fieldset">
+            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-hand-count-fieldset" data-testid="lobby-hand-count-fieldset">
                 <legend>Hands per match</legend>
                 <label class="lobby-card-option">
                     <input type="radio" name="lobby-hand-count" value="1">
@@ -1533,7 +1533,7 @@
                     title="Skip the pickers and start a 3-Medium-bot game now">
                 ⚡ Quick Match
             </button>
-            <button id="lobby-apply" type="button" class="btn btn-warning btn-sm">
+            <button id="lobby-apply" type="button" class="btn btn-warning btn-sm" data-testid="lobby-apply">
                 Apply &amp; Start
             </button>
         </div>
