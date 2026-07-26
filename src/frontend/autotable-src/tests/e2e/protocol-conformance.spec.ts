@@ -136,8 +136,19 @@ test.describe('WP-E/#120 — WS Collection protocol conformance (C-1) static gat
         `'${kind}' is inbound-only (server → client) and must not be a game command.`,
       ).toBe(false);
     }
-    // And the backend must explicitly ignore client 'result' pushes.
+    // The load-bearing anti-spoof check: the backend must EXPLICITLY handle (ignore) a client
+    // push of EVERY inbound-only kind — both `result` AND `gameComplete`. If either fell through
+    // to the `default` passthrough, a malicious/buggy client could relay a fake server-emitted
+    // entry (e.g. `gameComplete.isComplete=true`) to peers and spoof an end-of-game modal. The
+    // matching runtime behaviour (a client gameComplete is dropped, not relayed) is proven in
+    // AutotableWsEndpointTests.ClientPushedGameComplete_IsDropped_NotRelayedToPeers.
     const explicit = backendExplicitDispatchKinds();
-    expect(explicit.has('result'), "backend must explicitly handle (ignore) client 'result' pushes").toBe(true);
+    for (const kind of INBOUND_ONLY) {
+      expect(
+        explicit.has(kind),
+        `backend HandleUpdateAsync has no explicit case for inbound-only '${kind}' — a client ` +
+        `push of it would hit the default passthrough and relay a spoofed entry to peers.`,
+      ).toBe(true);
+    }
   });
 });
