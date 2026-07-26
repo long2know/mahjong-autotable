@@ -449,20 +449,17 @@ public class BotContextualHuTests
         Assert.Contains(heavenly, win.AllPatterns);
         Assert.True(win.AllPatterns.Count >= 2,
             $"HeavenlyHand + FullFlush must yield ≥2 entries in AllPatterns " +
-            $"(×2 stack). Got [{string.Join(",", win.AllPatterns)}].");
+            $"(stacking is opt-in per #117; AllPatterns still lists both). " +
+            $"Got [{string.Join(",", win.AllPatterns)}].");
 
-        // Scoring: dealer self-draw BigWin base = BigWinSelfDrawDealer (4) per opponent
-        // × 3 opponents × ×2 stacking multiplier = 24.
-        // (Single-pattern baseline would be 4 × 3 × 1 = 12.)
-        //
-        // Post-W23 fan layer (Frost's FanCalculator, wired into ChangshaGameStateMachine.Score):
-        //   SelfDraw (1) + FullFlush (6) + HeavenlyHand (8) + ConcealedHand (1) = 16 fan
-        //   points per base payment. With 3 base payments the fan delta is 3 × 16 = 48.
-        //   Total BasePoints = 24 (base × multiplier) + 48 (fan bonus) = 72.
-        // The base/multiplier contract above remains intact — fans are ADDITIVE on top
-        // of the small/big-win tier.
+        // Scoring (#117 spec-pure default): dealer self-draw BigWin base =
+        // BigWinSelfDrawDealer (4) per opponent × 3 opponents × ×1 (no stacking on the
+        // live default path) = 12. The fan catalog is still evaluated and surfaced for
+        // display/audit but is NOT folded into payments in the default SpecPure mode:
+        //   SelfDraw (1) + FullFlush (6) + HeavenlyHand (8) + ConcealedHand (1) = 16
+        //   FanPoints (query-only). 16 × 3 = 48 mirrors the per-payment breakdown.
         Assert.Equal(ScoreCategory.BigWin, score.Category);
-        Assert.Equal(72, score.BasePoints);
+        Assert.Equal(12, score.BasePoints);
         Assert.Equal(48, score.FanPoints * 3);
         Assert.Contains(score.Fans, f => f.Fan == Mahjong.Autotable.Api.Changsha.Scoring.Fan.SelfDraw);
         Assert.Contains(score.Fans, f => f.Fan == Mahjong.Autotable.Api.Changsha.Scoring.Fan.FullFlush);
