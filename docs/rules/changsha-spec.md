@@ -208,6 +208,13 @@ Per Baidu: When any kong is declared (exposed or concealed), the other three pla
 
 Per Baidu: If a player misses a win from a discard (chooses not to claim Hu), they are **prohibited from winning on a discard** until after they draw a tile. This restriction only applies to the specific tile they missed winning on.
 
+> **⚠️ Open question — tile-specific vs. seat-level lockout (surfaced by #117, NOT resolved).**
+> The paragraph above is internally contradictory: "prohibited from winning on **a discard** until after they draw a tile" reads as a **blanket seat-level** lockout, while "only applies to the **specific tile** they missed" reads as a **tile-specific** lockout. The two clauses disagree about whether a seat that passed on winning tile *A* may still claim Hu on a *different* winning tile *B* before their next draw.
+>
+> **Current implementation (V1): seat-level.** `ChangshaGameState.MissedWinSeats` is a `HashSet<int>` of *seats* (not `(seat, tile)` pairs), so a flagged seat is blocked from Hu on **any** tile until their next own draw — including a different winning tile the tile-specific clause would allow. The lockout decays on the seat's next self-draw (`ChangshaGameStateMachine.DrawTile`) per Baidu §过水 ("until your next draw"), and clears every new hand (`Deal`).
+>
+> This behaviour is pinned by `MissedWinTileSpecificityCharacterizationTests` (blocks-different-tile + decay-on-draw) so switching to tile-specific semantics would be a deliberate, test-visible change. **Awaiting product direction** on which reading is canonical for Changsha before any code change.
+
 ---
 
 ## 4. Winning (胡)
@@ -402,6 +409,26 @@ V1 implementation must accept base unit as a table creation parameter, default =
 **Kong Payments:** Micro-payments on kong declaration (each opponent pays kong declarer immediately, separate from hand scoring). Deferred to v2 as a secondary scoring mechanic.
 
 **Multiple Winners (多家胡):** Multiple players winning on the same discard. V1 uses proximity rule (closest counterclockwise wins). V2 may implement simultaneous multiple wins with independent payments.
+
+### 5.4 Fan Catalog & Big-Win Stacking — Query-Only (Non-Scoring) in V1
+
+**The binding V1 payment computation is EXACTLY the two-tier table in §5.1 — nothing more.** A winning hand pays the Small/Big-Win unit values (1/2 · 3/4 · 6/7) with the +1 dealer bonus. There is **no fan (番) table** and **no big-win stacking multiplier** in the authoritative payout.
+
+The engine ships two *supplementary* mechanisms that are **display/query-only** with respect to the money (introduced pre-#117, gated to non-scoring by #117):
+
+- **Fan catalog** (`Changsha/Scoring/FanCalculator.cs`): a 14-entry catalog (自摸, 清一色, 七对, 碰碰胡, 门清, 杠上开花, 海底捞月, 河底捞鱼, 抢杠, 天和, 地和, 九幺, plus two variant-gated honor fans). It is evaluated on every win and surfaced on `ScoreResult.Fans` / `FanPoints` (and the WS/SignalR `fans[]` wire field) so the frontend can render an informational fan breakdown. It does **not** alter payments.
+- **Big-win stacking multiplier** (`Changsha/ScoringService.cs`): a `×Clamp(AllPatterns.Count,1,3)` multiplier that can be applied when a hand satisfies multiple Big-Win shapes (e.g. 碰碰胡 + 清一色). `AllPatterns` is detected and surfaced, but the multiplier is **not** applied to the default payout.
+
+Both are gated behind `Changsha/Scoring/ChangshaScoringOptions.cs`:
+
+| Mode | Default? | Payments | Fan catalog | Stacking |
+|------|----------|----------|-------------|----------|
+| `SpecPure` | **✅ yes** | §5.1 table verbatim | surfaced, **not** folded into payments | ×1 (off) |
+| `HouseRules` | no (opt-in) | §5.1 base **+** fan bonus folded per payment | folded into payments (`"fan:…"` reason rows) | ×Clamp(count,1,3) |
+
+The default `SpecPure` keeps the live payout equal to §5.1 (frozen by `Section51GoldenTests`, Examples 1-10). `HouseRules` is retained for a possible future tournament option and is pinned by characterization tests (`ScoringOptionsCharacterizationTests`, `FanCatalogIntegrationTests`) so its magnitudes are not lost.
+
+> **⚠️ Open question (surfaced by #117, NOT resolved):** *Should canonical Changsha score a fan (番) catalog + big-win stacking at all, or is the two-tier §5.1 table the complete authoritative model?* The MahjongPros/Baidu sources §5.1 is drawn from describe only the two-tier table; the fan catalog was an engine extension. Until Stephen rules on this, V1 ships spec-pure (§5.1 only) and treats the fan/stacking layer as query-only display metadata. **This section deliberately does NOT bless the code's former fan/stacking payout numbers as canonical.**
 
 ---
 

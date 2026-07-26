@@ -856,44 +856,54 @@ public sealed class ChangshaGameStateMachine
         return events;
     }
 
-    public static List<ChangshaEvent> Score(ChangshaGameState state)
+    public static List<ChangshaEvent> Score(
+        ChangshaGameState state,
+        Scoring.ChangshaScoringOptions? scoringOptions = null)
     {
         RequirePhase(state, ChangshaPhase.Scoring);
         if (state.CurrentWin is null)
             throw new InvalidOperationException("No win to score.");
 
+        // #117 — spec §5.1 is authoritative. The default (SpecPure) emits the §5.1
+        // payment table verbatim: no fan-catalog bonus folded into the money, no
+        // Big-Win stacking multiplier. The fan catalog is still evaluated and surfaced
+        // on Fans/FanPoints as a read-only breakdown (query-only wrt payment amounts).
+        // A future house-rule/tournament mode (ChangshaScoringOptions.HouseRules) can
+        // opt back into the additive fan layer + stacking without a second rewrite.
+        var options = scoringOptions ?? Scoring.ChangshaScoringOptions.SpecPure;
+
         var scoringService = new ScoringService();
-        // Phase H Wave 2 — pass AllPatterns.Count so the stacking multiplier
-        // (×1/×2/×3 cap, see ScoringService.CalculateScore) applies. Pre-Wave-2
-        // construction sites that didn't populate AllPatterns get the ×1 default
-        // (empty list → Count=0 → clamped to 1 inside ScoringService).
-        var bigWinPatternCount = state.CurrentWin.AllPatterns.Count;
+        // Big-Win stacking is opt-in (spec §5.1 has no stacking table). Spec-pure passes
+        // count=1 → the multiplier clamps to ×1. House-rules passes AllPatterns.Count so
+        // the ×1/×2/×3-cap multiplier applies (see ScoringService.CalculateScore).
+        var bigWinPatternCount = options.ApplyBigWinStacking
+            ? state.CurrentWin.AllPatterns.Count
+            : 1;
         var baseScore = scoringService.CalculateScore(
             state.CurrentWin, state.DealerSeatIndex, state.CurrentWin.IsFullFlush, bigWinPatternCount);
 
-        // Post-W23 — Frost's FanCalculator layer (see .squad/decisions/inbox/frost-fan-catalog.md).
-        // Compose a FanContext from the current-win flags + state, evaluate the 14-fan
-        // catalog, and append fan-bonus PaymentEntry rows on top of the base small/big-win
-        // tier. Each detected fan adds `fan.Points` to EACH existing base payment, so:
-        //   - SelfDraw wins distribute the fan bonus across all 3 opponent → winner payments
-        //   - Discard / robbing-kong wins concentrate the bonus on the single source payment
-        // This mirrors how the 258-pair base scaling already handles the two methods.
-        // BasePoints stays equal to Payments.Sum(p => p.Amount) by construction.
+        // Evaluate Frost's 14-fan catalog for the read-only breakdown surfaced on
+        // Fans/FanPoints (frontend win-screen chips, replay, audit). In spec-pure mode
+        // this breakdown does NOT move chips: payments stay at the §5.1 magnitude and
+        // BasePoints == Σ Payments.Amount (base only). In house-rules mode the bonus is
+        // folded into every base payment (one fan-bonus PaymentEntry per base × fan).
         var fanResult = EvaluateFanBonuses(state);
-        var paymentsWithFans = ApplyFanBonusesToPayments(baseScore.Payments, fanResult);
-        var totalBasePoints = paymentsWithFans.Sum(p => p.Amount);
+        var payments = options.ApplyFanBonuses
+            ? ApplyFanBonusesToPayments(baseScore.Payments, fanResult)
+            : baseScore.Payments;
+        var totalBasePoints = payments.Sum(p => p.Amount);
 
         state.CurrentScore = new ScoreResult
         {
             Category = baseScore.Category,
             BasePoints = totalBasePoints,
-            Payments = paymentsWithFans,
+            Payments = payments,
             Fans = fanResult.Detected,
             FanPoints = fanResult.TotalPoints,
         };
 
-        // Apply payments (base + fan bonuses) to cumulative scores. Zero-sum is preserved
-        // because every fan-bonus payment is a (from, to, amount) triple just like the base.
+        // Apply payments to cumulative scores. Zero-sum is preserved because every
+        // payment (base, and any house-rule fan-bonus) is a (from, to, amount) triple.
         foreach (var payment in state.CurrentScore.Payments)
         {
             state.CumulativeScores[payment.ToSeatIndex] += payment.Amount;
