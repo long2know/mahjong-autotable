@@ -266,16 +266,23 @@ public sealed class AutotableConnectionManager : IDisposable
         if (query.TryGetValue("botDifficulty", out var bd) && !string.IsNullOrEmpty(bd.ToString()))
             botDifficulty = bd.ToString();
 
-        // #121/C-2 (Lead decision) — honor the lobby's `?handCount=`, whitelisted to the supported
-        // lobby values {1,4,8,16,32}. Any other value (or absent) keeps the runtime default of 4.
-        // Threaded to ChangshaGameRuntime.CreateGameAsync at first runtime bind below
-        // (first-creator-wins), so a late joiner's differing handCount can never re-cap a bound game.
+        // #121/#130/C-2 (Lead + canonical §6.3) — honor the lobby's `?handCount=`. Canonical
+        // Changsha caps a match at 16 hands (§6.3), so the accepted create-time values are
+        // {1,4,8,16}. The legacy UI's 32 option is misleading — the engine's 4-round terminal
+        // (HandsPerRound=4 × 4 rounds) already ends a stored-32 game at hand 16 — so a requested 32
+        // is NORMALIZED to the authoritative 16 (surfaced as MaxHands=16) rather than stored. Any
+        // other value (or absent) keeps the runtime default of 4. Future >16 designs: issue #130.
+        // Threaded to CreateGameAsync at first runtime bind (first-creator-wins).
         var maxHands = 4;
         if (query.TryGetValue("handCount", out var hcRaw)
-            && int.TryParse(hcRaw.ToString(), out var parsedHandCount)
-            && parsedHandCount is 1 or 4 or 8 or 16 or 32)
+            && int.TryParse(hcRaw.ToString(), out var parsedHandCount))
         {
-            maxHands = parsedHandCount;
+            maxHands = parsedHandCount switch
+            {
+                1 or 4 or 8 or 16 => parsedHandCount,
+                32 => 16, // legacy UI option → canonical §6.3 cap
+                _ => 4
+            };
         }
 
         var connection = new AutotableConnection(ws, queryGameId, viewerSeat)
@@ -1697,9 +1704,10 @@ public sealed class AutotableConnection
     public string BotDifficulty { get; init; } = "Medium";
 
     /// <summary>
-    /// #121/C-2 (Lead decision) — optional match hand cap from the lobby <c>?handCount=</c> WS
-    /// query param, whitelisted to the supported lobby values {1,4,8,16,32}; any other/absent
-    /// value ⇒ the runtime default (4). Threaded to
+    /// #121/#130/C-2 (Lead + canonical §6.3) — optional match hand cap from the lobby
+    /// <c>?handCount=</c> WS query param. Canonical Changsha caps at 16 hands (§6.3): accepted
+    /// create-time values are {1,4,8,16}; a legacy/requested <c>32</c> is normalized to the
+    /// authoritative <c>16</c>; any other/absent value ⇒ the runtime default (4). Threaded to
     /// <see cref="IChangshaGameRuntime.CreateGameAsync"/> at first runtime bind (first-creator-wins),
     /// so a late joiner's differing <c>handCount</c> never re-caps a bound game.
     /// </summary>

@@ -24,8 +24,9 @@ namespace Mahjong.Autotable.Api.Tests.Autotable;
 /// <c>botDifficulty</c> can never silently re-configure a bound (potentially live) game.</para>
 ///
 /// <list type="bullet">
-///   <item><c>handCount</c> is whitelisted to the supported lobby values {1,4,8,16,32}
-///   (<c>lobby.ts HAND_COUNTS</c>); any other/absent value ⇒ the runtime default of 4.</item>
+///   <item><c>handCount</c> accepts the canonical create-time values {1,4,8,16} (Changsha spec
+///   §6.3 caps a match at 16); a legacy/requested <c>32</c> is normalized to the authoritative
+///   <c>16</c>; any other/absent value ⇒ the runtime default of 4. (#130 tracks any future >16.)</item>
 ///   <item>A late joiner cannot re-cap (<c>handCount</c>) or re-skin (<c>botDifficulty</c>) a bound
 ///   game — pre-#121 the endpoint re-applied <c>SetBotStrategyAsync</c> on every re-bind, which let
 ///   any late joiner mutate a live game's bots.</item>
@@ -71,12 +72,12 @@ public sealed class AutotableConfigJoinSemanticsTests : IAsyncLifetime
     // ── handCount whitelist parsing ────────────────────────────────────────────────
 
     [Theory, Trait("Category", "Autotable"), Trait("Contract", "C-2")]
-    [InlineData(1)]
-    [InlineData(4)]
-    [InlineData(8)]
-    [InlineData(16)]
-    [InlineData(32)]
-    public async Task Handshake_WhitelistedHandCount_SetsMaxHands(int handCount)
+    [InlineData(1, 1)]
+    [InlineData(4, 4)]
+    [InlineData(8, 8)]
+    [InlineData(16, 16)]
+    [InlineData(32, 16)] // #130 — canonical §6.3 caps at 16; legacy 32 normalizes to authoritative 16
+    public async Task Handshake_HandCount_SetsAuthoritativeMaxHands(int handCount, int expectedMaxHands)
     {
         var gameId = $"hc-{Guid.NewGuid():N}";
         await using var session = await ConnectAsync($"seat=0&botCount=3&handCount={handCount}", gameId);
@@ -84,7 +85,9 @@ public sealed class AutotableConfigJoinSemanticsTests : IAsyncLifetime
 
         Assert.True(_factory!.Services.GetRequiredService<IChangshaGameRuntime>()
             .TryGetSnapshot(runtimeGameId, out var s) && s is not null);
-        Assert.Equal(handCount, s!.MaxHands);
+        // The stored MaxHands is authoritative: a requested 32 surfaces as 16, never stored as 32
+        // (which the engine's 4-round terminal would end early at 16 anyway).
+        Assert.Equal(expectedMaxHands, s!.MaxHands);
     }
 
     [Theory, Trait("Category", "Autotable"), Trait("Contract", "C-2")]
@@ -133,8 +136,8 @@ public sealed class AutotableConfigJoinSemanticsTests : IAsyncLifetime
         Assert.Equal(8, afterCreate!.MaxHands);
         var seedAtCreate = afterCreate.Seed;
 
-        // Late joiner B on the SAME relay gameId requests handCount=32 — must be ignored.
-        await using var joiner = await ConnectAsync("seat=1&botCount=3&handCount=32", gameId);
+        // Late joiner B on the SAME relay gameId requests handCount=16 — must be ignored.
+        await using var joiner = await ConnectAsync("seat=1&botCount=3&handCount=16", gameId);
         var runtimeGameIdB = await SeatTakeAndBindAsync(joiner, seat: 1, gameId);
 
         Assert.Equal(runtimeGameIdA, runtimeGameIdB); // same bound game, not re-created
