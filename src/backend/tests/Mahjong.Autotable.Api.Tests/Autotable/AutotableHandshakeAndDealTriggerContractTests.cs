@@ -29,15 +29,15 @@ namespace Mahjong.Autotable.Api.Tests.Autotable;
 ///   <c>dealCommand</c> mandatory would reject the current FE's vanilla push and drift C-1, so the
 ///   backend keeps accepting both forms.</item>
 ///
-///   <item><b>C-2 — the handshake is the six frozen params only.</b>
-///   <c>gameId, seat, botCount, variant, dealMode, botDifficulty</c> are read at handshake;
-///   <c>handCount</c>/<c>seed</c>/<c>rulePreset</c> live on the <em>page</em> URL (lobby) but are
-///   deliberately <b>not</b> forwarded to / consumed by the WS handshake. This class proves the
-///   endpoint tolerates those extra query params (no crash) and still applies the documented
-///   defaults (e.g. <see cref="ChangshaGameState.MaxHands"/> = 4, i.e. <c>handCount</c> is ignored),
-///   and that <c>dealMode</c> defaults to Manual when omitted. Consuming those params would extend
-///   (un-freeze) C-2 and requires a coordinated FE (<c>buildWsUrl</c>) + BE change — out of scope
-///   for a unilateral backend edit.</item>
+///   <item><b>C-2 — the handshake params (post Lead C-2 extension).</b>
+///   <c>gameId, seat, botCount, variant, dealMode, botDifficulty</c> plus the now-extended
+///   optional <c>seed</c> (Ferro/#127) and <c>handCount</c> (this lane) are read at handshake;
+///   <c>rulePreset</c> lives on the <em>page</em> URL but is deliberately tolerated-not-applied.
+///   This class proves the endpoint applies a whitelisted <c>handCount</c> to
+///   <see cref="ChangshaGameState.MaxHands"/>, tolerates <c>rulePreset</c>/unknown params without
+///   crashing, and defaults <c>dealMode</c> to Manual when omitted. (Absent <c>handCount</c> ⇒ 4;
+///   absent <c>seed</c> ⇒ random. First-creator-wins + <c>handCount</c> whitelist coverage lives in
+///   <see cref="AutotableConfigJoinSemanticsTests"/>.)</item>
 /// </list>
 /// </summary>
 public sealed class AutotableHandshakeAndDealTriggerContractTests : IAsyncLifetime
@@ -166,12 +166,12 @@ public sealed class AutotableHandshakeAndDealTriggerContractTests : IAsyncLifeti
     // ── C-2 — six-param handshake; unfrozen params ignored ────────────────────────
 
     [Fact, Trait("Category", "Autotable"), Trait("Contract", "C-2")]
-    public async Task Handshake_IgnoresUnfrozenParams_UsesDocumentedDefaults()
+    public async Task Handshake_AppliesWhitelistedHandCount_ToleratesRulePreset()
     {
-        // handCount / seed / rulePreset are on the lobby PAGE url but are NOT part of the
-        // frozen 6-param C-2 handshake. The endpoint must (a) tolerate them without error and
-        // (b) still apply the documented defaults — MaxHands stays 4 even though handCount=8 is
-        // present, proving handCount is not consumed at the handshake.
+        // Post Lead C-2 extension: `?handCount=` (whitelisted) IS now consumed → MaxHands.
+        // `?rulePreset=` remains tolerated-not-applied, and unknown params must not crash the
+        // handshake. `?seed=` forwarding is owned + tested by Ferro/#127 (co-signed), so this
+        // test does not assert seed behaviour — it only proves seed is tolerated in the query.
         var (session, runtime, runtimeGameId) = await ConnectSeatAndBindAsync(
             "seat=0&dealMode=auto&botCount=3&handCount=8&seed=999&rulePreset=aggressive-east");
         await using var _ = session;
@@ -188,11 +188,10 @@ public sealed class AutotableHandshakeAndDealTriggerContractTests : IAsyncLifeti
                 && s.Hands.Sum(h => h.ConcealedTiles.Count) == 14 + 13 + 13 + 13;
         }, timeoutMs: 3000);
         Assert.True(dealt,
-            "The handshake must tolerate the extra page-url params (handCount/seed/rulePreset) " +
-            "and still complete a normal deal.");
+            "The handshake must tolerate rulePreset/seed page-url params and still complete a deal.");
 
         Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var snap) && snap is not null);
-        Assert.Equal(4, snap!.MaxHands); // handCount=8 was NOT consumed → default MaxHands stands.
+        Assert.Equal(8, snap!.MaxHands); // handCount=8 is now consumed → MaxHands=8 (was ignored pre-C-2 extension).
     }
 
     [Fact, Trait("Category", "Autotable"), Trait("Contract", "C-2")]

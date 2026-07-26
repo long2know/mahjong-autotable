@@ -29,7 +29,7 @@ public interface IChangshaGameRuntime
     /// games carry a non-null <c>CreatorPlayerId</c> (unblocks public-lobby
     /// support for WS games).
     /// </summary>
-    Task<string> CreateGameAsync(int? seed, int[]? botSeatIndexes, string? hostPlayerId, string? hostConnectionId, CancellationToken ct = default);
+    Task<string> CreateGameAsync(int? seed, int[]? botSeatIndexes, string? hostPlayerId, string? hostConnectionId, CancellationToken ct = default, int? maxHands = null);
 
     Task JoinTableAsync(string gameId, string connectionId, CancellationToken ct = default);
     /// <summary>
@@ -464,10 +464,17 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
     // ── CreateGame ────────────────────────────────────────────────────
 
-    public async Task<string> CreateGameAsync(int? seed, int[]? botSeatIndexes, string? hostPlayerId, string? hostConnectionId, CancellationToken ct = default)
+    public async Task<string> CreateGameAsync(int? seed, int[]? botSeatIndexes, string? hostPlayerId, string? hostConnectionId, CancellationToken ct = default, int? maxHands = null)
     {
         var resolvedSeed = seed ?? Random.Shared.Next(int.MinValue, int.MaxValue);
         var (state, _) = ChangshaGameStateMachine.CreateGame(resolvedSeed, botSeatIndexes);
+        // #121/C-2 (Lead decision) — optional match hand cap from the lobby `?handCount=`.
+        // null ⇒ keep CreateGame's default (4). Persisted with the rest of the state
+        // (full-state JSON snapshot), so it round-trips through hydration unchanged.
+        if (maxHands is int mh)
+        {
+            state.MaxHands = mh;
+        }
         // Phase H Wave 1 — StateVersion starts at 0 on a freshly created game; the
         // "game-created" event emitted inside CreateGame is treated as setup, not as
         // a mutation that consumes a version slot. First real mutation advances to 1.
