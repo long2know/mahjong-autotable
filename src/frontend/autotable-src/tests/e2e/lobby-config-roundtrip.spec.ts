@@ -117,4 +117,41 @@ test.describe('WP-E/#120 — lobby config round-trips URL ↔ WS handshake (C-2)
     expect(q.get('dealMode')).toBe('auto');
     expect(q.get('botCount')).toBe('3');
   });
+
+  test('lobby seed rides the page URL AND the observed WS handshake', async ({ page }) => {
+    test.setTimeout(60_000);
+    await landOnBareLobby(page);
+    await expect(page.locator('#lobby-panel.lobby-open')).toBeVisible({ timeout: 10_000 });
+
+    // Type a deterministic seed into the lobby seed field (ordinary input).
+    // The seed lives in the collapsed "Advanced" <details> — expand it with a
+    // real click on its summary first, exactly as a user would.
+    const seed = '13572468';
+    await page.locator('#lobby-advanced > summary').click();
+    const seedInput = page.locator('#lobby-seed');
+    await expect(seedInput).toBeVisible();
+    await seedInput.fill(seed);
+    await expect(seedInput).toHaveValue(seed);
+
+    let gameWsUrl: string | null = null;
+    page.on('websocket', (ws) => {
+      const u = ws.url();
+      if (/[?&]gameId=/.test(u) && /\/ws(\?|$)/.test(u)) gameWsUrl = u;
+    });
+
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20_000 }).catch(() => null),
+      page.getByTestId('lobby-apply').click(),
+    ]);
+
+    // Page URL carries the seed (URL is the source of truth)…
+    expect(new URL(page.url()).searchParams.get('seed')).toBe(seed);
+
+    // …and the real WS handshake forwards it so the backend can reproduce
+    // the game (Hudson C-2 determinism gap — previously dropped here).
+    await expect
+      .poll(() => gameWsUrl, { timeout: 20_000, message: 'game WebSocket never opened after Apply & Start' })
+      .not.toBeNull();
+    expect(new URL(gameWsUrl!).searchParams.get('seed'), 'buildWsUrl must forward the lobby seed').toBe(seed);
+  });
 });
