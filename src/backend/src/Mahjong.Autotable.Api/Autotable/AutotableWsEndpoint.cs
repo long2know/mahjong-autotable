@@ -276,6 +276,25 @@ public sealed class AutotableConnectionManager : IDisposable
         if (query.TryGetValue("seed", out var sd) && int.TryParse(sd.ToString(), out var parsedSeed) && parsedSeed >= 0)
             seed = parsedSeed;
 
+        // #121/#130/C-2 (Lead + canonical §6.3) — honor the lobby's `?handCount=`. Canonical
+        // Changsha caps a match at 16 hands (§6.3), so the accepted create-time values are
+        // {1,4,8,16}. The legacy UI's 32 option is misleading — the engine's 4-round terminal
+        // (HandsPerRound=4 × 4 rounds) already ends a stored-32 game at hand 16 — so a requested 32
+        // is NORMALIZED to the authoritative 16 (surfaced as MaxHands=16) rather than stored. Any
+        // other value (or absent) keeps the runtime default of 4. Future >16 designs: issue #130.
+        // Threaded to CreateGameAsync at first runtime bind (first-creator-wins).
+        var maxHands = 4;
+        if (query.TryGetValue("handCount", out var hcRaw)
+            && int.TryParse(hcRaw.ToString(), out var parsedHandCount))
+        {
+            maxHands = parsedHandCount switch
+            {
+                1 or 4 or 8 or 16 => parsedHandCount,
+                32 => 16, // legacy UI option → canonical §6.3 cap
+                _ => 4
+            };
+        }
+
         var connection = new AutotableConnection(ws, queryGameId, viewerSeat)
         {
             AutoBotFill = autoBotFill,
@@ -283,6 +302,7 @@ public sealed class AutotableConnectionManager : IDisposable
             DealMode = dealMode,
             BotCount = botCount,
             BotDifficulty = botDifficulty,
+            MaxHands = maxHands,
             IsSpectator = isSpectator,
             Seed = seed,
             // Phase J Wave 6 — persistent cookie-derived player id (resolved
@@ -293,9 +313,9 @@ public sealed class AutotableConnectionManager : IDisposable
         };
         _connections[connection.Id] = connection;
         _logger.LogInformation(
-            "Autotable WS connected (connectionId={ConnectionId}, gameId={GameId}, seat={Seat}, spectator={Spectator}, bots={Bots}, variant={Variant}, dealMode={DealMode}, botCount={BotCount}, botDifficulty={BotDifficulty}, seed={Seed}, runtimeMode={RuntimeMode})",
+            "Autotable WS connected (connectionId={ConnectionId}, gameId={GameId}, seat={Seat}, spectator={Spectator}, bots={Bots}, variant={Variant}, dealMode={DealMode}, botCount={BotCount}, botDifficulty={BotDifficulty}, seed={Seed}, maxHands={MaxHands}, runtimeMode={RuntimeMode})",
             connection.Id, queryGameId, viewerSeat, isSpectator, autoBotFill,
-            variant, dealMode, botCount, botDifficulty, seed, connection.RuntimeMode);
+            variant, dealMode, botCount, botDifficulty, seed, maxHands, connection.RuntimeMode);
 
         try
         {
@@ -454,7 +474,7 @@ public sealed class AutotableConnectionManager : IDisposable
             // an all-bots watch-mode table honours the URL difficulty.
             var runtimeGameId = await EnsureRuntimeBoundAsync(
                 connection.GameId!, hostPlayerId: null, ct,
-                botDifficulty: connection.BotDifficulty, seed: connection.Seed);
+                botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands);
             if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
             if (snap.Phase != ChangshaPhase.Seating) return;
 
@@ -560,6 +580,12 @@ public sealed class AutotableConnectionManager : IDisposable
                     // Result is server-emitted only — ignore client pushes.
                     break;
 
+                case ChangshaCollectionKinds.GameComplete:
+                    // #116/#122 — gameComplete is server-emitted only (locked C-1, inbound to
+                    // clients). Drop any client push so a buggy/malicious client can't relay a
+                    // fake end-of-match signal to peers and spuriously trigger their modals.
+                    break;
+
                 default:
                     // mouse, sound, dice, things, nicks, ephemeral, unique, perPlayer
                     // — pure cosmetic / meta. Pass through to the relay store.
@@ -605,7 +631,7 @@ public sealed class AutotableConnectionManager : IDisposable
         {
             try
             {
-                var runtimeGameIdLeave = await EnsureRuntimeBoundAsync(connection.GameId!, connection.PlayerId, ct, seed: connection.Seed);
+                var runtimeGameIdLeave = await EnsureRuntimeBoundAsync(connection.GameId!, connection.PlayerId, ct, seed: connection.Seed, maxHands: connection.MaxHands);
                 await _runtime.ReleaseSeatAsync(runtimeGameIdLeave, connection.PlayerId, connection.Id.ToString("N"), ct);
 
                 // Ripley prodready follow-up (L-10 part 2, 2026-06-03) — the
@@ -666,7 +692,7 @@ public sealed class AutotableConnectionManager : IDisposable
             // never specified one.
             var runtimeGameId = await EnsureRuntimeBoundAsync(
                 connection.GameId!, connection.PlayerId, ct,
-                botDifficulty: connection.BotDifficulty, seed: connection.Seed);
+                botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands);
             // Phase J Wave 6 — pass the persistent player id alongside the
             // per-connection transport id (the AutotableConnection.Id GUID
             // serves as the connection-level routing key inside the runtime).
@@ -1040,19 +1066,15 @@ public sealed class AutotableConnectionManager : IDisposable
     /// public via the matchmaking service (closes Vasquez's Wave-5 blind
     /// spot #4 where autotable games carried a null host id).
     /// </summary>
-    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct, string? botDifficulty = null, int? seed = null)
+    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct, string? botDifficulty = null, int? seed = null, int? maxHands = null)
     {
         if (_runtimeBinding.TryGetValue(relayGameId, out var existing))
         {
-            // Bishop W25 — idempotent re-binding still propagates the
-            // requested difficulty; a reconnect from a client with a
-            // different `?botDifficulty=` will rebind the strategy. The
-            // SetBotStrategyAsync call is itself idempotent so this is
-            // safe even when the difficulty is unchanged.
-            if (!string.IsNullOrWhiteSpace(botDifficulty))
-            {
-                await _runtime.SetBotStrategyAsync(existing, botDifficulty!, ct);
-            }
+            // #121 (Lead decision) — first-creator-wins: a re-bind (late joiner / reconnect) must
+            // NOT silently mutate the bound game's config. The bot difficulty (like seed/handCount)
+            // is fixed by whoever created the game; a later client's `?botDifficulty=` is ignored.
+            // (Pre-#121 this re-applied SetBotStrategyAsync on every re-bind, letting any late
+            // joiner re-skin a live game's bots.)
             return existing;
         }
 
@@ -1061,10 +1083,6 @@ public sealed class AutotableConnectionManager : IDisposable
         {
             if (_runtimeBinding.TryGetValue(relayGameId, out existing))
             {
-                if (!string.IsNullOrWhiteSpace(botDifficulty))
-                {
-                    await _runtime.SetBotStrategyAsync(existing, botDifficulty!, ct);
-                }
                 return existing;
             }
             // botSeatIndexes = empty so the runtime starts with all-human seats;
@@ -1075,7 +1093,8 @@ public sealed class AutotableConnectionManager : IDisposable
                 botSeatIndexes: Array.Empty<int>(),
                 hostPlayerId: hostPlayerId,
                 hostConnectionId: null,
-                ct);
+                ct,
+                maxHands: maxHands);
             _runtimeBinding[relayGameId] = runtimeGameId;
             _relayBinding[runtimeGameId] = relayGameId;
 
@@ -1086,7 +1105,8 @@ public sealed class AutotableConnectionManager : IDisposable
             // so every game played at the Medium default regardless of
             // URL). Null / whitespace skips the call so the runtime
             // default (Medium) applies, matching pre-W25 behaviour for
-            // clients that don't specify a difficulty.
+            // clients that don't specify a difficulty. #121: this is now the
+            // ONLY place botDifficulty is applied — first-creator-wins.
             if (!string.IsNullOrWhiteSpace(botDifficulty))
             {
                 await _runtime.SetBotStrategyAsync(runtimeGameId, botDifficulty!, ct);
@@ -1694,6 +1714,16 @@ public sealed class AutotableConnection
     /// time; defaults to Medium for parity with the legacy <see cref="ChangshaBotPolicy"/>.
     /// </summary>
     public string BotDifficulty { get; init; } = "Medium";
+
+    /// <summary>
+    /// #121/#130/C-2 (Lead + canonical §6.3) — optional match hand cap from the lobby
+    /// <c>?handCount=</c> WS query param. Canonical Changsha caps at 16 hands (§6.3): accepted
+    /// create-time values are {1,4,8,16}; a legacy/requested <c>32</c> is normalized to the
+    /// authoritative <c>16</c>; any other/absent value ⇒ the runtime default (4). Threaded to
+    /// <see cref="IChangshaGameRuntime.CreateGameAsync"/> at first runtime bind (first-creator-wins),
+    /// so a late joiner's differing <c>handCount</c> never re-caps a bound game.
+    /// </summary>
+    public int MaxHands { get; init; } = 4;
 
     /// <summary>
     /// Phase I Wave 4 — true when the connection joined with <c>?seat=-1</c> (spectator

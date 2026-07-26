@@ -2,6 +2,18 @@
 
 Phase J Wave 7 — Apone (DevOps).
 
+> **Single-writer deployment.** The API is single-writer / single-container
+> (see [`database-providers.md`](database-providers.md#concurrency--the-single-writer-constraint)).
+> Backups are point-in-time copies of that one writer's database; there is no
+> multi-replica coordination to account for. Restoring into a **different**
+> provider (e.g. SQLite → Postgres/SqlServer via a fresh schema + row copy)
+> changes durability characteristics, **not** the single-writer constraint —
+> after any restore the API resumes in-progress games by hydrating non-terminal
+> `ChangshaGames` rows on boot (terminal `GameComplete` / `WallExhausted` rows
+> are skipped). SQL Server backups use the native `BACKUP DATABASE` / `RESTORE
+> DATABASE` T-SQL (or `sqlpackage`); the SQLite and Postgres helper scripts
+> below cover the two shipped compose paths.
+
 Scripts live under [`scripts/`](../scripts/) and cover both the SQLite
 dev/single-replica DB and Postgres production deployments. All four
 scripts honour a consistent env contract and emit timestamped artifacts

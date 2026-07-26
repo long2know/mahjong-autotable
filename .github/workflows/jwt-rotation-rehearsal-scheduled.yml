@@ -66,12 +66,24 @@
 name: jwt-rotation-rehearsal-scheduled
 
 on:
-  schedule:
-    # `0 2 1 */3 *` = 02:00 UTC on the 1st of every 3rd month.
-    # Fires on 1 Jan, 1 Apr, 1 Jul, 1 Oct each year. This is
-    # the quarterly cadence pinned in
-    # `docs/jwt-rotation-rehearsal.md §4`.
-    - cron: "0 2 1 */3 *"
+  # ── SCHEDULE DISABLED (WP-G #121 · 2026-07-26 · Apone) ─────────────────
+  # This scheduler dispatched the STAGING JWT-rotation rehearsal, but the
+  # staging target is not provisioned yet: the SSM prefix
+  # `/mahjong/staging/auth/jwt`, the `mahjong-jwt-keys` ESO ExternalSecret,
+  # and the staging k8s deployment all resolve to placeholder infra. Every
+  # quarterly fire therefore failed and emailed the owner (Bucket-D
+  # scheduled-probe-with-no-target — see
+  # `.squad/skills/ci-noise-management/SKILL.md`). Left as `workflow_dispatch`
+  # so operators can still run it on demand and the body stays as an audit
+  # reference.
+  #
+  # TO RE-ENABLE once staging exists: uncomment the two `schedule:` lines.
+  # schedule:
+  #   # `0 2 1 */3 *` = 02:00 UTC on the 1st of every 3rd month.
+  #   # Fires on 1 Jan, 1 Apr, 1 Jul, 1 Oct each year. This is
+  #   # the quarterly cadence pinned in
+  #   # `docs/jwt-rotation-rehearsal.md §4`.
+  #   - cron: "0 2 1 */3 *"
   workflow_dispatch:
     inputs:
       new_key_label:
