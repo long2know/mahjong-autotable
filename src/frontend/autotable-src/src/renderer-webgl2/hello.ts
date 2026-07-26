@@ -391,7 +391,7 @@ function installCameraModePicker(
 ): void {
   const container = canvas.parentElement;
   if (container === null) return;
-  let existing = container.querySelector<HTMLElement>('.webgl2-wall-camera-picker');
+  const existing = container.querySelector<HTMLElement>('.webgl2-wall-camera-picker');
   if (existing !== null) existing.remove();
   const strip = document.createElement('div');
   strip.className = 'webgl2-wall-camera-picker';

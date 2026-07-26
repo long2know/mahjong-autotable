@@ -382,12 +382,11 @@ export class World {
   }
 
   private onDice(): void {
-    const diceInfo = this.client.dice.get(0);
-    if (!diceInfo) {
-      return;
-    }
-
-    this.objectView;
+    // #119 (Hicks): dropped a dead `this.objectView;` expression that
+    // tripped @typescript-eslint/no-unused-expressions.  Dice rendering is
+    // owned by Center (center.ts subscribes to the same dice collection);
+    // this World listener is an intentional no-op kept for update
+    // fan-out symmetry.
   }
 
   // Phase F — runtime-pushed pickup affordance.  Stored locally so subsequent

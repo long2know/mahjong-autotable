@@ -43,7 +43,7 @@ import { AssetLoader } from "./asset-loader";
 import { Center } from "./center";
 import { readVariantFromUrl } from "./client-ui";
 import { ThingParams, ThingGroup, TileThingGroup, StickThingGroup, MarkerThingGroup } from "./thing-group";
-import { ThingType, Place, TileVariant, DiceInfo, GameType } from "./types";
+import { ThingType, Place, TileVariant, GameType } from "./types";
 
 export interface Render {
   type: ThingType;
@@ -337,7 +337,7 @@ export class ObjectView {
     }
   }
 
-  setTileVariant(tileVariant: TileVariant) {
+  setTileVariant(tileVariant: TileVariant): void {
     const tileThingGroup = this.thingGroups.get(ThingType.TILE) as TileThingGroup;
     tileThingGroup.setVariant(tileVariant);
   }
