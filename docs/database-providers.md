@@ -37,7 +37,11 @@ startup with a clear stack trace.
 
 ### Local Docker Compose — Postgres
 
+The `mahjong` service runs in Production posture, so provision the JWT key
+first (idempotent), then bring up the overlay:
+
 ```bash
+./scripts/compose-bootstrap.sh
 docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
 ```
 
@@ -60,6 +64,7 @@ docker run -d --name sqlserver --network mahjong-net \
 
 docker run -d --name mahjong --network mahjong-net -p 8080:8080 \
   -e Persistence__Provider=SqlServer \
+  -e Authentication__JwtSigningKeys__0="$JWT_SIGNING_KEY" \
   -e 'ConnectionStrings__SqlServer=Server=sqlserver,1433;Database=mahjong_autotable;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=true' \
   mahjong-autotable:local
 ```
