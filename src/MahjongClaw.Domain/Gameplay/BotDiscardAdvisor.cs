@@ -334,7 +334,10 @@ public static class BotDiscardAdvisor
             && !handTiles.Any(tile => Changsha258Ruleset.IsSmallWinPair(tile)
                 && tile.Suit == changshaDominantSuit.Value))
         {
-            allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+            if (changshaDominantSuitTileCount < ChangshaPureSuitBreakSmallWinPairThreshold)
+            {
+                allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+            }
         }
 
 
@@ -2723,15 +2726,32 @@ public static class BotDiscardAdvisor
         }
 
         var maxSmallWinOuts = 0;
+        var overallMaxSmallWinOuts = 0;
 
         if (ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias)
         {
+            overallMaxSmallWinOuts = allCandidates.Max(candidate => candidate.SmallWinningDrawOuts);
             maxSmallWinOuts = prioritizedCandidates.Max(candidate => candidate.SmallWinningDrawOuts);
             if (maxSmallWinOuts > 0)
             {
                 prioritizedCandidates = prioritizedCandidates
                     .Where(candidate => candidate.SmallWinningDrawOuts == maxSmallWinOuts)
                     .ToList();
+
+                var maxSmallWinCopies = prioritizedCandidates.Max(candidate => candidate.SmallWinningDrawOutCopies);
+                if (maxSmallWinCopies > 0)
+                {
+                    prioritizedCandidates = prioritizedCandidates
+                        .Where(candidate => candidate.SmallWinningDrawOutCopies == maxSmallWinCopies)
+                        .ToList();
+                }
+            }
+            else if (overallMaxSmallWinOuts > 0)
+            {
+                prioritizedCandidates = allCandidates
+                    .Where(candidate => candidate.SmallWinningDrawOuts == overallMaxSmallWinOuts)
+                    .ToList();
+                maxSmallWinOuts = overallMaxSmallWinOuts;
 
                 var maxSmallWinCopies = prioritizedCandidates.Max(candidate => candidate.SmallWinningDrawOutCopies);
                 if (maxSmallWinCopies > 0)
