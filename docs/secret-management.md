@@ -49,7 +49,11 @@ Two helpers:
 docker compose --env-file .env.dev up
 ```
 
-`.env.dev` is in `.gitignore`. **Never commit it.**
+`.env.dev` is in `.gitignore`. **Never commit it.** It also sets
+`JWT_SIGNING_KEY`, which `docker-compose.yml` substitutes into
+`Authentication__JwtSigningKeys__0` (the Production-posture default compose
+path uses `.env` + `./scripts/compose-bootstrap.sh` instead — see the README
+quickstart).
 
 The .NET configuration system reads env vars with double-underscore
 syntax: `Auth__JwtSigningKey=…` maps to `Auth:JwtSigningKey`.

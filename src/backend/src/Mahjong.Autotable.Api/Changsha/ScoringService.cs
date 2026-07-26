@@ -23,12 +23,17 @@ namespace Mahjong.Autotable.Api.Changsha;
 ///   Big Win discard:     discarder pays 6 (non-dealer→non-dealer), 7 (dealer involved)
 ///   Big Win self-draw:   each pays 3 (non-dealer→non-dealer), 4 (dealer involved)
 ///
-/// Phase H Wave 2 — Big Win stacking multiplier (per Ripley's design memo §2.3):
+/// Phase H Wave 2 — Big Win stacking multiplier (per Ripley's design memo §2.3),
+/// gated OFF by default since issue #117 (spec §5.1 has NO stacking table):
 ///   Big Win patterns simultaneously satisfied → multiplier on base Big Win payment:
-///     1 pattern  →  ×1 (legacy behaviour, default for backward-compat callers)
+///     1 pattern  →  ×1 (spec-pure baseline; the default the live path passes)
 ///     2 patterns →  ×2
-///     3+ patterns →  ×3 (cap; spec §5 is silent on stacking, so we cap defensively)
-///   Small Wins never stack (no Big Win flags fire) so the multiplier path doesn't apply.
+///     3+ patterns →  ×3 (cap)
+///   The multiplier is a pure capability of this service (still exercised directly by
+///   unit tests and by the opt-in <see cref="ChangshaScoringOptions.HouseRules"/> mode).
+///   The live <see cref="ChangshaGameStateMachine.Score"/> path passes
+///   <c>bigWinPatternCount = 1</c> unless house-rule stacking is enabled, so spec §5.1
+///   magnitudes hold by default. Small Wins never stack.
 /// </summary>
 public interface IScoringService
 {

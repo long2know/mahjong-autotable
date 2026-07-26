@@ -3,6 +3,23 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
+// ─────────────────────────────────────────────────────────────────────────
+// DORMANT — DO NOT APPLY, EDIT, OR REGENERATE AGAINST THIS SET. (WP-C / #118)
+//
+// This root-namespace migration targets the *base* `AppDbContext` and predates
+// the Phase J Wave 7 provider split. The canonical, runtime-applied migration
+// sets now live under Persistence/Migrations/{Sqlite,Postgres,SqlServer}/ and
+// target the concrete `SqliteAppDbContext` / `PostgresAppDbContext` /
+// `SqlServerAppDbContext` subclasses. The runtime never applies this file:
+// SQLite bootstraps via EnsureCreated, and Postgres/SqlServer run MigrateAsync
+// against their provider-specific context.
+//
+// It is retained only for historical continuity. New migrations MUST be added
+// with an explicit provider context, e.g.
+//   dotnet ef migrations add <Name> --context SqliteAppDbContext \
+//     --output-dir Persistence/Migrations/Sqlite
+// See Persistence/Migrations/README.md.
+// ─────────────────────────────────────────────────────────────────────────
 namespace Mahjong.Autotable.Api.Persistence.Migrations
 {
     /// <inheritdoc />

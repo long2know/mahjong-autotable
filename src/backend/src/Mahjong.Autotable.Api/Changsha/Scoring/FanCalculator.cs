@@ -114,13 +114,17 @@ public sealed record FanResult
 ///         <see cref="FanVariant.ExpandedChinese"/>.</item>
 /// </list></para>
 ///
-/// <para><b>Integration status:</b> This calculator is currently QUERY-ONLY.
-/// The default Changsha scoring path (<see cref="ChangshaGameStateMachine.Score"/>
-/// → <see cref="ScoringService.CalculateScore(WinResult,int,bool)"/>) does NOT
-/// add fan bonuses yet — wiring requires extending the score wire-surface and
-/// is flagged in <c>.squad/decisions/inbox/frost-fan-catalog.md</c> for
-/// Bishop's next pass. Frontend / replay / future-variant callers can still
-/// invoke <see cref="EvaluateHand"/> directly to render a fan breakdown.</para>
+/// <para><b>Integration status (issue #117):</b> with respect to the authoritative
+/// <b>payment amounts</b> this calculator is <b>query-only by default</b>. The live
+/// Changsha scoring path (<see cref="ChangshaGameStateMachine.Score"/> →
+/// <see cref="ScoringService.CalculateScore(WinResult,int,bool)"/>) evaluates the
+/// catalog and surfaces the breakdown on <see cref="ScoreResult.Fans"/> /
+/// <see cref="ScoreResult.FanPoints"/> for display/audit, but does NOT fold fan
+/// points into the payments — the money stays at the binding spec §5.1 magnitude
+/// (<see cref="ChangshaScoringOptions.SpecPure"/>, the default). A future
+/// tournament/house-rule mode (<see cref="ChangshaScoringOptions.HouseRules"/>) can
+/// opt in to the additive fan layer; frontend / replay / future-variant callers can
+/// always invoke <see cref="EvaluateHand"/> directly to render a fan breakdown.</para>
 /// </summary>
 public static class FanCalculator
 {

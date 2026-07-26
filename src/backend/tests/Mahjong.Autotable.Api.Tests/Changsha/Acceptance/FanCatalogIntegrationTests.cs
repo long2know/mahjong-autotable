@@ -7,14 +7,20 @@ using static Mahjong.Autotable.Api.Tests.Changsha._TestHarness.ChangshaTestHelpe
 namespace Mahjong.Autotable.Api.Tests.Changsha.Acceptance;
 
 /// <summary>
-/// Acceptance: Fan-catalog integration into <see cref="ChangshaGameStateMachine.Score"/>.
+/// Acceptance/characterization: Fan-catalog folding into <see cref="ChangshaGameStateMachine.Score"/>
+/// under the opt-in <see cref="ChangshaScoringOptions.HouseRules"/> mode.
 ///
-/// <para>Frost shipped the standalone <see cref="FanCalculator"/> + 14-fan catalog in
-/// PR #86 as a pure function with 39 unit tests, but deferred wiring to avoid breaking
-/// the ~dozens of existing score-regression tests
-/// (see <c>.squad/decisions/inbox/frost-fan-catalog.md</c>). This file pins the
-/// post-W23 integration contract: the fan layer is now ADDITIVE on top of the
-/// existing 258-pair small/big-win tier, surfaced via:</para>
+/// <para><b>#117 note:</b> the additive fan layer (fan points folded into the payment
+/// rows with a <c>"fan:"</c> <c>Reason</c> prefix) is NOT applied on the default
+/// spec-pure path — spec §5.1 has no fan/stacking table, so live payments stay at the
+/// §5.1 magnitude and the fan catalog is query-only (surfaced on
+/// <see cref="ScoreResult.Fans"/> / <see cref="ScoreResult.FanPoints"/> for display).
+/// This suite drives <c>Score(state, ChangshaScoringOptions.HouseRules)</c> so it pins
+/// the pre-#117 fan-folding contract as characterization — nothing is silently lost,
+/// and a future tournament option that flips the flag keeps a green guardrail.</para>
+///
+/// <para>The house-rules fan layer is ADDITIVE on top of the existing 258-pair
+/// small/big-win tier, surfaced via:</para>
 ///
 /// <list type="bullet">
 ///   <item><see cref="ScoreResult.Fans"/> — every detected fan in deterministic
@@ -63,7 +69,7 @@ public class FanCatalogIntegrationTests
         ChangshaGameStateMachine.DeclareSelfDrawWin(state, seatIndex: 0);
         Assert.Equal(ChangshaPhase.Scoring, state.Phase);
 
-        ChangshaGameStateMachine.Score(state);
+        ChangshaGameStateMachine.Score(state, ChangshaScoringOptions.HouseRules);
         var score = state.CurrentScore!;
 
         // Fan catalog assertions.
@@ -134,7 +140,7 @@ public class FanCatalogIntegrationTests
         Assert.True(state.CurrentWin.IsSelfDraw,
             "Win must record IsSelfDraw=true after a kong-replacement self-draw.");
 
-        ChangshaGameStateMachine.Score(state);
+        ChangshaGameStateMachine.Score(state, ChangshaScoringOptions.HouseRules);
         var score = state.CurrentScore!;
 
         // Both contextual fans must be detected.
@@ -181,7 +187,7 @@ public class FanCatalogIntegrationTests
         ClearOtherHands(state, keepSeat: 1);
 
         ChangshaGameStateMachine.DeclareSelfDrawWin(state, seatIndex: 1);
-        ChangshaGameStateMachine.Score(state);
+        ChangshaGameStateMachine.Score(state, ChangshaScoringOptions.HouseRules);
 
         // Force EndHand-ish state so the translator's BuildHandResult path runs.
         state.Phase = ChangshaPhase.EndHand;
