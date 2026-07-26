@@ -77,7 +77,10 @@ export interface GameConfig {
   botCount: number;        // 3 → one human + three bots
   botDifficulty: string;   // PascalCase: Easy|Medium|Hard|Master (C-2)
   dealMode: 'manual' | 'auto';
-  handCount: 1 | 4 | 8 | 16;
+  // Lead decision (2026-07-26): handCount is REAL, not decorative — the server
+  // MUST honor 1/4/8/16/32 (MaxHands), so a gate can't be evaded by an impl
+  // that ignores it and always plays the default 4.
+  handCount: 1 | 4 | 8 | 16 | 32;
   seed: number;            // forward-compatible determinism (see note above)
   variant: string;
 }
@@ -450,6 +453,52 @@ export async function readMatch(page: Page): Promise<MatchView> {
       };
     } catch (e) {
       return { present: false, dealer: null, raw: String(e) };
+    }
+  });
+}
+
+export interface MaxHandsView {
+  value: number | null;
+  source: string;
+}
+
+/**
+ * OBSERVE — the SERVER-AUTHORITATIVE match length (MaxHands), read from the
+ * best available real client state. This is the anti-evasion probe for the
+ * "handCount is real, not decorative" decision: a requested non-default
+ * handCount MUST be reflected here. Scans (in priority order) the gameComplete
+ * payload's maxHands and the match/conditions config. Returns null when the
+ * server never surfaces its cap — which itself is a reportable gap (the client
+ * must be able to observe the honored MaxHands without a backdoor).
+ */
+export async function readMaxHands(page: Page): Promise<MaxHandsView> {
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const g = (window as any).game;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const num = (v: any): number | null =>
+      typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
+    try {
+      // 1) gameComplete payload (server-authoritative, present on completion).
+      const gc = g?.client?.gameComplete?.get('current');
+      if (gc) {
+        const v = num(gc.maxHands) ?? num(gc.MaxHands);
+        if (v !== null) return { value: v, source: 'gameComplete' };
+      }
+      // 2) match config / conditions (server game config, if surfaced there).
+      const m = g?.client?.match?.get(0) ?? g?.client?.match?.get('0');
+      if (m) {
+        const v =
+          num(m.maxHands) ??
+          num(m.MaxHands) ??
+          num(m.conditions?.maxHands) ??
+          num(m.conditions?.MaxHands) ??
+          num(m.conditions?.hands);
+        if (v !== null) return { value: v, source: 'match' };
+      }
+      return { value: null, source: 'none' };
+    } catch (e) {
+      return { value: null, source: String(e) };
     }
   });
 }

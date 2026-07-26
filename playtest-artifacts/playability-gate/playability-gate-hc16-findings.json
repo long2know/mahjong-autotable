@@ -1,0 +1,113 @@
+{
+  "steps": [
+    {
+      "step": "preflight.bundle-hash",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "entryShaMatches": true,
+        "reason": "Served bundle matches the freshly-built source bundle (content hashes equal)."
+      },
+      "at": 18
+    },
+    {
+      "step": "boot.game-object",
+      "ok": true,
+      "detail": {
+        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=16&seat=0&seed=12345&gameId=playability-gate-hc16-hc1785097554",
+        "handCount": 16
+      },
+      "at": 423
+    },
+    {
+      "step": "connect.ws",
+      "ok": true,
+      "detail": {
+        "connected": true
+      },
+      "at": 697
+    },
+    {
+      "step": "seat.take",
+      "ok": true,
+      "detail": {
+        "requested": 0,
+        "assigned": 0
+      },
+      "at": 2680
+    },
+    {
+      "step": "deal.press",
+      "ok": true,
+      "detail": {
+        "handCount": 16
+      },
+      "at": 4616
+    },
+    {
+      "step": "handcount.observed",
+      "ok": false,
+      "detail": {
+        "requested": 16,
+        "observed": {
+          "value": null,
+          "source": "none"
+        },
+        "match": {
+          "present": true,
+          "dealer": 0,
+          "raw": {
+            "dealer": 0,
+            "honba": 0,
+            "conditions": {
+              "gameType": "FOUR_PLAYER",
+              "back": 0,
+              "fives": "000",
+              "points": "25",
+              "dealType": "INITIAL"
+            }
+          }
+        }
+      },
+      "at": 30272
+    }
+  ],
+  "config": {
+    "gameId": "playability-gate-hc16-hc1785097554",
+    "seat": 0,
+    "botCount": 3,
+    "botDifficulty": "Hard",
+    "dealMode": "manual",
+    "handCount": 16,
+    "seed": 12345,
+    "variant": "changsha"
+  },
+  "bundle": {
+    "ok": true,
+    "builtIndexExists": true,
+    "builtAssets": [
+      "admin-panel-core.e1c43197.js",
+      "autotable-src.85a15581.js",
+      "style.fadf4a03.css"
+    ],
+    "servedAssets": [
+      "admin-panel-core.e1c43197.js",
+      "autotable-src.85a15581.js",
+      "style.fadf4a03.css"
+    ],
+    "missingOnServer": [],
+    "extraOnServer": [],
+    "entryChecked": "autotable-src.85a15581.js",
+    "entryBuiltSha": "89d29b308915d5f7cf516ae37914b97dc665b6ec0d9f18bb87d5f65e44301a0e",
+    "entryServedSha": "89d29b308915d5f7cf516ae37914b97dc665b6ec0d9f18bb87d5f65e44301a0e",
+    "entryShaMatches": true,
+    "reason": "Served bundle matches the freshly-built source bundle (content hashes equal)."
+  },
+  "connected": true,
+  "seat": 0,
+  "dealt": true,
+  "observed": {
+    "value": null,
+    "source": "none"
+  }
+}

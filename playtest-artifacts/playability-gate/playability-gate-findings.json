@@ -5,22 +5,6 @@
       "ok": true,
       "detail": {
         "ok": true,
-        "builtIndexExists": true,
-        "builtAssets": [
-          "admin-panel-core.e1c43197.js",
-          "autotable-src.85a15581.js",
-          "style.fadf4a03.css"
-        ],
-        "servedAssets": [
-          "admin-panel-core.e1c43197.js",
-          "autotable-src.85a15581.js",
-          "style.fadf4a03.css"
-        ],
-        "missingOnServer": [],
-        "extraOnServer": [],
-        "entryChecked": "autotable-src.85a15581.js",
-        "entryBuiltSha": "89d29b308915d5f7cf516ae37914b97dc665b6ec0d9f18bb87d5f65e44301a0e",
-        "entryServedSha": "89d29b308915d5f7cf516ae37914b97dc665b6ec0d9f18bb87d5f65e44301a0e",
         "entryShaMatches": true,
         "reason": "Served bundle matches the freshly-built source bundle (content hashes equal)."
       },
@@ -30,9 +14,10 @@
       "step": "boot.game-object",
       "ok": true,
       "detail": {
-        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&seat=0&seed=12345&gameId=playability-gate-final1785092667"
+        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=1&seat=0&seed=12345&gameId=playability-gate-hc1-hc1785097554",
+        "handCount": 1
       },
-      "at": 416
+      "at": 406
     },
     {
       "step": "connect.ws",
@@ -40,7 +25,7 @@
       "detail": {
         "connected": true
       },
-      "at": 705
+      "at": 686
     },
     {
       "step": "seat.take",
@@ -49,13 +34,15 @@
         "requested": 0,
         "assigned": 0
       },
-      "at": 2495
+      "at": 2482
     },
     {
       "step": "deal.press",
       "ok": true,
-      "detail": null,
-      "at": 3363
+      "detail": {
+        "handCount": 1
+      },
+      "at": 3416
     },
     {
       "step": "deal.playable-hand",
@@ -74,21 +61,22 @@
             "count": 1,
             "dealMode": "manual",
             "breakPoint": {
-              "wallIndex": 0,
-              "stackIndex": 9,
-              "tileIndex": 18
+              "wallIndex": 3,
+              "stackIndex": 5,
+              "tileIndex": 92
             },
             "wallIndex": 0
           }
         },
-        "elapsedMs": 45195
+        "elapsedMs": 45903
       },
-      "at": 48558
+      "at": 49511
     },
     {
       "step": "gate.summary",
       "ok": false,
       "detail": {
+        "handCount": 1,
         "seat": 0,
         "connected": true,
         "dealt": true,
@@ -103,6 +91,10 @@
           "raw": null
         },
         "modalVisible": false,
+        "observedMaxHands": {
+          "value": null,
+          "source": "none"
+        },
         "lastPickup": {
           "present": true,
           "phase": "DealerExtra",
@@ -114,9 +106,9 @@
             "count": 1,
             "dealMode": "manual",
             "breakPoint": {
-              "wallIndex": 0,
-              "stackIndex": 9,
-              "tileIndex": 18
+              "wallIndex": 3,
+              "stackIndex": 5,
+              "tileIndex": 92
             },
             "wallIndex": 0
           }
@@ -125,19 +117,18 @@
           "console: THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
           "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
           "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
-        ],
-        "timedOut": false
+        ]
       },
-      "at": 49188
+      "at": 49721
     }
   ],
   "config": {
-    "gameId": "playability-gate-final1785092667",
+    "gameId": "playability-gate-hc1-hc1785097554",
     "seat": 0,
     "botCount": 3,
     "botDifficulty": "Hard",
     "dealMode": "manual",
-    "handCount": 4,
+    "handCount": 1,
     "seed": 12345,
     "variant": "changsha"
   },
@@ -163,6 +154,7 @@
     "reason": "Served bundle matches the freshly-built source bundle (content hashes equal)."
   },
   "summary": {
+    "handCount": 1,
     "seat": 0,
     "connected": true,
     "dealt": true,
@@ -177,6 +169,10 @@
       "raw": null
     },
     "modalVisible": false,
+    "observedMaxHands": {
+      "value": null,
+      "source": "none"
+    },
     "lastPickup": {
       "present": true,
       "phase": "DealerExtra",
@@ -188,9 +184,9 @@
         "count": 1,
         "dealMode": "manual",
         "breakPoint": {
-          "wallIndex": 0,
-          "stackIndex": 9,
-          "tileIndex": 18
+          "wallIndex": 3,
+          "stackIndex": 5,
+          "tileIndex": 92
         },
         "wallIndex": 0
       }
@@ -199,7 +195,6 @@
       "console: THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
       "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
       "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
-    ],
-    "timedOut": false
+    ]
   }
 }
