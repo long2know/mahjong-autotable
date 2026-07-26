@@ -131,4 +131,30 @@ test.describe('Mahjong Autotable — rule presets', () => {
       await expect(handLimitInput).toBeVisible({ timeout: 5_000 });
     }
   });
+
+  test('#131 — rule-preset editor carries the i18n "not yet functional" notice', async ({ page }) => {
+    test.setTimeout(45_000);
+    await openLobby(page);
+
+    // Open the Wave-7 settings drawer (V2). The first click lazy-loads +
+    // installs it, which builds the Rule-presets panel via
+    // rule-presets.renderEditorPanel() — where the notice lives.
+    const settingsBtn = page.locator('#settings-button');
+    await expect(settingsBtn, 'V2 settings drawer trigger must exist').toBeVisible({ timeout: 10_000 });
+    await settingsBtn.click();
+
+    // Activate the Rule presets tab so the panel (+ notice) is visible.
+    const tab = page.getByTestId('settings-tab-rule-presets');
+    await expect(tab).toBeVisible({ timeout: 10_000 });
+    await tab.click();
+
+    // #131 acceptance: an unmistakable, i18n'd notice that presets don't yet
+    // affect gameplay (tracked in #130), so a user can't believe a preset
+    // changes the game before the rules engine honors it.
+    const notice = page.getByTestId('rule-preset-preview-notice');
+    await expect(notice, 'rule-preset editor must warn presets are not yet functional').toBeVisible({ timeout: 10_000 });
+    await expect(notice).toContainText('#130');
+    // i18n resolved (not the raw catalog key).
+    await expect(notice).not.toHaveText('settings.rule_presets.preview_notice');
+  });
 });

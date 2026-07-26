@@ -31,6 +31,7 @@
 
 import { EventEmitter } from 'events';
 import { getAuthState, onAuth } from './auth';
+import { t } from './i18n';
 
 // ── Public types ────────────────────────────────────────────────────
 
@@ -356,6 +357,19 @@ export function renderEditorPanel(): void {
   const host = document.getElementById('settings-panel-rule-presets');
   if (host === null) return;
   host.replaceChildren();
+
+  // Ferro WP-E/#131 — the rules engine does not yet read ANY preset knob, so
+  // this editor authors inert gameplay settings. Surface an unmistakable,
+  // i18n'd "preview / not yet functional" banner (shown for every auth state)
+  // so a user can't believe a preset changes the game. Remove when #130 wires
+  // the rules-engine semantics. (Backend / API CRUD is intentional + shipped,
+  // so we only gate the "this affects your game" affordance, not the CRUD.)
+  const notice = document.createElement('div');
+  notice.className = 'rule-preset-preview-notice';
+  notice.setAttribute('role', 'note');
+  notice.setAttribute('data-testid', 'rule-preset-preview-notice');
+  notice.textContent = t('settings.rule_presets.preview_notice');
+  host.appendChild(notice);
 
   const auth = getAuthState();
   if (!auth.authenticated) {

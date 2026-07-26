@@ -46,6 +46,11 @@ test.describe('WP-E/#120 — lobby config round-trips URL ↔ WS handshake (C-2)
     await landOnBareLobby(page);
     await expect(page.locator('#lobby-panel.lobby-open')).toBeVisible({ timeout: 10_000 });
 
+    // Vasquez §6.3 — canonical play clamps at 16 hands, so the lobby must
+    // offer exactly {1,4,8,16} and never promise 32.
+    await expect(page.locator('input[name="lobby-hand-count"]')).toHaveCount(4);
+    await expect(page.locator('input[name="lobby-hand-count"][value="32"]')).toHaveCount(0);
+
     // ── Configure deliberately non-default values via real gestures ──
     // Variant is left at its shipped default (changsha): the modern
     // variant *picker* owns variant changes (its <select> onchange does a

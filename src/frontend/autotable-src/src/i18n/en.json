@@ -39,6 +39,7 @@
   "settings.tab.display": "Display",
   "settings.tab.network": "Network",
   "settings.tab.rule_presets": "Rule presets",
+  "settings.rule_presets.preview_notice": "Preview — rule presets don't affect gameplay yet (tracked in #130).",
   "settings.display_name": "Display name",
   "settings.avatar_color": "Avatar colour",
   "settings.sound_effects": "Sound effects",

@@ -151,7 +151,7 @@ type BotDifficulty = 'Easy' | 'Medium' | 'Hard' | 'Master';
 // Phase J Wave 2 — Hand counts now include 1 (single-hand sandbox) and the
 // default shifts from 8 to 4 to mirror Bishop's runtime default east-wind
 // rotation (see Phase J Wave 2 directive §Task 3).
-type HandCount = 1 | 4 | 8 | 16 | 32;
+type HandCount = 1 | 4 | 8 | 16;
 
 // Phase I Wave 4 — seat selection.
 //   • null  → no preference (server seats us in the first open chair,
@@ -209,7 +209,9 @@ const VARIANTS: ReadonlyArray<Variant> = [
   'changsha', 'four-player', 'three-player', 'bamboo', 'minefield',
 ];
 
-const HAND_COUNTS: ReadonlyArray<HandCount> = [1, 4, 8, 16, 32];
+// Vasquez §6.3 — the canonical Changsha runtime clamps play at 16 hands, so
+// 32 is not a real option (offering it would be decorative/misleading).
+const HAND_COUNTS: ReadonlyArray<HandCount> = [1, 4, 8, 16];
 
 // localStorage key for persisted lobby defaults.  Versioned so we can
 // migrate the shape later without colliding with an old payload.

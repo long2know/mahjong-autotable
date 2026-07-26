@@ -39,6 +39,7 @@
   "settings.tab.display": "顯示",
   "settings.tab.network": "網路",
   "settings.tab.rule_presets": "規則預設",
+  "settings.rule_presets.preview_notice": "預覽 — 規則預設尚未影響對局（追蹤於 #130）。",
   "settings.display_name": "顯示名稱",
   "settings.avatar_color": "頭像顏色",
   "settings.sound_effects": "音效",

@@ -479,10 +479,10 @@ export class ClientUi {
     // lobby's N-hand cap reaches the backend as a create-time param. Bishop
     // (WP-A) owns the backend read → ChangshaGameState.MaxHands (first-creator
     // wins); we only plumb the validated value onto the handshake. Whitelist
-    // the exact lobby options {1,4,8,16,32} so a stray value can't ride the
-    // wire; absent/invalid ⇒ the runtime keeps its 4-hand default.
+    // the canonical lobby options {1,4,8,16} — Vasquez §6.3 clamps at 16, so
+    // 32 is not offered; absent/invalid ⇒ the runtime keeps its 4-hand default.
     const handCountRaw = pageQuery.get('handCount');
-    if (handCountRaw !== null && ['1', '4', '8', '16', '32'].includes(handCountRaw)) {
+    if (handCountRaw !== null && ['1', '4', '8', '16'].includes(handCountRaw)) {
       params.set('handCount', handCountRaw);
     }
     const separator = this.url.indexOf('?') >= 0 ? '&' : '?';

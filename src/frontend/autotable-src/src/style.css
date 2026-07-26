@@ -2989,6 +2989,20 @@ body.spectating #roll-dice { display: none !important; }
 .lobby-rule-preset-create-link:hover {
     text-decoration: underline;
 }
+/* Ferro WP-E/#131 — prominent "preview / not yet functional" banner atop the
+   rule-preset editor so authoring inert presets can't imply a gameplay
+   effect. Amber caution styling; removed when #130 wires the semantics. */
+.rule-preset-preview-notice {
+    margin: 0 0 12px 0;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 193, 7, 0.55);
+    border-left: 4px solid #ffc107;
+    border-radius: 6px;
+    background: rgba(255, 193, 7, 0.12);
+    color: #ffe08a;
+    font-size: 0.85rem;
+    line-height: 1.35;
+}
 .rule-preset-editor {
     display: flex;
     flex-direction: column;
