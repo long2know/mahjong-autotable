@@ -266,6 +266,16 @@ public sealed class AutotableConnectionManager : IDisposable
         if (query.TryGetValue("botDifficulty", out var bd) && !string.IsNullOrEmpty(bd.ToString()))
             botDifficulty = bd.ToString();
 
+        // Ferro WP-E/#120 (Hudson C-2 determinism gap) — honor the lobby's
+        // `?seed=` so a chosen seed reproduces the same game. Parsed as a
+        // non-negative 32-bit int (matches the frontend coerceSeed range
+        // 0..int.MaxValue); anything invalid leaves seed null ⇒ the runtime
+        // picks a random seed, exactly as before. Threaded to
+        // ChangshaGameRuntime.CreateGameAsync at first runtime bind below.
+        int? seed = null;
+        if (query.TryGetValue("seed", out var sd) && int.TryParse(sd.ToString(), out var parsedSeed) && parsedSeed >= 0)
+            seed = parsedSeed;
+
         // #121/#130/C-2 (Lead + canonical §6.3) — honor the lobby's `?handCount=`. Canonical
         // Changsha caps a match at 16 hands (§6.3), so the accepted create-time values are
         // {1,4,8,16}. The legacy UI's 32 option is misleading — the engine's 4-round terminal
@@ -294,6 +304,7 @@ public sealed class AutotableConnectionManager : IDisposable
             BotDifficulty = botDifficulty,
             MaxHands = maxHands,
             IsSpectator = isSpectator,
+            Seed = seed,
             // Phase J Wave 6 — persistent cookie-derived player id (resolved
             // by AutotableWsEndpoint.MapAutotableWs before the WS upgrade).
             // Replaces the previous random per-connection token so career
@@ -302,9 +313,9 @@ public sealed class AutotableConnectionManager : IDisposable
         };
         _connections[connection.Id] = connection;
         _logger.LogInformation(
-            "Autotable WS connected (connectionId={ConnectionId}, gameId={GameId}, seat={Seat}, spectator={Spectator}, bots={Bots}, variant={Variant}, dealMode={DealMode}, botCount={BotCount}, botDifficulty={BotDifficulty}, maxHands={MaxHands}, runtimeMode={RuntimeMode})",
+            "Autotable WS connected (connectionId={ConnectionId}, gameId={GameId}, seat={Seat}, spectator={Spectator}, bots={Bots}, variant={Variant}, dealMode={DealMode}, botCount={BotCount}, botDifficulty={BotDifficulty}, seed={Seed}, maxHands={MaxHands}, runtimeMode={RuntimeMode})",
             connection.Id, queryGameId, viewerSeat, isSpectator, autoBotFill,
-            variant, dealMode, botCount, botDifficulty, maxHands, connection.RuntimeMode);
+            variant, dealMode, botCount, botDifficulty, seed, maxHands, connection.RuntimeMode);
 
         try
         {
@@ -463,7 +474,7 @@ public sealed class AutotableConnectionManager : IDisposable
             // an all-bots watch-mode table honours the URL difficulty.
             var runtimeGameId = await EnsureRuntimeBoundAsync(
                 connection.GameId!, hostPlayerId: null, ct,
-                botDifficulty: connection.BotDifficulty, maxHands: connection.MaxHands);
+                botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands);
             if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
             if (snap.Phase != ChangshaPhase.Seating) return;
 
@@ -620,7 +631,7 @@ public sealed class AutotableConnectionManager : IDisposable
         {
             try
             {
-                var runtimeGameIdLeave = await EnsureRuntimeBoundAsync(connection.GameId!, connection.PlayerId, ct, maxHands: connection.MaxHands);
+                var runtimeGameIdLeave = await EnsureRuntimeBoundAsync(connection.GameId!, connection.PlayerId, ct, seed: connection.Seed, maxHands: connection.MaxHands);
                 await _runtime.ReleaseSeatAsync(runtimeGameIdLeave, connection.PlayerId, connection.Id.ToString("N"), ct);
 
                 // Ripley prodready follow-up (L-10 part 2, 2026-06-03) — the
@@ -681,7 +692,7 @@ public sealed class AutotableConnectionManager : IDisposable
             // never specified one.
             var runtimeGameId = await EnsureRuntimeBoundAsync(
                 connection.GameId!, connection.PlayerId, ct,
-                botDifficulty: connection.BotDifficulty, maxHands: connection.MaxHands);
+                botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands);
             // Phase J Wave 6 — pass the persistent player id alongside the
             // per-connection transport id (the AutotableConnection.Id GUID
             // serves as the connection-level routing key inside the runtime).
@@ -1055,7 +1066,7 @@ public sealed class AutotableConnectionManager : IDisposable
     /// public via the matchmaking service (closes Vasquez's Wave-5 blind
     /// spot #4 where autotable games carried a null host id).
     /// </summary>
-    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct, string? botDifficulty = null, int? maxHands = null)
+    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct, string? botDifficulty = null, int? seed = null, int? maxHands = null)
     {
         if (_runtimeBinding.TryGetValue(relayGameId, out var existing))
         {
@@ -1076,8 +1087,9 @@ public sealed class AutotableConnectionManager : IDisposable
             }
             // botSeatIndexes = empty so the runtime starts with all-human seats;
             // we'll convert seats to bots on demand via FillEmptySeatsWithBotsAsync.
+            // Ferro WP-E/#120 — pass the URL-supplied seed (null ⇒ runtime randomizes).
             var runtimeGameId = await _runtime.CreateGameAsync(
-                seed: null,
+                seed: seed,
                 botSeatIndexes: Array.Empty<int>(),
                 hostPlayerId: hostPlayerId,
                 hostConnectionId: null,
@@ -1722,6 +1734,16 @@ public sealed class AutotableConnection
     /// the all-bots auto-deal flow in <see cref="AutotableConnectionManager"/>.
     /// </summary>
     public bool IsSpectator { get; init; }
+
+    /// <summary>
+    /// Ferro WP-E/#120 — optional deterministic RNG seed from the <c>?seed=</c>
+    /// WS query param (0..<see cref="int.MaxValue"/>). Threaded to
+    /// <see cref="IChangshaGameRuntime.CreateGameAsync"/> at first runtime bind so
+    /// a <c>?seed=</c> URL reproduces the same wall shuffle + dice. <c>null</c> ⇒
+    /// the runtime picks a random seed (the default for every game that doesn't
+    /// pin one), so seedless games are unchanged.
+    /// </summary>
+    public int? Seed { get; init; }
 
     /// <summary>
     /// Phase F §1.4 — derived from <see cref="Variant"/>. <c>changsha</c> ⇒

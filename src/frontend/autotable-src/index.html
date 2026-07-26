@@ -450,7 +450,7 @@
          can pick variant / dealMode / botCount / botDifficulty without
          editing the URL bar.  Hidden via body.lobby-active while the panel
          is open. -->
-    <button id="lobby-toggle" type="button" title="Open lobby">
+    <button id="lobby-toggle" type="button" title="Open lobby" data-testid="lobby-toggle">
         <span class="lobby-toggle-icon">☰</span>
         <span class="lobby-toggle-label">Lobby</span>
     </button>
@@ -1151,7 +1151,7 @@
                 </div>
             </section>
 
-            <fieldset class="lobby-fieldset" id="lobby-variant-fieldset">
+            <fieldset class="lobby-fieldset" id="lobby-variant-fieldset" data-testid="lobby-variant-fieldset">
                 <legend>Variant</legend>
                 <label><input type="radio" name="lobby-variant" value="changsha" checked> Changsha</label>
                 <label><input type="radio" name="lobby-variant" value="four-player"> Riichi — 4 player</label>
@@ -1172,14 +1172,17 @@
                  `rule-presets.ts:renderLobbySelect()` after `/api/rule-presets`
                  returns; left empty here so the renderer can replace it. -->
             <fieldset class="lobby-fieldset" id="lobby-rule-preset-fieldset">
-                <legend>Rule preset <small class="lobby-hint">(Changsha)</small></legend>
+                <legend>Rule preset <small class="lobby-hint">(Changsha — coming soon)</small></legend>
                 <select class="dark-select form-control form-control-sm"
                         id="lobby-rule-preset-select"
                         data-testid="lobby-rule-preset-select"
-                        aria-label="Changsha rule preset"></select>
-                <small class="lobby-hint">
+                        disabled aria-disabled="true"
+                        title="Rule presets are not yet applied to gameplay"
+                        aria-label="Changsha rule preset (not yet applied to gameplay)"></select>
+                <small class="lobby-hint" id="lobby-rule-preset-note">
+                    Not yet applied to gameplay —
                     <a href="#" id="lobby-create-preset-link"
-                       data-testid="lobby-create-preset-link">Create / edit presets…</a>
+                       data-testid="lobby-create-preset-link">create / edit presets…</a>
                 </small>
             </fieldset>
 
@@ -1211,7 +1214,7 @@
                 </p>
             </fieldset>
 
-            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-bot-difficulty-fieldset">
+            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-bot-difficulty-fieldset" data-testid="lobby-bot-difficulty-fieldset">
                 <legend>Bot difficulty</legend>
                 <label class="lobby-card-option">
                     <input type="radio" name="lobby-bot-difficulty" value="Easy">
@@ -1235,7 +1238,7 @@
                  backend reads this off the URL and pins it to MaxHands.
                  Phase J Wave 4 — promoted to lobby-card-group with icon
                  hints so the visual weight matches Variant + Bots. -->
-            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-hand-count-fieldset">
+            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-hand-count-fieldset" data-testid="lobby-hand-count-fieldset">
                 <legend>Hands per match</legend>
                 <label class="lobby-card-option">
                     <input type="radio" name="lobby-hand-count" value="1">
@@ -1256,11 +1259,6 @@
                     <input type="radio" name="lobby-hand-count" value="16">
                     <span class="lobby-card-icon">半</span>
                     <span class="lobby-card-label">16 <small class="lobby-hint">(half match)</small></span>
-                </label>
-                <label class="lobby-card-option">
-                    <input type="radio" name="lobby-hand-count" value="32">
-                    <span class="lobby-card-icon">长</span>
-                    <span class="lobby-card-label">32 <small class="lobby-hint">(full match)</small></span>
                 </label>
             </fieldset>
 
@@ -1533,7 +1531,7 @@
                     title="Skip the pickers and start a 3-Medium-bot game now">
                 ⚡ Quick Match
             </button>
-            <button id="lobby-apply" type="button" class="btn btn-warning btn-sm">
+            <button id="lobby-apply" type="button" class="btn btn-warning btn-sm" data-testid="lobby-apply">
                 Apply &amp; Start
             </button>
         </div>

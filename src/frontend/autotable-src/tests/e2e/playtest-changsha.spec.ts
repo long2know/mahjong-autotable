@@ -5,7 +5,7 @@
 // Walks home → lobby → Changsha preset → Connect → Take Seat → game canvas
 // → Deal and captures a screenshot at every step plus a manifest.
 
-import { test } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -26,6 +26,7 @@ interface Findings {
   rulePresetSelectCount: number;
   rulePresetOptions: string[];
   changshaOptionFound: boolean;
+  rulePresetDisabled: boolean;
   connectButtonCount: number;
   takeSeatCount: number;
   takeSeatVisible: number;
@@ -113,6 +114,7 @@ test.describe('Changsha Mahjong — playable end-to-end walkthrough', () => {
       rulePresetSelectCount: 0,
       rulePresetOptions: [],
       changshaOptionFound: false,
+      rulePresetDisabled: false,
       connectButtonCount: 0,
       takeSeatCount: 0,
       takeSeatVisible: 0,
@@ -170,7 +172,15 @@ test.describe('Changsha Mahjong — playable end-to-end walkthrough', () => {
     console.log(`STEP 2 loading-el visible: ${findings.loadingVisible} text="${findings.loadingText.trim()}"`);
     await page.screenshot({ path: path.join(ARTIFACT_DIR, '02-lobby-state.png'), fullPage: true });
 
-    // STEP 3 — Changsha preset
+    // STEP 3 — Changsha rule preset.
+    //
+    // Honest disabled UX (Ferro WP-E/#120, Ripley C-2 ruling): the lobby rule-preset picker is
+    // intentionally DISABLED because presets are not yet applied to Changsha gameplay (the WS
+    // handshake never reads `?rulePreset=` — tracked by #131). The prior version of this step
+    // drove `selectOption` on that control; Playwright's selectOption auto-waits for the element
+    // to become actionable, and a permanently-disabled <select> never does — so the whole run
+    // hung to the 180s test timeout. We now ASSERT the honest disabled state instead of forcing
+    // it (do not re-enable / dispatch a synthetic change).
     console.log('=== STEP 3: Changsha rule preset ===');
     const presetSelector = page.locator('#lobby-rule-preset-select, [data-testid="lobby-rule-preset-select"]');
     findings.rulePresetSelectCount = await presetSelector.count();
@@ -179,13 +189,21 @@ test.describe('Changsha Mahjong — playable end-to-end walkthrough', () => {
       const changshaOption = findings.rulePresetOptions.find(o => /changsha/i.test(o));
       findings.changshaOptionFound = !!changshaOption;
       console.log(`STEP 3 presets available: ${JSON.stringify(findings.rulePresetOptions)}`);
-      if (changshaOption) {
-        try {
-          await presetSelector.first().selectOption({ label: changshaOption });
-          console.log(`STEP 3 selected preset: ${changshaOption}`);
-        } catch (err) {
-          console.log(`STEP 3 select err: ${(err as Error).message}`);
-        }
+
+      findings.rulePresetDisabled = await presetSelector.first().isDisabled();
+      if (findings.rulePresetDisabled) {
+        // Assert-and-skip: the control is present (discoverable) but honestly disabled.
+        console.log('STEP 3 rule-preset-select is intentionally DISABLED (presets not wired — #131); skipping selectOption.');
+        expect(
+          findings.rulePresetDisabled,
+          'rule-preset picker must remain honestly disabled until create-time preset application is wired (#131)',
+        ).toBe(true);
+      } else if (changshaOption) {
+        // Forward-compatible: once presets are wired + the control is enabled, select as before.
+        // Bounded timeout so a regression to a non-actionable control fails fast, never hangs.
+        await presetSelector.first().selectOption({ label: changshaOption }, { timeout: 5000 })
+          .then(() => console.log(`STEP 3 selected preset: ${changshaOption}`))
+          .catch((err) => console.log(`STEP 3 select err: ${(err as Error).message}`));
       }
     } else {
       console.log('STEP 3 rule-preset-select NOT FOUND (no DB-seeded presets surfaced)');

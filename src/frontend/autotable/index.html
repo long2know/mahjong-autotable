@@ -29,9 +29,9 @@
     <link href="./icon-512.auto.3c9e4a61.png" rel="apple-touch-icon" sizes="512x512">
     <!-- Phase J Wave 5 — public matchmaking lobby, profile drawer,
          stats panel.  Layered after style.css so its overrides win. -->
-      <script type="module" crossorigin src="./autotable-src.85a15581.js"></script>
+      <script type="module" crossorigin src="./autotable-src.86943140.js"></script>
       <link rel="modulepreload" crossorigin href="./admin-panel-core.e1c43197.js">
-      <link rel="stylesheet" crossorigin href="./style.fadf4a03.css">
+      <link rel="stylesheet" crossorigin href="./style.0092dca8.css">
     </head>
 <body>
     <img id="dice-img" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAABACAMAAAAkhlCNAAAACXBIWXMAAA7DAAAOwwHHb6hkAAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAAO1QTFRF////////AAAA/////////////0lJ/////////////////1JS/////////05O/0xM/////09P/0lJ/01N/1BQ/01N/01N/0xM/05O/01N/////05O/01N/0xM/////////05O/01N/////////05O/01N/01N/01N/01N/01N/01N/01N/01N/01N/////////////01N/////01N/01N/05O/////////////////////////////////////01N/05O/01N/01N/////01N/////////01N/01N/////01N/01N/01N/01N/01Nh0HcNAAAAE50Uk5T/wEABgcIFRYXGBkZGhsaGxwdHB4gSUxNTlBkaWprbG1sbW5vb26RmJmbnJ6iqq6vsLW2tre4u7zGx8jJz9DR19nY2/Hx8vPy8/T0+/z9Kam0YgAAAxBJREFUeNrtm3tPU0EQxQ/bq/IQgeIDUAoU6/uFivZprdAX9O73/ziGSBthNpnmDpPsbvf8N9n8ZjozZElPujDm3nFrjAIaN6uZMYmX8TCbv1BYnU2TeBmPTMADnSzxMh7HEOkg8TIeLQCfHpgCWv4CoJF4GY8BACfPawVAP/EyHlcyBQUg8RI+lgZC54NvIHQ++AZC5+/sA2TV5njcPMh85afn2jwXay1gvfMvbK/7yZNzNZ6LdRaQdaZxO/OLp+faPBerLKCKmSp+8fRcm+dilQW0MFPDL56ea/NcrLKAAWYa+MXTc22ei7UXcOYXT8+1eS5OV1CMV9ABZqr4xdNzbZ6LVRaQtadxu+QXT8/1eT7mF7B9dNq7uOidHm7N+UWoLfgipcmTc3Wej/kFbLyZ2GvlHx/PZQWUKo3BoF4pGSoPeHKux/Mxv4Ddkf1Pwx2fzazQeRiql7m9obzmcQOh8zBEu7m9pXzH3wZC52mC8sgSDR9520DoPE3w3jr0VrcB3n+Ptj5JsD2xDk3KugPg/fdY65MENevUvu4AeP891vokwXfr1InuAHj/Pdb6JMEf61RPdwC8+RVrfZJgZJ0a6Q6A999jrT/vAs51B8D777HWJwl+W6e6sV4BfP2F/CdM/fNY65MEh9ap57oD4P33WOuTBFsT69Cl8hcx3n+PtT5N8M469Fp3ALz/Hm19mmBjaInO17w1s0LnYYiekEsof+ZvA6HzMFS1/Nb8jzxuIHTemWBneOP+eepzA6Hz7gT3X13aa+Uf1gQfgPrrUn5R3geU9791R6PuyYuy7C+A+utSPr0PYAbI+utSPr0PYAbI+etSPr0PYAbImVtSPv04lxkg569L+fQ+QDbAMymf3gekKyi8K4j46wI+vQ9gBsj561J+Md4HCBbA+OtSfiHeBwgWwPnrUn4h3geEZGaFzgffQOh88A2EzgffQNB8H8ByMf7hFZ54GY8mgM8rRfjVrwAaiZfxqEKkvcTLeGRtCPRjKfEyHmZTkOHnqkm8jIcxpUp9gALq1/eWjEm8jP8L5TvECx9xzpAAAAAASUVORK5CYII=" alt="" aria-hidden="true">
@@ -450,7 +450,7 @@
          can pick variant / dealMode / botCount / botDifficulty without
          editing the URL bar.  Hidden via body.lobby-active while the panel
          is open. -->
-    <button id="lobby-toggle" type="button" title="Open lobby">
+    <button id="lobby-toggle" type="button" title="Open lobby" data-testid="lobby-toggle">
         <span class="lobby-toggle-icon">☰</span>
         <span class="lobby-toggle-label">Lobby</span>
     </button>
@@ -1151,7 +1151,7 @@
                 </div>
             </section>
 
-            <fieldset class="lobby-fieldset" id="lobby-variant-fieldset">
+            <fieldset class="lobby-fieldset" id="lobby-variant-fieldset" data-testid="lobby-variant-fieldset">
                 <legend>Variant</legend>
                 <label><input type="radio" name="lobby-variant" value="changsha" checked> Changsha</label>
                 <label><input type="radio" name="lobby-variant" value="four-player"> Riichi — 4 player</label>
@@ -1172,14 +1172,17 @@
                  `rule-presets.ts:renderLobbySelect()` after `/api/rule-presets`
                  returns; left empty here so the renderer can replace it. -->
             <fieldset class="lobby-fieldset" id="lobby-rule-preset-fieldset">
-                <legend>Rule preset <small class="lobby-hint">(Changsha)</small></legend>
+                <legend>Rule preset <small class="lobby-hint">(Changsha — coming soon)</small></legend>
                 <select class="dark-select form-control form-control-sm"
                         id="lobby-rule-preset-select"
                         data-testid="lobby-rule-preset-select"
-                        aria-label="Changsha rule preset"></select>
-                <small class="lobby-hint">
+                        disabled aria-disabled="true"
+                        title="Rule presets are not yet applied to gameplay"
+                        aria-label="Changsha rule preset (not yet applied to gameplay)"></select>
+                <small class="lobby-hint" id="lobby-rule-preset-note">
+                    Not yet applied to gameplay —
                     <a href="#" id="lobby-create-preset-link"
-                       data-testid="lobby-create-preset-link">Create / edit presets…</a>
+                       data-testid="lobby-create-preset-link">create / edit presets…</a>
                 </small>
             </fieldset>
 
@@ -1211,7 +1214,7 @@
                 </p>
             </fieldset>
 
-            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-bot-difficulty-fieldset">
+            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-bot-difficulty-fieldset" data-testid="lobby-bot-difficulty-fieldset">
                 <legend>Bot difficulty</legend>
                 <label class="lobby-card-option">
                     <input type="radio" name="lobby-bot-difficulty" value="Easy">
@@ -1235,7 +1238,7 @@
                  backend reads this off the URL and pins it to MaxHands.
                  Phase J Wave 4 — promoted to lobby-card-group with icon
                  hints so the visual weight matches Variant + Bots. -->
-            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-hand-count-fieldset">
+            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-hand-count-fieldset" data-testid="lobby-hand-count-fieldset">
                 <legend>Hands per match</legend>
                 <label class="lobby-card-option">
                     <input type="radio" name="lobby-hand-count" value="1">
@@ -1256,11 +1259,6 @@
                     <input type="radio" name="lobby-hand-count" value="16">
                     <span class="lobby-card-icon">半</span>
                     <span class="lobby-card-label">16 <small class="lobby-hint">(half match)</small></span>
-                </label>
-                <label class="lobby-card-option">
-                    <input type="radio" name="lobby-hand-count" value="32">
-                    <span class="lobby-card-icon">长</span>
-                    <span class="lobby-card-label">32 <small class="lobby-hint">(full match)</small></span>
                 </label>
             </fieldset>
 
@@ -1533,7 +1531,7 @@
                     title="Skip the pickers and start a 3-Medium-bot game now">
                 ⚡ Quick Match
             </button>
-            <button id="lobby-apply" type="button" class="btn btn-warning btn-sm">
+            <button id="lobby-apply" type="button" class="btn btn-warning btn-sm" data-testid="lobby-apply">
                 Apply &amp; Start
             </button>
         </div>
