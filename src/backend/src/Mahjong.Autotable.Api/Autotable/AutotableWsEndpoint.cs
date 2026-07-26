@@ -549,6 +549,12 @@ public sealed class AutotableConnectionManager : IDisposable
                     // Result is server-emitted only — ignore client pushes.
                     break;
 
+                case ChangshaCollectionKinds.GameComplete:
+                    // #116/#122 — gameComplete is server-emitted only (locked C-1, inbound to
+                    // clients). Drop any client push so a buggy/malicious client can't relay a
+                    // fake end-of-match signal to peers and spuriously trigger their modals.
+                    break;
+
                 default:
                     // mouse, sound, dice, things, nicks, ephemeral, unique, perPlayer
                     // — pure cosmetic / meta. Pass through to the relay store.

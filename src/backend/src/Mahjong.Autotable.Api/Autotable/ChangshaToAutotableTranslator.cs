@@ -160,6 +160,17 @@ public static class ChangshaToAutotableTranslator
             entries.Add(ChangshaCollectionEncoder.EncodeHandResult(BuildHandResult(state)));
         }
 
+        // gameComplete — #116/#122 (Hudson P0). The authoritative end-of-match signal that
+        // makes the bundle's #game-complete-modal reachable through real play. Emitted once the
+        // game reaches its terminal phase (IsGameComplete, set by RotateBanker at MaxHands). The
+        // existing StateChanged → translator → ApplyUpdate(Runtime) broadcast (PersistSnapshotAsync
+        // fires StateChanged after RotateBanker) delivers this entry to every bound WS client;
+        // there is no separate/synthetic emission path.
+        if (state.IsGameComplete)
+        {
+            entries.Add(ChangshaCollectionEncoder.EncodeGameComplete(BuildGameComplete(state)));
+        }
+
         // ── Phase F: pickup collection ──
         // Emitted while the manual-deal state machine is parked in any pickup phase;
         // drives the autotable scene's "Take Tiles" affordance. When the deal completes
@@ -307,6 +318,23 @@ public static class ChangshaToAutotableTranslator
             ScoreResult = scoreResult
         };
     }
+
+    /// <summary>
+    /// #116/#122 — builds the authoritative end-of-match payload from the terminal state.
+    /// Mirrors the SignalR <c>GameCompleted</c> event's data (cumulative scores + hand cap) onto
+    /// the autotable collection wire shape the bundle consumes. Winner is derived client-side from
+    /// the highest total, so no winner field is required here.
+    /// </summary>
+    internal static GameCompleteEntry BuildGameComplete(ChangshaGameState state) => new()
+    {
+        IsComplete = true,
+        MaxHands = state.MaxHands,
+        TotalScores = state.CumulativeScores
+            .OrderBy(kv => kv.Key)
+            .ToDictionary(
+                kv => kv.Key.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                kv => kv.Value)
+    };
 
     // Phase I Wave 1 — wire mappings mirror Runtime/ChangshaGameRuntime.cs so
     // the bundle path emits identical strings to the SignalR path.
