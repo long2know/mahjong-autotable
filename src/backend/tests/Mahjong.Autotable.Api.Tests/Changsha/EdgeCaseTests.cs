@@ -1,6 +1,7 @@
 using System.Reflection;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Runtime;
+using Mahjong.Autotable.Api.Changsha.Scoring;
 using Mahjong.Autotable.Api.Tables;
 using Mahjong.Autotable.Api.Tests.Changsha._TestHarness;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -127,23 +128,33 @@ public class EdgeCaseTests
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "2")]
-    public void MultipleBigWinPatterns_ScoresStack_DeferredToV2()
+    public void MultipleBigWinPatterns_DoNotStackByDefault_StackOnlyUnderHouseRules()
     {
-        // Phase H Wave 2 §2.3: a hand that simultaneously satisfies AllPungs and
-        // FullFlush (e.g. all-Wan all-pungs) earns a ×2 stacked multiplier on the
-        // base Big Win payment. Without the multiplier the discard-win payment is
-        // 6 (non-dealer) or 7 (dealer); with ×2 it must be 12 or 14.
-        //
+        // #117 — spec §5.1 has NO stacking table, so the LIVE default (SpecPure) path
+        // must NOT multiply a hand that satisfies AllPungs + FullFlush. Both the
+        // stacked and the single-pattern self-draw pay the same base Big-Win amount.
         // Driven via the full Score() pipeline so the test pins both the detector
-        // contract (AllPatterns populated) AND ScoringService.CalculateScore wiring.
-        var stacked = ScoreStackedHand();
-        var single = ScoreSinglePatternHand();
+        // contract (AllPatterns populated) AND the spec-pure scoring policy.
+        var stackedSpec = ScoreStackedHand();
+        var singleSpec = ScoreSinglePatternHand();
 
-        Assert.True(stacked.BasePoints >= 2 * single.BasePoints,
-            $"AllPungs+FullFlush should pay ≥ 2× a single Big Win pattern. " +
-            $"Stacked={stacked.BasePoints}, Single={single.BasePoints}. " +
-            $"Bishop owes the Phase H Wave 2 contract (ScoringService applies " +
-            $"multiplier = AllPatterns.Count, clamped to [1, 3]).");
+        Assert.Equal(ScoreCategory.BigWin, stackedSpec.Category);
+        Assert.Equal(ScoreCategory.BigWin, singleSpec.Category);
+        Assert.Equal(singleSpec.BasePoints, stackedSpec.BasePoints);
+
+        // The stacking capability is retained behind ChangshaScoringOptions.HouseRules
+        // (non-spec opt-in). Characterization so the pre-#117 magnitude is not lost:
+        // under house-rules the stacked hand pays strictly MORE than the single pattern
+        // (base ×2 stacking + the extra FullFlush fan bonus).
+        var stackedHouse = ScoreStackedHand(ChangshaScoringOptions.HouseRules);
+        var singleHouse = ScoreSinglePatternHand(ChangshaScoringOptions.HouseRules);
+
+        Assert.True(stackedHouse.BasePoints >= 2 * singleSpec.BasePoints,
+            $"Under house-rules, AllPungs+FullFlush should pay ≥ 2× the spec base. " +
+            $"StackedHouse={stackedHouse.BasePoints}, SpecBase={singleSpec.BasePoints}.");
+        Assert.True(stackedHouse.BasePoints > singleHouse.BasePoints,
+            $"Under house-rules the stacked hand must out-pay the single pattern. " +
+            $"StackedHouse={stackedHouse.BasePoints}, SingleHouse={singleHouse.BasePoints}.");
     }
 
     // ── Phase H Wave 2 — helpers (reflection-defensive against Bishop's contracts) ──
@@ -223,7 +234,7 @@ public class EdgeCaseTests
     /// ScoreResult. Dealer-neutral: winner is seat 1, dealer remains seat 0, so the win is
     /// "non-dealer self-draw, non-dealer involved" → base × multiplier per opponent (×3 base,
     /// ×2 stack = 6 per opponent → 12 from non-dealer seats + 8 from dealer = stacked total).</summary>
-    private static ScoreResult ScoreStackedHand()
+    private static ScoreResult ScoreStackedHand(ChangshaScoringOptions? options = null)
     {
         var state = BuildScoringScenario();
         // Seat 1 self-draws a Wan-2-2 pair completing an AllPungs+FullFlush hand.
@@ -240,11 +251,11 @@ public class EdgeCaseTests
         });
 
         ChangshaGameStateMachine.DeclareSelfDrawWin(state, seatIndex: 1);
-        ChangshaGameStateMachine.Score(state);
+        ChangshaGameStateMachine.Score(state, options);
         return state.CurrentScore!;
     }
 
-    private static ScoreResult ScoreSinglePatternHand()
+    private static ScoreResult ScoreSinglePatternHand(ChangshaScoringOptions? options = null)
     {
         var state = BuildScoringScenario();
         // Seat 1 self-draws an AllPungs (NOT FullFlush) hand — 4 pungs across suits +
@@ -262,7 +273,7 @@ public class EdgeCaseTests
         });
 
         ChangshaGameStateMachine.DeclareSelfDrawWin(state, seatIndex: 1);
-        ChangshaGameStateMachine.Score(state);
+        ChangshaGameStateMachine.Score(state, options);
         return state.CurrentScore!;
     }
 
