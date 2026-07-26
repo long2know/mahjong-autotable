@@ -22,10 +22,11 @@
 //      transient DealerExtra affordance is never missed;
 //   2. the dealer's hand reaches 14 tiles;
 //   3. the game is discard-ready (extra tile in hand, no pending pickup);
-//   4. a discard is PLAYABLE — the production discard entry point
-//      `World.emitDiscard` (the exact call the click-to-discard UI makes at
-//      world.ts:onDragStart) is accepted by the server, dropping the hand to
-//      13 and advancing play.
+//   4. SEVERAL distinct hand tiles are selectable via a REAL page.mouse hover
+//      (regression-guards the #119 `claimedBy` undefined-vs-null defect that
+//      left only 1 of 109 tiles raycastable), and a discard occurs by a REAL
+//      pointer-down on a hand tile — driving the production
+//      World.onDragStart click-to-discard, NOT a direct emitDiscard/backdoor.
 //
 // Runs against the backend serving the freshly-built bundle (C-8 harness).
 
@@ -198,31 +199,62 @@ test.describe('#119 Changsha manual-deal ceremony — DealerExtra regression', (
     expect(ready.hasExtra, 'dealer must hold the extra (14th) tile → discard armed').toBe(true);
     expect(ready.isPickupTurn, 'ceremony pickups must be exhausted (no pending pickup)').toBe(false);
 
-    // 9) Playable discard through the production discard entry point (the
-    //    exact call world.ts:onDragStart's click-to-discard makes) — assert
-    //    the server accepts it and the hand drops to 13 as play advances.
-    const discard = await page.evaluate(() => {
-      const g: any = (window as any).game;
-      const cli = g.client;
-      const seat = cli.seat;
-      const suffix = '@' + seat;
-      let tileId: number | null = null;
-      for (const [k, v] of cli.things.entries()) {
-        const slot = v?.slotName ?? v?.SlotName;
-        if (typeof slot === 'string' && slot.startsWith('hand.') && slot.endsWith(suffix)) { tileId = k; break; }
-      }
-      if (tileId === null) return { ok: false, tileId: null };
-      return { ok: g.world.emitDiscard(tileId) === true, tileId };
-    });
-    expect(discard.ok, 'production discard emit must be accepted for the dealer').toBe(true);
+    // 9) REAL pointer path — prove several distinct hand tiles are
+    //    selectable via genuine page.mouse hover (the #119 `claimedBy`
+    //    undefined-vs-null defect made only 1 of 109 tiles raycastable), then
+    //    discard one by a real pointer-down on a hand tile — driving the
+    //    production World.onDragStart click-to-discard, NOT emitDiscard.
+    const box = await page.locator('#main canvas').boundingBox();
+    expect(box, 'game canvas must be laid out').not.toBeNull();
 
+    const seat: number = await page.evaluate(() => (window as any).game.world.seat);
+    const distinctHandTiles = new Set<number>();
+    let discardTarget: { x: number; y: number } | null = null;
+
+    // Scan the lower canvas band; the mouse-ui raycast (rAF loop) sets
+    // world.hovered from the pointer position, so we read it back per move.
+    scan:
+    for (let ry = 0.94; ry >= 0.60; ry -= 0.02) {
+      for (let rx = 0.24; rx <= 0.76; rx += 0.012) {
+        const x = box!.x + box!.width * rx;
+        const y = box!.y + box!.height * ry;
+        await page.mouse.move(x, y);
+        await page.waitForTimeout(16);
+        const hovered = await page.evaluate(() => {
+          const h: any = (window as any).game.world.hovered;
+          return h ? { group: h.slot?.group, seat: h.slot?.seat, index: h.index } : null;
+        });
+        if (hovered && hovered.group === 'hand' && hovered.seat === seat) {
+          distinctHandTiles.add(hovered.index);
+          if (discardTarget === null) discardTarget = { x, y };
+          if (distinctHandTiles.size >= 6) break scan;
+        }
+      }
+    }
+
+    // Several distinct hand tiles must be hoverable — the core regression for
+    // the claimedBy fix (pre-fix this Set had ≤ 1 member).
+    expect(
+      distinctHandTiles.size,
+      `expected several selectable hand tiles via real pointer, hovered ${distinctHandTiles.size} distinct`,
+    ).toBeGreaterThanOrEqual(4);
+    expect(discardTarget, 'a hand tile must be reachable for a real pointer discard').not.toBeNull();
+
+    // Real pointer discard: hover the tile, then mouse-down (onMouseDown →
+    // World.onDragStart → click-to-discard).  No emitDiscard call here.
+    await page.mouse.move(discardTarget!.x, discardTarget!.y);
+    await page.waitForTimeout(60);
+    await page.mouse.down();
+    await page.waitForTimeout(30);
+    await page.mouse.up();
+
+    // The discard must drop the hand below 14 (poll immediately — after a few
+    // seconds the bots play and the dealer draws again).
     await page.waitForFunction(
-      () => {
+      (s) => {
         const cli: any = (window as any).game?.client;
         if (!cli) return false;
-        const seat = cli.seat;
-        if (seat === null || seat === undefined) return false;
-        const suffix = '@' + seat;
+        const suffix = '@' + s;
         let n = 0;
         for (const [, v] of cli.things.entries()) {
           const slot = v?.slotName ?? v?.SlotName;
@@ -230,10 +262,9 @@ test.describe('#119 Changsha manual-deal ceremony — DealerExtra regression', (
         }
         return n < 14;
       },
-      undefined,
+      seat,
       { timeout: 15_000 },
     );
-    const postHand: number = await page.evaluate(seatHandCountInPage);
     const totalDiscards: number = await page.evaluate(() => {
       const cli = (window as any).game.client;
       let d = 0;
@@ -243,13 +274,12 @@ test.describe('#119 Changsha manual-deal ceremony — DealerExtra regression', (
       }
       return d;
     });
-    expect(postHand, 'a playable discard must drop the dealer hand below 14').toBeLessThan(14);
-    expect(totalDiscards, 'the discard must register on the table').toBeGreaterThan(0);
+    expect(totalDiscards, 'the real-pointer discard must register on the table').toBeGreaterThan(0);
 
     // eslint-disable-next-line no-console
     console.log(
       `[#119 ceremony] phases=${JSON.stringify(capturedPhases)} dealerHand=${dealerHand} ` +
-        `postDiscardHand=${postHand} discards=${totalDiscards}`,
+        `selectableHandTiles=${distinctHandTiles.size} discards=${totalDiscards}`,
     );
   });
 });

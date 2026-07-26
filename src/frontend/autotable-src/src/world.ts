@@ -314,7 +314,19 @@ export class World {
       thing.moveTo(slot, rotationIndex);
       thing.sent = true;
 
-      thing.claimedBy = thingInfo.claimedBy;
+      // #119 (Hicks): normalise claimedBy to the `number | null` invariant.
+      // The server OMITS `claimedBy` for unclaimed tiles, so it deserialises
+      // to `undefined` on the wire (108 of 109 things in a fresh Changsha
+      // deal).  Assigning it verbatim left `thing.claimedBy === undefined`,
+      // which fails every `claimedBy === null` gate in this file — most
+      // critically `toSelect()`, whose result seeds the mouse-ui raycast
+      // targets.  The upshot: only the single tile the server happened to
+      // send an explicit `null` for was hoverable/selectable, so a human
+      // could not click ANY of their 14 hand tiles (no hover → no
+      // click-to-discard).  `?? null` coerces undefined → null while
+      // preserving a real seat index (0 must NOT collapse to null, so this
+      // is `??`, never `||`).
+      thing.claimedBy = thingInfo.claimedBy ?? null;
       thing.heldRotation.set(
         thingInfo.heldRotation.x,
         thingInfo.heldRotation.y,
