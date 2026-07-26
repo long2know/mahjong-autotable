@@ -2902,3 +2902,32 @@ backend mirror tests live under
 The KW14→KW15 regression class rename and the LH13 5-wave
 YELLOW flag land in this wave; see
 `Phase_K_W15/Vasquez/vasquez-phase-k-wave-15.md`.*
+
+---
+
+## Playability gate (#122) — real-UI gameplay controls
+
+Structural `id`/`class` selectors the P0 real-UI playability gate
+(`tests/e2e/playability-gate.spec.ts` + `tests/e2e/_playability.ts`) and the
+promoted walkthrough gate (`tests/e2e/playtest-changsha.spec.ts`) drive through
+**real DOM/canvas/pointer interactions** (no WS backdoor). These are
+HUD/control elements defined in static `index.html` markup (not `data-testid`),
+catalogued here so the gate's contract is explicit and stable.
+
+| Selector | Element | Purpose | Source |
+|---|---|---|---|
+| `#main` | `<canvas>` | The Three.js WebGL canvas. Real tile discards are produced by `page.mouse.move`+`down` over a projected hand tile on this canvas (MouseUi.onMouseDown → World.onDragStart → emitDiscard). | `src/frontend/autotable-src/index.html` · `src/mouse-ui.ts:72-118` |
+| `.take-seat` / `.seat-button-{0..3} .take-seat` | `<button>` | Claim a chair. The gate clicks `.seat-button-0 .take-seat` for seat 0, then reads back `client.seat`. | `src/frontend/autotable-src/index.html:52-88` |
+| `#connect` | `<button>` | Establish the WS session (the client also auto-connects when a `gameId` is in the URL). | `src/frontend/autotable-src/index.html:243` · `src/client-ui.ts:191-192,490-497` |
+| `#deal` | `<button>` | Start a hand. Current bundle binds a plain `click` (game-ui.ts setupDealButton → world.deal), which then client-drives the manual pickup ceremony. | `src/frontend/autotable-src/index.html:93` · `src/game-ui.ts:705-740` |
+| `#lobby-close` / `#lobby-panel` | `<button>` / `<div>` | The lobby panel re-opens after navigation (W23 UX bug); the gate closes it before connecting. | `src/frontend/autotable-src/index.html:1006` |
+| `#claim-pung`, `#claim-chow`, `#claim-kong`, `#claim-hu`, `#claim-pass` | `<button>` | Claim-window responses. The gate clicks `#claim-hu` when a real Hu is offered, else `#claim-pass`. | `src/frontend/autotable-src/src/game-ui.ts:483-488,836-851` |
+| `#game-complete-modal` | `<div>` (Bootstrap modal) | End-of-match scoring modal. The gate asserts this is visible from a REAL completion — driven server-side by `client.gameComplete["current"].isComplete`. | `src/frontend/autotable-src/src/game-ui.ts:516,2039-2085` |
+| `#loading` | `<div>` | First-paint loading overlay; hidden once the scene mounts. | `src/frontend/autotable-src/index.html` · `src/game.ts:68` |
+
+> **Backend contract note (handoff, #122).** `#game-complete-modal` depends on
+> the autotable WS backend emitting a `gameComplete` collection entry. At HEAD
+> the translator emits only `result["current"]` per hand — there is no
+> `ChangshaCollectionKinds.GameComplete`, so the modal is unreachable via the
+> real UI today (only via the diagnostic backdoor). Wiring the terminal
+> `gameComplete` push is WP-A / Bishop (runtime + `ChangshaToAutotableTranslator`).

@@ -96,3 +96,94 @@ jobs:
           name: playwright-report
           path: src/frontend/autotable-src/playwright-report/
           retention-days: 14
+
+  # ===========================================================================
+  #  P0 REAL-UI PLAYABILITY GATE (#122, WP-F — Hudson)
+  # ===========================================================================
+  #  Drives a human-vs-bots Changsha game to real completion through actual
+  #  DOM / canvas / pointer interactions and asserts the #game-complete-modal
+  #  from a REAL Hu across 4 hands — NO WS backdoor (Lead C-8 contract;
+  #  playtest-ws-backdoor SKILL:88-93). A content-hash PREFLIGHT enforces that
+  #  the container serves the FRESHLY BUILT source bundle before any assertion.
+  #
+  #  REQUIRED CHECK: this is the playability acceptance keystone. It is
+  #  SCAFFOLDED NOW and goes GREEN only after its dependencies land —
+  #    #116 (per-hand manual deal ceremony),
+  #    #119 (deterministic bundle-hash gate),
+  #    #120 (P0 real-UI connect flow).
+  #  Until then it FAILS HONESTLY at the first real blocker. Do NOT weaken the
+  #  assertions or add test-only production bypasses to make HEAD pass; the PR
+  #  stays a DRAFT until this is green after the dependencies merge.
+  playability-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: src/frontend/autotable-src/package-lock.json
+
+      - name: Install Playwright + deps
+        working-directory: src/frontend/autotable-src
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      # Fresh source build → the on-disk src/frontend/autotable/ the preflight
+      # diffs against. The Dockerfile rebuilds the SAME source with the SAME
+      # node:20 + Vite, so the container serves byte-identical (content-hashed)
+      # assets: preflight asserts served === freshly-built source.
+      - name: Build frontend bundle (fresh source build for the hash preflight)
+        working-directory: src/frontend/autotable-src
+        run: npm run build
+
+      - name: Build Docker image
+        run: docker build --build-arg BUILD_SHA=${{ github.sha }} -t mahjong-autotable:playability .
+
+      - name: Start container
+        run: |
+          set -euo pipefail
+          JWT_KEY="$(openssl rand -base64 48)"
+          docker run -d --name mahjong-playability -p 8080:8080 \
+            -e BUILD_SHA=${{ github.sha }} \
+            -e Authentication__JwtSigningKeys__0="$JWT_KEY" \
+            mahjong-autotable:playability
+
+      - name: Wait for /health
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8080/health > /dev/null; then
+              echo "Health endpoint reachable after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Health endpoint never came up — dumping container logs"
+          docker logs mahjong-playability || true
+          exit 1
+
+      - name: Run P0 playability gate (real DOM/canvas only)
+        working-directory: src/frontend/autotable-src
+        env:
+          E2E_BASE_URL: http://localhost:8080/autotable/
+        run: npm run e2e -- --project=chromium playability-gate.spec.ts
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker logs mahjong-playability || true
+          docker stop mahjong-playability || true
+
+      - name: Upload playability evidence
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: playability-gate-evidence
+          path: |
+            src/frontend/autotable-src/playwright-report/
+            playtest-artifacts/playability-gate/
+          retention-days: 14
