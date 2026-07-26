@@ -19,7 +19,7 @@ bots, replay/audit, and a single Docker image for self-hosting.
 
 | I want to…                                        | Use this                                                                                  |
 |---------------------------------------------------|-------------------------------------------------------------------------------------------|
-| **Play locally** (one terminal)                   | `docker compose up -d --build` then open `http://localhost:8080/autotable/`               |
+| **Play locally** (one terminal)                   | `cp .env.example .env && echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)" >> .env`, then `docker compose up -d --build` and open `http://localhost:8080/autotable/` |
 | **Develop in VS Code** with hot reload            | Open the repo, press **F5**, select `F5 Full Stack (Backend + Autotable)`                 |
 | **Deploy to my Linux server** (single image)      | See [Docker single-image deploy](#docker-single-image-deploy) below                       |
 | **Run with Postgres instead of SQLite**           | See [Postgres swap](#postgres-swap) below                                                 |
@@ -154,10 +154,20 @@ docker stop mat-proof && docker rm mat-proof
 
 ### Or use docker-compose
 
+The image runs in `Production` posture, which refuses to boot without a
+stable JWT signing key. Provision one into a local `.env` (gitignored — no
+secret is ever committed) once, then bring the stack up:
+
 ```bash
+cp .env.example .env
+echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)" >> .env
 docker compose up -d --build
 open http://localhost:8080/autotable/
 ```
+
+If `JWT_SIGNING_KEY` is missing, `docker compose up` fails fast with a
+one-line fix instruction instead of crash-looping. Keep the same key across
+restarts — rotating it invalidates previously issued JWTs.
 
 The compose file (`docker-compose.yml`) names the SQLite volume
 `mahjong-data` so `docker compose down` keeps your data
@@ -165,7 +175,8 @@ The compose file (`docker-compose.yml`) names the SQLite volume
 
 ### Postgres swap
 
-To run with Postgres 16 instead of SQLite:
+To run with Postgres 16 instead of SQLite (uses the same `.env` /
+`JWT_SIGNING_KEY` as above):
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build

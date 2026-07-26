@@ -5,10 +5,23 @@
 # data survives `docker compose down` (use `docker compose down -v` to wipe).
 #
 # Quickstart:
+#   # 1. Provision a stable JWT signing key (one-time, never committed):
+#   cp .env.example .env && echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)" >> .env
+#   # 2. Boot:
 #   docker compose up -d --build
 #   open http://localhost:8080/autotable/
 #
-# Phase J Wave 3 — Apone (DevOps).
+# WHY the .env step: the image bakes ASPNETCORE_ENVIRONMENT=Production, and
+# the API refuses to boot without a stable HMAC signing key (a per-process
+# random key would silently invalidate every JWT on restart — see
+# JwtSigningKeyProvider.cs / docs/jwt-rotation.md §7). `JWT_SIGNING_KEY` is
+# injected below as `Authentication__JwtSigningKeys__0`. It is REQUIRED — if
+# unset/empty, `docker compose up` fails fast with an actionable message
+# instead of crash-looping under `restart: unless-stopped`. The key lives
+# only in your local `.env` (gitignored + .dockerignored); no secret is ever
+# committed. Reuse the same key across restarts or prior JWTs stop validating.
+#
+# Phase J Wave 3 — Apone (DevOps). Phase L WP-G (#121) — .env JWT wiring.
 services:
   mahjong:
     build:
@@ -23,6 +36,10 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       BUILD_SHA: ${BUILD_SHA:-local}
+      # Required base64 HMAC signing key — sourced from your local .env.
+      # `:?` makes compose abort with this message when it is unset/empty,
+      # converting a silent Production crash-loop into a one-time setup fix.
+      Authentication__JwtSigningKeys__0: "${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env before compose up - copy .env.example then append a key from openssl rand -base64 48}"
     restart: unless-stopped
 
 volumes:

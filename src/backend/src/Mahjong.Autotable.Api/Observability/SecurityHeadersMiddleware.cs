@@ -14,13 +14,13 @@ namespace Mahjong.Autotable.Api.Observability;
 ///   <item>Rewrites <c>Cache-Control</c> and <c>Vary</c> on static-asset
 ///         responses so Cloudflare and downstream CDNs cache hashed bundles
 ///         immutably while letting <c>index.html</c> revalidate every
-///         request. Without this, Parcel's hashed bundles get the
+///         request. Without this, Vite's hashed bundles get the
 ///         framework's default <c>no-cache</c>, which kills Cloudflare's
 ///         hit rate.</item>
 /// </list>
 ///
 /// <para>The CSP is tight: <c>script-src 'self' 'wasm-unsafe-eval'</c>.
-/// Hicks's Phase-J-Wave-9 audit confirmed the shipped Parcel bundle
+/// Hicks's Phase-J-Wave-9 audit confirmed the shipped bundle
 /// contains zero <c>new Function(...)</c> / <c>eval(...)</c> callsites
 /// (Three.js's <c>three.module.js</c> build doesn't need eval — that's
 /// only <c>three.webgpu.js</c>, which we don't import). The
@@ -29,7 +29,7 @@ namespace Mahjong.Autotable.Api.Observability;
 /// KTX decoders); it does NOT re-enable <c>eval()</c> /
 /// <c>new Function</c>. <c>'unsafe-inline'</c> is intentionally NOT in
 /// the policy — the frontend bundles every <c>&lt;script&gt;</c> tag
-/// through Parcel so inline scripts are already absent.</para>
+/// through Vite so inline scripts are already absent.</para>
 ///
 /// <para><b>Phase J Wave 9 — strict-mode + nonces + report-uri (Apone).</b>
 /// The middleware now ships three CSP knobs:
@@ -44,7 +44,7 @@ namespace Mahjong.Autotable.Api.Observability;
 ///         base64url nonce, exposes it via <c>HttpContext.Items["csp-nonce"]</c>
 ///         for any view that injects an inline script, and emits
 ///         <c>script-src 'self' 'nonce-…'</c>. Most responses won't use
-///         the nonce (Parcel bundles all scripts), but the hook is in
+///         the nonce (Vite bundles all scripts), but the hook is in
 ///         place for future inline-bootstrap injection.</item>
 ///   <item><c>Security:CspReportOnly</c> (bool, default <c>false</c>) —
 ///         when true, the policy ships under the
@@ -58,9 +58,11 @@ namespace Mahjong.Autotable.Api.Observability;
 /// <see cref="CspReportEndpoint"/>; that hooks into a persisted
 /// <c>CspViolation</c> table + the structured logging pipeline.</para>
 ///
-/// <para><b>Cache policy.</b> Parcel emits filenames of the form
+/// <para><b>Cache policy.</b> Vite emits filenames of the form
 /// <c>name.&lt;hash&gt;.{js,css,wav,png,glb}</c> where <c>&lt;hash&gt;</c>
-/// is 8 hex chars. These are content-addressed so we serve them with
+/// is 8 hex chars (Rollup 4 <c>hashCharacters: 'hex'</c> — see
+/// <c>vite.config.ts</c>). These are content-addressed so we serve them
+/// with
 /// <c>Cache-Control: public, max-age=31536000, immutable</c> — Cloudflare
 /// caches indefinitely + skip revalidation. Everything else (HTML,
 /// the index.html shell, and any non-hashed asset) is served with
@@ -161,15 +163,37 @@ public sealed class SecurityHeadersMiddleware
     /// now safe to flip in production without bricking the bundle.
     /// The contract that pins the default is
     /// <c>CspStyleSrcNoUnsafeInlineTests.DefaultCspConstant_StylesSection_KeepsUnsafeInlineUntilOptIn</c>.
+    ///
+    /// Phase L WP-G (#121) — <c>connect-src</c> / <c>media-src</c> widened
+    /// for the two optional features the shipped bundle carries so they do
+    /// not trip CSP when exercised:
+    /// <list type="bullet">
+    ///   <item><b>Sentry</b> (<c>src/frontend/autotable-src/src/sentry.ts</c>,
+    ///         DSN-gated — no network I/O when no DSN is configured) POSTs
+    ///         events to its ingest host, so <c>connect-src</c> allows
+    ///         <c>https://*.sentry.io</c> (the wildcard covers
+    ///         <c>o###.ingest[.us].sentry.io</c>).</item>
+    ///   <item><b>Spectator HLS</b>
+    ///         (<c>src/frontend/autotable-src/src/spectator-livestream.ts</c>,
+    ///         user-gesture-gated) plays a CloudFront-fronted audio stream
+    ///         via HLS.js MSE (segment <c>fetch</c> → <c>connect-src</c>;
+    ///         MediaSource hand-off → <c>media-src blob:</c>) or native
+    ///         Safari playback (<c>media-src https://*.cloudfront.net</c>).
+    ///         The HLS.js polyfill itself is vendored + same-origin, so
+    ///         <c>script-src</c> stays <c>'self'</c>.</item>
+    /// </list>
+    /// These are narrow host allowlists, not a relaxation of the
+    /// script/eval surface. <c>docs/frontend-csp-requirements.md</c> is
+    /// reconciled to this constant (middleware is the CSP source of truth).
     /// </summary>
     public const string DefaultCsp =
         "default-src 'self'; " +
         "script-src 'self' 'wasm-unsafe-eval'; " +
         "style-src 'self' 'unsafe-inline'; " +
         "img-src 'self' data: blob:; " +
-        "media-src 'self'; " +
+        "media-src 'self' blob: https://*.cloudfront.net; " +
         "font-src 'self' data:; " +
-        "connect-src 'self' ws: wss: blob:; " +
+        "connect-src 'self' ws: wss: blob: https://*.sentry.io https://*.cloudfront.net; " +
         "worker-src 'self' blob:; " +
         "frame-ancestors 'none'; " +
         "object-src 'none'; " +
@@ -179,16 +203,19 @@ public sealed class SecurityHeadersMiddleware
     /// <summary>
     /// Phase J Wave 9 — ultra-strict CSP that drops even
     /// <c>'wasm-unsafe-eval'</c>. Selected when <c>Security:CspStrict</c>
-    /// is true. Otherwise identical to <see cref="DefaultCsp"/>.
+    /// is true. Otherwise identical to <see cref="DefaultCsp"/> (including
+    /// the Phase L WP-G Sentry/HLS <c>connect-src</c> / <c>media-src</c>
+    /// host allowlists — those gate optional features, not the eval
+    /// surface the strict knob targets).
     /// </summary>
     public const string StrictCsp =
         "default-src 'self'; " +
         "script-src 'self'; " +
         "style-src 'self' 'unsafe-inline'; " +
         "img-src 'self' data: blob:; " +
-        "media-src 'self'; " +
+        "media-src 'self' blob: https://*.cloudfront.net; " +
         "font-src 'self' data:; " +
-        "connect-src 'self' ws: wss: blob:; " +
+        "connect-src 'self' ws: wss: blob: https://*.sentry.io https://*.cloudfront.net; " +
         "worker-src 'self' blob:; " +
         "frame-ancestors 'none'; " +
         "object-src 'none'; " +
@@ -196,7 +223,7 @@ public sealed class SecurityHeadersMiddleware
         "form-action 'self'";
 
     /// <summary>
-    /// Suffixes that Parcel attaches a content hash to. These get the
+    /// Suffixes that Vite attaches a content hash to. These get the
     /// immutable Cache-Control treatment. Kept as a static array so the
     /// hot path skips a regex compile. Hash detection is delegated to
     /// <see cref="HasContentHash"/>.
@@ -458,7 +485,7 @@ public sealed class SecurityHeadersMiddleware
     }
 
     /// <summary>
-    /// Detect Parcel's content-hash filename convention: <c>name.&lt;hash&gt;.ext</c>
+    /// Detect Vite's content-hash filename convention: <c>name.&lt;hash&gt;.ext</c>
     /// where <c>&lt;hash&gt;</c> is 8 hex characters. Examples that match:
     /// <c>autotable.9519e86d.js</c>, <c>autotable-src.6633d8fb.css</c>,
     /// <c>tiles.df85b4c4.png</c>. Examples that don't match (and so get

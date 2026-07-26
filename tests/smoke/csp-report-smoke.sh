@@ -53,8 +53,14 @@ else
 fi
 
 echo "==> [start] launching container on port $PORT"
+# Production posture refuses to boot without Authentication:JwtSigningKeys[0]
+# (JwtSigningKeyProvider.cs) — mint a per-run HMAC key so the container comes
+# up (mirrors docker-build-smoke.sh / auth-flow-smoke.sh). The key is
+# ephemeral to this smoke run; no secret is persisted.
+JWT_KEY="$(openssl rand -base64 48)"
 docker run -d --name "$CONTAINER_NAME" -p "$PORT:8080" \
     -e ASPNETCORE_ENVIRONMENT=Production \
+    -e Authentication__JwtSigningKeys__0="$JWT_KEY" \
     "$IMAGE" >/dev/null
 
 echo "==> [wait] /health"
@@ -70,6 +76,41 @@ done
 if [[ "$HEALTH_OK" -ne 1 ]]; then
     echo "❌ /health did not respond within 30s"
     docker logs "$CONTAINER_NAME" 2>&1 | tail -50
+    exit 1
+fi
+
+##############################################################################
+# 0. Enforced CSP allows the optional bundle features (Sentry + spectator HLS)
+#    so exercising them produces ZERO violations. WP-G (#121) widened the
+#    in-app SecurityHeadersMiddleware policy; assert it on the wire.
+##############################################################################
+echo "==> [0/3] assert enforced CSP permits Sentry + CloudFront HLS"
+CSP_HDR="$(curl -fsSI "http://localhost:$PORT/" 2>/dev/null | tr -d '\r' \
+    | grep -i '^content-security-policy:' | head -1 | cut -d' ' -f2-)"
+if [[ -z "$CSP_HDR" ]]; then
+    echo "❌ no Content-Security-Policy header on / — middleware not emitting"
+    docker logs "$CONTAINER_NAME" 2>&1 | tail -50
+    exit 1
+fi
+CONNECT_SRC="$(echo "$CSP_HDR" | tr ';' '\n' | grep -i 'connect-src' || true)"
+MEDIA_SRC="$(echo "$CSP_HDR" | tr ';' '\n' | grep -i 'media-src' || true)"
+CSP_OK=1
+for token in "https://*.sentry.io" "https://*.cloudfront.net"; do
+    if echo "$CONNECT_SRC" | grep -qF "$token"; then
+        echo "    ✅ connect-src allows $token"
+    else
+        echo "    ❌ connect-src MISSING $token (Sentry/HLS would violate CSP)"
+        CSP_OK=0
+    fi
+done
+if echo "$MEDIA_SRC" | grep -qF "https://*.cloudfront.net" && echo "$MEDIA_SRC" | grep -qF "blob:"; then
+    echo "    ✅ media-src allows blob: + https://*.cloudfront.net"
+else
+    echo "    ❌ media-src missing blob:/cloudfront (native HLS playback would violate CSP)"
+    CSP_OK=0
+fi
+if [[ "$CSP_OK" -ne 1 ]]; then
+    echo "❌ enforced CSP would break Sentry/HLS — policy: $CSP_HDR"
     exit 1
 fi
 
