@@ -56,6 +56,7 @@ test.describe('WP-E/#120 — lobby config round-trips URL ↔ WS handshake (C-2)
     await pickRadio(page, 'lobby-bot-count', '3');
     await pickRadio(page, 'lobby-bot-difficulty', 'Hard'); // default is Medium
     await pickRadio(page, 'lobby-seat', '0');              // explicit seat take
+    await pickRadio(page, 'lobby-hand-count', '8');        // default is 4
 
     // Capture the real WS handshake the *next* page (post-replace) opens.
     // Only the autotable game socket carries `gameId=`; the SignalR hub
@@ -74,7 +75,9 @@ test.describe('WP-E/#120 — lobby config round-trips URL ↔ WS handshake (C-2)
       apply.click(),
     ]);
 
-    // ── 1. Page URL carries the frozen six-param handshake (C-2) ─────
+    // ── 1. Page URL carries the six frozen params + the Ripley-approved
+    //       create-time extensions (handCount); rulePreset is honestly
+    //       absent (not implemented). ──────────────────────────────────
     const pageQ = new URL(page.url()).searchParams;
     expect(pageQ.get('gameId')).toMatch(/^changsha-/);
     expect(pageQ.get('variant')).toBe('changsha');
@@ -82,8 +85,10 @@ test.describe('WP-E/#120 — lobby config round-trips URL ↔ WS handshake (C-2)
     expect(pageQ.get('botCount')).toBe('3');
     expect(pageQ.get('botDifficulty')).toBe('Hard'); // PascalCase per C-2
     expect(pageQ.get('seat')).toBe('0');
+    expect(pageQ.get('handCount')).toBe('8');
+    expect(pageQ.get('rulePreset'), 'rulePreset must NOT be emitted (not implemented)').toBeNull();
 
-    // ── 2. The real WS handshake forwards the same six params ───────
+    // ── 2. The real WS handshake forwards the same params ───────────
     await expect
       .poll(() => gameWsUrl, { timeout: 20_000, message: 'game WebSocket never opened after Apply & Start' })
       .not.toBeNull();
@@ -95,6 +100,8 @@ test.describe('WP-E/#120 — lobby config round-trips URL ↔ WS handshake (C-2)
     expect(wsQ.get('botCount')).toBe('3');
     expect(wsQ.get('botDifficulty')).toBe('Hard');
     expect(wsQ.get('seat')).toBe('0');
+    expect(wsQ.get('handCount'), 'buildWsUrl must forward the validated handCount').toBe('8');
+    expect(wsQ.get('rulePreset'), 'rulePreset must NOT ride the handshake').toBeNull();
   });
 
   test('bare Apply mints a fresh gameId and defaults (auto / 3 bots) into the URL', async ({ page }) => {

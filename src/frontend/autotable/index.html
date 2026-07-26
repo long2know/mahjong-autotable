@@ -29,7 +29,7 @@
     <link href="./icon-512.auto.3c9e4a61.png" rel="apple-touch-icon" sizes="512x512">
     <!-- Phase J Wave 5 — public matchmaking lobby, profile drawer,
          stats panel.  Layered after style.css so its overrides win. -->
-      <script type="module" crossorigin src="./autotable-src.758ae6d3.js"></script>
+      <script type="module" crossorigin src="./autotable-src.f6a5f946.js"></script>
       <link rel="modulepreload" crossorigin href="./admin-panel-core.e1c43197.js">
       <link rel="stylesheet" crossorigin href="./style.eac007fa.css">
     </head>
@@ -1172,14 +1172,17 @@
                  `rule-presets.ts:renderLobbySelect()` after `/api/rule-presets`
                  returns; left empty here so the renderer can replace it. -->
             <fieldset class="lobby-fieldset" id="lobby-rule-preset-fieldset">
-                <legend>Rule preset <small class="lobby-hint">(Changsha)</small></legend>
+                <legend>Rule preset <small class="lobby-hint">(Changsha — coming soon)</small></legend>
                 <select class="dark-select form-control form-control-sm"
                         id="lobby-rule-preset-select"
                         data-testid="lobby-rule-preset-select"
-                        aria-label="Changsha rule preset"></select>
-                <small class="lobby-hint">
+                        disabled aria-disabled="true"
+                        title="Rule presets are not yet applied to gameplay"
+                        aria-label="Changsha rule preset (not yet applied to gameplay)"></select>
+                <small class="lobby-hint" id="lobby-rule-preset-note">
+                    Not yet applied to gameplay —
                     <a href="#" id="lobby-create-preset-link"
-                       data-testid="lobby-create-preset-link">Create / edit presets…</a>
+                       data-testid="lobby-create-preset-link">create / edit presets…</a>
                 </small>
             </fieldset>
 

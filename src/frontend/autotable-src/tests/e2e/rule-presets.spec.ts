@@ -62,6 +62,12 @@ test.describe('Mahjong Autotable — rule presets', () => {
     await page.waitForTimeout(750);
     const optionCount = await select.locator('option').count();
     expect(optionCount).toBeGreaterThanOrEqual(1);
+    // Ferro WP-E/#120 (Ripley C-2 ruling) — rule presets are NOT applied to
+    // Changsha gameplay yet, so the lobby picker is display-only: it must be
+    // disabled so it can't imply an effect (the lobby also no longer emits
+    // `?rulePreset=`). The settings-panel editor below remains the real CRUD
+    // surface.
+    await expect(select, 'lobby rule-preset picker must be disabled (not yet applied)').toBeDisabled();
   });
 
   test('settings drawer rule-preset tab is reachable', async ({ page }) => {

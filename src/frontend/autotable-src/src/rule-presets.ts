@@ -68,8 +68,6 @@ export const CLASSIC_CHANGSHA: RulePreset = Object.freeze({
 
 const events = new EventEmitter();
 let cached: RulePreset[] = [CLASSIC_CHANGSHA];
-let loaded = false;
-let serverHasEndpoint = true;
 let installed = false;
 
 // ── LS helpers ──────────────────────────────────────────────────────
@@ -167,18 +165,14 @@ export async function refreshRulePresets(): Promise<RulePreset[]> {
       headers: { Accept: 'application/json' },
     });
     if (resp.status === 404) {
-      serverHasEndpoint = false;
       cached = [CLASSIC_CHANGSHA];
-      loaded = true;
       emitChange();
       return cached;
     }
     if (!resp.ok) {
-      loaded = true;
       emitChange();
       return cached;
     }
-    serverHasEndpoint = true;
     const body = await resp.json() as Record<string, unknown>;
     const arr = (body.presets ?? body.Presets) as unknown;
     if (Array.isArray(arr)) {
@@ -192,7 +186,6 @@ export async function refreshRulePresets(): Promise<RulePreset[]> {
   } catch {
     /* keep existing cached */
   }
-  loaded = true;
   emitChange();
   return cached;
 }
@@ -346,12 +339,13 @@ function renderLobbySelect(): void {
   } else {
     sel.value = CLASSIC_CHANGSHA.id;
   }
-  // Disable the picker entirely if we couldn't load any presets and
-  // the server claims to have the endpoint — surfaces an empty state
-  // rather than silently falling back.
-  sel.disabled = cached.length <= 1 && loaded && !serverHasEndpoint
-    ? false   // still let the user pick "Classic Changsha"
-    : false;
+  // Ferro WP-E/#120 (Ripley C-2 ruling) — rule presets are NOT yet applied to
+  // Changsha gameplay (the WS handshake never reads `?rulePreset=` and the
+  // lobby no longer emits it). Keep the lobby picker disabled so it can't
+  // imply an effect; the settings-panel editor below remains the real CRUD
+  // surface for managing presets. Remove this once Bishop (WP-A) wires a
+  // create-time rule-preset read.
+  sel.disabled = true;
 }
 
 // ── DOM: settings-drawer "Rule presets" tab editor ─────────────────
