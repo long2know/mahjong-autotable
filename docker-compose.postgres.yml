@@ -1,8 +1,10 @@
 # Phase J Wave 7 — Apone (DevOps).
 #
 # Compose overlay that runs the autotable + a dedicated Postgres 16 sidecar.
-# Use with the base file:
+# The `mahjong` service inherits the base file's Production posture, so it
+# still needs a JWT key — run the same one-time bootstrap first:
 #
+#   ./scripts/compose-bootstrap.sh        # ensures a stable JWT_SIGNING_KEY in .env
 #   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
 #
 # `Persistence__Provider=Postgres` flips the API to the Npgsql-backed

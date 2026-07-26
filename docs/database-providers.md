@@ -74,7 +74,11 @@ startup with a clear stack trace.
 
 ### Local Docker Compose — Postgres
 
+The `mahjong` service runs in Production posture, so provision the JWT key
+first (idempotent), then bring up the overlay:
+
 ```bash
+./scripts/compose-bootstrap.sh
 docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
 ```
 
@@ -92,6 +96,7 @@ gates the API on a `sqlcmd "SELECT 1"` healthcheck, and points
 `ConnectionStrings__SqlServer` at it:
 
 ```bash
+./scripts/compose-bootstrap.sh
 docker compose -f docker-compose.yml -f docker-compose.sqlserver.yml up -d --build
 ```
 
