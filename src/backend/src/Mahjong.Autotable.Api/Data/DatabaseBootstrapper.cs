@@ -64,7 +64,7 @@ public static class DatabaseBootstrapper
             "1",
             StringComparison.Ordinal);
 
-        if (resetForTests && !db.Database.IsSqlite())
+        if (resetForTests && db.Database.IsNpgsql())
         {
             // Postgres path — drop+recreate the `public` schema in the
             // current database so every test class gets a clean slate.
@@ -72,6 +72,30 @@ public static class DatabaseBootstrapper
             // stay connected and Npgsql's pool keeps warm.
             await db.Database.ExecuteSqlRawAsync(
                 "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;",
+                cancellationToken).ConfigureAwait(false);
+        }
+        else if (resetForTests && db.Database.IsSqlServer())
+        {
+            // WP-C / #118 — Frost. SQL Server twin of the Postgres reset.
+            // SQL Server has no drop-schema-cascade, and `dbo` cannot be
+            // dropped, so we drop every foreign key first (to break
+            // referential ordering) then every user table in the current
+            // database. MigrateAsync below then re-applies the full
+            // SqlServer migration set from a clean slate — the same
+            // per-class isolation contract the throwaway Postgres DB gets
+            // via SqlServerTestDatabaseLifetime. Gated on
+            // MAT_TEST_RESET_DB so production deploys never trip it.
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                DECLARE @sql NVARCHAR(MAX) = N'';
+                SELECT @sql += N'ALTER TABLE ' + QUOTENAME(SCHEMA_NAME(t.schema_id)) + N'.' + QUOTENAME(t.name)
+                             + N' DROP CONSTRAINT ' + QUOTENAME(fk.name) + N';'
+                FROM sys.foreign_keys AS fk
+                JOIN sys.tables AS t ON fk.parent_object_id = t.object_id;
+                SELECT @sql += N'DROP TABLE ' + QUOTENAME(SCHEMA_NAME(t.schema_id)) + N'.' + QUOTENAME(t.name) + N';'
+                FROM sys.tables AS t;
+                IF (@sql <> N'') EXEC sp_executesql @sql;
+                """,
                 cancellationToken).ConfigureAwait(false);
         }
 

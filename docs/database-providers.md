@@ -8,8 +8,14 @@ swap at deploy time:
 | Provider     | Selector                     | Notes                                                                                |
 | ------------ | ---------------------------- | ------------------------------------------------------------------------------------ |
 | **SQLite**   | `Persistence:Provider=Sqlite` (default) | Single-file, single-replica. The dev / Docker-quickstart path.                       |
-| **Postgres** | `Persistence:Provider=Postgres`         | Production recommended. Multi-replica safe. `Npgsql.EntityFrameworkCore.PostgreSQL`. |
+| **Postgres** | `Persistence:Provider=Postgres`         | Production recommended. Durable, backup-friendly. `Npgsql.EntityFrameworkCore.PostgreSQL`. |
 | **SQL Server** | `Persistence:Provider=SqlServer`      | Production-capable. `Microsoft.EntityFrameworkCore.SqlServer`.                       |
+
+> **Single-writer only — no multi-replica safety.** Choosing Postgres or
+> SQL Server makes storage *durable*, but it does **not** make the app
+> horizontally scalable. See
+> [Concurrency & the single-writer constraint](#concurrency--the-single-writer-constraint)
+> before running more than one API replica.
 
 The selector is read by
 [`Persistence/ServiceCollectionExtensions.AddPersistence`](../src/backend/src/Mahjong.Autotable.Api/Persistence/ServiceCollectionExtensions.cs).
@@ -18,6 +24,37 @@ One concrete subclass of `AppDbContext` is registered per provider —
 and `AppDbContext` itself is aliased to whichever subclass is active. Every
 existing `GetRequiredService<AppDbContext>()` call site continues to work
 unchanged.
+
+## Concurrency & the single-writer constraint
+
+**The API is a single-writer, single-container application. Do not run more
+than one replica against a shared database.**
+
+`ChangshaGame.StateVersion` is a plain `int` column — **not** an EF Core
+concurrency token (no `IsConcurrencyToken()`, no SQL Server `rowversion`, no
+Postgres `xmin` mapping). All write serialization for a game comes from the
+per-game in-process `SemaphoreSlim` held by `ChangshaGameRuntime`
+(`instance.Lock`): the optimistic `StateVersion` check runs *inside* that lock,
+before the mutation, and `PersistSnapshotAsync` writes the snapshot *after* the
+`StateChanged` broadcast (and swallows DB errors so persistence never breaks
+gameplay).
+
+Because that lock lives in process memory, correctness holds **only** while a
+game is owned by exactly one process:
+
+- ✅ **Single container / single replica** (the shipped target). One writer,
+  one lock, no split-brain. SQLite, Postgres, and SQL Server are all safe here.
+- ❌ **Multiple API replicas behind a load balancer.** Two processes could each
+  hold their *own* `SemaphoreSlim` for the same game and interleave writes; the
+  plain `StateVersion` column would not reject the stale write, so the last
+  writer silently wins (split-brain). This is unsupported on **every** provider,
+  Postgres and SQL Server included — moving off SQLite buys durability, not
+  horizontal scale.
+
+Multi-replica support would require promoting `StateVersion` to a real DB
+concurrency token (or a `rowversion`/`xmin` mapping) and a distributed lock or
+sticky game-affinity router. That work is intentionally out of scope; until it
+lands, keep the deployment single-writer.
 
 ## Environment contract
 
@@ -49,20 +86,20 @@ sidecar, gates the API on `pg_isready`, and rewrites
 
 ### Local Docker Compose — SQL Server
 
-There's no shipped overlay yet (SQL Server's official image is hefty), but
-the manual incantation is:
+WP-C / #118 ships a `docker-compose.sqlserver.yml` overlay (twin of the
+Postgres one) that runs a `mcr.microsoft.com/mssql/server:2022-latest` sidecar,
+gates the API on a `sqlcmd "SELECT 1"` healthcheck, and points
+`ConnectionStrings__SqlServer` at it:
 
 ```bash
-docker network create mahjong-net
-docker run -d --name sqlserver --network mahjong-net \
-  -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='YourStrong!Passw0rd' \
-  -p 1433:1433 mcr.microsoft.com/mssql/server:2022-latest
-
-docker run -d --name mahjong --network mahjong-net -p 8080:8080 \
-  -e Persistence__Provider=SqlServer \
-  -e 'ConnectionStrings__SqlServer=Server=sqlserver,1433;Database=mahjong_autotable;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=true' \
-  mahjong-autotable:local
+docker compose -f docker-compose.yml -f docker-compose.sqlserver.yml up -d --build
 ```
+
+SQL Server enforces a password-complexity policy; override the dev default via
+`MSSQL_SA_PASSWORD` (and, because the base compose runs
+`ASPNETCORE_ENVIRONMENT=Production`, supply `Authentication__JwtSigningKeys__0`)
+before `up`. The API's startup `MigrateAsync()` creates the `mahjong_autotable`
+database and applies the SqlServer migration set on first boot.
 
 ### Kubernetes
 
@@ -77,7 +114,8 @@ EF Core migration sets live per-provider under
 
 ```
 Migrations/
-  (legacy AppDbContext-tagged migrations — Sqlite-only, kept for back-compat)
+  README.md                                 ← read before running `dotnet ef migrations`
+  (DORMANT root AppDbContext migrations + snapshot — a regeneration trap; see below)
   Sqlite/         InitialSqlite             ← tagged for SqliteAppDbContext
   Postgres/       InitialPostgres           ← tagged for PostgresAppDbContext
   SqlServer/      InitialSqlServer          ← tagged for SqlServerAppDbContext
@@ -87,6 +125,15 @@ The runtime picks the right set via the subclass identity. EF Core's
 `__EFMigrationsHistory` table records which migrations have been applied
 per provider (Postgres uses the `public` schema explicitly via
 `MigrationsHistoryTable`).
+
+> **Dormant root migrations (regeneration trap).** The files directly in
+> `Migrations/` (not in a provider sub-folder) target the *base* `AppDbContext`
+> and predate the Phase J Wave 7 provider split. They are inert at runtime and
+> retained only for history. Never run `dotnet ef migrations add …
+> --context AppDbContext`: it would diff against the stale
+> `AppDbContextModelSnapshot.cs` and emit a corrupt catch-up migration. Always
+> pass an explicit provider `--context`. See
+> [`Migrations/README.md`](../src/backend/src/Mahjong.Autotable.Api/Persistence/Migrations/README.md).
 
 ### Adding a new migration
 
@@ -124,14 +171,35 @@ parity but is **not** applied automatically — operators who want
 migrations-managed SQLite can wire it up by changing the conditional in
 `DatabaseBootstrapper`.
 
+Because the SQLite runtime bootstraps via `EnsureCreated` rather than the
+migration runner, model/migration drift on the SQLite context used to be
+invisible. The `drift-gate` CI job (below) now runs
+`dotnet ef migrations has-pending-model-changes` for **all three** provider
+contexts on every PR, so any model edit that isn't captured in a paired
+migration fails CI regardless of provider. Run it locally before pushing:
+
+```bash
+cd src/backend/src/Mahjong.Autotable.Api
+for ctx in SqliteAppDbContext PostgresAppDbContext SqlServerAppDbContext; do
+  dotnet ef migrations has-pending-model-changes --context "$ctx"
+done
+```
+
 ## CI
 
-The `.github/workflows/db-providers.yml` workflow spins up a Postgres
-service container on every PR and re-runs the test suite with
-`Persistence:Provider=Postgres`, so a schema regression that breaks on
-the non-SQLite path is caught before merge. SQL Server's official image
-is too heavy for the GitHub-hosted runners; rely on
-`SqlServerAppDbContextModelSnapshot` review + the Postgres CI as proxy.
+The `.github/workflows/db-providers.yml` workflow runs the full test suite on
+every PR against **all three providers**:
+
+- **Sqlite** — the default, no service container.
+- **Postgres** — a `postgres:16-alpine` service container.
+- **SQL Server** — a real `mcr.microsoft.com/mssql/server:2022-latest`
+  container, started via a `docker run` step scoped to the SqlServer matrix
+  cell so the heavy image never slows the other cells (WP-C / #118). The
+  `SqlServerTestDatabaseLifetime` harness provisions a throwaway per-process
+  database and drops it on exit, mirroring the Postgres isolation harness.
+
+A separate **`drift-gate`** job runs `has-pending-model-changes` per provider
+context (no database required) so model/migration drift fails the build.
 
 ## Backups
 

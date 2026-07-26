@@ -7,6 +7,19 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
+// ─────────────────────────────────────────────────────────────────────────
+// DORMANT SNAPSHOT — NOT THE ACTIVE MODEL BASELINE. (WP-C / #118)
+//
+// This snapshot belongs to the *base* `AppDbContext` and is a regeneration
+// trap: running `dotnet ef migrations add <Name> --context AppDbContext` would
+// diff against this stale snapshot and emit a corrupt catch-up migration. The
+// live per-provider baselines are:
+//   Persistence/Migrations/Sqlite/SqliteAppDbContextModelSnapshot.cs
+//   Persistence/Migrations/Postgres/PostgresAppDbContextModelSnapshot.cs
+//   Persistence/Migrations/SqlServer/SqlServerAppDbContextModelSnapshot.cs
+// Always pass an explicit provider `--context`; never regenerate this file.
+// See Persistence/Migrations/README.md.
+// ─────────────────────────────────────────────────────────────────────────
 namespace Mahjong.Autotable.Api.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
