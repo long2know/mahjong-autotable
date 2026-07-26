@@ -67,6 +67,24 @@ internal sealed class ChangshaGameInstance : IAsyncDisposable
         set => Volatile.Write(ref _botStrategy, value);
     }
 
+    /// <summary>
+    /// #116 (P2) — idempotency guard for fire-and-forget bot scheduling. Holds the set of
+    /// <c>(kind, seat)</c> bot actions that are currently scheduled/in-flight so a re-entrant
+    /// ceremony transition can't double-dispatch the same actor. <see cref="TryBeginBotSchedule"/>
+    /// claims a slot at dispatch time (in the runtime's <c>ScheduleBotIfNeededAsync</c>); the
+    /// dispatched task releases it via <see cref="EndBotSchedule"/> in a finally once it has run
+    /// (or no-opped). Correctness never depends on this guard alone — every bot task still
+    /// re-validates phase/seat under <see cref="Lock"/> — it only suppresses redundant duplicates.
+    /// </summary>
+    private readonly ConcurrentDictionary<(BotScheduleKind Kind, int Seat), byte> _scheduledBots = new();
+
+    /// <summary>Claims the <c>(kind, seat)</c> bot-schedule slot. Returns false if an identical
+    /// bot action is already scheduled/in-flight, in which case the caller must NOT dispatch.</summary>
+    public bool TryBeginBotSchedule(BotScheduleKind kind, int seat) => _scheduledBots.TryAdd((kind, seat), 0);
+
+    /// <summary>Releases a previously-claimed <c>(kind, seat)</c> slot. Idempotent.</summary>
+    public void EndBotSchedule(BotScheduleKind kind, int seat) => _scheduledBots.TryRemove((kind, seat), out _);
+
     public ChangshaGameInstance(string gameId, ChangshaGameState state)
     {
         GameId = gameId;
@@ -85,3 +103,18 @@ internal sealed class ChangshaGameInstance : IAsyncDisposable
 }
 
 internal sealed record ClaimResponse(TableClaimType? ClaimType, int[]? TileIds);
+
+/// <summary>
+/// #116 — the kinds of fire-and-forget bot action the runtime schedules. Used as the key
+/// (with the seat index) for the per-instance bot-schedule idempotency guard so that a
+/// dealer's manual-deal dice roll, a pickup tick, and a turn decision are tracked separately.
+/// </summary>
+internal enum BotScheduleKind
+{
+    /// <summary>Manual-deal dealer dice roll (Phase <c>RollingDice</c>, bot dealer).</summary>
+    DealerRoll,
+    /// <summary>Manual-deal pickup tick (any <c>IsPickupPhase</c>, bot pickup seat).</summary>
+    Pickup,
+    /// <summary>Bot turn decision (Phase <c>AwaitingDiscard</c>, bot active seat).</summary>
+    Turn
+}

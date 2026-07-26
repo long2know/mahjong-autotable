@@ -1582,6 +1582,24 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
     private Task ScheduleBotIfNeededAsync(ChangshaGameInstance instance, CancellationToken ct)
     {
+        // #116 (P1-3/P1-4) — manual deal per-hand ceremony. After RotateBanker parks a new
+        // hand in RollingDice, a bot dealer must auto-roll to drive the wall-break + batch
+        // pickup ritual (a human dealer rolls via the WS client). This only fires for the
+        // per-hand re-entry path — StartGameAsync's manual branch never calls
+        // ScheduleBotIfNeededAsync, so hand 1 stays client/test-driven exactly as before.
+        if (instance.State.Phase == ChangshaPhase.RollingDice)
+        {
+            if (instance.State.DealMode != DealMode.Manual) return Task.CompletedTask;
+            var dealerSeat = instance.State.DealerSeatIndex;
+            if (dealerSeat < 0 || dealerSeat >= instance.State.Seats.Count) return Task.CompletedTask;
+            if (!instance.State.Seats[dealerSeat].IsBot) return Task.CompletedTask;
+            // #116 (P2) — idempotent dispatch: skip if a dealer roll for this seat is already pending.
+            if (!instance.TryBeginBotSchedule(BotScheduleKind.DealerRoll, dealerSeat)) return Task.CompletedTask;
+
+            _ = RunBotDealerRollAsync(instance, dealerSeat, instance.LifecycleCts.Token);
+            return Task.CompletedTask;
+        }
+
         // Phase G §1 — manual-deal pickup chain. While IsPickupPhase the active
         // actor is PickupSeatIndex (NOT ActiveSeatIndex — that's the dealer until
         // AwaitingDiscard). Schedule a pickup tick only if that seat is a bot;
@@ -1592,6 +1610,8 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             if (pickupSeatNullable is not int pickupSeat) return Task.CompletedTask;
             if (pickupSeat < 0 || pickupSeat >= instance.State.Seats.Count) return Task.CompletedTask;
             if (!instance.State.Seats[pickupSeat].IsBot) return Task.CompletedTask;
+            // #116 (P2) — idempotent dispatch: skip if a pickup tick for this seat is already pending.
+            if (!instance.TryBeginBotSchedule(BotScheduleKind.Pickup, pickupSeat)) return Task.CompletedTask;
 
             _ = RunBotPickupAsync(instance, pickupSeat, instance.LifecycleCts.Token);
             return Task.CompletedTask;
@@ -1600,9 +1620,56 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         var seat = instance.State.ActiveSeatIndex;
         if (instance.State.Phase != ChangshaPhase.AwaitingDiscard) return Task.CompletedTask;
         if (!instance.State.Seats[seat].IsBot) return Task.CompletedTask;
+        // #116 (P2) — idempotent dispatch: skip if a turn decision for this seat is already pending.
+        if (!instance.TryBeginBotSchedule(BotScheduleKind.Turn, seat)) return Task.CompletedTask;
 
         _ = RunBotTurnAsync(instance, seat, instance.LifecycleCts.Token);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// #116 (P1-3) — manual-deal bot-dealer dice roll. After a hand rotates the banker and
+    /// <see cref="StartNextHandOrEndAsync"/> parks the new hand in <see cref="ChangshaPhase.RollingDice"/>
+    /// under <see cref="DealMode.Manual"/>, a bot dealer has no human to press "roll". This tick
+    /// sleeps <see cref="ChangshaRuntimeOptions.BotPickupDelayMs"/>, re-validates the roll invariants
+    /// under the instance lock (phase may have changed, the seat may have been claimed by a
+    /// reconnecting human, the instance may be disposing), then calls <see cref="RollDiceAsync"/>,
+    /// which begins the manual deal and hands off to <see cref="RunBotPickupAsync"/> via the pickup
+    /// chain. The <see cref="BotScheduleKind.DealerRoll"/> guard slot is always released in the
+    /// finally so a later hand can re-schedule the (possibly same) dealer seat.
+    /// </summary>
+    private async Task RunBotDealerRollAsync(ChangshaGameInstance instance, int dealerSeat, CancellationToken ct)
+    {
+        try
+        {
+            try { await Task.Delay(_options.BotPickupDelayMs, ct); }
+            catch (OperationCanceledException) { return; }
+
+            bool shouldRoll;
+            await instance.Lock.WaitAsync(ct);
+            try
+            {
+                shouldRoll = instance.State.Phase == ChangshaPhase.RollingDice
+                    && instance.State.DealMode == DealMode.Manual
+                    && instance.State.DealerSeatIndex == dealerSeat
+                    && dealerSeat >= 0 && dealerSeat < instance.State.Seats.Count
+                    && instance.State.Seats[dealerSeat].IsBot;
+            }
+            finally { instance.Lock.Release(); }
+
+            if (!shouldRoll) return;
+
+            await RollDiceAsync(instance.GameId, dealerSeat, ct);
+        }
+        catch (OperationCanceledException) { /* lifecycle teardown */ }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Bot dealer dice-roll failed for game {GameId} seat {Seat}", instance.GameId, dealerSeat);
+        }
+        finally
+        {
+            instance.EndBotSchedule(BotScheduleKind.DealerRoll, dealerSeat);
+        }
     }
 
     /// <summary>
@@ -1615,12 +1682,12 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     /// </summary>
     private async Task RunBotPickupAsync(ChangshaGameInstance instance, int seatIndex, CancellationToken ct)
     {
-        try { await Task.Delay(_options.BotPickupDelayMs, ct); }
-        catch (OperationCanceledException) { return; }
-
-        int expected;
         try
         {
+            try { await Task.Delay(_options.BotPickupDelayMs, ct); }
+            catch (OperationCanceledException) { return; }
+
+            int expected;
             await instance.Lock.WaitAsync(ct);
             try
             {
@@ -1638,15 +1705,25 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         {
             _logger.LogError(ex, "Bot pickup failed for game {GameId} seat {Seat}", instance.GameId, seatIndex);
         }
+        finally
+        {
+            // #116 (P2) — release the pickup slot. TakeTilesFromWallAsync advances the cursor
+            // to a different seat (or the turn loop), so this never clobbers a re-scheduled slot.
+            instance.EndBotSchedule(BotScheduleKind.Pickup, seatIndex);
+        }
     }
 
     private async Task RunBotTurnAsync(ChangshaGameInstance instance, int seatIndex, CancellationToken ct)
     {
-        try { await Task.Delay(_options.BotTurnDelayMs, ct); }
-        catch (OperationCanceledException) { return; }
-
+        // #116 (P2) — the turn slot is released once the decision is captured (before we act),
+        // because the concealed/added-kong branches re-schedule THIS same seat's follow-up
+        // discard. guardHeld tracks whether the finally still owes a release for early exits.
+        bool guardHeld = true;
         try
         {
+            try { await Task.Delay(_options.BotTurnDelayMs, ct); }
+            catch (OperationCanceledException) { return; }
+
             BotAction action;
             await instance.Lock.WaitAsync(ct);
             try
@@ -1674,6 +1751,11 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 action = decision.Action;
             }
             finally { instance.Lock.Release(); }
+
+            // Decision captured — hand the turn slot back so a kong follow-up (same seat) can
+            // re-claim it. Correctness is still guarded by the phase/seat re-validation above.
+            instance.EndBotSchedule(BotScheduleKind.Turn, seatIndex);
+            guardHeld = false;
 
             switch (action.Type)
             {
@@ -1713,6 +1795,11 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         {
             _logger.LogError(ex, "Bot turn failed for game {GameId} seat {Seat}", instance.GameId, seatIndex);
         }
+        finally
+        {
+            // Safety net for the delay-cancel / validation-fail early returns (idempotent).
+            if (guardHeld) instance.EndBotSchedule(BotScheduleKind.Turn, seatIndex);
+        }
     }
 
     // ── Hand finished / next hand ─────────────────────────────────────
@@ -1733,6 +1820,9 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     private async Task StartNextHandOrEndAsync(ChangshaGameInstance instance, CancellationToken ct)
     {
         bool ended;
+        // #116 (P1-3) — whether the next hand re-enters the manual deal ceremony
+        // (RollingDice → dice roll → wall-break → batch pickups) instead of auto-dealing.
+        bool manualReentry = false;
         await instance.Lock.WaitAsync(ct);
         try
         {
@@ -1753,9 +1843,22 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                     await EmitGameCompletedAsync(instance, ct);
                 }
             }
+            else if (instance.State.DealMode == DealMode.Manual)
+            {
+                // #116 (P1-3) — per-hand manual deal ceremony. RotateBanker leaves the new
+                // hand parked in RollingDice (identical to StartGameAsync's manual branch for
+                // hand 1). Do NOT auto-deal: the dealer drives the 6-state ceremony
+                // (BreakPointMarked → PickupRound1..3 → SingleTilePickup → DealerExtra) — a
+                // human dealer rolls via the WS client, a bot dealer is auto-driven by
+                // ScheduleBotIfNeededAsync below. Reset the deal-ack tracking so the
+                // post-deal turn-start sentinel is fresh for the new hand.
+                instance.DealAcks.Clear();
+                StateChanged?.Invoke(instance.GameId);
+                manualReentry = true;
+            }
             else
             {
-                // Start next hand
+                // Auto deal — roll dice + deal atomically (unchanged Phase D-backend path).
                 var dice = new DiceService(instance.State.Seed + instance.State.HandNumber);
                 ChangshaGameStateMachine.RollDice(instance.State, dice);
                 await BroadcastDiceAsync(instance, ct);
@@ -1767,7 +1870,18 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         }
         finally { instance.Lock.Release(); }
 
-        if (!ended) await TryAdvanceAfterDealAsync(instance, ct);
+        if (ended) return;
+
+        if (manualReentry)
+        {
+            // Kick the ceremony: schedules the bot dealer's dice roll when the (rotated)
+            // dealer seat is a bot; a human dealer instead rolls via the WS client. The
+            // pickup chain then flows through the standard ScheduleBotIfNeededAsync path.
+            await ScheduleBotIfNeededAsync(instance, ct);
+            return;
+        }
+
+        await TryAdvanceAfterDealAsync(instance, ct);
     }
 
     // ── Event emitters (wire-shape per docs/rules/changsha-signalr-contract.md) ──
