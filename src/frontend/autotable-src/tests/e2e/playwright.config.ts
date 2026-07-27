@@ -24,7 +24,51 @@
 // once a baseline is captured the spec compares against it with no extra
 // configuration.  Documented in `docs/frontend-pwa-audit.md §7.2`.
 
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices, type Project } from '@playwright/test';
+
+// #119 revision (WP-D) — the deterministic committed-baseline `visual` project is
+// gated behind E2E_VISUAL_GATE=1 so it runs ONLY in its dedicated pinned-container
+// blocking job (.github/workflows/view-visual-gate.yml). This keeps the WebGL
+// pixel baselines out of the general `npm run e2e` runs (WP-F/e2e-playwright.yml),
+// whose host/font environment is not the pinned SwiftShader container and would
+// otherwise raster-drift the baselines.
+const visualProject: Project = {
+  name: 'visual',
+  testMatch: /view-mode-visual-baseline\.spec\.ts/,
+  use: {
+    ...devices['Desktop Chrome'],
+    viewport: { width: 960, height: 540 },
+    deviceScaleFactor: 1,
+    reducedMotion: 'reduce',
+    launchOptions: {
+      args: [
+        '--use-gl=angle',
+        '--use-angle=swiftshader',
+        '--enable-unsafe-swiftshader',
+        '--force-color-profile=srgb',
+        '--disable-lcd-text',
+        '--disable-font-subpixel-positioning',
+        '--hide-scrollbars',
+        '--mute-audio',
+      ],
+    },
+  },
+};
+
+const projects: Project[] = [
+  {
+    name: 'chromium',
+    use: { ...devices['Desktop Chrome'] },
+    // The committed-baseline WebGL visual spec runs ONLY under `visual`.
+    testIgnore: /view-mode-visual-baseline\.spec\.ts/,
+  },
+  {
+    name: 'mobile-chrome',
+    use: { ...devices['Pixel 5'] },
+    testIgnore: /view-mode-visual-baseline\.spec\.ts/,
+  },
+];
+if (process.env.E2E_VISUAL_GATE === '1') projects.push(visualProject);
 
 export default defineConfig({
   testDir: '.',
@@ -53,8 +97,5 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL || 'http://localhost:8080/autotable/',
     trace: 'on-first-retry',
   },
-  projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile-chrome', use: { ...devices['Pixel 5'] } },
-  ],
+  projects,
 });

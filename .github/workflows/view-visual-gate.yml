@@ -1,0 +1,132 @@
+# #119 (WP-D revision) — BLOCKING flat+perspective WebGL visual gate.
+#
+# The P1-10 review rejected the statistics-only gate and required committed
+# `toHaveScreenshot` baselines for BOTH view modes, enforced by a job that
+# ACTUALLY runs the spec and EXITS NONZERO on mismatch — no `::warning::`
+# pass-through (unlike the legacy non-blocking `playwright-visual-regression`).
+#
+# Determinism: the spec renders a seeded, deterministic local deal (fixed tiles +
+# fixed [3,4] dice) with all DOM chrome hidden, and captures the pure WebGL canvas
+# under software ANGLE→SwiftShader at a pinned 960×540 @ DPR1 viewport, inside the
+# pinned `mcr.microsoft.com/playwright:v1.60.0-jammy` container — the SAME image
+# used to generate the committed baselines. Repeat runs diff 0 px (VISUAL_STRICT
+# evidence in docs/frontend-visual-baselines.md); the 2% ratio is a safety margin.
+#
+# Harness: the frontend bundle is built and served by the .NET backend
+# (Development mode — no JWT needed); the deterministic renderer is the upstream
+# local-deal path (World.deal), NOT a WS backdoor. The pinned Playwright container
+# reaches the backend via `--network host`.
+
+name: view-visual-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "src/frontend/autotable-src/src/**"
+      - "src/frontend/autotable-src/tests/e2e/view-mode-visual-baseline.spec.ts"
+      - "src/frontend/autotable-src/tests/e2e/playwright.config.ts"
+      - "src/frontend/autotable-src/tests/e2e/__screenshots__/view-mode-visual-baseline.spec.ts/**"
+      - "src/frontend/autotable/**"
+      - ".github/workflows/view-visual-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: view-visual-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PW_IMAGE: mcr.microsoft.com/playwright:v1.60.0-jammy
+  BACKEND_URL: http://127.0.0.1:5114
+
+jobs:
+  visual-gate:
+    name: View visual gate (flat + perspective, SwiftShader — BLOCKING)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Draft PRs iterate quickly; the gate still runs on ready_for_review.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.1.0
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: src/frontend/autotable-src/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/autotable-src
+        run: npm ci --no-audit --no-fund
+
+      - name: Build production bundle (served by the backend)
+        working-directory: src/frontend/autotable-src
+        run: |
+          set -euo pipefail
+          npm run build
+          test -f ../autotable/index.html
+
+      - name: Pre-pull pinned Playwright image
+        run: docker pull "$PW_IMAGE"
+
+      - name: Start backend (serves the freshly-built bundle)
+        run: |
+          set -euo pipefail
+          ASPNETCORE_ENVIRONMENT=Development \
+          ASPNETCORE_URLS="$BACKEND_URL" \
+            dotnet run -c Release \
+              --project src/backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj \
+              > backend-visual-gate.log 2>&1 &
+          echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 90); do
+            if curl -fsS "$BACKEND_URL/autotable/" > /dev/null; then
+              echo "✓ backend up after ${i}s"; exit 0
+            fi
+            sleep 2
+          done
+          echo "✗ backend never became healthy"; tail -50 backend-visual-gate.log; exit 1
+
+      # THE GATE. `npx playwright test` exits nonzero on any baseline mismatch;
+      # that propagates through `docker run` to fail this step — BLOCKING. There is
+      # deliberately NO `|| true`, NO `continue-on-error`, and NO `::warning::`.
+      - name: Run flat+perspective visual gate (pinned container)
+        working-directory: src/frontend/autotable-src
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/work -e CI=1 -e E2E_VISUAL_GATE=1 \
+            -e E2E_BASE_URL="${BACKEND_URL}/autotable/" \
+            -v "$PWD":/work -w /work \
+            "$PW_IMAGE" \
+            npx playwright test --config tests/e2e/playwright.config.ts \
+              --project=visual tests/e2e/view-mode-visual-baseline.spec.ts \
+              --reporter=list
+
+      - name: Upload diff artefacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: view-visual-gate-diffs
+          path: |
+            src/frontend/autotable-src/test-results/**/*-actual.png
+            src/frontend/autotable-src/test-results/**/*-diff.png
+            src/frontend/autotable-src/test-results/**/*-expected.png
+            src/frontend/autotable-src/playwright-report/
+            backend-visual-gate.log
+          retention-days: 14
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -n "${BACKEND_PID:-}" ]; then kill "${BACKEND_PID}" 2>/dev/null || true; fi
