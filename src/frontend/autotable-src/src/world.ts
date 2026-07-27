@@ -834,11 +834,27 @@ export class World {
     //    spin forever; a non-dealer seat simply times out after its 4th take.
     //    The 12s per-round timeout accommodates the bot pickup delay
     //    (BotPickupDelayMs default) × 3 bots + slack.
+    //
+    //    #137 (Bishop): the loop must NOT re-consume the affordance it just took.
+    //    After emitTakePickup the server needs a beat to advance the pickup cursor
+    //    off our seat (dealer's take → cursor rotates to seats 1..3 → back to us
+    //    for the next round). Until that authoritative advance lands, `this.pickup`
+    //    still shows the SAME seat-0 affordance we already took. A fixed sleep did
+    //    not close this race: if the stale seat-0 entry was still present when the
+    //    next iteration's predicate ran, the loop burned an iteration on a no-op
+    //    re-take (the server rejects the out-of-phase `take`), exhausting
+    //    MAX_DEAL_PICKUPS BEFORE reaching DealerExtra and stranding the dealer at
+    //    13 tiles (intermittent — timing dependent). The dealer walks a strictly
+    //    increasing sequence of DISTINCT ceremony phases, so we now wait for a
+    //    seat-0 affordance whose phase differs from the one we last took: the
+    //    stale entry can never satisfy it, and the next real round always does.
     const MAX_DEAL_PICKUPS = 5;
+    let lastTakenPhase: string | null = null;
     for (let round = 0; round < MAX_DEAL_PICKUPS; round++) {
       const myTurn = await this.waitForPickup(
         gen,
-        p => p !== null && p.seatIndex === seat && p.count > 0,
+        p => p !== null && p.seatIndex === seat && p.count > 0
+          && World.normalizePickupPhase(p.phase) !== lastTakenPhase,
         12000,
       );
       if (!myTurn) return;
@@ -846,12 +862,12 @@ export class World {
       const phase = World.normalizePickupPhase(this.pickup?.phase);
       const ok = this.emitTakePickup();
       if (!ok) return;
+      lastTakenPhase = phase;
       // DealerExtra is the dealer's terminal 14th-tile pickup — the runtime
       // arms AwaitingDiscard next and never targets our seat with another
       // ceremony pickup, so stop here rather than dead-waiting 12s for an
       // affordance that will never arrive.
       if (phase === 'dealerextra') return;
-      await new Promise<void>(r => setTimeout(r, 120));
     }
   }
 

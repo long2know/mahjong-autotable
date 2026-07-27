@@ -934,22 +934,47 @@ export async function discardByPointer(page: Page): Promise<DiscardOutcome> {
 /**
  * ADVANCE — respond to a claim window with a real button click. Prefers a real
  * Hu (win) when offered, otherwise passes. Returns which button was clicked.
+ *
+ * #137: click the ON-TOP claim overlay (`.ferro-claim-*`) — the primary claim UI
+ * a real player sees and clicks — rather than the side-panel `#claim-*` buttons.
+ * The 720px-wide bottom-center overlay (z-index 1080, pointer-events:auto while a
+ * window is open) overlaps the side-panel controls, so a click aimed at the
+ * occluded `#claim-pass` / `#claim-hu` is intermittently hit-tested onto an
+ * overlay MELD badge and commits an accidental Pung/Chow — which then floods the
+ * page with uncaught errors and wedges the hand. The overlay's Hu badge and Pass
+ * button are the top layer (Pass sits in its own grid column, never under a meld
+ * badge), so they receive the click unambiguously. Side-panel is a defensive
+ * fallback only (e.g. if the overlay isn't mounted).
  */
 export async function claimByClick(page: Page): Promise<string | null> {
   const claim = await readClaimWindow(page);
   if (!claim.open) return null;
   const wantHu = claim.available.includes('Hu');
-  const selector = wantHu ? '#claim-hu' : '#claim-pass';
-  const btn = page.locator(selector);
-  if (await btn.first().isEnabled().catch(() => false)) {
-    await btn.first().click({ timeout: 3000 }).catch(() => undefined);
-    await page.waitForTimeout(400);
-    return wantHu ? 'Hu' : 'Pass';
+  if (wantHu) {
+    // Overlay Hu badge (lit + enabled only when Hu is available), else side-panel.
+    const huBadge = page.locator('.ferro-claim-badge-hu');
+    if (await huBadge.first().isEnabled().catch(() => false)) {
+      await huBadge.first().click({ timeout: 3000 }).catch(() => undefined);
+      await page.waitForTimeout(400);
+      return 'Hu';
+    }
+    const sideHu = page.locator('#claim-hu');
+    if (await sideHu.first().isEnabled().catch(() => false)) {
+      await sideHu.first().click({ timeout: 3000 }).catch(() => undefined);
+      await page.waitForTimeout(400);
+      return 'Hu';
+    }
   }
-  // If Hu wasn't clickable, fall back to a real Pass so play continues.
-  const pass = page.locator('#claim-pass');
-  if (await pass.first().isEnabled().catch(() => false)) {
-    await pass.first().click({ timeout: 3000 }).catch(() => undefined);
+  // Decline via the overlay Pass button (its own column — never under a meld badge).
+  const overlayPass = page.locator('.ferro-claim-pass');
+  if (await overlayPass.first().isVisible().catch(() => false)) {
+    await overlayPass.first().click({ timeout: 3000 }).catch(() => undefined);
+    await page.waitForTimeout(400);
+    return 'Pass';
+  }
+  const sidePass = page.locator('#claim-pass');
+  if (await sidePass.first().isEnabled().catch(() => false)) {
+    await sidePass.first().click({ timeout: 3000 }).catch(() => undefined);
     await page.waitForTimeout(400);
     return 'Pass';
   }
