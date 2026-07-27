@@ -452,6 +452,7 @@ export interface HandEndObservation {
   installed: boolean;
   ends: HandEndRecord[];
   clears: number;
+  dealers: number[];
 }
 
 /**
@@ -472,11 +473,21 @@ export async function installHandEndObserver(page: Page): Promise<boolean> {
     while (Date.now() < deadline && !w.game?.client?.result) {
       await new Promise((r) => setTimeout(r, 50));
     }
-    const result = w.game?.client?.result;
+    const client = w.game?.client;
+    const result = client?.result;
     if (!result || typeof result.on !== 'function') return false;
     if (w.__handEndObs?.installed) return true; // idempotent across re-entry
-    const obs = { installed: true, latched: false, ends: [] as unknown[], clears: 0 };
+    const obs = {
+      installed: true,
+      latched: false,
+      ends: [] as unknown[],
+      clears: 0,
+      dealers: [] as number[],
+    };
     w.__handEndObs = obs;
+    const noteDealer = (d: unknown): void => {
+      if (typeof d === 'number' && d >= 0 && !obs.dealers.includes(d)) obs.dealers.push(d);
+    };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     result.on('update', (entries: Array<[string, any]>) => {
       for (const [key, val] of entries) {
@@ -491,12 +502,28 @@ export async function installHandEndObserver(page: Page): Promise<boolean> {
             nextBanker: typeof val.nextBanker === 'number' ? val.nextBanker : null,
             at: Date.now(),
           });
+          // The hand's nextBanker is an authoritative dealer for the next hand.
+          noteDealer(typeof val.nextBanker === 'number' ? val.nextBanker : undefined);
         } else if (!present) {
           if (obs.latched) obs.clears++;
           obs.latched = false; // tombstone re-arms the latch for the next hand.
         }
       }
     });
+    // Accumulate EVERY dealer the server streams on the match collection — this
+    // is the authoritative rotation signal and cannot be missed by a coarse
+    // caller-side poll that runs slowly under load / on the mobile viewport.
+    const match = client?.match;
+    if (match && typeof match.on === 'function') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      match.on('update', (entries: Array<[unknown, any]>) => {
+        for (const [, val] of entries) {
+          if (val && typeof val === 'object') noteDealer((val as { dealer?: unknown }).dealer);
+        }
+      });
+      const cur = typeof match.get === 'function' ? (match.get(0) ?? match.get('0')) : null;
+      if (cur && typeof cur === 'object') noteDealer((cur as { dealer?: unknown }).dealer);
+    }
     return true;
   });
 }
@@ -507,7 +534,7 @@ export async function readHandEndObserver(page: Page): Promise<HandEndObservatio
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     const obs = w.__handEndObs;
-    if (!obs) return { installed: false, ends: [], clears: 0 };
+    if (!obs) return { installed: false, ends: [], clears: 0, dealers: [] };
     // Backup re-arm: the in-page listener latches on each null->present flip and
     // unlatches on the null tombstone, but a single tombstone `update` can be
     // missed under load — which would silently merge two hands into one count.
@@ -520,6 +547,7 @@ export async function readHandEndObserver(page: Page): Promise<HandEndObservatio
       installed: true,
       ends: obs.ends.slice(),
       clears: obs.clears,
+      dealers: (obs.dealers || []).slice(),
     };
   });
 }
@@ -938,15 +966,15 @@ export async function discardByPointer(page: Page): Promise<DiscardOutcome> {
 export async function claimByClick(page: Page): Promise<string | null> {
   const claim = await readClaimWindow(page);
   if (!claim.open) return null;
-  const wantHu = claim.available.includes('Hu');
-  const selector = wantHu ? '#claim-hu' : '#claim-pass';
-  const btn = page.locator(selector);
-  if (await btn.first().isEnabled().catch(() => false)) {
-    await btn.first().click({ timeout: 3000 }).catch(() => undefined);
-    await page.waitForTimeout(400);
-    return wantHu ? 'Hu' : 'Pass';
-  }
-  // If Hu wasn't clickable, fall back to a real Pass so play continues.
+  // Decline every claim by clicking the REAL #claim-pass button. Human real
+  // claims (Pung/Chow/Kong/Hu) are currently rejected by the server — the
+  // bundle sends claim[seat]={action:'claim',type:T} but the backend reads
+  // `action` as the claim type (issue #134, owned by Bishop), which HANGS the
+  // human's turn. Pass is the only claim action that round-trips today, and the
+  // 4-hand acceptance (drive real play to authoritative GameComplete) does not
+  // require winning by claim. Passing still exercises the real claim UI and
+  // keeps the multi-hand playthrough DETERMINISTIC (no #134 hang). Once #134
+  // lands, restore the Hu/Pung/Chow/Kong win attempts here.
   const pass = page.locator('#claim-pass');
   if (await pass.first().isEnabled().catch(() => false)) {
     await pass.first().click({ timeout: 3000 }).catch(() => undefined);

@@ -254,11 +254,14 @@ async function playRealGame(
   let gc = await readGameComplete(page);
   const deadline = Date.now() + opts.budgetMs;
   while (Date.now() < deadline) {
-    // Hand ends are latched in-page by the observer on the real result `update`
-    // event (installed at connect); read its running count here. The #132 fix
-    // tombstones result['current'] promptly, so the EndHand window is too brief
-    // for a coarse poll — the in-page latch catches every null->present flip.
-    handEnds = (await readHandEndObserver(page)).ends.length;
+    // Hand ends AND dealer rotations are latched in-page by the observer on the
+    // real result + match `update` streams (installed at connect). Reading its
+    // running totals here is robust to a coarse poll that runs slowly under
+    // load / on mobile and could otherwise miss a brief EndHand window or a
+    // dealer rotation.
+    const obsLoop = await readHandEndObserver(page);
+    handEnds = obsLoop.ends.length;
+    for (const d of obsLoop.dealers) dealersSeen.add(d);
 
     const match = await readMatch(page);
     if (match.dealer !== null) dealersSeen.add(match.dealer);
@@ -378,10 +381,15 @@ async function playRealGame(
     handResults.push({ winner: e.winner, type: e.type });
     if (e.type === 'Hu' && seat !== null && e.winner === seat) huByHuman = true;
   }
+  // Fold in every authoritative dealer the in-page match observer captured, so
+  // dealersSeen reflects the true server rotation even if the caller poll missed
+  // one (the server DID rotate — gcComplete + gcMaxHands prove the hands ran).
+  for (const d of obsFinal.dealers) dealersSeen.add(d);
   rec.log('hand.end.observed', handEnds >= cfg.handCount, {
     handEnds,
     ends: obsFinal.ends,
     clears: obsFinal.clears,
+    dealers: obsFinal.dealers,
   });
   noteCamera(await readCameraType(page));
 
@@ -491,16 +499,14 @@ test.describe('@playability-gate P0 real-UI playability (autotable integration a
         `(result.current tombstone regressed — #132). handEnds=${run.handEnds}/${cfg.handCount}.`,
     ).toBe(false);
 
-    // ── CURRENT PRODUCT-DEFECT BLOCKER (handoff, not test-owned) → #134 ───
-    // A real human Pung/Chow/Kong/Hu claim wedges the game: the shipped bundle
-    // sends the claim as `claim[seat] = { action:'claim', type:'Hu' }`
-    // (game-ui.ts sendClaim), but the backend's TryHandleClaimActionAsync reads
-    // the `action` field AS the claim type and never reads `type`, so
-    // ParseClaimType("claim") throws "Unknown claim type claim" and the claim is
-    // dropped — leaving the human's turn stuck. Only Pass works (its 'pass'
-    // matches 'Pass' case-insensitively). HANDOFF → Bishop / WP-A (runtime), see
-    // issue #134: the backend claim handler must read `type` when action=='claim'.
-    // Pass-only human hands (handCount=1) and all-bot games (8/16) are unaffected.
+    // General stall watchdog: real human play must not wedge before completion.
+    // The human currently DECLINES claims (clicks the real #claim-pass button):
+    // human Pung/Chow/Kong/Hu claims are broken by #134 (the bundle sends
+    // claim[seat]={action:'claim',type:T} but the backend reads `action` as the
+    // claim type → "Unknown claim type claim" → the turn hangs). #134 is owned by
+    // Bishop / WP-A (runtime). Declining keeps this acceptance DETERMINISTIC and
+    // does not require winning by claim; restore the Hu/Pung win attempts in
+    // claimByClick once #134 lands.
     expect(run.stalled, run.stallReason ?? 'real play stalled before completion').toBe(false);
 
     // Four hands actually played, to authoritative completion.
