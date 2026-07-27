@@ -352,9 +352,14 @@ public sealed class DealerExtraTransitionsToAwaitingDiscardTests : IAsyncLifetim
             new object[] { "discard", 0, new { tileId = discardTileId } }
         });
 
-        var discardLanded = await WaitForAsync(() =>
+        // Read a lock-protected deep copy (TryGetSnapshotCopyAsync) rather than the live snapshot:
+        // once the dealer's discard passes the turn to bot seat 1, that bot's worker thread appends
+        // to DiscardPile/EventLog on another thread, and enumerating the live List<> here raced
+        // ("Collection was modified; enumeration operation may not execute") — #132 follow-up.
+        var discardLanded = await WaitForAsync(async () =>
         {
-            if (!runtime.TryGetSnapshot(runtimeGameId!, out var s) || s is null) return false;
+            var s = await runtime.TryGetSnapshotCopyAsync(runtimeGameId!);
+            if (s is null) return false;
             return s.DiscardPile.Any(d => d.SeatIndex == 0 && d.TileId == discardTileId)
                 && !s.Hands.Single(h => h.SeatIndex == 0).ConcealedTiles.Contains(discardTileId);
         }, timeoutMs: 3000);
@@ -367,8 +372,11 @@ public sealed class DealerExtraTransitionsToAwaitingDiscardTests : IAsyncLifetim
         // Authoritative round-trip signal, immune to any downstream claim: the runtime recorded
         // a tile-discarded event for (seat 0, tile). This is precisely "the endpoint did not
         // silently drop the discard" — the contract the pile check was a leaky proxy for.
-        var finalState = Snapshot(runtime, runtimeGameId!);
-        Assert.Contains(finalState.EventLog, e =>
+        // Deep copy (not the live snapshot) so the EventLog enumeration is stable while bot seat 1
+        // keeps appending events on its worker thread.
+        var finalState = await runtime.TryGetSnapshotCopyAsync(runtimeGameId!);
+        Assert.NotNull(finalState);
+        Assert.Contains(finalState!.EventLog, e =>
             e.EventType == "tile-discarded" && e.SeatIndex == 0 && e.TileId == discardTileId);
     }
 
@@ -422,6 +430,19 @@ public sealed class DealerExtraTransitionsToAwaitingDiscardTests : IAsyncLifetim
             await Task.Delay(25);
         }
         return predicate();
+    }
+
+    // Async overload — lets callers await a lock-protected deep copy (TryGetSnapshotCopyAsync)
+    // inside the predicate so post-discard bot activity can't race the state read (#132 follow-up).
+    private static async Task<bool> WaitForAsync(Func<Task<bool>> predicate, int timeoutMs)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await predicate()) return true;
+            await Task.Delay(25);
+        }
+        return await predicate();
     }
 
     private async Task<WsSession> OpenAsync(int seat, string gameId, string dealMode)
