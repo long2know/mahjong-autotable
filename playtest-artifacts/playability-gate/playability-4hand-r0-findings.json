@@ -1,0 +1,1022 @@
+{
+  "steps": [
+    {
+      "step": "preflight.bundle-hash",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "entryShaMatches": true
+      },
+      "at": 25
+    },
+    {
+      "step": "boot.game-object",
+      "ok": true,
+      "detail": {
+        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&seat=0&seed=4100&gameId=playability-4hand-hudson128fastfail-r0",
+        "handCount": 4
+      },
+      "at": 464
+    },
+    {
+      "step": "connect.ws",
+      "ok": true,
+      "detail": {
+        "connected": true,
+        "humanPlays": true
+      },
+      "at": 806
+    },
+    {
+      "step": "observer.hand-end.install",
+      "ok": true,
+      "detail": {
+        "installed": true
+      },
+      "at": 809
+    },
+    {
+      "step": "seat.take",
+      "ok": true,
+      "detail": {
+        "assigned": 0
+      },
+      "at": 2640
+    },
+    {
+      "step": "deal.press",
+      "ok": true,
+      "detail": null,
+      "at": 3417
+    },
+    {
+      "step": "deal.playable-hand",
+      "ok": true,
+      "detail": {
+        "myHandCount": 14,
+        "lastPickup": null
+      },
+      "at": 9635
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 76,
+        "discardAfter": 4
+      },
+      "at": 11554
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 70,
+        "discardAfter": 6
+      },
+      "at": 13990
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 66,
+        "discardAfter": 9
+      },
+      "at": 16405
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 18119
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 80,
+        "discardAfter": 12
+      },
+      "at": 20482
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 63,
+        "discardAfter": 15
+      },
+      "at": 22951
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 24405
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 64,
+        "discardAfter": 20
+      },
+      "at": 38175
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 39641
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 53,
+        "discardAfter": 23
+      },
+      "at": 45400
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 47217
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 50,
+        "discardAfter": 27
+      },
+      "at": 52754
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 42,
+        "discardAfter": 30
+      },
+      "at": 58238
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 59931
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 82,
+        "discardAfter": 33
+      },
+      "at": 63955
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 65347
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 35,
+        "discardAfter": 39
+      },
+      "at": 71032
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 85,
+        "discardAfter": 42
+      },
+      "at": 75404
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 76665
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 28,
+        "discardAfter": 46
+      },
+      "at": 82242
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 55,
+        "discardAfter": 50
+      },
+      "at": 85065
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 86507
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 31,
+        "discardAfter": 52
+      },
+      "at": 92228
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 0,
+        "handAfter": 4
+      },
+      "at": 94317
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 4,
+        "handAfter": 8
+      },
+      "at": 96838
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 8,
+        "handAfter": 12
+      },
+      "at": 99187
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 12,
+        "handAfter": 13
+      },
+      "at": 102107
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 56,
+        "discardAfter": 7
+      },
+      "at": 106943
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 50,
+        "discardAfter": 9
+      },
+      "at": 109381
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 111143
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 40,
+        "discardAfter": 13
+      },
+      "at": 116784
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 119388
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 70,
+        "discardAfter": 20
+      },
+      "at": 121888
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 60,
+        "discardAfter": 23
+      },
+      "at": 124414
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 48,
+        "discardAfter": 27
+      },
+      "at": 126911
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 30,
+        "discardAfter": 31
+      },
+      "at": 132972
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 134346
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 78,
+        "discardAfter": 35
+      },
+      "at": 141583
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 53,
+        "discardAfter": 39
+      },
+      "at": 144315
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 73,
+        "discardAfter": 43
+      },
+      "at": 146753
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 41,
+        "discardAfter": 47
+      },
+      "at": 149199
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 0,
+        "handAfter": 4
+      },
+      "at": 151918
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 4,
+        "handAfter": 8
+      },
+      "at": 154378
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 8,
+        "handAfter": 12
+      },
+      "at": 156197
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 12,
+        "handAfter": 13
+      },
+      "at": 157885
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 65,
+        "discardAfter": 5
+      },
+      "at": 160735
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 162213
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 63,
+        "discardAfter": 8
+      },
+      "at": 167976
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 169833
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 74,
+        "discardAfter": 13
+      },
+      "at": 177101
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 64,
+        "discardAfter": 16
+      },
+      "at": 179913
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 46,
+        "discardAfter": 20
+      },
+      "at": 182445
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 66,
+        "discardAfter": 25
+      },
+      "at": 184901
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 186711
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 43,
+        "discardAfter": 29
+      },
+      "at": 192282
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 193682
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 35,
+        "discardAfter": 32
+      },
+      "at": 199879
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 79,
+        "discardAfter": 36
+      },
+      "at": 202634
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 204608
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 20,
+        "discardAfter": 40
+      },
+      "at": 210550
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 76,
+        "discardAfter": 44
+      },
+      "at": 213750
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung",
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 215390
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 18,
+        "discardAfter": 49
+      },
+      "at": 221493
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 69,
+        "discardAfter": 52
+      },
+      "at": 227973
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 12,
+        "handAfter": 13
+      },
+      "at": 241558
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 65,
+        "discardAfter": 5
+      },
+      "at": 245129
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 55,
+        "discardAfter": 8
+      },
+      "at": 247846
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 70,
+        "discardAfter": 12
+      },
+      "at": 252541
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 254102
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 42,
+        "discardAfter": 15
+      },
+      "at": 260132
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 44,
+        "discardAfter": 20
+      },
+      "at": 263259
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 62,
+        "discardAfter": 23
+      },
+      "at": 265961
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 57,
+        "discardAfter": 27
+      },
+      "at": 268654
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 81,
+        "discardAfter": 30
+      },
+      "at": 273360
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 274860
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 95,
+        "discardAfter": 35
+      },
+      "at": 282589
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 25,
+        "discardAfter": 39
+      },
+      "at": 285678
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 40,
+        "discardAfter": 42
+      },
+      "at": 288406
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 290058
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 58,
+        "discardAfter": 47
+      },
+      "at": 293108
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 61,
+        "discardAfter": 50
+      },
+      "at": 295837
+    },
+    {
+      "step": "hand.end.observed",
+      "ok": true,
+      "detail": {
+        "handEnds": 4,
+        "ends": [
+          {
+            "winner": 2,
+            "type": "Hu",
+            "nextBanker": 2,
+            "at": 1785129346448
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785129404021
+          },
+          {
+            "winner": 2,
+            "type": "Hu",
+            "nextBanker": 2,
+            "at": 1785129486202
+          },
+          {
+            "winner": 1,
+            "type": "Hu",
+            "nextBanker": 1,
+            "at": 1785129550396
+          }
+        ],
+        "clears": 4
+      },
+      "at": 296693
+    },
+    {
+      "step": "gate.summary",
+      "ok": true,
+      "detail": {
+        "bundleOk": true,
+        "bundleReason": "Served bundle matches the freshly-built source bundle (content hashes equal).",
+        "connected": true,
+        "seat": 0,
+        "dealt": true,
+        "playable": true,
+        "handEnds": 4,
+        "handResults": [
+          {
+            "winner": 2,
+            "type": "Hu"
+          },
+          {
+            "winner": 3,
+            "type": "Hu"
+          },
+          {
+            "winner": 2,
+            "type": "Hu"
+          },
+          {
+            "winner": 1,
+            "type": "Hu"
+          }
+        ],
+        "dealersSeen": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "discardsFired": 52,
+        "claimsHandled": 20,
+        "huByHuman": false,
+        "gcComplete": true,
+        "gcMaxHands": 4,
+        "modalVisible": true,
+        "scores": {
+          "0": 0,
+          "1": -5,
+          "2": 3,
+          "3": 2
+        },
+        "zeroSum": 0,
+        "maxHandsObserved": 4,
+        "viewPerspective": true,
+        "viewFlat": true,
+        "errors": {
+          "pageErrors": [],
+          "cspViolations": [],
+          "jsConsoleErrors": [],
+          "badResponses": []
+        },
+        "timedOut": false,
+        "modalStorm": false,
+        "redismissCount": 0,
+        "stalled": false,
+        "stallReason": null,
+        "realClaimsAttempted": 0
+      },
+      "at": 297045
+    }
+  ],
+  "config": {
+    "gameId": "playability-4hand-hudson128fastfail-r0",
+    "seat": 0,
+    "botCount": 3,
+    "botDifficulty": "Hard",
+    "dealMode": "manual",
+    "handCount": 4,
+    "seed": 4100,
+    "variant": "changsha"
+  },
+  "run": {
+    "bundleOk": true,
+    "bundleReason": "Served bundle matches the freshly-built source bundle (content hashes equal).",
+    "connected": true,
+    "seat": 0,
+    "dealt": true,
+    "playable": true,
+    "handEnds": 4,
+    "handResults": [
+      {
+        "winner": 2,
+        "type": "Hu"
+      },
+      {
+        "winner": 3,
+        "type": "Hu"
+      },
+      {
+        "winner": 2,
+        "type": "Hu"
+      },
+      {
+        "winner": 1,
+        "type": "Hu"
+      }
+    ],
+    "dealersSeen": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "discardsFired": 52,
+    "claimsHandled": 20,
+    "huByHuman": false,
+    "gcComplete": true,
+    "gcMaxHands": 4,
+    "modalVisible": true,
+    "scores": {
+      "0": 0,
+      "1": -5,
+      "2": 3,
+      "3": 2
+    },
+    "zeroSum": 0,
+    "maxHandsObserved": 4,
+    "viewPerspective": true,
+    "viewFlat": true,
+    "errors": {
+      "pageErrors": [],
+      "cspViolations": [],
+      "jsConsoleErrors": [],
+      "badResponses": []
+    },
+    "timedOut": false,
+    "modalStorm": false,
+    "redismissCount": 0,
+    "stalled": false,
+    "stallReason": null,
+    "realClaimsAttempted": 0
+  }
+}

@@ -1,0 +1,379 @@
+{
+  "steps": [
+    {
+      "step": "preflight.bundle-hash",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "entryShaMatches": true
+      },
+      "at": 28
+    },
+    {
+      "step": "boot.game-object",
+      "ok": true,
+      "detail": {
+        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=16&seat=-1&seed=916&gameId=playability-hc16-hudson128rearm",
+        "handCount": 16
+      },
+      "at": 503
+    },
+    {
+      "step": "connect.ws",
+      "ok": true,
+      "detail": {
+        "connected": true,
+        "humanPlays": false
+      },
+      "at": 902
+    },
+    {
+      "step": "observer.hand-end.install",
+      "ok": true,
+      "detail": {
+        "installed": true
+      },
+      "at": 914
+    },
+    {
+      "step": "hand.end.observed",
+      "ok": true,
+      "detail": {
+        "handEnds": 16,
+        "ends": [
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785130662618
+          },
+          {
+            "winner": 1,
+            "type": "Hu",
+            "nextBanker": 1,
+            "at": 1785130669757
+          },
+          {
+            "winner": 1,
+            "type": "Hu",
+            "nextBanker": 1,
+            "at": 1785130691338
+          },
+          {
+            "winner": 2,
+            "type": "Hu",
+            "nextBanker": 2,
+            "at": 1785130712545
+          },
+          {
+            "winner": 2,
+            "type": "Hu",
+            "nextBanker": 2,
+            "at": 1785130726771
+          },
+          {
+            "winner": 2,
+            "type": "Hu",
+            "nextBanker": 2,
+            "at": 1785130741072
+          },
+          {
+            "winner": 1,
+            "type": "Hu",
+            "nextBanker": 1,
+            "at": 1785130755836
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785130769336
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785130786352
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785130801133
+          },
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785130815967
+          },
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785130832176
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785130845167
+          },
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785130866386
+          },
+          {
+            "winner": 1,
+            "type": "Hu",
+            "nextBanker": 1,
+            "at": 1785130879896
+          },
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785130900027
+          }
+        ],
+        "clears": 16
+      },
+      "at": 256886
+    },
+    {
+      "step": "gate.summary",
+      "ok": true,
+      "detail": {
+        "bundleOk": true,
+        "bundleReason": "Served bundle matches the freshly-built source bundle (content hashes equal).",
+        "connected": true,
+        "seat": null,
+        "dealt": false,
+        "playable": true,
+        "handEnds": 16,
+        "handResults": [
+          {
+            "winner": 0,
+            "type": "Hu"
+          },
+          {
+            "winner": 1,
+            "type": "Hu"
+          },
+          {
+            "winner": 1,
+            "type": "Hu"
+          },
+          {
+            "winner": 2,
+            "type": "Hu"
+          },
+          {
+            "winner": 2,
+            "type": "Hu"
+          },
+          {
+            "winner": 2,
+            "type": "Hu"
+          },
+          {
+            "winner": 1,
+            "type": "Hu"
+          },
+          {
+            "winner": 3,
+            "type": "Hu"
+          },
+          {
+            "winner": 3,
+            "type": "Hu"
+          },
+          {
+            "winner": 3,
+            "type": "Hu"
+          },
+          {
+            "winner": 0,
+            "type": "Hu"
+          },
+          {
+            "winner": 0,
+            "type": "Hu"
+          },
+          {
+            "winner": 3,
+            "type": "Hu"
+          },
+          {
+            "winner": 0,
+            "type": "Hu"
+          },
+          {
+            "winner": 1,
+            "type": "Hu"
+          },
+          {
+            "winner": 0,
+            "type": "Hu"
+          }
+        ],
+        "dealersSeen": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "discardsFired": 0,
+        "claimsHandled": 0,
+        "huByHuman": false,
+        "gcComplete": true,
+        "gcMaxHands": 16,
+        "modalVisible": true,
+        "scores": {
+          "0": 10,
+          "1": -9,
+          "2": -1,
+          "3": 0
+        },
+        "zeroSum": 0,
+        "maxHandsObserved": 16,
+        "viewPerspective": true,
+        "viewFlat": false,
+        "errors": {
+          "pageErrors": [],
+          "cspViolations": [],
+          "jsConsoleErrors": [],
+          "badResponses": []
+        },
+        "timedOut": false,
+        "modalStorm": false,
+        "redismissCount": 0,
+        "stalled": false,
+        "stallReason": null,
+        "realClaimsAttempted": 0
+      },
+      "at": 257052
+    }
+  ],
+  "config": {
+    "gameId": "playability-hc16-hudson128rearm",
+    "seat": -1,
+    "botCount": 4,
+    "botDifficulty": "Medium",
+    "dealMode": "auto",
+    "handCount": 16,
+    "seed": 916,
+    "variant": "changsha"
+  },
+  "run": {
+    "bundleOk": true,
+    "bundleReason": "Served bundle matches the freshly-built source bundle (content hashes equal).",
+    "connected": true,
+    "seat": null,
+    "dealt": false,
+    "playable": true,
+    "handEnds": 16,
+    "handResults": [
+      {
+        "winner": 0,
+        "type": "Hu"
+      },
+      {
+        "winner": 1,
+        "type": "Hu"
+      },
+      {
+        "winner": 1,
+        "type": "Hu"
+      },
+      {
+        "winner": 2,
+        "type": "Hu"
+      },
+      {
+        "winner": 2,
+        "type": "Hu"
+      },
+      {
+        "winner": 2,
+        "type": "Hu"
+      },
+      {
+        "winner": 1,
+        "type": "Hu"
+      },
+      {
+        "winner": 3,
+        "type": "Hu"
+      },
+      {
+        "winner": 3,
+        "type": "Hu"
+      },
+      {
+        "winner": 3,
+        "type": "Hu"
+      },
+      {
+        "winner": 0,
+        "type": "Hu"
+      },
+      {
+        "winner": 0,
+        "type": "Hu"
+      },
+      {
+        "winner": 3,
+        "type": "Hu"
+      },
+      {
+        "winner": 0,
+        "type": "Hu"
+      },
+      {
+        "winner": 1,
+        "type": "Hu"
+      },
+      {
+        "winner": 0,
+        "type": "Hu"
+      }
+    ],
+    "dealersSeen": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "discardsFired": 0,
+    "claimsHandled": 0,
+    "huByHuman": false,
+    "gcComplete": true,
+    "gcMaxHands": 16,
+    "modalVisible": true,
+    "scores": {
+      "0": 10,
+      "1": -9,
+      "2": -1,
+      "3": 0
+    },
+    "zeroSum": 0,
+    "maxHandsObserved": 16,
+    "viewPerspective": true,
+    "viewFlat": false,
+    "errors": {
+      "pageErrors": [],
+      "cspViolations": [],
+      "jsConsoleErrors": [],
+      "badResponses": []
+    },
+    "timedOut": false,
+    "modalStorm": false,
+    "redismissCount": 0,
+    "stalled": false,
+    "stallReason": null,
+    "realClaimsAttempted": 0
+  }
+}
