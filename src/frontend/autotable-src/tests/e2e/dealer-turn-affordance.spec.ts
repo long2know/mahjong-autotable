@@ -26,8 +26,11 @@ import {
   clickDeal,
   discardByPointer,
   ensureConnected,
+  installHandEndObserver,
+  readBotActivity,
   readConnected,
   readDiscardCount,
+  readHandEndObserver,
   takeSeatByClick,
   waitForGameObject,
   waitForPlayableHand,
@@ -75,6 +78,11 @@ test.describe('#153 — dealer turn affordances (real UI)', () => {
 
     await startDefaultNewGame(page);
 
+    // Latch every authoritative hand-end from the real `result` collection
+    // (read-only) so a rare bot Hu on the human's discard is a durable liveness
+    // signal even after #132 tombstones result['current'] on the next phase.
+    await installHandEndObserver(page);
+
     // Take seat 0 with an ordinary click on the real Take Seat button.
     const seat = await takeSeatByClick(page, 0);
     expect(seat, 'human must be seated at 0 after clicking Take Seat').toBe(0);
@@ -107,19 +115,49 @@ test.describe('#153 — dealer turn affordances (real UI)', () => {
     ).toBe(false);
 
     // Real pointer discard (hover a hand tile, mouse down/up on the canvas).
+    // Baseline the NON-LOCAL-seat activity first: this is the dealer's mandatory
+    // FIRST discard of the hand, so before it no other seat has discarded or
+    // melded — any growth below is an unambiguous real bot response.
+    const botBefore = await readBotActivity(page);
     const before = await readDiscardCount(page);
     const outcome = await discardByPointer(page);
     expect(outcome.ok, `pointer discard failed: ${outcome.reason}`).toBe(true);
-    expect(outcome.discardAfter).toBeGreaterThan(before);
+    // Server-accepted: the real pointer press drove the authoritative discard
+    // pile up. As the dealer's mandatory first discard, this growth is the
+    // human's tile (no seat can act before it).
+    expect(
+      outcome.discardAfter,
+      'the human discard must reach the authoritative discard pile',
+    ).toBeGreaterThan(before);
 
-    // Bots respond — the discard pile keeps growing as the turn moves around
-    // the table (turn progression is visible, not frozen).
+    // Bots respond — a BOUNDED authoritative signal that the turn advanced past
+    // the human, covering every legitimate outcome and immune to claim churn:
+    //   • a bot discarded (a non-local `discard` slot appeared), OR
+    //   • a bot claimed Pung/Chow/Kong (a non-local `meld` slot appeared — the
+    //     claimed tile LEAVES the shared discard pile, so a raw pile total is
+    //     non-monotonic and cannot prove liveness: the exact flake seam), OR
+    //   • the hand ended (result / gameComplete, incl. a bot Hu on the discard).
+    // Compared against the pre-discard baseline so it never passes on stale
+    // state, and never assumes the discard-pile TOTAL must strictly grow (with
+    // fast bots a full go-around can already be counted in `discardAfter`).
     await expect
-      .poll(async () => readDiscardCount(page), {
-        timeout: 45_000,
-        message: 'no bot responded after the human discard (turn appeared frozen)',
-      })
-      .toBeGreaterThan(outcome.discardAfter);
+      .poll(
+        async () => {
+          const a = await readBotActivity(page);
+          const ends = (await readHandEndObserver(page)).ends.length;
+          return (
+            a.botDiscards > botBefore.botDiscards ||
+            a.botMelds > botBefore.botMelds ||
+            a.handEnded ||
+            ends > 0
+          );
+        },
+        {
+          timeout: 30_000,
+          message: 'no bot responded after the human discard (turn appeared frozen)',
+        },
+      )
+      .toBe(true);
 
     expect(await readConnected(page)).toBe(true);
     expect(pageErrors, `page errors: ${pageErrors.join('\n')}`).toHaveLength(0);
