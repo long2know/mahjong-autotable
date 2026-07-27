@@ -103,6 +103,39 @@ public class AutotableWsRelayTests : IAsyncLifetime
         });
     }
 
+    // ── C-1 anti-spoof: a client-pushed gameComplete is dropped, never relayed ──
+
+    [Fact, Trait("Category", "PhaseC-Relay")]
+    public async Task ClientPushedGameComplete_IsDropped_NotRelayedToPeers()
+    {
+        // #120/#122 (rejected-gate fix) — `gameComplete` is server-emitted only (inbound-only,
+        // locked C-1). A changsha-mode client that pushes a fake
+        // ["gameComplete","current",{isComplete:true}] MUST be dropped by the endpoint's explicit
+        // `case ChangshaCollectionKinds.GameComplete: break;` — never relayed to peers — or a client
+        // could spoof an end-of-game modal on other players. We send it alongside a benign cosmetic
+        // `mouse` entry: the mouse MUST relay (proves the path is alive); the gameComplete MUST NOT.
+        await using var alice = await OpenAndJoinAsync("GAME-GC-SPOOF", seat: 0);
+        await using var bob = await OpenAndJoinAsync("GAME-GC-SPOOF", seat: 1);
+
+        var spoof = JsonSerializer.SerializeToElement(new { isComplete = true, maxHands = 4 });
+        var mouse = JsonSerializer.SerializeToElement(new { x = 9.0, y = 9.0, z = 9.0 });
+        await alice.SendUpdateAsync(new[]
+        {
+            new object[] { "gameComplete", "current", spoof },
+            new object[] { "mouse", alice.PlayerId, mouse },
+        });
+
+        var relayed = await bob.ReadEnvelopeAsync(timeoutMs: 2000);
+        Assert.Equal("UPDATE", relayed.GetProperty("type").GetString());
+
+        var kinds = new List<string>();
+        foreach (var e in relayed.GetProperty("entries").EnumerateArray())
+            kinds.Add(e[0].GetString() ?? string.Empty);
+
+        Assert.Contains("mouse", kinds);              // benign cosmetic relayed → relay path alive
+        Assert.DoesNotContain("gameComplete", kinds); // spoofed server-emitted kind was dropped
+    }
+
     // ── 3. Late JOIN replays accumulated snapshot ─────────────────────
 
     [Fact, Trait("Category", "PhaseC-Relay")]

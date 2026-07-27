@@ -469,9 +469,9 @@
     {
       "wave": "K22",
       "bundler": "vite",
-      "recordedAt": "2026-07-26T20:08:07.905Z",
+      "recordedAt": "2026-07-27T00:19:04.282Z",
       "chunks": {
-        "autotable-src-eager": 109081,
+        "autotable-src-eager": 108956,
         "game-bootstrap": 174693,
         "scene-shell": 2572,
         "scene-effects": 62348,
@@ -497,7 +497,7 @@
         "sentry-shim": 2307,
         "sentry": 342614,
         "leaderboard": 11369,
-        "settings-drawer": 18159,
+        "settings-drawer": 18182,
         "profile-page": 9560,
         "admin-panel-core": 31164,
         "admin-panel-tournaments": 32579,
@@ -505,7 +505,7 @@
         "reconnect": 3067,
         "spectator-follow": 3602,
         "matchmaking": 2681,
-        "rule-presets": 9817,
+        "rule-presets": 10009,
         "auth": 21799,
         "identity-onboarding": 3293,
         "identity-avatar-migration": 2329
