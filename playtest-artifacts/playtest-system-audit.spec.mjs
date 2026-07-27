@@ -1,3 +1,17 @@
+// =============================================================================
+//  ⚠  DIAGNOSTIC-ONLY — NOT AN ACCEPTANCE ARTIFACT (issue #122).
+//
+//  This spec uses the WS BACKDOOR (window.game.client.update([...]) and/or the
+//  private events.emit('update', …) emitter, and/or direct world.emitDiscard)
+//  to drive or observe collections WITHOUT real UI. Per
+//  .squad/skills/playtest-ws-backdoor/SKILL.md:88-93 and the Lead C-8 contract,
+//  a backdoor may DIAGNOSE event plumbing but can NEVER advance or satisfy the
+//  P0 real-UI playability gate — it cannot be cited as acceptance proof.
+//
+//  The authoritative acceptance test is
+//  src/frontend/autotable-src/tests/e2e/playability-gate.spec.ts
+//  (real DOM/canvas/pointer interactions ONLY).
+// =============================================================================
 // Ripley 2026-05-29 — Full-system bird's-eye audit checklist.
 //
 // Stephen's directive ("get everything completed; fan out and perform

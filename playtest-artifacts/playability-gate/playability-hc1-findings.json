@@ -1,0 +1,249 @@
+{
+  "steps": [
+    {
+      "step": "preflight.bundle-hash",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "entryShaMatches": true
+      },
+      "at": 41
+    },
+    {
+      "step": "boot.game-object",
+      "ok": true,
+      "detail": {
+        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=1&seat=0&seed=12345&gameId=playability-hc1-hudson128fix-r0",
+        "handCount": 1
+      },
+      "at": 694
+    },
+    {
+      "step": "connect.ws",
+      "ok": true,
+      "detail": {
+        "connected": true,
+        "humanPlays": true
+      },
+      "at": 1162
+    },
+    {
+      "step": "observer.hand-end.install",
+      "ok": true,
+      "detail": {
+        "installed": true
+      },
+      "at": 1190
+    },
+    {
+      "step": "seat.take",
+      "ok": true,
+      "detail": {
+        "assigned": 0
+      },
+      "at": 3490
+    },
+    {
+      "step": "deal.press",
+      "ok": true,
+      "detail": null,
+      "at": 4430
+    },
+    {
+      "step": "deal.playable-hand",
+      "ok": true,
+      "detail": {
+        "myHandCount": 14,
+        "lastPickup": null
+      },
+      "at": 10954
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 65,
+        "discardAfter": 4
+      },
+      "at": 15169
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 16935
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 50,
+        "discardAfter": 5
+      },
+      "at": 23313
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 54,
+        "discardAfter": 9
+      },
+      "at": 27758
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 29514
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 26,
+        "discardAfter": 12
+      },
+      "at": 39352
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 23,
+        "discardAfter": 19
+      },
+      "at": 49974
+    },
+    {
+      "step": "hand.end.observed",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "ends": [
+          {
+            "winner": 2,
+            "type": "Hu",
+            "nextBanker": 2,
+            "at": 1785128789617
+          }
+        ],
+        "clears": 1
+      },
+      "at": 50799
+    },
+    {
+      "step": "gate.summary",
+      "ok": true,
+      "detail": {
+        "bundleOk": true,
+        "bundleReason": "Served bundle matches the freshly-built source bundle (content hashes equal).",
+        "connected": true,
+        "seat": 0,
+        "dealt": true,
+        "playable": true,
+        "handEnds": 1,
+        "handResults": [
+          {
+            "winner": 2,
+            "type": "Hu"
+          }
+        ],
+        "dealersSeen": [
+          0,
+          2
+        ],
+        "discardsFired": 5,
+        "claimsHandled": 2,
+        "huByHuman": false,
+        "gcComplete": true,
+        "gcMaxHands": 1,
+        "modalVisible": true,
+        "scores": {
+          "0": 0,
+          "1": 0,
+          "2": 6,
+          "3": -6
+        },
+        "zeroSum": 0,
+        "maxHandsObserved": 1,
+        "viewPerspective": true,
+        "viewFlat": false,
+        "errors": {
+          "pageErrors": [],
+          "cspViolations": [],
+          "jsConsoleErrors": [],
+          "badResponses": []
+        },
+        "timedOut": false,
+        "modalStorm": false,
+        "redismissCount": 0
+      },
+      "at": 51359
+    }
+  ],
+  "config": {
+    "gameId": "playability-hc1-hudson128fix-r0",
+    "seat": 0,
+    "botCount": 3,
+    "botDifficulty": "Hard",
+    "dealMode": "manual",
+    "handCount": 1,
+    "seed": 12345,
+    "variant": "changsha"
+  },
+  "run": {
+    "bundleOk": true,
+    "bundleReason": "Served bundle matches the freshly-built source bundle (content hashes equal).",
+    "connected": true,
+    "seat": 0,
+    "dealt": true,
+    "playable": true,
+    "handEnds": 1,
+    "handResults": [
+      {
+        "winner": 2,
+        "type": "Hu"
+      }
+    ],
+    "dealersSeen": [
+      0,
+      2
+    ],
+    "discardsFired": 5,
+    "claimsHandled": 2,
+    "huByHuman": false,
+    "gcComplete": true,
+    "gcMaxHands": 1,
+    "modalVisible": true,
+    "scores": {
+      "0": 0,
+      "1": 0,
+      "2": 6,
+      "3": -6
+    },
+    "zeroSum": 0,
+    "maxHandsObserved": 1,
+    "viewPerspective": true,
+    "viewFlat": false,
+    "errors": {
+      "pageErrors": [],
+      "cspViolations": [],
+      "jsConsoleErrors": [],
+      "badResponses": []
+    },
+    "timedOut": false,
+    "modalStorm": false,
+    "redismissCount": 0
+  }
+}
