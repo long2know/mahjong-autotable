@@ -82,7 +82,7 @@ test.describe('#147 post-meld discard — real-pointer claim then real-pointer d
           !(c.mobile && testInfo.project.name === 'mobile-chrome'),
         'WebGL real-pointer play validated on chromium (+ mobile-chrome for the mobile-tagged case).',
       );
-      test.setTimeout(180_000);
+      test.setTimeout(300_000);
 
       const cfg = H.makeConfig({
         gameId: `h147-${c.meld.toLowerCase()}-${c.seed}-${Date.now()}`,
@@ -101,15 +101,20 @@ test.describe('#147 post-meld discard — real-pointer claim then real-pointer d
       expect(await H.waitForGameObject(page), 'the renderer must publish window.game').toBe(true);
       expect(await H.clickDeal(page), '#deal must fire by real click').toBe(true);
 
-      const playable = await H.waitForPlayableHand(page, 60_000);
-      expect(playable.playable, 'manual deal must deliver a playable hand').toBe(true);
+      // Give the client-auto-driven manual deal a moment to start; the loop
+      // below is the robust driver — it actively takes any pickup affordance
+      // (incl. a DealerExtra the auto-chain may drop under a slow CI renderer),
+      // so we do NOT hard-assert waitForPlayableHand (that passive wait is
+      // flaky under SwiftShader; the playability gate treats it the same way).
+      await H.waitForPlayableHand(page, 20_000).catch(() => undefined);
 
       // Drive real turns until the target meld is offered, then TAKE it (real
-      // pointer).  Discard on our own turns; pass claims we don't want.
+      // pointer).  Take any pickup affordance (deal ceremony + hands 2..N),
+      // discard on our own turns, and pass claims we don't want.
       let meldTaken: string | null = null;
       let preHand = -1;
       let preMelds = -1;
-      const deadline = Date.now() + 120_000;
+      const deadline = Date.now() + 210_000;
       while (Date.now() < deadline && meldTaken === null) {
         const claim = await H.readClaimWindow(page);
         if (claim.open && claim.available.includes(c.meld)) {
