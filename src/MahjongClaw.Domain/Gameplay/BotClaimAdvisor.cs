@@ -100,6 +100,11 @@ public static class BotClaimAdvisor
         }
 
         var visibleCounts = BuildVisibleCounts(visibleTiles);
+        if (!visibleTiles.Any(tile => tile.Equals(discardedTile)))
+        {
+            visibleCounts.TryGetValue(discardedTile, out var discardCount);
+            visibleCounts[discardedTile] = discardCount + 1;
+        }
 
         if (ruleset == MahjongRuleset.Changsha258 && Changsha258Ruleset.IsSmallWinPair(discardedTile))
         {
@@ -319,7 +324,7 @@ public static class BotClaimAdvisor
         return false;
     }
 
-    private static IReadOnlyDictionary<Tile, int> BuildVisibleCounts(IReadOnlyList<Tile> visibleTiles)
+    private static Dictionary<Tile, int> BuildVisibleCounts(IReadOnlyList<Tile> visibleTiles)
         => visibleTiles.Count == 0
             ? new Dictionary<Tile, int>()
             : visibleTiles

@@ -320,7 +320,7 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
-    public void TrySelectExposedKongClaim_ReturnsFalse_WhenClaimWouldRemoveOnlyWinningOut()
+    public void TrySelectExposedKongClaim_TreatsDiscardAsVisible_WhenVisibleTilesOmitDiscard()
     {
         var handTiles = new List<Tile>
         {
@@ -340,8 +340,9 @@ public class BotClaimAdvisorTests
             MahjongRuleset.Changsha258,
             out var claimTiles);
 
-        shouldClaim.Should().BeFalse();
-        claimTiles.Should().BeEmpty();
+        shouldClaim.Should().BeTrue();
+        claimTiles.Should().HaveCount(3);
+        claimTiles.Should().OnlyContain(tile => tile.Equals(discardedTile));
     }
 
     [Fact]
