@@ -194,7 +194,12 @@ public sealed class DealerDiscardBroadcastAuditA2Tests : IAsyncLifetime
 
         // Final sanity: the runtime DID accept the discard (rules out a
         // state-machine regression masquerading as a broadcast bug).
-        Assert.True(runtime.TryGetSnapshot(runtimeGameId!, out var afterDiscard));
+        // Deep copy (lock-protected) — after the dealer's discard the turn passes to bot seat 1,
+        // whose worker thread appends to DiscardPile, so enumerating the live List<> here raced
+        // ("Collection was modified; enumeration operation may not execute"). Same root-cause fix
+        // as DealerExtraTransitionsToAwaitingDiscardTests (#133).
+        var afterDiscard = await runtime.TryGetSnapshotCopyAsync(runtimeGameId!);
+        Assert.NotNull(afterDiscard);
         Assert.Contains(afterDiscard!.DiscardPile,
             d => d.SeatIndex == 0 && d.TileId == discardTileId);
 
