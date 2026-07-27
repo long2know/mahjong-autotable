@@ -1327,8 +1327,17 @@ public sealed class AutotableConnectionManager : IDisposable
     /// pickup affordance, leaving manual-deal clients unable to drive the
     /// take-tiles chain. Re-attach the latest translator output for any
     /// ephemeral kind so the snapshot we ship is actually full.
+    ///
+    /// <para>#132 — also forward the authoritative <c>result</c> tombstone.
+    /// <c>result</c> is the only STORED (non-ephemeral) collection the runtime clears with a null
+    /// value (the translator emits <c>result['current']=null</c> once the hand advances past
+    /// <see cref="ChangshaPhase.EndHand"/>). <see cref="AutotableGameState.ApplyUpdate"/> already
+    /// removed it from <paramref name="storedEntries"/>, but a full snapshot that merely OMITS the
+    /// entry does not tell the bundle to hide <c>#result-modal</c> — the bundle hides it ONLY on an
+    /// explicit <c>result['current']=null</c>. Re-attach that tombstone so the modal closes for every
+    /// client (not just whoever advanced the hand) and does not re-open on hand-2+ broadcasts.</para>
     /// </summary>
-    private static IReadOnlyList<CollectionEntry> MergeRuntimeEphemerals(
+    internal static IReadOnlyList<CollectionEntry> MergeRuntimeEphemerals(
         IReadOnlyList<CollectionEntry> storedEntries,
         IReadOnlyList<CollectionEntry> translatorEntries,
         AutotableGameState gameState)
@@ -1337,10 +1346,21 @@ public sealed class AutotableConnectionManager : IDisposable
         merged.AddRange(storedEntries);
         foreach (var entry in translatorEntries)
         {
-            if (!gameState.IsEphemeral(entry.Kind)) continue;
-            if (entry.Value is null) continue;
-            if (entry.Value is JsonElement je && je.ValueKind == JsonValueKind.Null) continue;
-            merged.Add(entry);
+            var isNull = entry.Value is null
+                || (entry.Value is JsonElement je && je.ValueKind == JsonValueKind.Null);
+
+            if (gameState.IsEphemeral(entry.Kind))
+            {
+                // Ephemeral kinds were never stored; re-attach the live (non-null) value only.
+                if (!isNull) merged.Add(entry);
+            }
+            else if (isNull && entry.Kind == ChangshaCollectionKinds.Result)
+            {
+                // #132 — forward the explicit result tombstone (removed from `stored` by
+                // ApplyUpdate) so the bundle hides #result-modal. At EndHand `result` is non-null
+                // and already present via `stored`, so this never double-emits the populated result.
+                merged.Add(entry);
+            }
         }
         return merged;
     }
