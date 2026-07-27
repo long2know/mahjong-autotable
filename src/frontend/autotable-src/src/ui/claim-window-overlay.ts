@@ -8,7 +8,7 @@
 //   • PUNG / CHOW / KONG / HU badges, lit when available
 //   • A horizontal progress bar shrinking 100% → 0% over the window
 //   • Remaining-seconds readout (aria-live="polite")
-//   • Keyboard-shortcut hints (P / C / K / H / Esc)
+//   • Keyboard-shortcut hints (C / K / H / Esc — Pung has none; see #137)
 //
 // This overlay is ADDITIVE to the existing in-side-panel claim UI
 // that game-ui.ts:setupClaimButtons() renders.  We do not modify
@@ -30,6 +30,13 @@
 // shape of the `client` accessor + the `claim` collection.
 
 import './claim-window-overlay.css';
+
+// #137 — keys the always-on game view/navigation handler (game.ts onKeyDown)
+// owns. The claim overlay's global keydown listener must never turn one of
+// these into an irreversible meld/win commit. `p` (perspective toggle) is the
+// acute case: pressing it to change the camera while a claim window was open
+// silently committed a Pung. Kept in lock-step with game.ts's switch.
+const RESERVED_GAME_KEYS = new Set<string>(['f', 'r', ' ', 'z', 'x', 'q', 'p', 'l']);
 
 type ClaimType = 'Pung' | 'Chow' | 'Kong' | 'Hu';
 
@@ -60,7 +67,9 @@ const TICK_MS = 100;
 // Display label table — 中文 primary + pinyin sublabel (matches Default
 // #5, Vasquez Q5: Chinese primary, pinyin secondary).
 const LABELS: Record<ClaimType, { zh: string; py: string; key: string }> = {
-  Pung: { zh: '碰', py: 'PUNG', key: 'P' },
+  // #137 — Pung has no keyboard shortcut: its only mnemonic (`p`) is reserved by
+  // the game's global perspective-view toggle, and sharing it silently melded.
+  Pung: { zh: '碰', py: 'PUNG', key: '' },
   Chow: { zh: '吃', py: 'CHOW', key: 'C' },
   Kong: { zh: '杠', py: 'KONG', key: 'K' },
   Hu:   { zh: '胡', py: 'HU',   key: 'H' },
@@ -199,7 +208,9 @@ export class ClaimWindowOverlay {
       btn.type = 'button';
       btn.className = `ferro-claim-badge ferro-claim-badge-${t.toLowerCase()}`;
       btn.dataset.claimType = t;
-      btn.setAttribute('aria-label', `Claim ${LABELS[t].py} (shortcut ${LABELS[t].key})`);
+      btn.setAttribute(
+        'aria-label',
+        LABELS[t].key ? `Claim ${LABELS[t].py} (shortcut ${LABELS[t].key})` : `Claim ${LABELS[t].py}`);
       btn.disabled = true;
       const zh = document.createElement('span');
       zh.className = 'ferro-claim-badge-zh';
@@ -207,12 +218,16 @@ export class ClaimWindowOverlay {
       const py = document.createElement('span');
       py.className = 'ferro-claim-badge-py';
       py.textContent = LABELS[t].py;
-      const shortcut = document.createElement('span');
-      shortcut.className = 'ferro-claim-badge-key';
-      shortcut.textContent = LABELS[t].key;
       btn.appendChild(zh);
       btn.appendChild(py);
-      btn.appendChild(shortcut);
+      // #137 — only render a shortcut hint when the badge actually has one
+      // (Pung's `p` was removed to avoid colliding with the camera toggle).
+      if (LABELS[t].key) {
+        const shortcut = document.createElement('span');
+        shortcut.className = 'ferro-claim-badge-key';
+        shortcut.textContent = LABELS[t].key;
+        btn.appendChild(shortcut);
+      }
       btn.addEventListener('click', () => this.commitClaim(t));
       badges.appendChild(btn);
       this.badges[t] = btn;
@@ -470,12 +485,18 @@ export class ClaimWindowOverlay {
     }
     if (ev.altKey || ev.ctrlKey || ev.metaKey) return;
     const key = ev.key.toLowerCase();
-    if (key === 'p') {
-      if (this.activeClaim.available.includes('Pung')) {
-        ev.preventDefault();
-        this.commitClaim('Pung');
-      }
-    } else if (key === 'c') {
+    // #137 — do NOT bind letter keys that the always-on game view/navigation
+    // handler (game.ts onKeyDown) already owns to an irreversible claim commit.
+    // A bare `p` toggles the perspective/flat camera GLOBALLY; when it ALSO
+    // committed a Pung here, pressing `p` to change the view while a claim
+    // window happened to be open silently melded — leaving the human holding a
+    // meld with no drawn 14th tile, unable to discard, and the hand wedged
+    // (handEnds=0). Camera keys (game.ts binds f/F/r/R/space/z/x/q/p/l) must
+    // never shadow a meld/win commit. Chow/Kong/Hu use non-camera keys and the
+    // full claim set remains one click away on the on-screen buttons; Pung has
+    // no keyboard shortcut by design (its only safe mnemonic, `p`, is reserved).
+    if (RESERVED_GAME_KEYS.has(key)) return;
+    if (key === 'c') {
       if (this.activeClaim.available.includes('Chow')) {
         ev.preventDefault();
         this.commitClaim('Chow');
