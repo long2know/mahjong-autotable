@@ -7,16 +7,16 @@
         "ok": true,
         "entryShaMatches": true
       },
-      "at": 21
+      "at": 28
     },
     {
       "step": "boot.game-object",
       "ok": true,
       "detail": {
-        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=16&seat=-1&seed=916&gameId=playability-hc16-hc161785118762",
+        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=16&seat=-1&seed=916&gameId=playability-hc16-hudson128rearm",
         "handCount": 16
       },
-      "at": 441
+      "at": 503
     },
     {
       "step": "connect.ws",
@@ -25,18 +25,122 @@
         "connected": true,
         "humanPlays": false
       },
-      "at": 811
+      "at": 902
     },
     {
-      "step": "hand.end",
+      "step": "observer.hand-end.install",
       "ok": true,
       "detail": {
-        "hand": 1,
-        "winner": 0,
-        "type": "Hu",
-        "nextBanker": 0
+        "installed": true
       },
-      "at": 19047
+      "at": 914
+    },
+    {
+      "step": "hand.end.observed",
+      "ok": true,
+      "detail": {
+        "handEnds": 16,
+        "ends": [
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785130662618
+          },
+          {
+            "winner": 1,
+            "type": "Hu",
+            "nextBanker": 1,
+            "at": 1785130669757
+          },
+          {
+            "winner": 1,
+            "type": "Hu",
+            "nextBanker": 1,
+            "at": 1785130691338
+          },
+          {
+            "winner": 2,
+            "type": "Hu",
+            "nextBanker": 2,
+            "at": 1785130712545
+          },
+          {
+            "winner": 2,
+            "type": "Hu",
+            "nextBanker": 2,
+            "at": 1785130726771
+          },
+          {
+            "winner": 2,
+            "type": "Hu",
+            "nextBanker": 2,
+            "at": 1785130741072
+          },
+          {
+            "winner": 1,
+            "type": "Hu",
+            "nextBanker": 1,
+            "at": 1785130755836
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785130769336
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785130786352
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785130801133
+          },
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785130815967
+          },
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785130832176
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785130845167
+          },
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785130866386
+          },
+          {
+            "winner": 1,
+            "type": "Hu",
+            "nextBanker": 1,
+            "at": 1785130879896
+          },
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785130900027
+          }
+        ],
+        "clears": 16
+      },
+      "at": 256886
     },
     {
       "step": "gate.summary",
@@ -48,8 +152,68 @@
         "seat": null,
         "dealt": false,
         "playable": true,
-        "handEnds": 1,
+        "handEnds": 16,
         "handResults": [
+          {
+            "winner": 0,
+            "type": "Hu"
+          },
+          {
+            "winner": 1,
+            "type": "Hu"
+          },
+          {
+            "winner": 1,
+            "type": "Hu"
+          },
+          {
+            "winner": 2,
+            "type": "Hu"
+          },
+          {
+            "winner": 2,
+            "type": "Hu"
+          },
+          {
+            "winner": 2,
+            "type": "Hu"
+          },
+          {
+            "winner": 1,
+            "type": "Hu"
+          },
+          {
+            "winner": 3,
+            "type": "Hu"
+          },
+          {
+            "winner": 3,
+            "type": "Hu"
+          },
+          {
+            "winner": 3,
+            "type": "Hu"
+          },
+          {
+            "winner": 0,
+            "type": "Hu"
+          },
+          {
+            "winner": 0,
+            "type": "Hu"
+          },
+          {
+            "winner": 3,
+            "type": "Hu"
+          },
+          {
+            "winner": 0,
+            "type": "Hu"
+          },
+          {
+            "winner": 1,
+            "type": "Hu"
+          },
           {
             "winner": 0,
             "type": "Hu"
@@ -85,13 +249,16 @@
         },
         "timedOut": false,
         "modalStorm": false,
-        "redismissCount": 0
+        "redismissCount": 0,
+        "stalled": false,
+        "stallReason": null,
+        "realClaimsAttempted": 0
       },
-      "at": 258926
+      "at": 257052
     }
   ],
   "config": {
-    "gameId": "playability-hc16-hc161785118762",
+    "gameId": "playability-hc16-hudson128rearm",
     "seat": -1,
     "botCount": 4,
     "botDifficulty": "Medium",
@@ -107,8 +274,68 @@
     "seat": null,
     "dealt": false,
     "playable": true,
-    "handEnds": 1,
+    "handEnds": 16,
     "handResults": [
+      {
+        "winner": 0,
+        "type": "Hu"
+      },
+      {
+        "winner": 1,
+        "type": "Hu"
+      },
+      {
+        "winner": 1,
+        "type": "Hu"
+      },
+      {
+        "winner": 2,
+        "type": "Hu"
+      },
+      {
+        "winner": 2,
+        "type": "Hu"
+      },
+      {
+        "winner": 2,
+        "type": "Hu"
+      },
+      {
+        "winner": 1,
+        "type": "Hu"
+      },
+      {
+        "winner": 3,
+        "type": "Hu"
+      },
+      {
+        "winner": 3,
+        "type": "Hu"
+      },
+      {
+        "winner": 3,
+        "type": "Hu"
+      },
+      {
+        "winner": 0,
+        "type": "Hu"
+      },
+      {
+        "winner": 0,
+        "type": "Hu"
+      },
+      {
+        "winner": 3,
+        "type": "Hu"
+      },
+      {
+        "winner": 0,
+        "type": "Hu"
+      },
+      {
+        "winner": 1,
+        "type": "Hu"
+      },
       {
         "winner": 0,
         "type": "Hu"
@@ -144,6 +371,9 @@
     },
     "timedOut": false,
     "modalStorm": false,
-    "redismissCount": 0
+    "redismissCount": 0,
+    "stalled": false,
+    "stallReason": null,
+    "realClaimsAttempted": 0
   }
 }

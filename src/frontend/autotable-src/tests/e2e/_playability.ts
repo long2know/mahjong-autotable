@@ -505,8 +505,17 @@ export async function installHandEndObserver(page: Page): Promise<boolean> {
 export async function readHandEndObserver(page: Page): Promise<HandEndObservation> {
   return page.evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const obs = (window as any).__handEndObs;
+    const w = window as any;
+    const obs = w.__handEndObs;
     if (!obs) return { installed: false, ends: [], clears: 0 };
+    // Backup re-arm: the in-page listener latches on each null->present flip and
+    // unlatches on the null tombstone, but a single tombstone `update` can be
+    // missed under load — which would silently merge two hands into one count.
+    // The between-hands null PERSISTS for seconds, so re-arm here whenever the
+    // stored result is currently null: a coarse caller poll reliably observes
+    // that durable null even if the transient `update` slipped past the listener.
+    const cur = w.game?.client?.result?.get('current');
+    if (cur === null || cur === undefined) obs.latched = false;
     return {
       installed: true,
       ends: obs.ends.slice(),
