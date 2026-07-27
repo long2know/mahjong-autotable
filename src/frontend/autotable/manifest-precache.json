@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-27T00:19:04.311Z",
+  "generatedAt": "2026-07-27T11:55:57.246Z",
   "version": "autotable-v3",
   "assets": [
     "./about.html",
-    "./autotable-src.5a4473ed.js",
+    "./autotable-src.843e3850.js",
     "./commentary-panel.6c5cb54f.js",
-    "./game-bootstrap.1bf29101.js",
+    "./game-bootstrap.bbc29558.js",
     "./icon-16.auto.264ac08b.png",
     "./icon-192.auto.88edf577.png",
     "./icon-32.auto.efa741f8.png",
@@ -13,8 +13,8 @@
     "./icon-96.auto.fe148c95.png",
     "./index.html",
     "./manifest.webmanifest",
-    "./scene-shell.3b9bf0db.js",
-    "./three-renderer.78479d44.js",
-    "./three-renderer.c0bc9ebb.js"
+    "./scene-shell.c0446d84.js",
+    "./three-renderer.21315717.js",
+    "./three-renderer.78479d44.js"
   ]
 }

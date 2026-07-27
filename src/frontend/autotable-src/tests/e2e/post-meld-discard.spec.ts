@@ -1,0 +1,167 @@
+// #147 (Hicks) — genuine end-to-end proof: a human takes a REAL-pointer
+// Pung/Chow claim, then discards by a REAL pointer press.  Pre-fix the discard
+// was refused (world.hasExtraHandTile() counted only concealed tiles and read
+// 11 after a meld); this spec is RED on the pre-fix bundle and GREEN after.
+//
+// Everything advances the game EXCLUSIVELY through Hudson's no-backdoor harness
+// (real `.click()` on the claim button, real `page.mouse` press on the canvas
+// via `discardByPointer`).  No `client.update`, no direct `emitDiscard`, no
+// synthetic DOM dispatch, no `{force:true}`, no server mutation.  Determinism
+// comes from the URL `seed`.
+
+import { test, expect, type Page } from '@playwright/test';
+import * as H from './_playability';
+
+// OBSERVE — distinct meld count for the local seat (meld.{m}.{t}@{seat}).
+async function readMeldCount(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w: any = (window as any).game?.world;
+    if (!w) return -1;
+    const seat = w.seat;
+    const melds = new Set<string>();
+    for (const t of w.things.values()) {
+      const s = t.slot;
+      if (s?.group === 'meld' && s?.seat === seat && s?.thing === t) {
+        const m = String(s.name).split('.')[1];
+        if (m !== undefined && m !== '') melds.add(m);
+      }
+    }
+    return melds.size;
+  });
+}
+
+// ADVANCE — take a specific meld claim with a real actionable button click
+// (no force, no synthetic dispatch).  Returns the type taken, or null.
+async function claimMeldByClick(page: Page, type: 'Pung' | 'Chow' | 'Kong'): Promise<string | null> {
+  const claim = await H.readClaimWindow(page);
+  if (!claim.open || !claim.available.includes(type)) return null;
+  const btn = page.locator(`#claim-${type.toLowerCase()}`);
+  if (!(await btn.first().isEnabled().catch(() => false))) return null;
+  await btn.first().click({ timeout: 3000 });
+  await page.waitForTimeout(500);
+  return type;
+}
+
+// ADVANCE — decline a claim we don't want with a real Pass click, so play
+// continues toward the target meld.
+async function passClaimByClick(page: Page): Promise<void> {
+  const pass = page.locator('#claim-pass');
+  if (await pass.first().isEnabled().catch(() => false)) {
+    await pass.first().click({ timeout: 2000 }).catch(() => undefined);
+    await page.waitForTimeout(300);
+  }
+}
+
+interface MeldCase {
+  seed: number;
+  meld: 'Pung' | 'Chow';
+  // Also exercise the real touch-emulation pointer path on mobile-chrome.
+  // Kept to the most projection-stable case (Pung/seed 12345) — the small
+  // Pixel-5 viewport makes some hands' canvas projection flakier, so the
+  // broader Chow case stays chromium-only.
+  mobile: boolean;
+}
+
+// Deterministic seeds verified to deliver an early human claim of each type
+// (Easy bots, 4 hands).  Exposed/concealed/added Kong are covered by the
+// deterministic contract test (hand-accounting.contract.spec.ts) — live Kongs
+// are too rare to force reliably.
+const CASES: MeldCase[] = [
+  { seed: 12345, meld: 'Pung', mobile: true },
+  { seed: 7, meld: 'Chow', mobile: false },
+];
+
+test.describe('#147 post-meld discard — real-pointer claim then real-pointer discard', () => {
+  for (const c of CASES) {
+    test(`human ${c.meld} claim then a real-pointer discard advances play (seed ${c.seed})`, async ({
+      page,
+    }, testInfo) => {
+      test.skip(
+        testInfo.project.name !== 'chromium' &&
+          !(c.mobile && testInfo.project.name === 'mobile-chrome'),
+        'WebGL real-pointer play validated on chromium (+ mobile-chrome for the mobile-tagged case).',
+      );
+      test.setTimeout(180_000);
+
+      const cfg = H.makeConfig({
+        gameId: `h147-${c.meld.toLowerCase()}-${c.seed}-${Date.now()}`,
+        seed: c.seed,
+        botDifficulty: 'Easy',
+        handCount: 4,
+      });
+
+      await H.defangOverlays(page);
+      await page.goto(H.buildGameUrl(testInfo.project.use.baseURL as string, cfg), {
+        waitUntil: 'domcontentloaded',
+      });
+      await H.dismissLobbyAndTour(page);
+      expect(await H.ensureConnected(page), 'must reach a connected session').toBe(true);
+      expect(await H.takeSeatByClick(page, 0), 'must take seat 0 by real click').toBe(0);
+      expect(await H.waitForGameObject(page), 'the renderer must publish window.game').toBe(true);
+      expect(await H.clickDeal(page), '#deal must fire by real click').toBe(true);
+
+      const playable = await H.waitForPlayableHand(page, 60_000);
+      expect(playable.playable, 'manual deal must deliver a playable hand').toBe(true);
+
+      // Drive real turns until the target meld is offered, then TAKE it (real
+      // pointer).  Discard on our own turns; pass claims we don't want.
+      let meldTaken: string | null = null;
+      let preHand = -1;
+      let preMelds = -1;
+      const deadline = Date.now() + 120_000;
+      while (Date.now() < deadline && meldTaken === null) {
+        const claim = await H.readClaimWindow(page);
+        if (claim.open && claim.available.includes(c.meld)) {
+          preHand = await H.countMyHandTiles(page);
+          preMelds = await readMeldCount(page);
+          meldTaken = await claimMeldByClick(page, c.meld);
+        } else if (claim.open) {
+          await passClaimByClick(page);
+        } else if (await H.readIsMyPickupTurn(page)) {
+          await H.takePickup(page);
+        } else if (await H.hasExtraHandTile(page)) {
+          await H.discardByPointer(page);
+        } else {
+          await page.waitForTimeout(700);
+        }
+      }
+
+      expect(meldTaken, `seed ${c.seed} must reach a human ${c.meld} claim`).toBe(c.meld);
+
+      // Authoritative post-claim state: a meld is exposed, concealed dropped,
+      // and the seat now owes a discard.
+      await page.waitForTimeout(600);
+      const postHand = await H.countMyHandTiles(page);
+      const postMelds = await readMeldCount(page);
+      expect(postMelds, 'the claimed meld must be exposed in a meld slot').toBeGreaterThan(preMelds);
+      expect(postHand, 'concealed tiles must drop after the meld').toBeLessThan(preHand);
+      expect(
+        await H.hasExtraHandTile(page),
+        'the seat must now owe a discard after claiming the meld (#147)',
+      ).toBe(true);
+
+      // THE FIX under test: a REAL pointer discard must now be accepted, and
+      // the authoritative discard pile must grow.  (We do NOT assert a
+      // post-discard concealed count: with fast Easy bots the turn can loop
+      // all the way back to us — auto-draw included — before we could read it,
+      // which itself proves play is no longer stalled.)
+      const outcome = await H.discardByPointer(page);
+      expect(
+        outcome.ok,
+        `post-${c.meld} real-pointer discard must be accepted; was blocked pre-#147 (${outcome.reason})`,
+      ).toBe(true);
+      expect(
+        outcome.discardAfter,
+        'the authoritative discard pile must grow',
+      ).toBeGreaterThan(outcome.discardBefore);
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `[#147 ${c.meld} seed ${c.seed}] preHand=${preHand} postClaimHand=${postHand} ` +
+          `melds=${postMelds} discardOk=${outcome.ok} ` +
+          `discardPile ${outcome.discardBefore}->${outcome.discardAfter}`,
+      );
+    });
+  }
+});
