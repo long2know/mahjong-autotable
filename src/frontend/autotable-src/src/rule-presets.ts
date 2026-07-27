@@ -31,6 +31,7 @@
 
 import { EventEmitter } from 'events';
 import { getAuthState, onAuth } from './auth';
+import { t } from './i18n';
 
 // ── Public types ────────────────────────────────────────────────────
 
@@ -68,8 +69,6 @@ export const CLASSIC_CHANGSHA: RulePreset = Object.freeze({
 
 const events = new EventEmitter();
 let cached: RulePreset[] = [CLASSIC_CHANGSHA];
-let loaded = false;
-let serverHasEndpoint = true;
 let installed = false;
 
 // ── LS helpers ──────────────────────────────────────────────────────
@@ -167,18 +166,14 @@ export async function refreshRulePresets(): Promise<RulePreset[]> {
       headers: { Accept: 'application/json' },
     });
     if (resp.status === 404) {
-      serverHasEndpoint = false;
       cached = [CLASSIC_CHANGSHA];
-      loaded = true;
       emitChange();
       return cached;
     }
     if (!resp.ok) {
-      loaded = true;
       emitChange();
       return cached;
     }
-    serverHasEndpoint = true;
     const body = await resp.json() as Record<string, unknown>;
     const arr = (body.presets ?? body.Presets) as unknown;
     if (Array.isArray(arr)) {
@@ -192,7 +187,6 @@ export async function refreshRulePresets(): Promise<RulePreset[]> {
   } catch {
     /* keep existing cached */
   }
-  loaded = true;
   emitChange();
   return cached;
 }
@@ -346,12 +340,13 @@ function renderLobbySelect(): void {
   } else {
     sel.value = CLASSIC_CHANGSHA.id;
   }
-  // Disable the picker entirely if we couldn't load any presets and
-  // the server claims to have the endpoint — surfaces an empty state
-  // rather than silently falling back.
-  sel.disabled = cached.length <= 1 && loaded && !serverHasEndpoint
-    ? false   // still let the user pick "Classic Changsha"
-    : false;
+  // Ferro WP-E/#120 (Ripley C-2 ruling) — rule presets are NOT yet applied to
+  // Changsha gameplay (the WS handshake never reads `?rulePreset=` and the
+  // lobby no longer emits it). Keep the lobby picker disabled so it can't
+  // imply an effect; the settings-panel editor below remains the real CRUD
+  // surface for managing presets. Remove this once Bishop (WP-A) wires a
+  // create-time rule-preset read.
+  sel.disabled = true;
 }
 
 // ── DOM: settings-drawer "Rule presets" tab editor ─────────────────
@@ -362,6 +357,19 @@ export function renderEditorPanel(): void {
   const host = document.getElementById('settings-panel-rule-presets');
   if (host === null) return;
   host.replaceChildren();
+
+  // Ferro WP-E/#131 — the rules engine does not yet read ANY preset knob, so
+  // this editor authors inert gameplay settings. Surface an unmistakable,
+  // i18n'd "preview / not yet functional" banner (shown for every auth state)
+  // so a user can't believe a preset changes the game. Remove when #130 wires
+  // the rules-engine semantics. (Backend / API CRUD is intentional + shipped,
+  // so we only gate the "this affects your game" affordance, not the CRUD.)
+  const notice = document.createElement('div');
+  notice.className = 'rule-preset-preview-notice';
+  notice.setAttribute('role', 'note');
+  notice.setAttribute('data-testid', 'rule-preset-preview-notice');
+  notice.textContent = t('settings.rule_presets.preview_notice');
+  host.appendChild(notice);
 
   const auth = getAuthState();
   if (!auth.authenticated) {

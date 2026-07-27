@@ -337,6 +337,12 @@ function activateTab(id: SettingsTab): void {
       panel.hidden = !isActive;
     }
   }
+  // Ferro WP-E/#131 — buildRulePresetsPanel()'s initial renderEditorPanel()
+  // no-ops because the panel isn't in the DOM yet (getElementById → null), so
+  // (re)render the editor when its tab is shown. This is what makes the editor
+  // body AND the "not yet functional" notice appear reliably when the user
+  // opens the tab — not only after an async auth event.
+  if (id === 'rule-presets') renderRulePresetsEditor();
 }
 
 function flashSavedNote(): void {

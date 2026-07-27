@@ -147,6 +147,8 @@ runbook (backups, env vars, troubleshooting).
 
 ### Postgres swap
 
+Run `./scripts/compose-bootstrap.sh` once (writes a stable JWT key to a
+gitignored `.env`), then
 `docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build`
 spins up a `postgres:16-alpine` sidecar and flips
 `Persistence__Provider=Postgres`. EF migrations apply on first boot for

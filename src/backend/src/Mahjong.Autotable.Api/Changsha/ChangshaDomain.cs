@@ -227,24 +227,26 @@ public sealed class ScoreResult
 
     /// <summary>
     /// Fan-catalog bonus breakdown (Frost's <see cref="Scoring.FanCalculator"/>),
-    /// layered ADDITIVELY on top of the small/big-win tier base. Each entry is a
-    /// detected fan + its per-payment point value (e.g. SelfDraw = 1, FullFlush = 6,
-    /// HeavenlyHand = 8). Empty when no fan applied (callers built directly via
-    /// <see cref="ScoringService.CalculateScore(WinResult,int,bool)"/> never populate
-    /// this list — the wiring lives in <see cref="ChangshaGameStateMachine.Score"/>).
-    /// Order matches <see cref="Scoring.FanResult.Detected"/> (deterministic
+    /// surfaced as a read-only display/audit view. Each entry is a detected fan + its
+    /// per-payment point value (e.g. SelfDraw = 1, FullFlush = 6, HeavenlyHand = 8).
+    /// Empty when no fan applied. Since issue #117 this breakdown is <b>query-only</b>
+    /// with respect to the authoritative payments in the default
+    /// <see cref="Scoring.ChangshaScoringOptions.SpecPure"/> mode — it is displayed but
+    /// NOT folded into <see cref="Payments"/>. Order matches
+    /// <see cref="Scoring.FanResult.Detected"/> (deterministic
     /// <see cref="Scoring.Fan"/>-enum-declaration order).
     /// </summary>
     public IReadOnlyList<Scoring.DetectedFan> Fans { get; init; } = Array.Empty<Scoring.DetectedFan>();
 
     /// <summary>
     /// Sum of every detected fan's per-payment <see cref="Scoring.FanInfo.Points"/>
-    /// — mirrors <see cref="Scoring.FanResult.TotalPoints"/>. Each base payment is
-    /// supplemented by <c>FanPoints</c> via additional fan-bonus <see cref="PaymentEntry"/>
-    /// rows (with <c>Reason</c> prefixed <c>"fan:"</c>), so <see cref="BasePoints"/>
-    /// still equals <c>Payments.Sum(p =&gt; p.Amount)</c>. The frontend can render the
-    /// fan breakdown from <see cref="Fans"/> directly, or aggregate the
-    /// <c>fan:</c>-prefixed payments client-side.
+    /// — mirrors <see cref="Scoring.FanResult.TotalPoints"/>. This is a display-only
+    /// breakdown surfaced alongside the score; in the default spec-pure mode it is NOT
+    /// added to <see cref="Payments"/>, so <see cref="BasePoints"/> equals
+    /// <c>Payments.Sum(p =&gt; p.Amount)</c> at the binding spec §5.1 magnitude. Only the
+    /// opt-in <see cref="Scoring.ChangshaScoringOptions.HouseRules"/> mode folds the
+    /// bonus into <see cref="Payments"/> via extra <c>Reason</c>-prefixed <c>"fan:"</c>
+    /// rows. The frontend renders the fan chips from <see cref="Fans"/> directly.
     /// </summary>
     public int FanPoints { get; init; }
 }

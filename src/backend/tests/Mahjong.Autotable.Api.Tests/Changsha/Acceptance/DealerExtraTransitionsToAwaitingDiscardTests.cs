@@ -4,6 +4,7 @@ using System.Text.Json;
 using Mahjong.Autotable.Api.Autotable;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Runtime;
+using Mahjong.Autotable.Api.Tests.Changsha._TestHarness;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -297,8 +298,50 @@ public sealed class DealerExtraTransitionsToAwaitingDiscardTests : IAsyncLifetim
         Assert.Equal(ChangshaPhase.AwaitingDiscard, dealerReady!.Phase);
         Assert.Equal(14, dealerReady.Hands.Single(h => h.SeatIndex == 0).ConcealedTiles.Count);
 
+        // Deterministic setup — root fix for the #124-adjacent flake in this test. The wall is
+        // server-random (seed is deliberately NOT part of the frozen C-2 handshake), so the
+        // dealer's natural 14th tile was SOMETIMES claimable by a bot. A bot then legitimately
+        // claimed it (BotClaimDelayMs=1) and moved it out of the discard pile before the poll
+        // observed it — a race on a TRANSIENT, not a dropped discard: diagnostics always showed
+        // `tile-discarded:0:<tile>` followed by `claim-resolved:<bot>:<tile>`. We remove the wall
+        // randomness from the assertion by pinning an UN-CLAIMABLE discard: the dealer discards a
+        // Tong-9 while every bot holds only Wan/Tiao tiles (zero Tong), so no Pung/Kong/Chow/Hu
+        // window can open and the discarded tile deterministically stays in the pile. Seat 0 is a
+        // human at AwaitingDiscard, so no bot task is running and this state edit is quiescent
+        // (same pattern as the sibling BotBehaviorTests).
+        var discardTileId = ChangshaTestHelpers.Tid(Suit.Tong, 9, copy: 0);
         var dealerHand = dealerReady.Hands.Single(h => h.SeatIndex == 0);
-        var discardTileId = dealerHand.ConcealedTiles[^1];
+        dealerHand.ConcealedTiles.Clear();
+        dealerHand.ConcealedTiles.AddRange(new[]
+        {
+            discardTileId,
+            ChangshaTestHelpers.Tid(Suit.Wan, 1, 0), ChangshaTestHelpers.Tid(Suit.Wan, 2, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 3, 0), ChangshaTestHelpers.Tid(Suit.Wan, 4, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 5, 0), ChangshaTestHelpers.Tid(Suit.Wan, 6, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 7, 0), ChangshaTestHelpers.Tid(Suit.Wan, 8, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 9, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 1, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 2, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 3, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 4, 0),
+        });
+        dealerHand.Melds.Clear();
+        foreach (var botHand in dealerReady.Hands.Where(h => h.SeatIndex is 1 or 2 or 3))
+        {
+            // Distinct copy per seat (1/2/3) so no tile-id collides across hands or with seat 0's
+            // copy-0 hand — keeps the deck invariant intact while guaranteeing zero Tong tiles.
+            var copy = botHand.SeatIndex;
+            botHand.ConcealedTiles.Clear();
+            botHand.ConcealedTiles.AddRange(new[]
+            {
+                ChangshaTestHelpers.Tid(Suit.Wan, 1, copy), ChangshaTestHelpers.Tid(Suit.Wan, 2, copy),
+                ChangshaTestHelpers.Tid(Suit.Wan, 3, copy), ChangshaTestHelpers.Tid(Suit.Wan, 4, copy),
+                ChangshaTestHelpers.Tid(Suit.Wan, 5, copy), ChangshaTestHelpers.Tid(Suit.Wan, 6, copy),
+                ChangshaTestHelpers.Tid(Suit.Wan, 7, copy), ChangshaTestHelpers.Tid(Suit.Wan, 8, copy),
+                ChangshaTestHelpers.Tid(Suit.Wan, 9, copy), ChangshaTestHelpers.Tid(Suit.Tiao, 1, copy),
+                ChangshaTestHelpers.Tid(Suit.Tiao, 2, copy), ChangshaTestHelpers.Tid(Suit.Tiao, 3, copy),
+                ChangshaTestHelpers.Tid(Suit.Tiao, 4, copy),
+            });
+            botHand.Melds.Clear();
+        }
 
         await DrainAsync(session, timeoutMs: 200);
 
@@ -320,6 +363,13 @@ public sealed class DealerExtraTransitionsToAwaitingDiscardTests : IAsyncLifetim
             "Vasquez G4 regression: bundle's discard push for the dealer's 14th tile " +
             "must round-trip and land in the discard pile. The autotable WS endpoint " +
             "is silently dropping it.");
+
+        // Authoritative round-trip signal, immune to any downstream claim: the runtime recorded
+        // a tile-discarded event for (seat 0, tile). This is precisely "the endpoint did not
+        // silently drop the discard" — the contract the pile check was a leaky proxy for.
+        var finalState = Snapshot(runtime, runtimeGameId!);
+        Assert.Contains(finalState.EventLog, e =>
+            e.EventType == "tile-discarded" && e.SeatIndex == 0 && e.TileId == discardTileId);
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────

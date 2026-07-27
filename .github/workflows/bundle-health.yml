@@ -230,3 +230,60 @@ jobs:
             exit 1
           fi
           echo "Bundle health verdict: ${verdict}"
+
+  # #119 (Hicks / WP-D) — deterministic bundle-in-sync gate.
+  #
+  # The backend serves the committed `src/frontend/autotable/` verbatim.
+  # This job proves that committed dist is byte-identical to a fresh
+  # `npm run build`, so a contributor can never ship a stale bundle
+  # (source edited, dist not rebuilt) — the failure mode the P2 review
+  # flagged as "bundle-sync not machine-verified".
+  #
+  # Because Vite emits `[name].[hash:8].[ext]` content-hashed chunks, a
+  # matching build is byte-for-byte reproducible; the ONLY tolerated
+  # difference is the build timestamp inside `manifest-precache.json`
+  # (see scripts/verify-bundle-in-sync.js). This is also the "served ===
+  # built" precondition WP-F (Hudson) consumes via scripts/bundle-hash.js.
+  in-sync:
+    name: Bundle in sync (committed dist == fresh build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/frontend/autotable-src
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: src/frontend/autotable-src/package-lock.json
+
+      - name: Restore Vite build cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.2.0
+        with:
+          path: src/frontend/autotable-src/.vite
+          key: vite-${{ runner.os }}-${{ hashFiles('src/frontend/autotable-src/package-lock.json', 'src/frontend/autotable-src/vite.config.ts') }}
+          restore-keys: |
+            vite-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build production bundle
+        run: |
+          set -euo pipefail
+          npm run build
+          test -d ../autotable
+          test -f ../autotable/index.html
+
+      - name: Verify committed bundle equals fresh build
+        run: node scripts/verify-bundle-in-sync.js
+
+      - name: Emit served-bundle identity digest
+        if: always()
+        run: |
+          echo "Committed bundle identity:"
+          node scripts/bundle-hash.js

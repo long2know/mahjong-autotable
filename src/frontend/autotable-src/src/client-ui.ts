@@ -414,7 +414,8 @@ export class ClientUi {
   // seat, :192 for botCount), so they have to ride the WS URL — the page
   // URL alone doesn't reach the server.
   //
-  // We forward seat, botCount, variant, dealMode and botDifficulty so:
+  // We forward seat, botCount, variant, dealMode, botDifficulty, seed and
+  // handCount so:
   //   • Spectator (?seat=-1) actually reaches the backend as a "no seat"
   //     connection — the seat-take auto-fill is suppressed and the runtime
   //     auto-deals when bots fill the remaining seats.
@@ -458,6 +459,31 @@ export class ClientUi {
     const botDifficultyRaw = pageQuery.get('botDifficulty');
     if (botDifficultyRaw !== null && botDifficultyRaw.length > 0 && botDifficultyRaw.length <= 32) {
       params.set('botDifficulty', botDifficultyRaw);
+    }
+    // Ferro WP-E/#120 (Hudson C-2 determinism gap) — forward the lobby's
+    // `?seed=` so a chosen seed actually reaches the backend and reproduces
+    // the same game.  The runtime seeds the wall shuffle + dice from this
+    // value (ChangshaGameRuntime.CreateGameAsync → ChangshaGameState.Seed);
+    // without forwarding it the WS path always bound with seed:null and the
+    // deal was random regardless of the URL — determinism was unreachable.
+    // Validate against the lobby's 0..0x7fffffff range (coerceSeed / MAX_SEED)
+    // so only a value the backend can parse into a 32-bit int rides the wire.
+    const seedRaw = pageQuery.get('seed');
+    if (seedRaw !== null && /^\d+$/.test(seedRaw)) {
+      const seedNum = Number(seedRaw);
+      if (Number.isInteger(seedNum) && seedNum >= 0 && seedNum <= 0x7fffffff) {
+        params.set('seed', String(seedNum));
+      }
+    }
+    // Ferro WP-E/#120 (Ripley C-2 extension) — forward `?handCount=` so the
+    // lobby's N-hand cap reaches the backend as a create-time param. Bishop
+    // (WP-A) owns the backend read → ChangshaGameState.MaxHands (first-creator
+    // wins); we only plumb the validated value onto the handshake. Whitelist
+    // the canonical lobby options {1,4,8,16} — Vasquez §6.3 clamps at 16, so
+    // 32 is not offered; absent/invalid ⇒ the runtime keeps its 4-hand default.
+    const handCountRaw = pageQuery.get('handCount');
+    if (handCountRaw !== null && ['1', '4', '8', '16'].includes(handCountRaw)) {
+      params.set('handCount', handCountRaw);
     }
     const separator = this.url.indexOf('?') >= 0 ? '&' : '?';
     return `${this.url}${separator}${params.toString()}`;

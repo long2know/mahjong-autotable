@@ -88,7 +88,16 @@ fast.
 
 ## 4. Run
 
+> **Required:** the image runs `ASPNETCORE_ENVIRONMENT=Production`, which
+> refuses to boot without a **stable** JWT signing key
+> (`Authentication__JwtSigningKeys__0`, base64 ~48 bytes). Generate it once
+> and keep it stable across restarts/hosts — rotating it invalidates every
+> previously issued JWT. Source it from your secrets manager; never commit or
+> bake it into the image. See [`jwt-rotation.md`](jwt-rotation.md) §7.
+
 ### One-liner (`docker run`)
+
+`docker run` does not read `.env`, so pass the key explicitly:
 
 ```bash
 docker run -d \
@@ -97,6 +106,7 @@ docker run -d \
     -p 8080:8080 \
     -v mahjong-data:/data \
     -e BUILD_SHA="$(git rev-parse --short HEAD)" \
+    -e Authentication__JwtSigningKeys__0="$JWT_SIGNING_KEY" \
     mahjong-autotable:vX.Y.Z
 ```
 
@@ -107,13 +117,19 @@ Then visit:
 
 ### docker compose (preferred for local dev parity)
 
+The one-time bootstrap writes a stable `JWT_SIGNING_KEY` into a gitignored
+`.env` (idempotent — safe to re-run; compose injects it as
+`Authentication__JwtSigningKeys__0`):
+
 ```bash
-docker compose up -d
+./scripts/compose-bootstrap.sh
+docker compose up -d --build
 ```
 
 `docker-compose.yml` builds the same image as `mahjong-autotable:local` and
-mounts the `mahjong-data` named volume on `/data`. Override the host port
-or environment by adding a `docker-compose.override.yml` — it's
+mounts the `mahjong-data` named volume on `/data`. Without a key, compose
+fails fast with a one-line fix instruction instead of crash-looping. Override
+the host port or environment by adding a `docker-compose.override.yml` — it's
 gitignored.
 
 ### Build SHA stamping
@@ -149,6 +165,7 @@ PostgreSQL / SQL Server example:
 docker run -d \
     -p 8080:8080 \
     -e Persistence__Provider=PostgreSql \
+    -e Authentication__JwtSigningKeys__0="$JWT_SIGNING_KEY" \
     -e ConnectionStrings__PostgreSql="Host=db;Port=5432;Database=mahjong;Username=mahjong;Password=secret" \
     mahjong-autotable:vX.Y.Z
 ```
@@ -270,10 +287,11 @@ docker run -d \
     --restart unless-stopped \
     -p 8080:8080 \
     -v mahjong-data:/data \
+    -e Authentication__JwtSigningKeys__0="$JWT_SIGNING_KEY" \
     mahjong-autotable:vX.Y.Z+1
 
-# Or with compose:
-docker compose pull && docker compose up -d --build
+# Or with compose (bootstrap is idempotent — reuses your existing .env key):
+./scripts/compose-bootstrap.sh && docker compose pull && docker compose up -d --build
 ```
 
 EF Core's `DatabaseBootstrapper.InitializeAsync` upgrades the schema in
@@ -306,10 +324,11 @@ docker build -t mahjong-autotable:latest .
 # Run
 docker run -d --name mahjong --restart unless-stopped \
     -p 8080:8080 -v mahjong-data:/data \
+    -e Authentication__JwtSigningKeys__0="$JWT_SIGNING_KEY" \
     mahjong-autotable:latest
 
-# Compose
-docker compose up -d --build
+# Compose (bootstrap writes/keeps a stable JWT key in .env)
+./scripts/compose-bootstrap.sh && docker compose up -d --build
 docker compose logs -f
 docker compose down
 

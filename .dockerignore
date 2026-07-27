@@ -17,9 +17,9 @@
 .copilot/
 .copilot-instructions/
 
-# Node / Parcel build artefacts — Stage 1 rebuilds these from scratch
+# Node / Vite build artefacts — Stage 1 rebuilds these from scratch
 **/node_modules/
-**/.parcel-cache/
+**/.vite/
 **/dist/
 **/build/
 

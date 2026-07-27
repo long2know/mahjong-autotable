@@ -79,7 +79,16 @@ export class MainView {
     this.scene.add(this.mainGroup);
     this.scene.add(this.viewGroup);
 
-    this.dummyObject = new Mesh(new PlaneGeometry(0, 0, 0));
+    // #119 (Hicks) — the shader-precompile placeholder must be a valid,
+    // non-degenerate geometry.  The old `PlaneGeometry(0, 0, 0)` passed
+    // `widthSegments = 0`, so three.js computed `segment_width = width /
+    // gridX = 0 / 0 = NaN`, poisoning every vertex position with NaN.  On
+    // renderer setup `CustomOutline.precompile()` calls
+    // `geometry.computeBoundingSphere()` on this dummy, which then logged
+    // `THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN`
+    // and produced a NaN outline thickness.  A unit plane (default 1×1
+    // segments) warms the same shader path with a finite bounding sphere.
+    this.dummyObject = new Mesh(new PlaneGeometry(1, 1));
 
     this.renderer = new WebGLRenderer({
       antialias: false,

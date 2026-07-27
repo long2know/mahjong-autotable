@@ -83,17 +83,27 @@ public static class ChangshaBotEngine
             return decision();
         }
 
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var decisionTask = Task.Run(decision, ct);
-        var winner = await Task.WhenAny(decisionTask, Task.Delay(timeoutMs, ct)).ConfigureAwait(false);
+        await Task.WhenAny(decisionTask, Task.Delay(timeoutMs, ct)).ConfigureAwait(false);
 
-        if (winner == decisionTask && decisionTask.IsCompletedSuccessfully)
+        // #124 — the strategy's outcome is honoured ONLY when it demonstrably arrived within the
+        // wall-clock budget. Task.WhenAny ordering is NOT authoritative under thread-pool
+        // starvation: a synchronous (Thread.Sleep-style) strategy hogs a pool thread while the
+        // Task.Delay timeout's own completion is starved past the (slower) strategy, so WhenAny
+        // can surface a late strategy result as if it were in-budget — leaking e.g. a false Hu
+        // where the safe-default is required. The Stopwatch is immune to that scheduling inversion.
+        if (stopwatch.ElapsedMilliseconds <= timeoutMs)
         {
-            return decisionTask.Result;
-        }
+            if (decisionTask.IsCompletedSuccessfully)
+            {
+                return decisionTask.Result;
+            }
 
-        if (decisionTask.IsCompleted && !decisionTask.IsCompletedSuccessfully)
-        {
-            return decisionTask.GetAwaiter().GetResult();
+            if (decisionTask.IsCompleted && !decisionTask.IsCompletedSuccessfully)
+            {
+                return decisionTask.GetAwaiter().GetResult();
+            }
         }
 
         logger?.LogWarning(
@@ -136,17 +146,25 @@ public static class ChangshaBotEngine
             return decision();
         }
 
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var decisionTask = Task.Run(decision, ct);
-        var winner = await Task.WhenAny(decisionTask, Task.Delay(timeoutMs, ct)).ConfigureAwait(false);
+        await Task.WhenAny(decisionTask, Task.Delay(timeoutMs, ct)).ConfigureAwait(false);
 
-        if (winner == decisionTask && decisionTask.IsCompletedSuccessfully)
+        // #124 — see DecideActionWithTimeoutAsync: honour the strategy's outcome ONLY when it
+        // demonstrably arrived within the wall-clock budget, so a late (thread-pool-starved)
+        // strategy answer can never be surfaced in place of the safe-default (the Postgres-cell
+        // false-Hu flake). The Stopwatch is authoritative where Task.WhenAny ordering is not.
+        if (stopwatch.ElapsedMilliseconds <= timeoutMs)
         {
-            return decisionTask.Result;
-        }
+            if (decisionTask.IsCompletedSuccessfully)
+            {
+                return decisionTask.Result;
+            }
 
-        if (decisionTask.IsCompleted && !decisionTask.IsCompletedSuccessfully)
-        {
-            return decisionTask.GetAwaiter().GetResult();
+            if (decisionTask.IsCompleted && !decisionTask.IsCompletedSuccessfully)
+            {
+                return decisionTask.GetAwaiter().GetResult();
+            }
         }
 
         logger?.LogWarning(

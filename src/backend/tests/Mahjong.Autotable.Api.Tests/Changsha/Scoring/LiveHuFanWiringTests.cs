@@ -76,7 +76,8 @@ public class LiveHuFanWiringTests
     /// post-deal state through self-draw win + scoring, returning the final
     /// <see cref="ChangshaGameState"/> ready for translator projection.
     /// </summary>
-    private static ChangshaGameState DriveSelfDrawSevenPairs(int dealerSeat)
+    private static ChangshaGameState DriveSelfDrawSevenPairs(
+        int dealerSeat, ChangshaScoringOptions? options = null)
     {
         var state = BuildPostDealState(dealerSeat);
         SuppressFirstDiscardContext(state);
@@ -95,7 +96,7 @@ public class LiveHuFanWiringTests
         ClearOtherHands(state, keepSeat: dealerSeat);
 
         ChangshaGameStateMachine.DeclareSelfDrawWin(state, dealerSeat);
-        ChangshaGameStateMachine.Score(state);
+        ChangshaGameStateMachine.Score(state, options);
         return state;
     }
 
@@ -425,10 +426,11 @@ public class LiveHuFanWiringTests
     {
         // Same self-draw 7-pair shape — but this test asserts the
         // `payments` projection on the wire carries the per-fan rows
-        // with `reason: "fan:<id>"`. This is the audit lever the
-        // frontend (or any wire-debug tool) uses to attribute the
-        // additive fan bonus per-fan per-payment.
-        var state = DriveSelfDrawSevenPairs(dealerSeat: 0);
+        // with `reason: "fan:<id>"`. Per #117 the fan bonus is folded into
+        // payments ONLY under the opt-in house-rules mode (spec-pure keeps the
+        // payments at the §5.1 magnitude and surfaces fans query-only), so this
+        // wire-audit test drives ChangshaScoringOptions.HouseRules.
+        var state = DriveSelfDrawSevenPairs(dealerSeat: 0, ChangshaScoringOptions.HouseRules);
 
         var entry = ChangshaToAutotableTranslator.BuildHandResult(state);
         var wireValue = SerializeHandResultToWire(entry);

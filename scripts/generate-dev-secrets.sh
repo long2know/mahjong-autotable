@@ -51,7 +51,11 @@ Persistence__Provider=Sqlite
 ConnectionStrings__Sqlite=Data Source=data/mahjong-autotable.dev.db
 ConnectionStrings__PostgreSql=Host=localhost;Port=5432;Database=mahjong_autotable;Username=mahjong;Password=${PG_PASS}
 
-# Auth (Wave 8 — Bishop)
+# Auth (Wave 8 — Bishop). JWT_SIGNING_KEY feeds docker-compose.yml's
+# \${JWT_SIGNING_KEY} substitution (injected as Authentication__JwtSigningKeys__0);
+# Auth__JwtSigningKey is the direct container env for the `source .env.dev;
+# dotnet run` path. Same value so both paths agree.
+JWT_SIGNING_KEY=${JWT_KEY}
 Auth__JwtSigningKey=${JWT_KEY}
 Auth__CookieEncryptionKey=${COOKIE_KEY}
 
@@ -71,5 +75,5 @@ echo "Quick start:"
 echo "  source \"$OUT\""
 echo "  cd src/backend && dotnet run --project src/Mahjong.Autotable.Api"
 echo
-echo "Postgres in compose:"
-echo "  docker compose --env-file \"$OUT\" up postgres mahjong-autotable"
+echo "Compose (reads JWT_SIGNING_KEY + other vars from this file):"
+echo "  docker compose --env-file \"$OUT\" up -d --build"

@@ -151,7 +151,7 @@ type BotDifficulty = 'Easy' | 'Medium' | 'Hard' | 'Master';
 // Phase J Wave 2 — Hand counts now include 1 (single-hand sandbox) and the
 // default shifts from 8 to 4 to mirror Bishop's runtime default east-wind
 // rotation (see Phase J Wave 2 directive §Task 3).
-type HandCount = 1 | 4 | 8 | 16 | 32;
+type HandCount = 1 | 4 | 8 | 16;
 
 // Phase I Wave 4 — seat selection.
 //   • null  → no preference (server seats us in the first open chair,
@@ -209,7 +209,9 @@ const VARIANTS: ReadonlyArray<Variant> = [
   'changsha', 'four-player', 'three-player', 'bamboo', 'minefield',
 ];
 
-const HAND_COUNTS: ReadonlyArray<HandCount> = [1, 4, 8, 16, 32];
+// Vasquez §6.3 — the canonical Changsha runtime clamps play at 16 hands, so
+// 32 is not a real option (offering it would be decorative/misleading).
+const HAND_COUNTS: ReadonlyArray<HandCount> = [1, 4, 8, 16];
 
 // localStorage key for persisted lobby defaults.  Versioned so we can
 // migrate the shape later without colliding with an old payload.
@@ -521,21 +523,15 @@ function buildUrl(state: LobbyState): string {
   if (state.seat !== null) {
     p.set('seat', String(state.seat));
   }
-  // Phase J Wave 8 — emit rulePreset=<id> when the user picked a
-  // non-default preset.  The backend ignores the param if Bishop's
-  // rule-preset endpoints aren't deployed yet (graceful degradation).
-  //
-  // Phase K Wave 19 — bundle audit §3.4.  Inline LS-read avoids
-  // pulling `rule-presets.ts` into the eager lobby chunk just for
-  // this read.  Mirrors `readSelectedId()` in rule-presets.ts: same
-  // key (`mahjong.rule-preset.selected.v1`), same default
-  // (`'classic-changsha'`), same try/catch guard.
-  try {
-    const presetId = readSelectedPresetIdInline();
-    if (presetId !== '' && presetId !== 'classic-changsha') {
-      p.set('rulePreset', presetId);
-    }
-  } catch { /* rule-presets module not initialised — skip */ }
+  // Ferro WP-E/#120 (Ripley C-2 ruling) — rulePreset is NOT implemented for
+  // Changsha: the WS handshake never reads it and the runtime never applies
+  // it, so emitting `?rulePreset=` would falsely imply a gameplay effect.
+  // We deliberately do NOT emit it (the lobby picker is disabled + badged as
+  // not-yet-applied). Re-introduce this only once Bishop (WP-A) wires a
+  // create-time rule-preset read; until then keeping it off the URL keeps the
+  // handshake honest. (The `mahjong.rule-preset.selected.v1` LS key still
+  // drives the settings-panel preset *editor*, which is a real backend CRUD
+  // surface — just not a game-config input.)
   return window.location.pathname + '?' + p.toString();
 }
 
@@ -795,6 +791,18 @@ export function initLobby(client?: Client): void {
       writeLocalStorageDefaults(state);
     }
     const url = buildUrl(state);
+    // Ferro WP-E/#120 — mirror Quick Match's anti-strand guards on the
+    // primary Apply & Start path.  Without them a cached / service-worker
+    // replayed render (or any legacy state) can re-open `#lobby-panel`
+    // with the `.lobby-open` class after the reload, and that panel
+    // intercepts pointer events on the very controls the user needs next
+    // (#connect, the `.take-seat` buttons, and #deal) — stranding them at
+    // an un-seated / un-dealt table even though the WS auto-connected.
+    // `shouldShowOnLoad()` already keeps the panel closed on the normal
+    // params-present path; these two calls are belt-and-suspenders for the
+    // brief pre-replace() window and the cached-render edge case.
+    hidePanel();
+    markSkipOpenOnLoadFlag();
     // replace() instead of assign() so the browser back-button doesn't
     // bounce the user between game configurations.
     window.location.replace(url);
@@ -1941,28 +1949,16 @@ function scheduleProfileDrawerLazyMount(): void {
 //   • rule-presets (~12.5 KB minified incl. its EventEmitter
 //     dependency) — only loaded inside a `requestIdleCallback`
 //     after lobby first-paint.  The picker `<select>` is in the
-//     static HTML; the module populates options + wires the change
-//     handler when the chunk lands.  The URL-builder's
-//     `getSelectedPresetId` call is replaced by an inline LS read
-//     so the URL still emits `?rulePreset=` for non-default
-//     selections without dragging in the editor surface.
+//     static HTML; the module populates options + disables it (the
+//     preset is not yet applied to Changsha gameplay — Ripley C-2
+//     ruling, WP-E/#120 — so the URL builder no longer emits
+//     `?rulePreset=`).
 //
 // W18 delivered eager = 156,577 B (+11.5 KB over the §6.3 ceiling
 // of 145,000 B).  These two lazifications shed ~20 KB combined —
 // see `docs/lh13-soft-pin-rationale.md` §10 for the W19 outcome
 // table.
 // ---------------------------------------------------------------------
-
-const RULE_PRESET_LS_KEY = 'mahjong.rule-preset.selected.v1';
-const RULE_PRESET_DEFAULT_ID = 'classic-changsha';
-
-function readSelectedPresetIdInline(): string {
-  try {
-    return window.localStorage.getItem(RULE_PRESET_LS_KEY) ?? RULE_PRESET_DEFAULT_ID;
-  } catch {
-    return RULE_PRESET_DEFAULT_ID;
-  }
-}
 
 let _matchmakingMod: typeof MatchmakingModule | null = null;
 let _matchmakingLoading: Promise<typeof MatchmakingModule> | null = null;

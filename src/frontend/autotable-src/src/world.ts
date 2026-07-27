@@ -314,7 +314,19 @@ export class World {
       thing.moveTo(slot, rotationIndex);
       thing.sent = true;
 
-      thing.claimedBy = thingInfo.claimedBy;
+      // #119 (Hicks): normalise claimedBy to the `number | null` invariant.
+      // The server OMITS `claimedBy` for unclaimed tiles, so it deserialises
+      // to `undefined` on the wire (108 of 109 things in a fresh Changsha
+      // deal).  Assigning it verbatim left `thing.claimedBy === undefined`,
+      // which fails every `claimedBy === null` gate in this file — most
+      // critically `toSelect()`, whose result seeds the mouse-ui raycast
+      // targets.  The upshot: only the single tile the server happened to
+      // send an explicit `null` for was hoverable/selectable, so a human
+      // could not click ANY of their 14 hand tiles (no hover → no
+      // click-to-discard).  `?? null` coerces undefined → null while
+      // preserving a real seat index (0 must NOT collapse to null, so this
+      // is `??`, never `||`).
+      thing.claimedBy = thingInfo.claimedBy ?? null;
       thing.heldRotation.set(
         thingInfo.heldRotation.x,
         thingInfo.heldRotation.y,
@@ -382,12 +394,11 @@ export class World {
   }
 
   private onDice(): void {
-    const diceInfo = this.client.dice.get(0);
-    if (!diceInfo) {
-      return;
-    }
-
-    this.objectView;
+    // #119 (Hicks): dropped a dead `this.objectView;` expression that
+    // tripped @typescript-eslint/no-unused-expressions.  Dice rendering is
+    // owned by Center (center.ts subscribes to the same dice collection);
+    // this World listener is an intentional no-op kept for update
+    // fan-out symmetry.
   }
 
   // Phase F — runtime-pushed pickup affordance.  Stored locally so subsequent
@@ -713,11 +724,11 @@ export class World {
     // Bishop W23 — manual-deal pickup chain.  In manual mode Bishop's runtime
     // parks in RollingDice after the implicit Deal trigger and waits for
     // per-round `pickup` emissions from the seated client(s).  Drive the
-    // dealer-side chain (1 × rollDice + 4 × take: 3 rounds of 4 tiles +
-    // 1 final round of 1 tile per Changsha v1.2 §6.3) so the human-led
-    // table actually reaches the play loop.  Auto-mode deals are unchanged.
-    // Spectators (seat === null guard above) and non-HANDS deals skip the
-    // chain too.  The runtime auto-handles bot seats between our turns
+    // dealer-side chain (1 × rollDice + 5 × take for the dealer: 3 rounds of
+    // 4 tiles + 1 single tile + 1 dealer-extra = 14 per Changsha v1.2 §6.3) so
+    // the human-led table actually reaches the play loop.  Auto-mode deals are
+    // unchanged.  Spectators (seat === null guard above) and non-HANDS deals
+    // skip the chain too.  The runtime auto-handles bot seats between our turns
     // (ChangshaGameRuntime.ScheduleBotIfNeededAsync), so we only emit for
     // our own seat.
     //
@@ -747,10 +758,11 @@ export class World {
    * RollingDice — see ChangshaToAutotableTranslator.cs §pickup).  So we
    * blind-emit `rollDice` first; the runtime rejects it server-side if
    * we aren't the dealer (silent debug log).  Once it accepts, pickup
-   * state pushes through and we drive 4 `take` rounds (3 × 4 tiles +
-   * 1 × 1 tile per Changsha v1.2 §6.3).  Bots autoplay their own pickup
-   * rounds server-side via ScheduleBotIfNeededAsync between our turns,
-   * so this loop only handles the local seat.
+   * state pushes through and we drive the dealer's five `take` rounds
+   * (3 × 4 tiles + 1 single tile + 1 dealer-extra = 14 per Changsha
+   * v1.2 §6.3).  Bots autoplay their own pickup rounds server-side via
+   * ScheduleBotIfNeededAsync between our turns, so this loop only handles
+   * the local seat.
    *
    * Cancels itself if a newer chain has bumped {@link manualDealChainGen}.
    */
@@ -774,14 +786,29 @@ export class World {
     //    level — no client-visible side effect.
     this.emitRollDice();
 
-    // 3) Four take rounds: 3 × 4-tile (PickupRound1..3) + 1 × 1-tile
-    //    (SingleTilePickup or DealerExtra; the runtime collapses both
-    //    into a single 1-tile pickup affordance for our seat).  Between
-    //    our turns the runtime cycles through the bot seats via
-    //    ScheduleBotIfNeededAsync; we just re-wait for our seat to come
-    //    up again.  The 12s timeout per round accommodates the bot
-    //    pickup delay (BotPickupDelayMs default) × 3 bots + slack.
-    for (let round = 0; round < 4; round++) {
+    // 3) Drive every deal-ceremony pickup the runtime presents to our seat.
+    //    The dealer walks FIVE phases — PickupRound1..3 (4 tiles each) +
+    //    SingleTilePickup (1) + DealerExtra (1) = 14 tiles; a non-dealer
+    //    walks four (…through SingleTilePickup = 13).
+    //
+    //    #119 (Hicks / Hudson WP-F P0): this loop previously ran exactly 4
+    //    rounds on the false assumption the runtime "collapses" SingleTile-
+    //    Pickup and DealerExtra into one affordance.  It does NOT — they are
+    //    distinct ChangshaPhase states, both gated by IsPickupPhase (see
+    //    ChangshaStateMachine.IsPickupPhase / ChangshaDealingCeremony) — so
+    //    the runtime pushed the DealerExtra affordance AFTER our 4th take and
+    //    the client never consumed it, stranding the dealer at 13 tiles with
+    //    the real UI hung before the first discard.  We now keep taking while
+    //    our seat holds a ceremony pickup and stop the instant the terminal
+    //    DealerExtra tile is claimed.  Pickup affordances exist ONLY during
+    //    the deal (IsPickupPhase excludes the play phase, which tombstones the
+    //    pickup collection), so this can never grab a normal in-play draw.
+    //    MAX_DEAL_PICKUPS caps the dealer worst case so a wedged runtime can't
+    //    spin forever; a non-dealer seat simply times out after its 4th take.
+    //    The 12s per-round timeout accommodates the bot pickup delay
+    //    (BotPickupDelayMs default) × 3 bots + slack.
+    const MAX_DEAL_PICKUPS = 5;
+    for (let round = 0; round < MAX_DEAL_PICKUPS; round++) {
       const myTurn = await this.waitForPickup(
         gen,
         p => p !== null && p.seatIndex === seat && p.count > 0,
@@ -789,10 +816,26 @@ export class World {
       );
       if (!myTurn) return;
       if (this.manualDealChainGen !== gen) return;
+      const phase = World.normalizePickupPhase(this.pickup?.phase);
       const ok = this.emitTakePickup();
       if (!ok) return;
+      // DealerExtra is the dealer's terminal 14th-tile pickup — the runtime
+      // arms AwaitingDiscard next and never targets our seat with another
+      // ceremony pickup, so stop here rather than dead-waiting 12s for an
+      // affordance that will never arrive.
+      if (phase === 'dealerextra') return;
       await new Promise<void>(r => setTimeout(r, 120));
     }
+  }
+
+  /**
+   * #119 (Hicks) — normalise a server pickup-phase label to a lowercase
+   * alphanumeric token so both the Pascal-case enum name ("DealerExtra")
+   * and the dashed wire form ("dealer-extra") compare equal.  Used by
+   * {@link driveManualDealChain} to detect the terminal DealerExtra pickup.
+   */
+  private static normalizePickupPhase(phase: string | null | undefined): string {
+    return (phase ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
   }
 
   /**

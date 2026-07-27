@@ -94,6 +94,16 @@ public static class ChangshaCollectionKinds
     /// the <c>things</c> collection).
     /// </summary>
     public const string Discard = "discard";
+
+    /// <summary>
+    /// Server-emitted only (inbound to clients): the authoritative end-of-match signal.
+    /// Singleton keyed <c>"current"</c>, value = <see cref="GameCompleteEntry"/>. Emitted by
+    /// <see cref="ChangshaToAutotableTranslator"/> once the game reaches its terminal phase
+    /// (<see cref="Mahjong.Autotable.Api.Changsha.ChangshaGameState.IsGameComplete"/>), which is
+    /// what makes the bundle's <c>#game-complete-modal</c> reachable through real play. Clients
+    /// never push this kind (the endpoint drops any inbound <c>gameComplete</c>); locked C-1.
+    /// </summary>
+    public const string GameComplete = "gameComplete";
 }
 
 /// <summary>
@@ -172,6 +182,32 @@ public sealed class HandResultEntry
     /// </summary>
     [JsonPropertyName("scoreResult")]
     public ScoreResultEntry? ScoreResult { get; set; }
+}
+
+/// <summary>
+/// Server-emitted end-of-match payload. Maps to the
+/// <see cref="ChangshaCollectionKinds.GameComplete"/> collection value under key
+/// <c>"current"</c>. The frontend (<c>game-ui.ts</c> / <c>client.ts GameCompleteEntry</c>)
+/// shows <c>#game-complete-modal</c> when <see cref="IsComplete"/> is truthy and renders the
+/// per-seat totals from <see cref="TotalScores"/> (keyed by seat index string) with the
+/// subtitle derived from <see cref="MaxHands"/>. Distinct from
+/// <see cref="HandResultEntry.Score"/> (which is a per-hand <c>[{seat,delta}]</c> <b>array</b>):
+/// <see cref="TotalScores"/> is a cumulative seat→score <b>object</b>, so the two contracts never
+/// collide.
+/// </summary>
+public sealed class GameCompleteEntry
+{
+    /// <summary>Authoritative "match is over" flag — true whenever emitted.</summary>
+    [JsonPropertyName("isComplete")]
+    public bool IsComplete { get; set; }
+
+    /// <summary>Cumulative net score per seat, keyed by seat index as a string ("0".."3").</summary>
+    [JsonPropertyName("totalScores")]
+    public Dictionary<string, int> TotalScores { get; set; } = new();
+
+    /// <summary>Configured hand cap for this match (drives the "N-hand match complete" subtitle).</summary>
+    [JsonPropertyName("maxHands")]
+    public int MaxHands { get; set; }
 }
 
 /// <summary>
@@ -375,6 +411,14 @@ public static class ChangshaCollectionEncoder
     public static CollectionEntry EncodeHandResultCleared()
         => new(ChangshaCollectionKinds.Result, "current", null);
 
+    /// <summary>Encodes the authoritative end-of-match signal as the <c>gameComplete["current"]</c> entry.</summary>
+    public static CollectionEntry EncodeGameComplete(GameCompleteEntry entry)
+        => new(ChangshaCollectionKinds.GameComplete, "current", entry);
+
+    /// <summary>Encodes a tombstone for the end-of-match signal (cleared when a fresh game starts).</summary>
+    public static CollectionEntry EncodeGameCompleteCleared()
+        => new(ChangshaCollectionKinds.GameComplete, "current", null);
+
     // ── Phase F: pickup-state collection ──
 
     /// <summary>
@@ -389,6 +433,45 @@ public static class ChangshaCollectionEncoder
     /// <summary>Encodes a tombstone for the pickup cursor (manual deal complete).</summary>
     public static CollectionEntry EncodePickupCleared()
         => new(ChangshaCollectionKinds.Pickup, "current", null);
+}
+
+/// <summary>
+/// Server-emitted <c>things</c> collection value (one per tile). Maps 1:1 to the frontend C-1
+/// <c>ThingInfo</c> wire contract (<c>autotable-src/src/types.ts</c>).
+///
+/// <para><b>Why a typed DTO instead of an anonymous object:</b> <see cref="ClaimedBy"/>
+/// (<c>number|null</c>) and <see cref="ShiftSlotName"/> (<c>string|null</c>) are <b>required and
+/// present</b> in the C-1 type, and the relay path already emits them as explicit <c>null</c> (the
+/// upstream client's <c>describeThing</c> serializes <c>claimedBy: null</c>, and the relay stores
+/// the client JsonElement verbatim). The changsha translator previously emitted an anonymous object
+/// whose null <c>claimedBy</c>/<c>shiftSlotName</c> were dropped by the shared serializer
+/// (<see cref="AutotableJson"/> uses <see cref="JsonIgnoreCondition.WhenWritingNull"/>), so ~108
+/// unclaimed tiles omitted the field — inconsistent with both the type and the relay path (Hicks's
+/// P0). The <see cref="JsonIgnoreCondition.Never"/> on those two properties overrides the global
+/// null-drop so the wire always carries an explicit <c>null</c>, restoring byte-consistency.</para>
+/// </summary>
+public sealed class ThingInfo
+{
+    [JsonPropertyName("slotName")]
+    public string SlotName { get; set; } = string.Empty;
+
+    [JsonPropertyName("rotationIndex")]
+    public int RotationIndex { get; set; }
+
+    /// <summary>Owning seat while a client is dragging the tile; server play is authoritative, so
+    /// the translator always emits <c>null</c> — but explicitly (C-1 <c>claimedBy: number|null</c>).</summary>
+    [JsonPropertyName("claimedBy")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public int? ClaimedBy { get; set; }
+
+    [JsonPropertyName("heldRotation")]
+    public object HeldRotation { get; set; } = default!;
+
+    /// <summary>Shift-drag target slot; the translator emits <c>null</c> explicitly (C-1
+    /// <c>shiftSlotName: string|null</c>), matching the relay path.</summary>
+    [JsonPropertyName("shiftSlotName")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? ShiftSlotName { get; set; }
 }
 
 /// <summary>

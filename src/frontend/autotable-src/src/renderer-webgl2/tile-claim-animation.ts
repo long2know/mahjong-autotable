@@ -266,7 +266,7 @@ export function meldSlotMatrix(
   const c = Math.cos(angle);
   const s = Math.sin(angle);
   // m_xz_rot * m_x_rot — flatten into the final 4×4 in place.
-  const m00 = m[0], m02 = m[2];
+  const m00 = m[0];
   const m08 = m[8], m10v = m[10];
   m[0] = m00 * c;
   m[2] = m00 * -s;
