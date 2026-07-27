@@ -260,27 +260,40 @@ export async function checkServedBundleMatchesBuild(
 
 export async function defangOverlays(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const inject = (): void => {
-      if (document.getElementById('playability-gate-overlay-defang')) return;
-      const style = document.createElement('style');
-      style.id = 'playability-gate-overlay-defang';
-      style.textContent = `
-        #tour-overlay, #magic-link-landing, #magic-link-overlay,
-        #signin-modal-backdrop, .magic-link-landing, .magic-link-overlay,
-        .signin-modal-backdrop, [data-testid="tour-overlay"],
-        [data-testid="signin-modal-backdrop"] {
-          display: none !important;
-          pointer-events: none !important;
-          visibility: hidden !important;
-        }
-        [aria-hidden="true"] { pointer-events: none !important; }
-      `;
-      document.head.appendChild(style);
+    // CSP-clean: no injected <style> element (strict prod CSP forbids
+    // style-src inline). Hide overlays via CSSOM property writes (not subject
+    // to style-src) + a MutationObserver for ones that mount later.
+    const SEL = [
+      '#tour-overlay', '#magic-link-landing', '#magic-link-overlay',
+      '#signin-modal-backdrop', '.magic-link-landing', '.magic-link-overlay',
+      '.signin-modal-backdrop', '[data-testid="tour-overlay"]',
+      '[data-testid="signin-modal-backdrop"]',
+    ];
+    const defang = (): void => {
+      for (const sel of SEL) {
+        document.querySelectorAll<HTMLElement>(sel).forEach((el) => {
+          el.style.display = 'none';
+          el.style.pointerEvents = 'none';
+          el.style.visibility = 'hidden';
+        });
+      }
+      document.querySelectorAll<HTMLElement>('[aria-hidden="true"]').forEach((el) => {
+        el.style.pointerEvents = 'none';
+      });
+    };
+    const start = (): void => {
+      defang();
+      new MutationObserver(defang).observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['aria-hidden', 'class', 'style'],
+      });
     };
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', inject);
+      document.addEventListener('DOMContentLoaded', start);
     } else {
-      inject();
+      start();
     }
   });
 }
@@ -860,7 +873,153 @@ export async function claimByClick(page: Page): Promise<string | null> {
   return null;
 }
 
-/** OBSERVE — is the #game-complete-modal actually visible to the user? */
+/** OBSERVE — the live camera kind ('perspective' | 'orthographic' | null). */
+export async function readCameraType(page: Page): Promise<'perspective' | 'orthographic' | null> {
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cam = (window as any).game?.mainView?.camera;
+    if (!cam) return null;
+    if (cam.isPerspectiveCamera === true) return 'perspective';
+    if (cam.isOrthographicCamera === true) return 'orthographic';
+    return null;
+  });
+}
+
+/**
+ * ADVANCE (view only) — toggle the flat/perspective view the way a user does:
+ * a real 'p' keypress (game.ts onKeyDown → MainView.setPerspective). Returns the
+ * camera kind after the toggle. Does not affect gameplay state.
+ */
+export async function pressViewToggle(page: Page): Promise<'perspective' | 'orthographic' | null> {
+  // Ensure a game-level element holds focus (not a text input, which game.ts
+  // ignores) without clicking the canvas (which would select/discard a tile).
+  await page.evaluate(() => {
+    const el = document.activeElement as HTMLElement | null;
+    if (el && el.tagName === 'INPUT') el.blur();
+  });
+  await page.keyboard.press('p');
+  await page.waitForTimeout(300);
+  return readCameraType(page);
+}
+
+/** OBSERVE — server-authoritative per-seat totals at completion (for zero-sum). */
+export async function readTotalScores(page: Page): Promise<Record<string, number> | null> {
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const gc = (window as any).game?.client?.gameComplete?.get('current');
+    if (!gc) return null;
+    const raw = gc.totalScores ?? gc.TotalScores;
+    if (raw === null || raw === undefined) return null;
+    const out: Record<string, number> = {};
+    for (const k of Object.keys(raw)) {
+      const v = Number(raw[k]);
+      if (Number.isFinite(v)) out[String(k)] = v;
+    }
+    return out;
+  });
+}
+
+/** OBSERVE — does the runtime currently expect the local seat to pick up? */
+export async function readIsMyPickupTurn(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = (window as any).game?.world;
+    return typeof w?.isMyPickupTurn === 'function' ? Boolean(w.isMyPickupTurn()) : false;
+  });
+}
+
+/** OBSERVE — count of the local seat's backend-authoritative concealed hand tiles. */
+export async function countMyHandTiles(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = (window as any).game?.world;
+    if (!w || !w.things) return 0;
+    const seat = w.seat;
+    let n = 0;
+    for (const t of w.things.values()) {
+      if (
+        t?.slot?.group === 'hand' &&
+        t.slot?.seat === seat &&
+        t.slot?.thing === t &&
+        !String(t.slot?.name ?? '').startsWith('hand.extra@')
+      ) {
+        n++;
+      }
+    }
+    return n;
+  });
+}
+
+export interface PickupOutcome {
+  ok: boolean;
+  reason: string;
+  handBefore: number;
+  handAfter: number;
+}
+
+/**
+ * ADVANCE — the human's manual pickup: when the runtime expects our seat to
+ * draw, the pickup HUD shows "Your turn — pick N tiles" with a real Take-N
+ * button (#pickup-take-btn, game-ui.ts). Click it — that is the human
+ * affordance (its onclick calls world.emitTakePickup). driveManualDealChain
+ * auto-drives hand 1; this real click drives hands 2..N.
+ */
+export async function takePickup(page: Page): Promise<PickupOutcome> {
+  const handBefore = await countMyHandTiles(page);
+  if (!(await readIsMyPickupTurn(page))) {
+    return { ok: false, reason: 'not my pickup turn', handBefore, handAfter: handBefore };
+  }
+  const btn = page.locator('#pickup-take-btn');
+  const deadline = Date.now() + 6000;
+  while (Date.now() < deadline) {
+    const vis = await btn.first().isVisible().catch(() => false);
+    const en = vis && (await btn.first().isEnabled().catch(() => false));
+    if (vis && en) {
+      await btn.first().click({ timeout: 3000 }).catch(() => undefined);
+      await page.waitForTimeout(700);
+      const handAfter = await countMyHandTiles(page);
+      const stillMyTurn = await readIsMyPickupTurn(page);
+      if (handAfter > handBefore || !stillMyTurn) {
+        return { ok: true, reason: 'take button clicked', handBefore, handAfter };
+      }
+      // Still our turn with no change — the HUD may be mid-refresh; loop.
+    }
+    await page.waitForTimeout(350);
+  }
+  return { ok: false, reason: 'take button not actionable', handBefore, handAfter: await countMyHandTiles(page) };
+}
+
+/** OBSERVE — is the per-hand #result-modal (scoring panel) visible? */
+export async function isResultModalVisible(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const el = document.getElementById('result-modal');
+    if (!el) return false;
+    const s = window.getComputedStyle(el);
+    return (el.classList.contains('show') || s.display === 'block') && s.visibility !== 'hidden';
+  });
+}
+
+/**
+ * ADVANCE — click the real "Next Hand" (#result-next) button in the per-hand
+ * result modal to proceed to the next hand (sends match[1]={action:'nextHand'}
+ * through the normal UI path — NOT a backdoor). Waits for it to be actionable.
+ */
+export async function clickNextHand(page: Page, timeoutMs = 8000): Promise<boolean> {
+  const btn = page.locator('#result-next');
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const vis = await btn.first().isVisible().catch(() => false);
+    const en = vis && (await btn.first().isEnabled().catch(() => false));
+    if (vis && en) {
+      await btn.first().click({ timeout: 3000 }).catch(() => undefined);
+      await page.waitForTimeout(600);
+      return true;
+    }
+    await page.waitForTimeout(400);
+  }
+  return false;
+}
+
 export async function isGameCompleteModalVisible(page: Page): Promise<boolean> {
   const modal = page.locator('#game-complete-modal');
   if ((await modal.count()) === 0) return false;

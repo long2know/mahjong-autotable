@@ -2,47 +2,31 @@
 //  P0 REAL-UI PLAYABILITY GATE — #122 (Hudson, Tester/Reviewer-gate)
 // =============================================================================
 //
-//  THIS IS THE ACCEPTANCE GATE. It proves a human-vs-bots Changsha game is
-//  playable to real completion THROUGH THE ACTUAL UI, and that the server
-//  HONORS the requested match length (handCount / MaxHands):
+//  THE acceptance gate for "the autotable integration is complete and
+//  functional". Two complementary proofs, BOTH via real DOM/canvas/pointer
+//  interactions only (NO WS backdoor — no client.update, no synthetic events,
+//  no direct emitDiscard, no collection injection, no server-state mutation;
+//  read-only observation of window.game.* state is allowed):
 //
-//    real take-seat click → real #deal press → drive human turns by real
-//    canvas pointer discards + real claim-button clicks → poll the
-//    SERVER-AUTHORITATIVE gameComplete.isComplete → assert the real
-//    #game-complete-modal opened from a REAL completion.
+//   1. FULL 4-HAND human-vs-bots Changsha playthrough → authoritative
+//      GameComplete + scoring modal. Exercises the whole integration: manual
+//      wall/dice/5-step dealer pickup, real tile discards, claim buttons, bot
+//      turns, dealer/washout progression, zero-sum scoring, the game-complete
+//      modal, and BOTH perspective + flat views toggled mid-game. Asserts no
+//      unhandled console/page/CSP errors and served-bundle hash == fresh build.
 //
-//  Lead decision (2026-07-26): handCount is REAL, not decorative — the server
-//  MUST honor 1/4/8/16/32. So the bounded acceptance run uses a NON-DEFAULT
-//  handCount (=1) and asserts the match completes in EXACTLY that many hands
-//  with server MaxHands === requested, and a separate config check asserts the
-//  server honors 8 and 16. This makes an implementation that ignores handCount
-//  and always plays the default 4 UNABLE to evade the gate.
-//
-//  HARD RULES (issue #122 · Lead C-8 · playtest-ws-backdoor SKILL:88-93):
-//    • NO WS backdoor may advance or satisfy this test. Not client.update,
-//      not events.emit, not world.emitDiscard(id), not collection injection,
-//      not server-state mutation. Every forward move here is a real
-//      Playwright pointer/click event (see tests/e2e/_playability.ts header).
-//    • The bundle under test MUST be the freshly-built source bundle — a
-//      content-hash preflight enforces served === built before we interact.
-//    • Assertions are NOT weakened to make current HEAD pass. The gate is
-//      SCAFFOLDED NOW and goes green only after its dependencies land:
-//        WP-A #116/#123 (per-hand manual ceremony + Manual+bots→GameComplete
-//                        + handCount honored server-side),
-//        WP-D #119/#125 (deterministic bundle-hash gate),
-//        WP-E #120/#127 (P0-2 real-UI connect flow + handCount forwarded).
-//      Until then this gate FAILS HONESTLY at the first real blocker and
-//      writes evidence to playtest-artifacts/playability-gate/.
+//   2. BOUNDED non-default handCount cases proving the server is authoritative
+//      over the match length (1 human-vs-bots; 8 + 16 all-bot completion) —
+//      a server that ignored handCount and always played the default 4 cannot
+//      pass these.
 //
 //  Reviewer independence: Hudson AUTHORED this gate and may NOT self-approve
-//  it; Ripley (Lead) independently verifies WP-F.
-//
-//  Selectors used here are catalogued in tests/selectors.md → "Playability
-//  gate (#122)".
+//  it; Ripley (Lead) independently verifies WP-F. Selectors are catalogued in
+//  tests/selectors.md → "Playability gate (#122)".
 // =============================================================================
 
 import { test, expect } from '@playwright/test';
-import type { Page, APIRequestContext } from '@playwright/test';
+import type { Page, APIRequestContext, ConsoleMessage } from '@playwright/test';
 import {
   makeConfig,
   buildGameUrl,
@@ -53,6 +37,8 @@ import {
   takeSeatByClick,
   clickDeal,
   discardByPointer,
+  takePickup,
+  readIsMyPickupTurn,
   claimByClick,
   readClaimWindow,
   hasExtraHandTile,
@@ -61,375 +47,481 @@ import {
   readMatch,
   readMaxHands,
   readPickup,
+  readCameraType,
+  pressViewToggle,
+  readTotalScores,
+  clickNextHand,
+  isResultModalVisible,
   waitForPlayableHand,
   isGameCompleteModalVisible,
   waitForGameObject,
   Recorder,
   snap,
   type GameConfig,
-  type BundleHashResult,
 } from './_playability';
 
-// Bounded, deterministic budget. A real single-hand Changsha game with Hard
-// bots completes well within this; the cap keeps a stalled build from hanging.
-const GAME_BUDGET_MS = 4 * 60_000;
-const POLL_INTERVAL_MS = 800;
+const POLL_INTERVAL_MS = 700;
+const VIEW_TOGGLE_EVERY_MS = 7000;
 
 function resolveBase(baseURL: string | undefined): string {
   return baseURL ?? process.env.E2E_BASE_URL ?? 'http://localhost:8080/autotable/';
 }
 
-interface ConnectDealResult {
-  bundle: BundleHashResult;
-  hasGame: boolean;
+// ── Error surveillance ──────────────────────────────────────────────────────
+// The benign, expected REST probes for a not-yet-persisted game return 404 and
+// are handled gracefully by the app; everything else is a real defect.
+const BENIGN_404_RE = /\/api\/games\/[^/]+(\/settings)?$/;
+const CSP_RE = /content security policy|refused to (load|execute|connect|apply)|violates the following/i;
+
+interface ErrorReport {
+  pageErrors: string[];
+  cspViolations: string[];
+  jsConsoleErrors: string[];
+  badResponses: string[];
+}
+
+class ErrorWatch {
+  private readonly pageErrors: string[] = [];
+  private readonly cspViolations: string[] = [];
+  private readonly jsConsoleErrors: string[] = [];
+  private readonly badResponses: string[] = [];
+
+  constructor(page: Page) {
+    page.on('pageerror', (e) => this.pageErrors.push(e.message));
+    page.on('console', (m: ConsoleMessage) => {
+      if (m.type() !== 'error') return;
+      const t = m.text();
+      if (CSP_RE.test(t)) this.cspViolations.push(t);
+      else if (/failed to load resource/i.test(t)) {
+        /* correlated with badResponses below; ignore the generic text */
+      } else this.jsConsoleErrors.push(t);
+    });
+    page.on('response', (r) => {
+      if (r.status() < 400) return;
+      const u = r.url();
+      if (BENIGN_404_RE.test(u) && r.status() === 404) return; // expected fresh-game probe
+      if (/\/api\/csp-report/.test(u)) return;
+      this.badResponses.push(`${r.status()} ${r.request().resourceType()} ${u}`);
+    });
+  }
+
+  report(): ErrorReport {
+    return {
+      pageErrors: this.pageErrors.slice(),
+      cspViolations: this.cspViolations.slice(),
+      jsConsoleErrors: this.jsConsoleErrors.slice(),
+      badResponses: this.badResponses.slice(),
+    };
+  }
+
+  clean(): boolean {
+    return (
+      this.pageErrors.length === 0 &&
+      this.cspViolations.length === 0 &&
+      this.jsConsoleErrors.length === 0 &&
+      this.badResponses.length === 0
+    );
+  }
+}
+
+// ── Rich game-driver result ─────────────────────────────────────────────────
+interface GameRun {
+  bundleOk: boolean;
+  bundleReason: string;
   connected: boolean;
   seat: number | null;
   dealt: boolean;
+  playable: boolean;
+  handEnds: number;
+  handResults: Array<{ winner: number | null; type: string | null }>;
+  dealersSeen: number[];
+  discardsFired: number;
+  claimsHandled: number;
+  huByHuman: boolean;
+  gcComplete: boolean;
+  gcMaxHands: number | null;
+  modalVisible: boolean;
+  scores: Record<string, number> | null;
+  zeroSum: number | null;
+  maxHandsObserved: number | null;
+  viewPerspective: boolean;
+  viewFlat: boolean;
+  errors: ErrorReport;
+  timedOut: boolean;
+  modalStorm: boolean;
+  redismissCount: number;
+}
+
+interface PlayOpts {
+  humanPlays: boolean;
+  toggleViews: boolean;
+  budgetMs: number;
+  label: string;
 }
 
 /**
- * Shared REAL-UI opening: bundle-hash preflight → boot → real connect → real
- * take-seat → real #deal. No backdoor. Screenshots/logs are tagged by
- * handCount so multi-config runs keep distinct evidence.
+ * Drives a real Changsha game to completion using ONLY real interactions.
+ * humanPlays=true → seat 0 human takes seat, deals, and drives discards/claims
+ * by real pointer/click. humanPlays=false → spectator; the all-bot table plays
+ * itself (config proof). Read-only observation only; no backdoor.
  */
-async function connectAndDeal(
+async function playRealGame(
   page: Page,
   request: APIRequestContext,
   resolvedBase: string,
   cfg: GameConfig,
   rec: Recorder,
-): Promise<ConnectDealResult> {
-  const label = `hc${cfg.handCount}`;
+  opts: PlayOpts,
+): Promise<GameRun> {
+  const errors = new ErrorWatch(page);
 
-  // Preflight recorded now; asserted by the caller so findings always write.
   const bundle = await checkServedBundleMatchesBuild(request, resolvedBase);
-  rec.log('preflight.bundle-hash', bundle.ok, {
-    ok: bundle.ok,
-    entryShaMatches: bundle.entryShaMatches,
-    reason: bundle.reason,
-  });
+  rec.log('preflight.bundle-hash', bundle.ok, { ok: bundle.ok, entryShaMatches: bundle.entryShaMatches });
 
   await defangOverlays(page);
   await page.goto(buildGameUrl(resolvedBase, cfg), { waitUntil: 'domcontentloaded' });
   const hasGame = await waitForGameObject(page);
   rec.log('boot.game-object', hasGame, { url: page.url(), handCount: cfg.handCount });
-
   await dismissLobbyAndTour(page);
   const connected = await ensureConnected(page);
-  rec.log('connect.ws', connected, { connected });
-  await snap(page, `${label}-01-after-connect.png`);
+  rec.log('connect.ws', connected, { connected, humanPlays: opts.humanPlays });
+  await snap(page, `${opts.label}-01-connected.png`);
 
-  const seat = await takeSeatByClick(page, cfg.seat);
-  rec.log('seat.take', seat !== null, { requested: cfg.seat, assigned: seat });
-  await snap(page, `${label}-02-after-take-seat.png`);
+  let seat: number | null = null;
+  let dealt = false;
+  let playable = !opts.humanPlays; // spectator needs no playable hand
+  if (opts.humanPlays) {
+    seat = await takeSeatByClick(page, cfg.seat);
+    rec.log('seat.take', seat !== null, { assigned: seat });
+    dealt = await clickDeal(page);
+    rec.log('deal.press', dealt, null);
+    const p = await waitForPlayableHand(page, 45_000);
+    playable = p.playable;
+    rec.log('deal.playable-hand', p.playable, { myHandCount: p.myHandCount, lastPickup: p.lastPickup.raw });
+    await snap(page, `${opts.label}-02-dealt.png`);
+  }
 
-  const dealt = await clickDeal(page);
-  rec.log('deal.press', dealt, { handCount: cfg.handCount });
-
-  return { bundle, hasGame, connected, seat, dealt };
-}
-
-interface PlayResult {
-  handsSeen: Set<string>;
-  dealersSeen: Set<number>;
-  discardsFired: number;
-  realHuByHuman: boolean;
-  gc: Awaited<ReturnType<typeof readGameComplete>>;
-  modalVisible: boolean;
-}
-
-/**
- * Drive the game to completion with REAL interactions only: answer a claim
- * window (real Hu when offered, else Pass), else discard our 14th tile by real
- * pointer, else wait for the bots. Continuously observes the
- * server-authoritative result + match to prove hand/dealer progression.
- */
-async function driveToCompletion(
-  page: Page,
-  seat: number | null,
-  rec: Recorder,
-  budgetMs: number,
-): Promise<PlayResult> {
-  const handsSeen = new Set<string>();
-  const dealersSeen = new Set<number>();
+  // ── Real-interaction game loop ──
+  let handEnds = 0;
+  let resultLatched = false;
   let discardsFired = 0;
-  let realHuByHuman = false;
-  let lastResultSig = '';
-  let consecutiveDiscardMisses = 0;
-  let gc = await readGameComplete(page);
+  let claimsHandled = 0;
+  let huByHuman = false;
+  let consecutiveMisses = 0;
+  let redismissCount = 0;
+  let modalStorm = false;
+  let lastToggle = Date.now();
+  const dealersSeen = new Set<number>();
+  const handResults: Array<{ winner: number | null; type: string | null }> = [];
+  let viewPerspective = false;
+  let viewFlat = false;
 
-  const deadline = Date.now() + budgetMs;
+  const noteCamera = (c: 'perspective' | 'orthographic' | null): void => {
+    if (c === 'perspective') viewPerspective = true;
+    if (c === 'orthographic') viewFlat = true;
+  };
+
+  let gc = await readGameComplete(page);
+  const deadline = Date.now() + opts.budgetMs;
   while (Date.now() < deadline) {
-    gc = await readGameComplete(page);
-    if (gc.isComplete) break;
+    // Count each hand end (result null→present) BEFORE breaking on completion,
+    // so the final hand's result is never missed.
+    const r = await readResult(page);
+    if (r.present && !resultLatched) {
+      handEnds++;
+      resultLatched = true;
+      handResults.push({ winner: r.winner, type: r.type });
+      rec.log('hand.end', true, { hand: handEnds, winner: r.winner, type: r.type, nextBanker: r.nextBanker });
+      if (r.type === 'Hu' && seat !== null && r.winner === seat) huByHuman = true;
+      // A human game parks on the per-hand #result-modal and waits for the
+      // human's real "Next Hand" click to advance (the all-bot table auto-
+      // advances). Click it for every hand except the last.
+      if (opts.humanPlays && handEnds < cfg.handCount) {
+        const advanced = await clickNextHand(page);
+        rec.log('next-hand.click', advanced, { afterHand: handEnds });
+      }
+    } else if (!r.present) {
+      resultLatched = false;
+    }
 
     const match = await readMatch(page);
     if (match.dealer !== null) dealersSeen.add(match.dealer);
 
-    const r = await readResult(page);
-    if (r.present) {
-      const sig = JSON.stringify([r.winner, r.type, r.nextBanker]);
-      if (sig !== lastResultSig) {
-        lastResultSig = sig;
-        handsSeen.add(sig);
-        rec.log('hand.result', true, r);
-        if (r.type === 'Hu' && r.winner === seat) realHuByHuman = true;
-      }
-    }
+    gc = await readGameComplete(page);
+    if (gc.isComplete) break;
 
-    const claim = await readClaimWindow(page);
-    if (claim.open) {
-      const clicked = await claimByClick(page);
-      rec.log('claim.click', clicked !== null, { available: claim.available, clicked });
-      if (clicked === 'Hu') realHuByHuman = true;
+    // The per-hand #result-modal (static backdrop) can re-cover the table over
+    // the next hand's pickup HUD; dismiss it via the real "Next Hand" button
+    // whenever it is showing during a non-final hand so the human can pick up.
+    if (opts.humanPlays && handEnds > 0 && handEnds < cfg.handCount && (await isResultModalVisible(page))) {
+      const dismissed = await clickNextHand(page);
+      redismissCount++;
+      rec.log('result-modal.redismiss', dismissed, { handEnds, redismissCount });
+      // A single Next Hand click should dismiss the modal for good. If it keeps
+      // re-covering the table, result.current is never being tombstoned — the
+      // multi-hand human flow is blocked by a product defect (see the test's
+      // handoff message). Fail fast instead of fighting it for the full budget.
+      if (redismissCount >= 15) {
+        modalStorm = true;
+        await snap(page, `${opts.label}-result-modal-storm.png`);
+        rec.log('result-modal.storm', false, { redismissCount, handEnds });
+        break;
+      }
       await page.waitForTimeout(POLL_INTERVAL_MS);
       continue;
     }
 
-    if (await hasExtraHandTile(page)) {
-      const out = await discardByPointer(page);
-      rec.log('discard.pointer', out.ok, out);
-      if (out.ok) {
-        discardsFired++;
-        consecutiveDiscardMisses = 0;
-      } else {
-        consecutiveDiscardMisses++;
-        if (consecutiveDiscardMisses === 1) await snap(page, 'discard-miss.png');
-        if (consecutiveDiscardMisses >= 6) {
-          await snap(page, 'discard-blocked.png');
-          rec.log('discard.blocked', false, {
-            misses: consecutiveDiscardMisses,
-            pickup: await readPickup(page),
-          });
-          break;
+    if (opts.toggleViews && Date.now() - lastToggle > VIEW_TOGGLE_EVERY_MS) {
+      noteCamera(await readCameraType(page));
+      noteCamera(await pressViewToggle(page));
+      lastToggle = Date.now();
+    }
+
+    if (opts.humanPlays) {
+      const claim = await readClaimWindow(page);
+      if (claim.open) {
+        const clicked = await claimByClick(page);
+        if (clicked !== null) claimsHandled++;
+        if (clicked === 'Hu') huByHuman = true;
+        rec.log('claim.click', clicked !== null, { available: claim.available, clicked });
+        await page.waitForTimeout(POLL_INTERVAL_MS);
+        continue;
+      }
+      // Manual wall pickup for hands 2..N (hand 1 is auto-driven client-side).
+      if (await readIsMyPickupTurn(page)) {
+        const pu = await takePickup(page);
+        rec.log('pickup.pointer', pu.ok, pu);
+        if (pu.ok) {
+          consecutiveMisses = 0;
+        } else {
+          consecutiveMisses++;
+          if (consecutiveMisses >= 10) {
+            await snap(page, `${opts.label}-pickup-blocked.png`);
+            rec.log('pickup.blocked', false, { misses: consecutiveMisses, pickup: await readPickup(page) });
+            break;
+          }
         }
+        await page.waitForTimeout(POLL_INTERVAL_MS);
+        continue;
       }
-      await page.waitForTimeout(POLL_INTERVAL_MS);
-      continue;
+      if (await hasExtraHandTile(page)) {
+        const out = await discardByPointer(page);
+        if (out.ok) {
+          discardsFired++;
+          consecutiveMisses = 0;
+          rec.log('discard.pointer', true, { tileId: out.tileId, discardAfter: out.discardAfter });
+        } else {
+          consecutiveMisses++;
+          if (consecutiveMisses >= 10) {
+            await snap(page, `${opts.label}-discard-blocked.png`);
+            rec.log('discard.blocked', false, { misses: consecutiveMisses, pickup: await readPickup(page) });
+            break;
+          }
+        }
+        await page.waitForTimeout(POLL_INTERVAL_MS);
+        continue;
+      }
     }
-
     await page.waitForTimeout(POLL_INTERVAL_MS);
   }
 
+  // Final hand-end catch (result + gameComplete can arrive together).
+  const rFinal = await readResult(page);
+  if (rFinal.present && !resultLatched) {
+    handEnds++;
+    handResults.push({ winner: rFinal.winner, type: rFinal.type });
+    rec.log('hand.end', true, { hand: handEnds, winner: rFinal.winner, type: rFinal.type, final: true });
+  }
+  noteCamera(await readCameraType(page));
+
   gc = await readGameComplete(page);
   const modalVisible = await isGameCompleteModalVisible(page);
-  return { handsSeen, dealersSeen, discardsFired, realHuByHuman, gc, modalVisible };
+  const scores = await readTotalScores(page);
+  const zeroSum = scores ? Object.values(scores).reduce((a, b) => a + b, 0) : null;
+  const maxHandsObs = await readMaxHands(page);
+  await snap(page, `${opts.label}-03-final.png`);
+
+  return {
+    bundleOk: bundle.ok,
+    bundleReason: bundle.reason,
+    connected,
+    seat,
+    dealt,
+    playable: playable || discardsFired > 0,
+    handEnds,
+    handResults,
+    dealersSeen: [...dealersSeen].sort((a, b) => a - b),
+    discardsFired,
+    claimsHandled,
+    huByHuman,
+    gcComplete: gc.isComplete,
+    gcMaxHands: maxHandsObs.value,
+    modalVisible,
+    scores,
+    zeroSum,
+    maxHandsObserved: maxHandsObs.value,
+    viewPerspective,
+    viewFlat,
+    errors: errors.report(),
+    timedOut: !gc.isComplete && Date.now() >= deadline,
+    modalStorm,
+    redismissCount,
+  };
 }
 
-test.describe('@playability-gate P0 real-UI playability (human-vs-bots → real completion)', () => {
-  // ── PRIMARY BOUNDED ACCEPTANCE — non-default handCount = 1 ───────────────
-  // Using handCount=1 (a) bounds the run to a single hand for CI speed and
-  // (b) DEFEATS THE "ignored MaxHands" EVASION: a server stuck at the default
-  // 4 hands cannot pass a gate that requires completion in EXACTLY 1 hand with
-  // server MaxHands === 1.
-  test('human plays a bounded handCount=1 match via real DOM/canvas to a real game-complete modal', async ({
+function assertCleanErrors(run: GameRun): void {
+  expect(run.errors.pageErrors, `Uncaught page errors: ${JSON.stringify(run.errors.pageErrors)}`).toEqual([]);
+  expect(run.errors.cspViolations, `CSP violations: ${JSON.stringify(run.errors.cspViolations)}`).toEqual([]);
+  expect(run.errors.badResponses, `Unexpected HTTP failures: ${JSON.stringify(run.errors.badResponses)}`).toEqual([]);
+  expect(run.errors.jsConsoleErrors, `JS console errors: ${JSON.stringify(run.errors.jsConsoleErrors)}`).toEqual([]);
+}
+
+test.describe('@playability-gate P0 real-UI playability (autotable integration acceptance)', () => {
+  // ── HEADLINE: full 4-hand human-vs-bots playthrough → real GameComplete ──
+  // Run repeatedly for reliability (CI: `--repeat-each=3`); the seed varies per
+  // repeat so each pass is an independent real game.
+  test('full 4-hand human-vs-bots playthrough → authoritative GameComplete + scoring modal', async ({
     page,
     request,
     baseURL,
-  }) => {
-    test.setTimeout(GAME_BUDGET_MS + 90_000);
+  }, testInfo) => {
+    test.setTimeout(8 * 60_000);
     const rec = new Recorder();
-    const cfg = makeConfig({ handCount: 1, gameId: `playability-gate-hc1-${process.env.PLAYABILITY_RUN_ID ?? 'local'}` });
-
-    const pageErrors: string[] = [];
-    page.on('pageerror', (e) => pageErrors.push(e.message));
-    page.on('console', (m) => {
-      if (m.type() === 'error') pageErrors.push(`console: ${m.text()}`);
+    const seed = 4100 + testInfo.repeatEachIndex;
+    const cfg = makeConfig({
+      handCount: 4,
+      seed,
+      gameId: `playability-4hand-${process.env.PLAYABILITY_RUN_ID ?? 'local'}-r${testInfo.repeatEachIndex}`,
     });
 
-    const resolvedBase = resolveBase(baseURL);
-    const cd = await connectAndDeal(page, request, resolvedBase, cfg, rec);
-    await snap(page, 'hc1-03-after-deal.png');
-
-    // The manual ceremony must deliver a playable hand (dealer's 14th tile).
-    const playable = await waitForPlayableHand(page, 45_000);
-    rec.log('deal.playable-hand', playable.playable, playable);
-
-    let play: PlayResult = {
-      handsSeen: new Set<string>(),
-      dealersSeen: new Set<number>(),
-      discardsFired: 0,
-      realHuByHuman: false,
-      gc: await readGameComplete(page),
-      modalVisible: false,
-    };
-    if (playable.playable) {
-      play = await driveToCompletion(page, cd.seat, rec, GAME_BUDGET_MS);
-    }
-
-    const observedMaxHands = await readMaxHands(page);
-    await snap(page, 'hc1-05-final-state.png');
-
-    const summary = {
-      handCount: cfg.handCount,
-      seat: cd.seat,
-      connected: cd.connected,
-      dealt: cd.dealt,
-      playableHand: playable.playable,
-      handsSeen: play.handsSeen.size,
-      dealersSeen: [...play.dealersSeen],
-      discardsFired: play.discardsFired,
-      realHuByHuman: play.realHuByHuman,
-      gameComplete: play.gc,
-      modalVisible: play.modalVisible,
-      observedMaxHands,
-      lastPickup: playable.lastPickup,
-      pageErrors: pageErrors.slice(0, 20),
-    };
-    const passed =
-      cd.bundle.ok &&
-      play.gc.isComplete &&
-      play.modalVisible &&
-      play.handsSeen.size === cfg.handCount &&
-      observedMaxHands.value === cfg.handCount;
-    rec.log('gate.summary', passed, summary);
-    const evidencePath = rec.write('playability-gate-findings.json', {
-      config: cfg,
-      bundle: cd.bundle,
-      summary,
+    const run = await playRealGame(page, request, resolveBase(baseURL), cfg, rec, {
+      humanPlays: true,
+      toggleViews: true,
+      budgetMs: 6 * 60_000,
+      label: `4hand-r${testInfo.repeatEachIndex}`,
     });
-    // eslint-disable-next-line no-console
-    console.log(`[gate] evidence written → ${evidencePath}`);
+    rec.log('gate.summary', run.gcComplete && run.modalVisible, run);
+    rec.write(`playability-4hand-r${testInfo.repeatEachIndex}-findings.json`, { config: cfg, run });
 
-    // ── P0 ACCEPTANCE ASSERTIONS (full strength — do NOT weaken) ─────────
-    expect(
-      cd.bundle.ok,
-      `BUNDLE PREFLIGHT FAILED — the backend is not serving the freshly-built ` +
-        `source bundle.\n${cd.bundle.reason}`,
-    ).toBe(true);
+    // Preconditions.
+    expect(run.bundleOk, `served bundle != fresh build: ${run.bundleReason}`).toBe(true);
+    expect(run.connected && run.seat !== null, `connect/seat failed (connected=${run.connected} seat=${run.seat})`).toBe(true);
+    expect(run.dealt, 'real #deal press failed').toBe(true);
+    expect(run.playable, 'manual deal ceremony never produced a playable hand (dealer 14th tile)').toBe(true);
 
-    expect(
-      cd.connected && cd.seat !== null,
-      `REAL CONNECT FLOW BLOCKED (WP-E/#120/#127): connected=${cd.connected}, seat=${cd.seat}. ` +
-        `A human could not connect and take a seat through the UI.`,
-    ).toBe(true);
+    // Real gameplay actually happened through the canvas.
+    expect(run.discardsFired, 'no real pointer discard fired through the canvas').toBeGreaterThan(0);
 
-    expect(
-      cd.dealt,
-      `REAL DEAL BLOCKED: the #deal press did not start a hand. ` +
-        `Manual per-hand ceremony is WP-A/#116/#123.`,
-    ).toBe(true);
+    // Both views exercised live.
+    expect(run.viewPerspective, 'perspective view never observed during the live game').toBe(true);
+    expect(run.viewFlat, 'flat (orthographic) view never observed during the live game').toBe(true);
 
+    // ── PRODUCT-DEFECT BLOCKER (handoff, not test-owned) ─────────────────
+    // At HEAD the multi-hand HUMAN flow is blocked: after each hand the
+    // per-hand #result-modal (data-backdrop="static", keyboard disabled) keeps
+    // re-covering the table over the NEXT hand's pickup/discard UI. Root cause:
+    // the backend never tombstones result.current — ChangshaCollectionEncoder
+    // .EncodeHandResultCleared() is DEAD CODE (defined, never called), and the
+    // translator only emits `result` in phase EndHand, so onResultUpdate never
+    // receives the null that hides the modal. Every state broadcast re-shows it,
+    // so a human cannot reach the Take-N / discard controls for hands 2..N.
+    // HANDOFF → Bishop / WP-A (runtime + ChangshaToAutotableTranslator): emit
+    // EncodeHandResultCleared() (or stop re-emitting result) once the hand
+    // leaves EndHand / the next hand's ceremony begins. Single-hand human
+    // (handCount=1) and multi-hand ALL-BOT (8/16) are unaffected and pass.
     expect(
-      playable.playable,
-      `MANUAL DEAL CEREMONY STALLED — the dealer never received a playable ` +
-        `14th tile, so a human cannot discard. Last pickup cursor: ` +
-        `${JSON.stringify(playable.lastPickup.raw)} (myHandCount=${playable.myHandCount}). ` +
-        `Root cause observed at HEAD: world.ts driveManualDealChain() drives only ` +
-        `4 pickup 'take' rounds (PickupRound1-3 + SingleTilePickup), but the DEALER ` +
-        `needs a 5th (DealerExtra). HANDOFF: per-hand manual ceremony is WP-A/#116/#123 ` +
-        `(runtime) + world.ts driveManualDealChain (frontend, Hicks lane).`,
-    ).toBe(true);
+      run.modalStorm,
+      `MULTI-HAND HUMAN PLAY BLOCKED by the per-hand #result-modal re-opening ` +
+        `${run.redismissCount}+ times (result.current never tombstoned — ` +
+        `EncodeHandResultCleared is dead code). handEnds=${run.handEnds}/${cfg.handCount}. ` +
+        `HANDOFF: Bishop/WP-A must clear result.current when the hand leaves EndHand.`,
+    ).toBe(false);
 
-    expect(
-      play.discardsFired,
-      `NO REAL DISCARD FIRED through the canvas. A human could not discard a ` +
-        `single tile via real pointer interaction. Blocker in world.onDragStart/` +
-        `emitDiscard or the manual pickup ceremony (WP-A/#116/#123).`,
-    ).toBeGreaterThan(0);
+    // Four hands actually played, to authoritative completion.
+    expect(run.gcMaxHands, `server MaxHands != 4 (observed ${run.gcMaxHands})`).toBe(4);
+    expect(run.handEnds, `expected 4 hand results, saw ${run.handEnds} (${JSON.stringify(run.handResults)})`).toBeGreaterThanOrEqual(4);
+    expect(run.dealersSeen.length, `dealer never progressed across hands (dealers=${JSON.stringify(run.dealersSeen)})`).toBeGreaterThanOrEqual(2);
 
-    // Server-authoritative completion + real modal.
-    expect(
-      play.gc.isComplete,
-      `REAL gameComplete.isComplete NEVER SET. The autotable WS backend does ` +
-        `not emit a 'gameComplete' collection entry (no ChangshaCollectionKinds ` +
-        `.GameComplete; translator emits only result["current"]). The end-of-match ` +
-        `signal that drives #game-complete-modal is unwired for the real UI — ` +
-        `HANDOFF to WP-A/Bishop (#123 runtime + ChangshaToAutotableTranslator).`,
-    ).toBe(true);
+    // Authoritative GameComplete + real scoring modal + zero-sum totals.
+    expect(run.gcComplete, 'server-authoritative gameComplete.isComplete never set').toBe(true);
+    expect(run.modalVisible, '#game-complete-modal not visible after real completion').toBe(true);
+    expect(run.scores, 'gameComplete carried no per-seat totals').not.toBeNull();
+    expect(run.zeroSum, `scoring totals are not zero-sum (Σ=${run.zeroSum}, scores=${JSON.stringify(run.scores)})`).toBe(0);
 
-    expect(
-      play.modalVisible,
-      `#game-complete-modal NOT VISIBLE after real completion. The scoring modal ` +
-        `must open from a real completion, not a backdoor.`,
-    ).toBe(true);
-
-    // ── ANTI-EVASION: server honored the non-default handCount ───────────
-    // Exactly one hand (not the default 4) — a server that ignores handCount
-    // would over-run this.
-    expect(
-      play.handsSeen.size,
-      `HAND COUNT NOT HONORED: observed ${play.handsSeen.size} distinct hand ` +
-        `result(s) for a handCount=${cfg.handCount} match. A server that ignores ` +
-        `handCount and plays the default 4 hands fails here. HANDOFF: Ferro ` +
-        `(#127 — forward handCount in buildWsUrl) + Bishop (#123 — honor MaxHands).`,
-    ).toBe(cfg.handCount);
-
-    // Server-observed MaxHands must equal the requested handCount.
-    expect(
-      observedMaxHands.value,
-      `SERVER MaxHands != requested handCount (${cfg.handCount}). Observed: ` +
-        `${JSON.stringify(observedMaxHands)}. handCount is decorative on the wire ` +
-        `at HEAD — client-ui.ts buildWsUrl does not forward it and ` +
-        `AutotableWsEndpoint does not read maxHands; MaxHands defaults to 4. ` +
-        `HANDOFF: Ferro (#127 forward handCount) + Bishop (#123 read + honor + ` +
-        `surface MaxHands in a real collection so it is observable without a backdoor).`,
-    ).toBe(cfg.handCount);
+    // No unhandled console / page / CSP errors during the whole game.
+    assertCleanErrors(run);
   });
 
-  // ── CONFIG-HONORED CHECKS — non-default handCount 8 and 16 ───────────────
-  // These do NOT need a full multi-hand game: they connect + deal, then assert
-  // the SERVER surfaces MaxHands === the requested non-default handCount. If
-  // handCount were decorative (server stuck at 4), these fail. Bounded and
-  // cheap, they close the "ignored MaxHands" evasion for larger match lengths.
+  // ── BOUNDED non-default handCount = 1 (human-vs-bots, anti-evasion) ──
+  test('bounded handCount=1 human-vs-bots completes in exactly one hand (server honors non-default cap)', async ({
+    page,
+    request,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(4 * 60_000);
+    const rec = new Recorder();
+    const cfg = makeConfig({
+      handCount: 1,
+      seed: 12345 + testInfo.repeatEachIndex,
+      gameId: `playability-hc1-${process.env.PLAYABILITY_RUN_ID ?? 'local'}-r${testInfo.repeatEachIndex}`,
+    });
+    const run = await playRealGame(page, request, resolveBase(baseURL), cfg, rec, {
+      humanPlays: true,
+      toggleViews: false,
+      budgetMs: 3 * 60_000,
+      label: 'hc1',
+    });
+    rec.log('gate.summary', run.gcComplete && run.gcMaxHands === 1, run);
+    rec.write('playability-hc1-findings.json', { config: cfg, run });
+
+    expect(run.bundleOk, run.bundleReason).toBe(true);
+    expect(run.connected && run.seat !== null, `connect/seat failed`).toBe(true);
+    expect(run.playable, 'no playable hand').toBe(true);
+    expect(run.discardsFired, 'no real discard fired').toBeGreaterThan(0);
+    expect(run.gcComplete, 'game did not complete').toBe(true);
+    expect(run.modalVisible, 'modal not visible').toBe(true);
+    // Anti-evasion: exactly ONE hand, server MaxHands === 1. A server that
+    // ignored handCount and played the default 4 fails both of these.
+    expect(run.gcMaxHands, `server MaxHands != 1 (observed ${run.gcMaxHands}) — handCount not honored`).toBe(1);
+    expect(run.handEnds, `expected exactly 1 hand, saw ${run.handEnds}`).toBe(1);
+    assertCleanErrors(run);
+  });
+
+  // ── BOUNDED non-default handCount = 8 / 16 (all-bot completion) ──
+  // Proving the server honors larger non-default caps. All-bot spectator games
+  // complete autonomously; we read the authoritative gameComplete.maxHands.
   for (const hc of [8, 16] as const) {
-    test(`server honors non-default handCount=${hc} (real-UI config assertion, no backdoor)`, async ({
+    test(`server honors non-default handCount=${hc} to authoritative completion (all-bot)`, async ({
       page,
       request,
       baseURL,
     }) => {
-      test.setTimeout(120_000);
+      test.setTimeout((hc * 45 + 120) * 1000);
       const rec = new Recorder();
       const cfg = makeConfig({
         handCount: hc,
-        gameId: `playability-gate-hc${hc}-${process.env.PLAYABILITY_RUN_ID ?? 'local'}`,
+        seat: -1, // spectator
+        botCount: 4, // all four seats are bots
+        dealMode: 'auto',
+        botDifficulty: 'Medium',
+        seed: 900 + hc,
+        gameId: `playability-hc${hc}-${process.env.PLAYABILITY_RUN_ID ?? 'local'}`,
       });
-
-      const resolvedBase = resolveBase(baseURL);
-      const cd = await connectAndDeal(page, request, resolvedBase, cfg, rec);
-      await snap(page, `hc${hc}-03-after-deal.png`);
-
-      // Poll for the server-observed MaxHands (no full game needed).
-      let observed = await readMaxHands(page);
-      const deadline = Date.now() + 25_000;
-      while (observed.value === null && Date.now() < deadline) {
-        await page.waitForTimeout(1000);
-        observed = await readMaxHands(page);
-      }
-      rec.log('handcount.observed', observed.value === hc, {
-        requested: hc,
-        observed,
-        match: await readMatch(page),
+      const run = await playRealGame(page, request, resolveBase(baseURL), cfg, rec, {
+        humanPlays: false,
+        toggleViews: false,
+        budgetMs: (hc * 40 + 60) * 1000,
+        label: `hc${hc}`,
       });
-      rec.write(`playability-gate-hc${hc}-findings.json`, {
-        config: cfg,
-        bundle: cd.bundle,
-        connected: cd.connected,
-        seat: cd.seat,
-        dealt: cd.dealt,
-        observed,
-      });
+      rec.log('gate.summary', run.gcComplete && run.gcMaxHands === hc, run);
+      rec.write(`playability-hc${hc}-findings.json`, { config: cfg, run });
 
-      // Fundamental preconditions (recorded above).
-      expect(
-        cd.bundle.ok,
-        `BUNDLE PREFLIGHT FAILED — not serving the freshly-built bundle.\n${cd.bundle.reason}`,
-      ).toBe(true);
-      expect(
-        cd.connected && cd.seat !== null,
-        `REAL CONNECT FLOW BLOCKED (WP-E/#120/#127): connected=${cd.connected}, seat=${cd.seat}.`,
-      ).toBe(true);
-
-      // Anti-evasion keystone: the server must honor the requested handCount.
-      expect(
-        observed.value,
-        `handCount=${hc} NOT honored server-side (observed MaxHands=${JSON.stringify(observed)}). ` +
-          `handCount is decorative on the wire at HEAD: client-ui.ts buildWsUrl does not ` +
-          `forward handCount and AutotableWsEndpoint does not read maxHands; MaxHands ` +
-          `defaults to 4. HANDOFF: Ferro (#127 — forward handCount in buildWsUrl) + Bishop ` +
-          `(#123 — read it at the WS handshake, set MaxHands, and surface it in a real ` +
-          `collection e.g. match.conditions.maxHands so it is observable without a backdoor).`,
-      ).toBe(hc);
+      expect(run.bundleOk, run.bundleReason).toBe(true);
+      expect(run.connected, 'spectator did not connect').toBe(true);
+      expect(run.gcComplete, `handCount=${hc} game did not complete within budget (timedOut=${run.timedOut})`).toBe(true);
+      expect(run.gcMaxHands, `server MaxHands != ${hc} (observed ${run.gcMaxHands}) — handCount not honored`).toBe(hc);
+      expect(run.dealersSeen.length, `dealer never rotated across ${hc} hands`).toBeGreaterThanOrEqual(2);
+      assertCleanErrors(run);
     });
   }
 });

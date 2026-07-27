@@ -1,0 +1,640 @@
+{
+  "steps": [
+    {
+      "step": "preflight.bundle-hash",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "entryShaMatches": true
+      },
+      "at": 30
+    },
+    {
+      "step": "boot.game-object",
+      "ok": true,
+      "detail": {
+        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&seat=0&seed=4100&gameId=playability-4hand-4hff1785119218-r0",
+        "handCount": 4
+      },
+      "at": 620
+    },
+    {
+      "step": "connect.ws",
+      "ok": true,
+      "detail": {
+        "connected": true,
+        "humanPlays": true
+      },
+      "at": 1040
+    },
+    {
+      "step": "seat.take",
+      "ok": true,
+      "detail": {
+        "assigned": 0
+      },
+      "at": 3078
+    },
+    {
+      "step": "deal.press",
+      "ok": true,
+      "detail": null,
+      "at": 4002
+    },
+    {
+      "step": "deal.playable-hand",
+      "ok": true,
+      "detail": {
+        "myHandCount": 14,
+        "lastPickup": null
+      },
+      "at": 10347
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 76,
+        "discardAfter": 4
+      },
+      "at": 12631
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 70,
+        "discardAfter": 6
+      },
+      "at": 15209
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 66,
+        "discardAfter": 9
+      },
+      "at": 17837
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 19832
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 80,
+        "discardAfter": 12
+      },
+      "at": 22475
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 63,
+        "discardAfter": 15
+      },
+      "at": 25229
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 26755
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 64,
+        "discardAfter": 20
+      },
+      "at": 41288
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 42916
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 53,
+        "discardAfter": 23
+      },
+      "at": 49055
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 51027
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 50,
+        "discardAfter": 27
+      },
+      "at": 57002
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 60,
+        "discardAfter": 31
+      },
+      "at": 60080
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 61700
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 35,
+        "discardAfter": 33
+      },
+      "at": 67804
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 69726
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 55,
+        "discardAfter": 39
+      },
+      "at": 72294
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 42,
+        "discardAfter": 42
+      },
+      "at": 78151
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 80129
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 82,
+        "discardAfter": 46
+      },
+      "at": 82770
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 33,
+        "discardAfter": 51
+      },
+      "at": 85349
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 86856
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 28,
+        "discardAfter": 52
+      },
+      "at": 93269
+    },
+    {
+      "step": "hand.end",
+      "ok": true,
+      "detail": {
+        "hand": 1,
+        "winner": 2,
+        "type": "Hu",
+        "nextBanker": 2
+      },
+      "at": 93999
+    },
+    {
+      "step": "next-hand.click",
+      "ok": true,
+      "detail": {
+        "afterHand": 1
+      },
+      "at": 94896
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 1
+      },
+      "at": 95845
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 0,
+        "handAfter": 4
+      },
+      "at": 98201
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 2
+      },
+      "at": 99936
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 4,
+        "handAfter": 8
+      },
+      "at": 101984
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 3
+      },
+      "at": 103789
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 8,
+        "handAfter": 12
+      },
+      "at": 106087
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 4
+      },
+      "at": 107948
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 12,
+        "handAfter": 13
+      },
+      "at": 109715
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 5
+      },
+      "at": 111556
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 6
+      },
+      "at": 113367
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 56,
+        "discardAfter": 7
+      },
+      "at": 116611
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 7
+      },
+      "at": 118546
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 50,
+        "discardAfter": 9
+      },
+      "at": 121298
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 8
+      },
+      "at": 125823
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 9
+      },
+      "at": 127775
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 40,
+        "discardAfter": 13
+      },
+      "at": 134426
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 10
+      },
+      "at": 138888
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 11
+      },
+      "at": 141667
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 70,
+        "discardAfter": 20
+      },
+      "at": 144844
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 12
+      },
+      "at": 146800
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 60,
+        "discardAfter": 23
+      },
+      "at": 149569
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 13
+      },
+      "at": 151408
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 48,
+        "discardAfter": 27
+      },
+      "at": 154451
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 14
+      },
+      "at": 156201
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 30,
+        "discardAfter": 31
+      },
+      "at": 162305
+    },
+    {
+      "step": "result-modal.redismiss",
+      "ok": true,
+      "detail": {
+        "handEnds": 1,
+        "redismissCount": 15
+      },
+      "at": 166787
+    },
+    {
+      "step": "result-modal.storm",
+      "ok": false,
+      "detail": {
+        "redismissCount": 15,
+        "handEnds": 1
+      },
+      "at": 167092
+    },
+    {
+      "step": "gate.summary",
+      "ok": false,
+      "detail": {
+        "bundleOk": true,
+        "bundleReason": "Served bundle matches the freshly-built source bundle (content hashes equal).",
+        "connected": true,
+        "seat": 0,
+        "dealt": true,
+        "playable": true,
+        "handEnds": 1,
+        "handResults": [
+          {
+            "winner": 2,
+            "type": "Hu"
+          }
+        ],
+        "dealersSeen": [
+          0,
+          2
+        ],
+        "discardsFired": 22,
+        "claimsHandled": 8,
+        "huByHuman": false,
+        "gcComplete": false,
+        "gcMaxHands": null,
+        "modalVisible": false,
+        "scores": null,
+        "zeroSum": null,
+        "maxHandsObserved": null,
+        "viewPerspective": true,
+        "viewFlat": true,
+        "errors": {
+          "pageErrors": [],
+          "cspViolations": [],
+          "jsConsoleErrors": [],
+          "badResponses": []
+        },
+        "timedOut": false,
+        "modalStorm": true,
+        "redismissCount": 15
+      },
+      "at": 167545
+    }
+  ],
+  "config": {
+    "gameId": "playability-4hand-4hff1785119218-r0",
+    "seat": 0,
+    "botCount": 3,
+    "botDifficulty": "Hard",
+    "dealMode": "manual",
+    "handCount": 4,
+    "seed": 4100,
+    "variant": "changsha"
+  },
+  "run": {
+    "bundleOk": true,
+    "bundleReason": "Served bundle matches the freshly-built source bundle (content hashes equal).",
+    "connected": true,
+    "seat": 0,
+    "dealt": true,
+    "playable": true,
+    "handEnds": 1,
+    "handResults": [
+      {
+        "winner": 2,
+        "type": "Hu"
+      }
+    ],
+    "dealersSeen": [
+      0,
+      2
+    ],
+    "discardsFired": 22,
+    "claimsHandled": 8,
+    "huByHuman": false,
+    "gcComplete": false,
+    "gcMaxHands": null,
+    "modalVisible": false,
+    "scores": null,
+    "zeroSum": null,
+    "maxHandsObserved": null,
+    "viewPerspective": true,
+    "viewFlat": true,
+    "errors": {
+      "pageErrors": [],
+      "cspViolations": [],
+      "jsConsoleErrors": [],
+      "badResponses": []
+    },
+    "timedOut": false,
+    "modalStorm": true,
+    "redismissCount": 15
+  }
+}
