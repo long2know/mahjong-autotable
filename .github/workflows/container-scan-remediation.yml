@@ -209,8 +209,22 @@ jobs:
               print("see `Dockerfile` `FROM` directives.")
           PY
 
+          # Phase L (#140 — Apone). Gate downstream issue creation on ACTUAL
+          # findings so scheduled/dispatch runs with 0 CVEs don't file a
+          # "no findings" issue (see #94, #138). The first line of
+          # cve-summary.md is "## N CVE(s) above severity floor …"; parse N.
+          COUNT=$(sed -n 's/^## \([0-9][0-9]*\) CVE(s).*/\1/p' cve-summary.md | head -1)
+          COUNT=${COUNT:-0}
+          echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+          if [ "${COUNT}" -gt 0 ]; then
+            echo "has_findings=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_findings=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "container-scan-remediation: ${COUNT} finding(s) above severity floor"
+
       - name: Compose issue body
-        if: steps.fetch.outputs.artefact_found == 'true'
+        if: steps.fetch.outputs.artefact_found == 'true' && steps.filter.outputs.has_findings == 'true'
         run: |
           set -euo pipefail
           today=$(date -u +%Y-%m-%d)
@@ -246,7 +260,7 @@ jobs:
         id: compose
 
       - name: Open / update remediation issue
-        if: steps.fetch.outputs.artefact_found == 'true'
+        if: steps.fetch.outputs.artefact_found == 'true' && steps.filter.outputs.has_findings == 'true'
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         env:
           ISSUE_TITLE: ${{ steps.compose.outputs.issue_title }}
@@ -295,5 +309,6 @@ jobs:
             echo
             echo "- Trigger: \`${{ github.event_name }}\`"
             echo "- Artefact found: \`${{ steps.fetch.outputs.artefact_found || 'false' }}\`"
+            echo "- Findings above floor: \`${{ steps.filter.outputs.count || 'n/a' }}\` (issue filed only when > 0)"
             echo "- Source run: ${{ steps.fetch.outputs.run_url || 'n/a' }}"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -194,9 +194,16 @@ public sealed class DealerDiscardBroadcastAuditA2Tests : IAsyncLifetime
 
         // Final sanity: the runtime DID accept the discard (rules out a
         // state-machine regression masquerading as a broadcast bug).
-        Assert.True(runtime.TryGetSnapshot(runtimeGameId!, out var afterDiscard));
-        Assert.Contains(afterDiscard!.DiscardPile,
-            d => d.SeatIndex == 0 && d.TileId == discardTileId);
+        // Assert the PERMANENT `tile-discarded` event on a lock-protected deep copy, not the mutable
+        // DiscardPile: after the dealer's discard the turn passes to bot seat 1 whose worker thread
+        // both appends to DiscardPile (racing live enumeration → "Collection was modified") and may
+        // legitimately CLAIM this discard (removing it from the pile → "Filter not matched"). The
+        // tile-discarded event is appended once and never removed, so it is the stable proof that
+        // the discard reached the runtime. Same root-cause family as the #133 DealerExtra fix.
+        var afterDiscard = await runtime.TryGetSnapshotCopyAsync(runtimeGameId!);
+        Assert.NotNull(afterDiscard);
+        Assert.Contains(afterDiscard!.EventLog,
+            e => e.EventType == "tile-discarded" && e.SeatIndex == 0 && e.TileId == discardTileId);
 
         Assert.True(sawDiscardOnWire,
             "Vasquez A2/A3 regression: dealer's discard reached the runtime but " +
