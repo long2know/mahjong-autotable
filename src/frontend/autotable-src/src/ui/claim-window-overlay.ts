@@ -66,6 +66,19 @@ const LABELS: Record<ClaimType, { zh: string; py: string; key: string }> = {
   Hu:   { zh: '胡', py: 'HU',   key: 'H' },
 };
 
+// Ferro #137/#139 — keys the game / view layer (game.ts onKeyDown) already
+// owns: flip (f/r), look (space/q), zoom (z/x), perspective toggle (p), tile
+// labels (l). The claim overlay is a SEPARATE window `keydown` listener, and a
+// preventDefault here does NOT stop game.ts's sibling listener — so binding any
+// of these as a claim shortcut lets a physical view/navigation keypress ALSO
+// commit an irreversible meld. `p` did exactly that: pressing it to toggle the
+// camera during a Pung window silently melded (the intermittent P0 stall). The
+// overlay must NEVER shadow a reserved key; every claim stays fully reachable
+// via its visible pointer/touch chip (and game-ui's #claim-* buttons).
+const RESERVED_GAME_VIEW_KEYS: ReadonlySet<string> = new Set([
+  'f', 'r', 'q', 'z', 'x', 'p', 'l', ' ',
+]);
+
 // Changsha tile-id → glyph map.  IDs 0..26 are the 3 number suits 1-9
 // in stripe order (man=0..8 → 1m..9m, but Changsha drops m/s/p suit
 // markers and uses a single 27-tile deck of pin/dot/man depending on
@@ -199,7 +212,15 @@ export class ClaimWindowOverlay {
       btn.type = 'button';
       btn.className = `ferro-claim-badge ferro-claim-badge-${t.toLowerCase()}`;
       btn.dataset.claimType = t;
-      btn.setAttribute('aria-label', `Claim ${LABELS[t].py} (shortcut ${LABELS[t].key})`);
+      // Ferro #137 — only advertise a keyboard shortcut for claims whose key is
+      // NOT reserved by the game/view layer. Pung's `p` is the perspective
+      // toggle, so its shortcut hint is dropped (pointer/touch only); c/k/h stay.
+      const shortcutKey = LABELS[t].key;
+      const hasShortcut = !RESERVED_GAME_VIEW_KEYS.has(shortcutKey.toLowerCase());
+      btn.setAttribute(
+        'aria-label',
+        hasShortcut ? `Claim ${LABELS[t].py} (shortcut ${shortcutKey})` : `Claim ${LABELS[t].py}`,
+      );
       btn.disabled = true;
       const zh = document.createElement('span');
       zh.className = 'ferro-claim-badge-zh';
@@ -207,12 +228,14 @@ export class ClaimWindowOverlay {
       const py = document.createElement('span');
       py.className = 'ferro-claim-badge-py';
       py.textContent = LABELS[t].py;
-      const shortcut = document.createElement('span');
-      shortcut.className = 'ferro-claim-badge-key';
-      shortcut.textContent = LABELS[t].key;
       btn.appendChild(zh);
       btn.appendChild(py);
-      btn.appendChild(shortcut);
+      if (hasShortcut) {
+        const shortcut = document.createElement('span');
+        shortcut.className = 'ferro-claim-badge-key';
+        shortcut.textContent = shortcutKey;
+        btn.appendChild(shortcut);
+      }
       btn.addEventListener('click', () => this.commitClaim(t));
       badges.appendChild(btn);
       this.badges[t] = btn;
@@ -470,12 +493,12 @@ export class ClaimWindowOverlay {
     }
     if (ev.altKey || ev.ctrlKey || ev.metaKey) return;
     const key = ev.key.toLowerCase();
-    if (key === 'p') {
-      if (this.activeClaim.available.includes('Pung')) {
-        ev.preventDefault();
-        this.commitClaim('Pung');
-      }
-    } else if (key === 'c') {
+    // Ferro #137/#139 — never shadow a reserved game/view/navigation key. This
+    // drops the old `p`→Pung shortcut (which collided with the perspective
+    // toggle and double-fired a meld) and guards against any future overlap.
+    // Pung stays fully accessible via its visible chip / #claim-pung button.
+    if (RESERVED_GAME_VIEW_KEYS.has(key)) return;
+    if (key === 'c') {
       if (this.activeClaim.available.includes('Chow')) {
         ev.preventDefault();
         this.commitClaim('Chow');
