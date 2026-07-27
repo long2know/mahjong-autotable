@@ -13,6 +13,7 @@ import {
 } from "./types";
 import { Slot } from "./slot";
 import { Thing } from "./thing";
+import { hasExtraDiscardTile, HandSlotView } from "./hand-accounting";
 // Hicks 2026-05-26 — first-play P1 unblock (B4 / Vasquez P0-H).  When
 // a click-to-discard is silently rejected we surface a one-line toast
 // so the user knows why the click didn't fire instead of assuming the
@@ -560,33 +561,59 @@ export class World {
   }
 
   /**
-   * Hicks playability iter2 — heuristic: this seat has an extra tile in
-   * hand (more than 13 concealed) AND no pickup affordance is pending,
-   * so the player must discard to continue the turn.  Used to gate the
-   * click-to-discard intercept in {@link onDragStart} so a casual drag
-   * of a tile in-place between draws doesn't accidentally discard.
+   * Hicks playability iter2 — heuristic: this seat holds an extra tile it
+   * must discard to continue its turn (and no pickup affordance is pending).
+   * Used to gate the click-to-discard intercept in {@link onDragStart} so a
+   * casual drag of a tile in-place between draws doesn't accidentally discard.
+   *
+   * #147 (Hicks) — the old test counted only `hand`-group (concealed) tiles
+   * and required `> 13`.  But Changsha routes every exposed/concealed meld
+   * (Pung / Chow / exposed·concealed·added Kong) into the separate `meld`
+   * slot group (`ChangshaToAutotableTranslator.BuildThings` →
+   * `AutotableSlotMap.MeldSlot`).  After a claim the seat holds only 11
+   * concealed tiles + a meld while the runtime has ALREADY handed it the turn
+   * (`ActiveSeat == self`, `Phase == AwaitingDiscard`); the concealed-only
+   * count read 11 → false → the sole real discard route (click-to-discard →
+   * {@link emitDiscard}) was refused and the hand hard-stalled.
+   *
+   * Correct mahjong hand-size accounting: a "rest" hand is 13 tiles =
+   * concealed + 3 per meld — each Kong's 4th physical tile is offset by its
+   * replacement draw, so EVERY meld (Pung, Chow, or any Kong) counts as 3
+   * toward the 13.  The seat owes a discard exactly when that total exceeds
+   * 13, which holds for a normal draw (14 + 0) AND every post-meld case
+   * (11 + 3, 8 + 6, …).  This reads the authoritative tile state the backend
+   * pushed; `TryHandleDiscardActionAsync` stays the authoritative validator,
+   * and the `> 13` bound means the intercept only fires on the seat's own
+   * turn (a rest hand totals exactly 13), never out of turn.
+   *
+   * Relay variants (four_player/three_player/bamboo/minefield) have no server
+   * rules engine and drive melds/discards by free drag, so the meld
+   * contribution is gated to server-authoritative Changsha — relay keeps the
+   * exact upstream concealed-only behaviour.
    */
   hasExtraHandTile(): boolean {
     if (this.seat === null) return false;
     if (this.isMyPickupTurn()) return false;
-    let count = 0;
+
+    // Delegate the tile accounting to the pure, dependency-free helper (see
+    // hand-accounting.ts) so every meld variant is covered by a deterministic
+    // contract test.  We hand it a lightweight slot view of each rendered
+    // tile; the helper filters by seat + slot ownership.
+    const entries: HandSlotView[] = [];
     for (const thing of this.things.values()) {
-      // Hicks 2026-05-29 — count only backend-authoritative hand tiles:
-      // skip orphans whose `.slot` still points at a hand slot that has
-      // since been re-bound to a backend tile, and skip the frontend-only
-      // `hand.extra@N` preview slot.  Without these guards the count is
-      // inflated by phantom local-deal residues and we'd intercept
-      // click-to-discard before the dealer has actually drawn the 14th
-      // tile.  See `emitDiscard` for the full mechanics.
-      if (thing.slot.group === 'hand'
-          && thing.slot.seat === this.seat
-          && thing.slot.thing === thing
-          && !thing.slot.name.startsWith('hand.extra@')) {
-        count++;
-        if (count > 13) return true;
-      }
+      const slot = thing.slot;
+      entries.push({
+        group: slot.group,
+        seat: slot.seat,
+        name: slot.name,
+        ownsSlot: slot.thing === thing,
+      });
     }
-    return false;
+    return hasExtraDiscardTile(
+      entries,
+      this.seat,
+      this.conditions.gameType === GameType.CHANGSHA,
+    );
   }
 
   /**
