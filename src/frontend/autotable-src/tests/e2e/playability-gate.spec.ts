@@ -42,7 +42,8 @@ import {
   claimByClick,
   readClaimWindow,
   hasExtraHandTile,
-  readResult,
+  installHandEndObserver,
+  readHandEndObserver,
   readGameComplete,
   readMatch,
   readMaxHands,
@@ -62,6 +63,10 @@ import {
 
 const POLL_INTERVAL_MS = 700;
 const VIEW_TOGGLE_EVERY_MS = 7000;
+// A human game that makes zero real-play progress (no discard/claim/hand-end/
+// dealer change) for this long is wedged — break fast and record why instead of
+// burning the whole budget on a dead game.
+const STALL_MS = 45_000;
 
 function resolveBase(baseURL: string | undefined): string {
   return baseURL ?? process.env.E2E_BASE_URL ?? 'http://localhost:8080/autotable/';
@@ -150,6 +155,9 @@ interface GameRun {
   timedOut: boolean;
   modalStorm: boolean;
   redismissCount: number;
+  stalled: boolean;
+  stallReason: string | null;
+  realClaimsAttempted: number;
 }
 
 interface PlayOpts {
@@ -185,6 +193,11 @@ async function playRealGame(
   await dismissLobbyAndTour(page);
   const connected = await ensureConnected(page);
   rec.log('connect.ws', connected, { connected, humanPlays: opts.humanPlays });
+  // Install the in-page hand-end observer BEFORE the first hand can end, so the
+  // brief (post-#132-tombstone) EndHand window is latched from the real result
+  // `update` event instead of sampled by a coarse poll that can slip past it.
+  const obsInstalled = await installHandEndObserver(page);
+  rec.log('observer.hand-end.install', obsInstalled, { installed: obsInstalled });
   await snap(page, `${opts.label}-01-connected.png`);
 
   let seat: number | null = null;
@@ -203,7 +216,6 @@ async function playRealGame(
 
   // ── Real-interaction game loop ──
   let handEnds = 0;
-  let resultLatched = false;
   let discardsFired = 0;
   let claimsHandled = 0;
   let huByHuman = false;
@@ -215,6 +227,12 @@ async function playRealGame(
   const handResults: Array<{ winner: number | null; type: string | null }> = [];
   let viewPerspective = false;
   let viewFlat = false;
+  let lastProgressAt = Date.now();
+  let prevProgress = -1;
+  let realClaimsAttempted = 0;
+  let lastRealClaimType: string | null = null;
+  let stalled = false;
+  let stallReason: string | null = null;
 
   const noteCamera = (c: 'perspective' | 'orthographic' | null): void => {
     if (c === 'perspective') viewPerspective = true;
@@ -224,28 +242,38 @@ async function playRealGame(
   let gc = await readGameComplete(page);
   const deadline = Date.now() + opts.budgetMs;
   while (Date.now() < deadline) {
-    // Count each hand end (result null→present) BEFORE breaking on completion,
-    // so the final hand's result is never missed.
-    const r = await readResult(page);
-    if (r.present && !resultLatched) {
-      handEnds++;
-      resultLatched = true;
-      handResults.push({ winner: r.winner, type: r.type });
-      rec.log('hand.end', true, { hand: handEnds, winner: r.winner, type: r.type, nextBanker: r.nextBanker });
-      if (r.type === 'Hu' && seat !== null && r.winner === seat) huByHuman = true;
-      // A human game parks on the per-hand #result-modal and waits for the
-      // human's real "Next Hand" click to advance (the all-bot table auto-
-      // advances). Click it for every hand except the last.
-      if (opts.humanPlays && handEnds < cfg.handCount) {
-        const advanced = await clickNextHand(page);
-        rec.log('next-hand.click', advanced, { afterHand: handEnds });
-      }
-    } else if (!r.present) {
-      resultLatched = false;
-    }
+    // Hand ends are latched in-page by the observer on the real result `update`
+    // event (installed at connect); read its running count here. The #132 fix
+    // tombstones result['current'] promptly, so the EndHand window is too brief
+    // for a coarse poll — the in-page latch catches every null->present flip.
+    handEnds = (await readHandEndObserver(page)).ends.length;
 
     const match = await readMatch(page);
     if (match.dealer !== null) dealersSeen.add(match.dealer);
+
+    // Progress watchdog (human games): discards, claims, hand ends and dealer
+    // rotations all count as progress. If none advance for STALL_MS the human is
+    // wedged — most often because a real Pung/Chow/Kong/Hu claim was silently
+    // rejected by the server — so stop fast and surface WHY.
+    const progress = discardsFired + claimsHandled + handEnds + dealersSeen.size;
+    if (progress > prevProgress) {
+      prevProgress = progress;
+      lastProgressAt = Date.now();
+    } else if (opts.humanPlays && Date.now() - lastProgressAt > STALL_MS) {
+      stalled = true;
+      stallReason =
+        `real play made no progress for ${Math.round((Date.now() - lastProgressAt) / 1000)}s ` +
+        `(discards=${discardsFired} claims=${claimsHandled} handEnds=${handEnds} ` +
+        `dealers=${JSON.stringify([...dealersSeen])})` +
+        (realClaimsAttempted > 0
+          ? ` after a real "${lastRealClaimType}" claim — human Pung/Chow/Kong/Hu claims are ` +
+            `rejected by the server: the bundle sends {action:'claim',type:T} but the backend ` +
+            `reads 'action' as the claim type ("Unknown claim type claim"). PRODUCT DEFECT (handoff).`
+          : '');
+      await snap(page, `${opts.label}-stall.png`);
+      rec.log('play.stalled', false, { stallReason, progress });
+      break;
+    }
 
     gc = await readGameComplete(page);
     if (gc.isComplete) break;
@@ -282,6 +310,10 @@ async function playRealGame(
       if (claim.open) {
         const clicked = await claimByClick(page);
         if (clicked !== null) claimsHandled++;
+        if (clicked !== null && clicked !== 'Pass') {
+          realClaimsAttempted++;
+          lastRealClaimType = clicked;
+        }
         if (clicked === 'Hu') huByHuman = true;
         rec.log('claim.click', clicked !== null, { available: claim.available, clicked });
         await page.waitForTimeout(POLL_INTERVAL_MS);
@@ -325,13 +357,20 @@ async function playRealGame(
     await page.waitForTimeout(POLL_INTERVAL_MS);
   }
 
-  // Final hand-end catch (result + gameComplete can arrive together).
-  const rFinal = await readResult(page);
-  if (rFinal.present && !resultLatched) {
-    handEnds++;
-    handResults.push({ winner: rFinal.winner, type: rFinal.type });
-    rec.log('hand.end', true, { hand: handEnds, winner: rFinal.winner, type: rFinal.type, final: true });
+  // Final read of the in-page hand-end observer: it captured every EndHand
+  // transition (including the last hand, whose result arrives just before
+  // gameComplete tombstones it) directly from the result `update` event.
+  const obsFinal = await readHandEndObserver(page);
+  handEnds = obsFinal.ends.length;
+  for (const e of obsFinal.ends) {
+    handResults.push({ winner: e.winner, type: e.type });
+    if (e.type === 'Hu' && seat !== null && e.winner === seat) huByHuman = true;
   }
+  rec.log('hand.end.observed', handEnds >= cfg.handCount, {
+    handEnds,
+    ends: obsFinal.ends,
+    clears: obsFinal.clears,
+  });
   noteCamera(await readCameraType(page));
 
   gc = await readGameComplete(page);
@@ -366,6 +405,9 @@ async function playRealGame(
     timedOut: !gc.isComplete && Date.now() >= deadline,
     modalStorm,
     redismissCount,
+    stalled,
+    stallReason,
+    realClaimsAttempted,
   };
 }
 
@@ -416,26 +458,25 @@ test.describe('@playability-gate P0 real-UI playability (autotable integration a
     expect(run.viewPerspective, 'perspective view never observed during the live game').toBe(true);
     expect(run.viewFlat, 'flat (orthographic) view never observed during the live game').toBe(true);
 
-    // ── PRODUCT-DEFECT BLOCKER (handoff, not test-owned) ─────────────────
-    // At HEAD the multi-hand HUMAN flow is blocked: after each hand the
-    // per-hand #result-modal (data-backdrop="static", keyboard disabled) keeps
-    // re-covering the table over the NEXT hand's pickup/discard UI. Root cause:
-    // the backend never tombstones result.current — ChangshaCollectionEncoder
-    // .EncodeHandResultCleared() is DEAD CODE (defined, never called), and the
-    // translator only emits `result` in phase EndHand, so onResultUpdate never
-    // receives the null that hides the modal. Every state broadcast re-shows it,
-    // so a human cannot reach the Take-N / discard controls for hands 2..N.
-    // HANDOFF → Bishop / WP-A (runtime + ChangshaToAutotableTranslator): emit
-    // EncodeHandResultCleared() (or stop re-emitting result) once the hand
-    // leaves EndHand / the next hand's ceremony begins. Single-hand human
-    // (handCount=1) and multi-hand ALL-BOT (8/16) are unaffected and pass.
+    // Regression guard: the per-hand #result-modal must NOT re-storm over the
+    // table between hands (the #132 tombstone fix, now merged, keeps this false).
     expect(
       run.modalStorm,
-      `MULTI-HAND HUMAN PLAY BLOCKED by the per-hand #result-modal re-opening ` +
-        `${run.redismissCount}+ times (result.current never tombstoned — ` +
-        `EncodeHandResultCleared is dead code). handEnds=${run.handEnds}/${cfg.handCount}. ` +
-        `HANDOFF: Bishop/WP-A must clear result.current when the hand leaves EndHand.`,
+      `per-hand #result-modal re-stormed ${run.redismissCount}+ times between hands ` +
+        `(result.current tombstone regressed — #132). handEnds=${run.handEnds}/${cfg.handCount}.`,
     ).toBe(false);
+
+    // ── CURRENT PRODUCT-DEFECT BLOCKER (handoff, not test-owned) → #134 ───
+    // A real human Pung/Chow/Kong/Hu claim wedges the game: the shipped bundle
+    // sends the claim as `claim[seat] = { action:'claim', type:'Hu' }`
+    // (game-ui.ts sendClaim), but the backend's TryHandleClaimActionAsync reads
+    // the `action` field AS the claim type and never reads `type`, so
+    // ParseClaimType("claim") throws "Unknown claim type claim" and the claim is
+    // dropped — leaving the human's turn stuck. Only Pass works (its 'pass'
+    // matches 'Pass' case-insensitively). HANDOFF → Bishop / WP-A (runtime), see
+    // issue #134: the backend claim handler must read `type` when action=='claim'.
+    // Pass-only human hands (handCount=1) and all-bot games (8/16) are unaffected.
+    expect(run.stalled, run.stallReason ?? 'real play stalled before completion').toBe(false);
 
     // Four hands actually played, to authoritative completion.
     expect(run.gcMaxHands, `server MaxHands != 4 (observed ${run.gcMaxHands})`).toBe(4);

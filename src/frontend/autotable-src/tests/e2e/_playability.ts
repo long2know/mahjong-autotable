@@ -441,6 +441,80 @@ export async function readResult(page: Page): Promise<ResultView> {
   });
 }
 
+export interface HandEndRecord {
+  winner: number | null;
+  type: string | null;
+  nextBanker: number | null;
+  at: number;
+}
+
+export interface HandEndObservation {
+  installed: boolean;
+  ends: HandEndRecord[];
+  clears: number;
+}
+
+/**
+ * OBSERVE (read-only) — latch every hand end from the real `result` collection
+ * `update` event: the SAME signal the shipped bundle's own onResultUpdate
+ * (game-ui.ts), move-log, and replay subscribe to. The #132 fix tombstones
+ * result['current'] to null on the very next phase after EndHand, so the
+ * non-null window is brief and a coarse test-side poll can slip past it; an
+ * in-page listener on the applied update stream never does. This ONLY listens —
+ * it emits nothing and advances no gameplay, so it is not a backdoor. Install
+ * once right after connect (before hand 1 ends) so no hand end is missed.
+ */
+export async function installHandEndObserver(page: Page): Promise<boolean> {
+  return page.evaluate(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline && !w.game?.client?.result) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    const result = w.game?.client?.result;
+    if (!result || typeof result.on !== 'function') return false;
+    if (w.__handEndObs?.installed) return true; // idempotent across re-entry
+    const obs = { installed: true, latched: false, ends: [] as unknown[], clears: 0 };
+    w.__handEndObs = obs;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    result.on('update', (entries: Array<[string, any]>) => {
+      for (const [key, val] of entries) {
+        if (key !== 'current') continue;
+        const present = val !== null && val !== undefined;
+        if (present && !obs.latched) {
+          // null -> present transition = one hand end.
+          obs.latched = true;
+          obs.ends.push({
+            winner: typeof val.winner === 'number' ? val.winner : null,
+            type: typeof val.type === 'string' ? val.type : null,
+            nextBanker: typeof val.nextBanker === 'number' ? val.nextBanker : null,
+            at: Date.now(),
+          });
+        } else if (!present) {
+          if (obs.latched) obs.clears++;
+          obs.latched = false; // tombstone re-arms the latch for the next hand.
+        }
+      }
+    });
+    return true;
+  });
+}
+
+/** OBSERVE — read back the in-page hand-end latch installed above. */
+export async function readHandEndObserver(page: Page): Promise<HandEndObservation> {
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const obs = (window as any).__handEndObs;
+    if (!obs) return { installed: false, ends: [], clears: 0 };
+    return {
+      installed: true,
+      ends: obs.ends.slice(),
+      clears: obs.clears,
+    };
+  });
+}
+
 export interface MatchView {
   present: boolean;
   dealer: number | null;

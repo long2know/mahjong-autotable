@@ -7,16 +7,16 @@
         "ok": true,
         "entryShaMatches": true
       },
-      "at": 30
+      "at": 25
     },
     {
       "step": "boot.game-object",
       "ok": true,
       "detail": {
-        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&seat=0&seed=4100&gameId=playability-4hand-4hff1785119218-r0",
+        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&seat=0&seed=4100&gameId=playability-4hand-hudson128fastfail-r0",
         "handCount": 4
       },
-      "at": 620
+      "at": 464
     },
     {
       "step": "connect.ws",
@@ -25,7 +25,15 @@
         "connected": true,
         "humanPlays": true
       },
-      "at": 1040
+      "at": 806
+    },
+    {
+      "step": "observer.hand-end.install",
+      "ok": true,
+      "detail": {
+        "installed": true
+      },
+      "at": 809
     },
     {
       "step": "seat.take",
@@ -33,13 +41,13 @@
       "detail": {
         "assigned": 0
       },
-      "at": 3078
+      "at": 2640
     },
     {
       "step": "deal.press",
       "ok": true,
       "detail": null,
-      "at": 4002
+      "at": 3417
     },
     {
       "step": "deal.playable-hand",
@@ -48,7 +56,7 @@
         "myHandCount": 14,
         "lastPickup": null
       },
-      "at": 10347
+      "at": 9635
     },
     {
       "step": "discard.pointer",
@@ -57,7 +65,7 @@
         "tileId": 76,
         "discardAfter": 4
       },
-      "at": 12631
+      "at": 11554
     },
     {
       "step": "discard.pointer",
@@ -66,7 +74,7 @@
         "tileId": 70,
         "discardAfter": 6
       },
-      "at": 15209
+      "at": 13990
     },
     {
       "step": "discard.pointer",
@@ -75,7 +83,7 @@
         "tileId": 66,
         "discardAfter": 9
       },
-      "at": 17837
+      "at": 16405
     },
     {
       "step": "claim.click",
@@ -86,7 +94,7 @@
         ],
         "clicked": "Pass"
       },
-      "at": 19832
+      "at": 18119
     },
     {
       "step": "discard.pointer",
@@ -95,7 +103,7 @@
         "tileId": 80,
         "discardAfter": 12
       },
-      "at": 22475
+      "at": 20482
     },
     {
       "step": "discard.pointer",
@@ -104,7 +112,7 @@
         "tileId": 63,
         "discardAfter": 15
       },
-      "at": 25229
+      "at": 22951
     },
     {
       "step": "claim.click",
@@ -115,7 +123,7 @@
         ],
         "clicked": "Pass"
       },
-      "at": 26755
+      "at": 24405
     },
     {
       "step": "discard.pointer",
@@ -124,7 +132,7 @@
         "tileId": 64,
         "discardAfter": 20
       },
-      "at": 41288
+      "at": 38175
     },
     {
       "step": "claim.click",
@@ -135,7 +143,7 @@
         ],
         "clicked": "Pass"
       },
-      "at": 42916
+      "at": 39641
     },
     {
       "step": "discard.pointer",
@@ -144,7 +152,7 @@
         "tileId": 53,
         "discardAfter": 23
       },
-      "at": 49055
+      "at": 45400
     },
     {
       "step": "claim.click",
@@ -155,7 +163,7 @@
         ],
         "clicked": "Pass"
       },
-      "at": 51027
+      "at": 47217
     },
     {
       "step": "discard.pointer",
@@ -164,94 +172,16 @@
         "tileId": 50,
         "discardAfter": 27
       },
-      "at": 57002
-    },
-    {
-      "step": "discard.pointer",
-      "ok": true,
-      "detail": {
-        "tileId": 60,
-        "discardAfter": 31
-      },
-      "at": 60080
-    },
-    {
-      "step": "claim.click",
-      "ok": true,
-      "detail": {
-        "available": [
-          "Chow"
-        ],
-        "clicked": "Pass"
-      },
-      "at": 61700
-    },
-    {
-      "step": "discard.pointer",
-      "ok": true,
-      "detail": {
-        "tileId": 35,
-        "discardAfter": 33
-      },
-      "at": 67804
-    },
-    {
-      "step": "claim.click",
-      "ok": true,
-      "detail": {
-        "available": [
-          "Pung"
-        ],
-        "clicked": "Pass"
-      },
-      "at": 69726
-    },
-    {
-      "step": "discard.pointer",
-      "ok": true,
-      "detail": {
-        "tileId": 55,
-        "discardAfter": 39
-      },
-      "at": 72294
+      "at": 52754
     },
     {
       "step": "discard.pointer",
       "ok": true,
       "detail": {
         "tileId": 42,
-        "discardAfter": 42
+        "discardAfter": 30
       },
-      "at": 78151
-    },
-    {
-      "step": "claim.click",
-      "ok": true,
-      "detail": {
-        "available": [
-          "Pung"
-        ],
-        "clicked": "Pass"
-      },
-      "at": 80129
-    },
-    {
-      "step": "discard.pointer",
-      "ok": true,
-      "detail": {
-        "tileId": 82,
-        "discardAfter": 46
-      },
-      "at": 82770
-    },
-    {
-      "step": "discard.pointer",
-      "ok": true,
-      "detail": {
-        "tileId": 33,
-        "discardAfter": 51
-      },
-      "at": 85349
+      "at": 58238
     },
     {
       "step": "claim.click",
@@ -262,44 +192,94 @@
         ],
         "clicked": "Pass"
       },
-      "at": 86856
+      "at": 59931
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 82,
+        "discardAfter": 33
+      },
+      "at": 63955
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 65347
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 35,
+        "discardAfter": 39
+      },
+      "at": 71032
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 85,
+        "discardAfter": 42
+      },
+      "at": 75404
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 76665
     },
     {
       "step": "discard.pointer",
       "ok": true,
       "detail": {
         "tileId": 28,
+        "discardAfter": 46
+      },
+      "at": 82242
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 55,
+        "discardAfter": 50
+      },
+      "at": 85065
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 86507
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 31,
         "discardAfter": 52
       },
-      "at": 93269
-    },
-    {
-      "step": "hand.end",
-      "ok": true,
-      "detail": {
-        "hand": 1,
-        "winner": 2,
-        "type": "Hu",
-        "nextBanker": 2
-      },
-      "at": 93999
-    },
-    {
-      "step": "next-hand.click",
-      "ok": true,
-      "detail": {
-        "afterHand": 1
-      },
-      "at": 94896
-    },
-    {
-      "step": "result-modal.redismiss",
-      "ok": true,
-      "detail": {
-        "handEnds": 1,
-        "redismissCount": 1
-      },
-      "at": 95845
+      "at": 92228
     },
     {
       "step": "pickup.pointer",
@@ -310,16 +290,7 @@
         "handBefore": 0,
         "handAfter": 4
       },
-      "at": 98201
-    },
-    {
-      "step": "result-modal.redismiss",
-      "ok": true,
-      "detail": {
-        "handEnds": 1,
-        "redismissCount": 2
-      },
-      "at": 99936
+      "at": 94317
     },
     {
       "step": "pickup.pointer",
@@ -330,16 +301,7 @@
         "handBefore": 4,
         "handAfter": 8
       },
-      "at": 101984
-    },
-    {
-      "step": "result-modal.redismiss",
-      "ok": true,
-      "detail": {
-        "handEnds": 1,
-        "redismissCount": 3
-      },
-      "at": 103789
+      "at": 96838
     },
     {
       "step": "pickup.pointer",
@@ -350,16 +312,7 @@
         "handBefore": 8,
         "handAfter": 12
       },
-      "at": 106087
-    },
-    {
-      "step": "result-modal.redismiss",
-      "ok": true,
-      "detail": {
-        "handEnds": 1,
-        "redismissCount": 4
-      },
-      "at": 107948
+      "at": 99187
     },
     {
       "step": "pickup.pointer",
@@ -370,25 +323,7 @@
         "handBefore": 12,
         "handAfter": 13
       },
-      "at": 109715
-    },
-    {
-      "step": "result-modal.redismiss",
-      "ok": true,
-      "detail": {
-        "handEnds": 1,
-        "redismissCount": 5
-      },
-      "at": 111556
-    },
-    {
-      "step": "result-modal.redismiss",
-      "ok": true,
-      "detail": {
-        "handEnds": 1,
-        "redismissCount": 6
-      },
-      "at": 113367
+      "at": 102107
     },
     {
       "step": "discard.pointer",
@@ -397,16 +332,7 @@
         "tileId": 56,
         "discardAfter": 7
       },
-      "at": 116611
-    },
-    {
-      "step": "result-modal.redismiss",
-      "ok": true,
-      "detail": {
-        "handEnds": 1,
-        "redismissCount": 7
-      },
-      "at": 118546
+      "at": 106943
     },
     {
       "step": "discard.pointer",
@@ -415,25 +341,18 @@
         "tileId": 50,
         "discardAfter": 9
       },
-      "at": 121298
+      "at": 109381
     },
     {
-      "step": "result-modal.redismiss",
+      "step": "claim.click",
       "ok": true,
       "detail": {
-        "handEnds": 1,
-        "redismissCount": 8
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
       },
-      "at": 125823
-    },
-    {
-      "step": "result-modal.redismiss",
-      "ok": true,
-      "detail": {
-        "handEnds": 1,
-        "redismissCount": 9
-      },
-      "at": 127775
+      "at": 111143
     },
     {
       "step": "discard.pointer",
@@ -442,25 +361,18 @@
         "tileId": 40,
         "discardAfter": 13
       },
-      "at": 134426
+      "at": 116784
     },
     {
-      "step": "result-modal.redismiss",
+      "step": "claim.click",
       "ok": true,
       "detail": {
-        "handEnds": 1,
-        "redismissCount": 10
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
       },
-      "at": 138888
-    },
-    {
-      "step": "result-modal.redismiss",
-      "ok": true,
-      "detail": {
-        "handEnds": 1,
-        "redismissCount": 11
-      },
-      "at": 141667
+      "at": 119388
     },
     {
       "step": "discard.pointer",
@@ -469,16 +381,7 @@
         "tileId": 70,
         "discardAfter": 20
       },
-      "at": 144844
-    },
-    {
-      "step": "result-modal.redismiss",
-      "ok": true,
-      "detail": {
-        "handEnds": 1,
-        "redismissCount": 12
-      },
-      "at": 146800
+      "at": 121888
     },
     {
       "step": "discard.pointer",
@@ -487,16 +390,7 @@
         "tileId": 60,
         "discardAfter": 23
       },
-      "at": 149569
-    },
-    {
-      "step": "result-modal.redismiss",
-      "ok": true,
-      "detail": {
-        "handEnds": 1,
-        "redismissCount": 13
-      },
-      "at": 151408
+      "at": 124414
     },
     {
       "step": "discard.pointer",
@@ -505,16 +399,7 @@
         "tileId": 48,
         "discardAfter": 27
       },
-      "at": 154451
-    },
-    {
-      "step": "result-modal.redismiss",
-      "ok": true,
-      "detail": {
-        "handEnds": 1,
-        "redismissCount": 14
-      },
-      "at": 156201
+      "at": 126911
     },
     {
       "step": "discard.pointer",
@@ -523,29 +408,482 @@
         "tileId": 30,
         "discardAfter": 31
       },
-      "at": 162305
+      "at": 132972
     },
     {
-      "step": "result-modal.redismiss",
+      "step": "claim.click",
       "ok": true,
       "detail": {
-        "handEnds": 1,
-        "redismissCount": 15
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
       },
-      "at": 166787
+      "at": 134346
     },
     {
-      "step": "result-modal.storm",
-      "ok": false,
+      "step": "discard.pointer",
+      "ok": true,
       "detail": {
-        "redismissCount": 15,
-        "handEnds": 1
+        "tileId": 78,
+        "discardAfter": 35
       },
-      "at": 167092
+      "at": 141583
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 53,
+        "discardAfter": 39
+      },
+      "at": 144315
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 73,
+        "discardAfter": 43
+      },
+      "at": 146753
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 41,
+        "discardAfter": 47
+      },
+      "at": 149199
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 0,
+        "handAfter": 4
+      },
+      "at": 151918
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 4,
+        "handAfter": 8
+      },
+      "at": 154378
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 8,
+        "handAfter": 12
+      },
+      "at": 156197
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 12,
+        "handAfter": 13
+      },
+      "at": 157885
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 65,
+        "discardAfter": 5
+      },
+      "at": 160735
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 162213
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 63,
+        "discardAfter": 8
+      },
+      "at": 167976
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 169833
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 74,
+        "discardAfter": 13
+      },
+      "at": 177101
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 64,
+        "discardAfter": 16
+      },
+      "at": 179913
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 46,
+        "discardAfter": 20
+      },
+      "at": 182445
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 66,
+        "discardAfter": 25
+      },
+      "at": 184901
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 186711
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 43,
+        "discardAfter": 29
+      },
+      "at": 192282
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 193682
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 35,
+        "discardAfter": 32
+      },
+      "at": 199879
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 79,
+        "discardAfter": 36
+      },
+      "at": 202634
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 204608
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 20,
+        "discardAfter": 40
+      },
+      "at": 210550
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 76,
+        "discardAfter": 44
+      },
+      "at": 213750
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung",
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 215390
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 18,
+        "discardAfter": 49
+      },
+      "at": 221493
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 69,
+        "discardAfter": 52
+      },
+      "at": 227973
+    },
+    {
+      "step": "pickup.pointer",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "reason": "take button clicked",
+        "handBefore": 12,
+        "handAfter": 13
+      },
+      "at": 241558
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 65,
+        "discardAfter": 5
+      },
+      "at": 245129
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 55,
+        "discardAfter": 8
+      },
+      "at": 247846
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 70,
+        "discardAfter": 12
+      },
+      "at": 252541
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 254102
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 42,
+        "discardAfter": 15
+      },
+      "at": 260132
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 44,
+        "discardAfter": 20
+      },
+      "at": 263259
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 62,
+        "discardAfter": 23
+      },
+      "at": 265961
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 57,
+        "discardAfter": 27
+      },
+      "at": 268654
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 81,
+        "discardAfter": 30
+      },
+      "at": 273360
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 274860
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 95,
+        "discardAfter": 35
+      },
+      "at": 282589
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 25,
+        "discardAfter": 39
+      },
+      "at": 285678
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 40,
+        "discardAfter": 42
+      },
+      "at": 288406
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 290058
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 58,
+        "discardAfter": 47
+      },
+      "at": 293108
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 61,
+        "discardAfter": 50
+      },
+      "at": 295837
+    },
+    {
+      "step": "hand.end.observed",
+      "ok": true,
+      "detail": {
+        "handEnds": 4,
+        "ends": [
+          {
+            "winner": 2,
+            "type": "Hu",
+            "nextBanker": 2,
+            "at": 1785129346448
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785129404021
+          },
+          {
+            "winner": 2,
+            "type": "Hu",
+            "nextBanker": 2,
+            "at": 1785129486202
+          },
+          {
+            "winner": 1,
+            "type": "Hu",
+            "nextBanker": 1,
+            "at": 1785129550396
+          }
+        ],
+        "clears": 4
+      },
+      "at": 296693
     },
     {
       "step": "gate.summary",
-      "ok": false,
+      "ok": true,
       "detail": {
         "bundleOk": true,
         "bundleReason": "Served bundle matches the freshly-built source bundle (content hashes equal).",
@@ -553,26 +891,45 @@
         "seat": 0,
         "dealt": true,
         "playable": true,
-        "handEnds": 1,
+        "handEnds": 4,
         "handResults": [
           {
             "winner": 2,
+            "type": "Hu"
+          },
+          {
+            "winner": 3,
+            "type": "Hu"
+          },
+          {
+            "winner": 2,
+            "type": "Hu"
+          },
+          {
+            "winner": 1,
             "type": "Hu"
           }
         ],
         "dealersSeen": [
           0,
-          2
+          1,
+          2,
+          3
         ],
-        "discardsFired": 22,
-        "claimsHandled": 8,
+        "discardsFired": 52,
+        "claimsHandled": 20,
         "huByHuman": false,
-        "gcComplete": false,
-        "gcMaxHands": null,
-        "modalVisible": false,
-        "scores": null,
-        "zeroSum": null,
-        "maxHandsObserved": null,
+        "gcComplete": true,
+        "gcMaxHands": 4,
+        "modalVisible": true,
+        "scores": {
+          "0": 0,
+          "1": -5,
+          "2": 3,
+          "3": 2
+        },
+        "zeroSum": 0,
+        "maxHandsObserved": 4,
         "viewPerspective": true,
         "viewFlat": true,
         "errors": {
@@ -582,14 +939,17 @@
           "badResponses": []
         },
         "timedOut": false,
-        "modalStorm": true,
-        "redismissCount": 15
+        "modalStorm": false,
+        "redismissCount": 0,
+        "stalled": false,
+        "stallReason": null,
+        "realClaimsAttempted": 0
       },
-      "at": 167545
+      "at": 297045
     }
   ],
   "config": {
-    "gameId": "playability-4hand-4hff1785119218-r0",
+    "gameId": "playability-4hand-hudson128fastfail-r0",
     "seat": 0,
     "botCount": 3,
     "botDifficulty": "Hard",
@@ -605,26 +965,45 @@
     "seat": 0,
     "dealt": true,
     "playable": true,
-    "handEnds": 1,
+    "handEnds": 4,
     "handResults": [
       {
         "winner": 2,
+        "type": "Hu"
+      },
+      {
+        "winner": 3,
+        "type": "Hu"
+      },
+      {
+        "winner": 2,
+        "type": "Hu"
+      },
+      {
+        "winner": 1,
         "type": "Hu"
       }
     ],
     "dealersSeen": [
       0,
-      2
+      1,
+      2,
+      3
     ],
-    "discardsFired": 22,
-    "claimsHandled": 8,
+    "discardsFired": 52,
+    "claimsHandled": 20,
     "huByHuman": false,
-    "gcComplete": false,
-    "gcMaxHands": null,
-    "modalVisible": false,
-    "scores": null,
-    "zeroSum": null,
-    "maxHandsObserved": null,
+    "gcComplete": true,
+    "gcMaxHands": 4,
+    "modalVisible": true,
+    "scores": {
+      "0": 0,
+      "1": -5,
+      "2": 3,
+      "3": 2
+    },
+    "zeroSum": 0,
+    "maxHandsObserved": 4,
     "viewPerspective": true,
     "viewFlat": true,
     "errors": {
@@ -634,7 +1013,10 @@
       "badResponses": []
     },
     "timedOut": false,
-    "modalStorm": true,
-    "redismissCount": 15
+    "modalStorm": false,
+    "redismissCount": 0,
+    "stalled": false,
+    "stallReason": null,
+    "realClaimsAttempted": 0
   }
 }

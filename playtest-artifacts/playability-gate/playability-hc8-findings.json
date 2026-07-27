@@ -7,16 +7,16 @@
         "ok": true,
         "entryShaMatches": true
       },
-      "at": 24
+      "at": 34
     },
     {
       "step": "boot.game-object",
       "ok": true,
       "detail": {
-        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=8&seat=-1&seed=908&gameId=playability-hc8-hc81785118516",
+        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=8&seat=-1&seed=908&gameId=playability-hc8-hudson128fix",
         "handCount": 8
       },
-      "at": 482
+      "at": 672
     },
     {
       "step": "connect.ws",
@@ -25,18 +25,74 @@
         "connected": true,
         "humanPlays": false
       },
-      "at": 861
+      "at": 1288
     },
     {
-      "step": "hand.end",
+      "step": "observer.hand-end.install",
       "ok": true,
       "detail": {
-        "hand": 1,
-        "winner": 0,
-        "type": "Hu",
-        "nextBanker": 0
+        "installed": true
       },
-      "at": 21966
+      "at": 1331
+    },
+    {
+      "step": "hand.end.observed",
+      "ok": true,
+      "detail": {
+        "handEnds": 8,
+        "ends": [
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785128762171
+          },
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785128783444
+          },
+          {
+            "winner": 0,
+            "type": "Hu",
+            "nextBanker": 0,
+            "at": 1785128796448
+          },
+          {
+            "winner": 1,
+            "type": "Hu",
+            "nextBanker": 1,
+            "at": 1785128818329
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785128839659
+          },
+          {
+            "winner": -1,
+            "type": "Draw",
+            "nextBanker": 3,
+            "at": 1785128868384
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785128887859
+          },
+          {
+            "winner": 3,
+            "type": "Hu",
+            "nextBanker": 3,
+            "at": 1785128912496
+          }
+        ],
+        "clears": 8
+      },
+      "at": 173627
     },
     {
       "step": "gate.summary",
@@ -48,10 +104,38 @@
         "seat": null,
         "dealt": false,
         "playable": true,
-        "handEnds": 1,
+        "handEnds": 8,
         "handResults": [
           {
             "winner": 0,
+            "type": "Hu"
+          },
+          {
+            "winner": 0,
+            "type": "Hu"
+          },
+          {
+            "winner": 0,
+            "type": "Hu"
+          },
+          {
+            "winner": 1,
+            "type": "Hu"
+          },
+          {
+            "winner": 3,
+            "type": "Hu"
+          },
+          {
+            "winner": -1,
+            "type": "Draw"
+          },
+          {
+            "winner": 3,
+            "type": "Hu"
+          },
+          {
+            "winner": 3,
             "type": "Hu"
           }
         ],
@@ -86,11 +170,11 @@
         "modalStorm": false,
         "redismissCount": 0
       },
-      "at": 171511
+      "at": 173946
     }
   ],
   "config": {
-    "gameId": "playability-hc8-hc81785118516",
+    "gameId": "playability-hc8-hudson128fix",
     "seat": -1,
     "botCount": 4,
     "botDifficulty": "Medium",
@@ -106,10 +190,38 @@
     "seat": null,
     "dealt": false,
     "playable": true,
-    "handEnds": 1,
+    "handEnds": 8,
     "handResults": [
       {
         "winner": 0,
+        "type": "Hu"
+      },
+      {
+        "winner": 0,
+        "type": "Hu"
+      },
+      {
+        "winner": 0,
+        "type": "Hu"
+      },
+      {
+        "winner": 1,
+        "type": "Hu"
+      },
+      {
+        "winner": 3,
+        "type": "Hu"
+      },
+      {
+        "winner": -1,
+        "type": "Draw"
+      },
+      {
+        "winner": 3,
+        "type": "Hu"
+      },
+      {
+        "winner": 3,
         "type": "Hu"
       }
     ],
