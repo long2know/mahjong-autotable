@@ -122,6 +122,17 @@ public interface IChangshaGameRuntime
     /// bundle has no AckDeal route of its own.
     /// </summary>
     int? TryGetSeatForConnection(string gameId, string connectionId);
+
+    /// <summary>
+    /// #153 — returns the seat index whose persistent <see cref="ChangshaSeatState.PlayerId"/> matches
+    /// <paramref name="playerId"/> (and is not a bot seat), or <c>null</c> if that player owns no
+    /// seat / the game doesn't exist. Unlike <see cref="TryGetSeatForConnection"/> this keys off the
+    /// durable cookie-derived identity, so it stays true across a transport reconnect where the
+    /// per-connection <c>SeatConnections</c> entry was cleared on disconnect. Used by the autotable
+    /// WS endpoint to tell a <em>deliberate reconnect</em> (same player returning to its seat) apart
+    /// from a fresh newcomer when deciding whether to retire a stale default game.
+    /// </summary>
+    int? TryGetSeatForPlayer(string gameId, string playerId);
     Task DiscardAsync(string gameId, int seatIndex, int tileId, CancellationToken ct = default, int? expectedVersion = null);
     Task ClaimAsync(string gameId, int seatIndex, string claimType, int[]? tileIds, CancellationToken ct = default, int? expectedVersion = null);
     Task PassAsync(string gameId, int seatIndex, CancellationToken ct = default, int? expectedVersion = null);
@@ -356,6 +367,22 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             if (string.Equals(kvp.Value, connectionId, StringComparison.Ordinal))
             {
                 return kvp.Key;
+            }
+        }
+        return null;
+    }
+
+    public int? TryGetSeatForPlayer(string gameId, string playerId)
+    {
+        if (string.IsNullOrEmpty(gameId) || string.IsNullOrEmpty(playerId)) return null;
+        if (!_games.TryGetValue(gameId, out var instance)) return null;
+        var seats = instance.State.Seats;
+        for (var i = 0; i < seats.Count; i++)
+        {
+            var seat = seats[i];
+            if (!seat.IsBot && string.Equals(seat.PlayerId, playerId, StringComparison.Ordinal))
+            {
+                return i;
             }
         }
         return null;
