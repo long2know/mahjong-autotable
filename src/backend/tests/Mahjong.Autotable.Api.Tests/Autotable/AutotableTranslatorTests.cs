@@ -260,79 +260,90 @@ public class AutotableTranslatorTests
         Assert.Equal(55, wallCount);
     }
 
-    // ── Frost 2026-05-29 — post-deal wall distribution regression ──────
+    // ── #152 — post-deal wall depletes contiguously from the break point ──
     //
-    // Stephen surfaced "dealing seems very whacky" — screenshot showed flat
-    // wall strips at the corners. Live WS capture proved the translator was
-    // packing all 55 post-deal wall tiles into seats 0 + 1 (col-major within
-    // a seat, seats 0..3 outer), leaving seats 2 and 3 with physically empty
-    // walls. The frontend renderer can only show what the backend ships, so
-    // empty wall seats render as missing geometry.
-    //
-    // Fix: column-major-across-seats enumeration (see
-    // <see cref="AutotableSlotMap.EnumerateWallSlotsInOrder"/>) ships ~13-14
-    // tiles to every seat after deal so all four canonical 2-high stacks
-    // remain visible.
+    // Superseded the Phase-5a "distribute across all four seats / balanced"
+    // contract (which pinned the column-major spread Stephen later flagged as
+    // "four disconnected half-walls", issue #152). The authoritative engine
+    // draws 53 tiles contiguously from the dice break point, so the 55
+    // remaining tiles form ONE physical arc: AT MOST TWO seat-walls can be
+    // partially consumed — the other two must be fully FULL or fully EMPTY,
+    // and every seat's occupied columns are contiguous (no interior gaps).
 
     [Fact, Trait("Category", "Phase5a")]
-    public void Snapshot_AfterStartGame_WallTiles_DistributedAcrossAllFourSeats()
+    public void Snapshot_AfterStartGame_WallTiles_DepleteContiguouslyFromBreakPoint()
     {
         var state = ChangshaTestHelpers.NewGameDealtTo(seed: 7);
         var entries = ChangshaToAutotableTranslator.Translate(state, viewerSeat: 0);
 
         var perSeatWallCounts = new Dictionary<int, int> { [0] = 0, [1] = 0, [2] = 0, [3] = 0 };
+        var perSeatCols = new Dictionary<int, SortedSet<int>>
+        {
+            [0] = [], [1] = [], [2] = [], [3] = [],
+        };
         foreach (var e in entries.Where(e => e.Kind == "things"))
         {
             var slot = ExtractSlotName(e.Value!);
             if (!slot.StartsWith("wall.")) continue;
             var seat = int.Parse(slot.Split('@')[1]);
+            var col = int.Parse(slot.Split('@')[0].Split('.')[1]);
             perSeatWallCounts[seat]++;
+            perSeatCols[seat].Add(col);
         }
 
+        // Contiguity signature: >= 2 seats fully full or fully empty.
+        var fullOrEmpty = 0;
         for (var seat = 0; seat < 4; seat++)
         {
-            Assert.True(perSeatWallCounts[seat] > 0,
-                $"seat {seat} wall has 0 tiles after deal — translator must distribute the 55 remaining wall tiles across all four seats (got {perSeatWallCounts[seat]}).");
+            var cap = AutotableSlotMap.WallTileCapacity(seat);
+            if (perSeatWallCounts[seat] == 0 || perSeatWallCounts[seat] == cap) fullOrEmpty++;
         }
+        Assert.True(fullOrEmpty >= 2,
+            $"Wall did not deplete contiguously — expected >= 2 seats fully full/empty, got {fullOrEmpty} " +
+            $"(per-seat counts {string.Join(",", perSeatWallCounts.Select(kv => $"{kv.Key}:{kv.Value}"))}).");
 
-        // Counts should be balanced — within a few tiles of each other.
-        // (55 / 4 = 13.75 → expect 13 or 14 per seat.)
-        var min = perSeatWallCounts.Values.Min();
-        var max = perSeatWallCounts.Values.Max();
-        Assert.True(max - min <= 2,
-            $"Wall tile distribution is unbalanced (min={min}, max={max}); expected ≤ 2 tiles spread across seats.");
+        // No interior gaps within any seat's occupied columns.
+        for (var seat = 0; seat < 4; seat++)
+        {
+            var cols = perSeatCols[seat].ToList();
+            for (var i = 1; i < cols.Count; i++)
+            {
+                Assert.True(cols[i] - cols[i - 1] == 1,
+                    $"seat {seat} wall has an interior column gap between {cols[i - 1]} and {cols[i]}.");
+            }
+        }
     }
 
     [Fact, Trait("Category", "Phase5a")]
-    public void Snapshot_AfterStartGame_WallTiles_StackedTwoHighAtEverySeat()
+    public void Snapshot_AfterStartGame_WallTiles_StackedTwoHighExceptArcBoundaries()
     {
         var state = ChangshaTestHelpers.NewGameDealtTo(seed: 7);
         var entries = ChangshaToAutotableTranslator.Translate(state, viewerSeat: 0);
 
-        // For every seat, layer 0 and layer 1 must both have at least one
-        // tile so the renderer can draw genuine 2-high stacks rather than
-        // a single flat row of tiles.
-        var byLayer = new Dictionary<(int seat, int layer), int>();
+        // Every OCCUPIED wall stack must render 2-high (layer 0 AND layer 1),
+        // except at most the two boundaries of the drawn arc where a single
+        // stack may be half-consumed. Count single-layer occupied stacks.
+        var byStackLayers = new Dictionary<(int seat, int col), HashSet<int>>();
         foreach (var e in entries.Where(e => e.Kind == "things"))
         {
             var slot = ExtractSlotName(e.Value!);
             if (!slot.StartsWith("wall.")) continue;
-            // wall.{col}.{layer}@{seat}
             var beforeAt = slot.Split('@')[0];
             var parts = beforeAt.Split('.');
-            var seat = int.Parse(slot.Split('@')[1]);
+            var col = int.Parse(parts[1]);
             var layer = int.Parse(parts[2]);
-            var key = (seat, layer);
-            byLayer[key] = byLayer.GetValueOrDefault(key) + 1;
+            var seat = int.Parse(slot.Split('@')[1]);
+            var key = (seat, col);
+            (byStackLayers.TryGetValue(key, out var set) ? set : byStackLayers[key] = []).Add(layer);
         }
 
-        for (var seat = 0; seat < 4; seat++)
-        {
-            Assert.True(byLayer.GetValueOrDefault((seat, 0)) > 0,
-                $"seat {seat} layer 0 (bottom wall tiles) is empty after deal.");
-            Assert.True(byLayer.GetValueOrDefault((seat, 1)) > 0,
-                $"seat {seat} layer 1 (top wall tiles) is empty after deal — wall renders as flat single-row instead of 2-high stacks.");
-        }
+        var halfStacks = byStackLayers.Count(kv => kv.Value.Count == 1);
+        Assert.True(halfStacks <= 2,
+            $"Expected at most 2 half (single-layer) wall stacks at the arc boundaries, got {halfStacks} — " +
+            "wall is rendering as flat single-row strips instead of 2-high stacks.");
+
+        // And there must be genuine 2-high stacks (not a wholly flat wall).
+        Assert.Contains(byStackLayers, kv => kv.Value.Count == 2);
     }
 
     [Fact, Trait("Category", "Phase5a")]

@@ -393,6 +393,16 @@ public sealed class ChangshaGameState
     public int WallDrawIndex { get; set; }
     public int WallBackIndex { get; set; }
 
+    /// <summary>
+    /// Cumulative count of tiles drawn from the BACK of the wall (kong
+    /// replacements) in the current hand. Rendering-only bookkeeping: the
+    /// autotable translator derives the front-draw count as
+    /// <c>108 - Wall.Count - WallBackDrawn</c> to place each remaining wall
+    /// tile at a stable physical slot (issue #152). Reset to 0 on every deal.
+    /// Does not affect any rule outcome.
+    /// </summary>
+    public int WallBackDrawn { get; set; }
+
     // Hands
     public List<ChangshaHandState> Hands { get; set; } = [];
 

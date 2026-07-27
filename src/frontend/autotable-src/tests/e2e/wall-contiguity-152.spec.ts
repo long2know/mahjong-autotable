@@ -11,26 +11,18 @@
 //  deal = 3×13 + dealer 14 = 53; exactly 55 remain. With contiguous depletion
 //  from a single break point, the 53 drawn tiles form ONE arc, so AT MOST TWO
 //  of the four seat-walls can be partially consumed — the other two must be
-//  fully FULL or fully EMPTY. On current main the backend translator
+//  fully FULL or fully EMPTY. Before the fix the backend translator
 //  (AutotableSlotMap.EnumerateWallSlotsInOrder, column-major-across-seats)
-//  spreads the remainder evenly, leaving ALL FOUR walls half-consumed → this
-//  gate is RED. It flips GREEN once the backend perimeter-anchored mapping
-//  lands (see .squad decision "Hicks-152-wall-non-contiguity").
-//
-//  GATING: this is a cross-lane acceptance gate whose GREEN state depends on a
-//  backend change that is NOT in this (frontend) PR. It runs ONLY when
-//  WALL_CONTIGUITY_GATE=1 (mirrors the E2E_VISUAL_GATE convention) so default
-//  `npm run e2e` stays green; the backend PR that implements the contract
-//  removes the guard.
-// =============================================================================
+//  spread the remainder evenly, leaving ALL FOUR walls half-consumed. The fix
+//  (AutotableSlotMap.WallOrdinalToSlot + WallBreakOrdinal, driven by the
+//  derived front-draw anchor `108 - Wall.Count - WallBackDrawn`) places each
+//  remaining tile at a STABLE physical slot so the wall depletes as one arc.
 
 import { test, expect, type Page } from '@playwright/test';
 import {
   buildGameUrl, makeConfig, dismissLobbyAndTour, ensureConnected,
   takeSeatByClick, clickDeal, waitForPlayableHand,
 } from './_playability';
-
-const GATE_ON = process.env.WALL_CONTIGUITY_GATE === '1';
 
 // Physical wall capacity per seat (tiles): seats 0,1 → 14 stacks × 2 = 28;
 // seats 2,3 → 13 stacks × 2 = 26. Mirrors AutotableSlotMap.WallTileCapacity.
@@ -72,8 +64,6 @@ async function readWallShape(page: Page): Promise<WallShape> {
 }
 
 test.describe('#152 wall depletes contiguously from the break point', () => {
-  test.skip(!GATE_ON, 'Backend perimeter-anchored wall mapping not yet landed — set WALL_CONTIGUITY_GATE=1 (RED on main; GREEN after backend contract). See .squad decision Hicks-152-wall-non-contiguity.');
-
   for (const dealMode of ['auto', 'manual'] as const) {
     test(`contiguous remaining wall after ${dealMode} deal`, async ({ page }, testInfo) => {
       testInfo.setTimeout(120_000);
