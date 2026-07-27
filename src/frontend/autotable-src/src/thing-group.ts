@@ -1,4 +1,4 @@
-import { BufferGeometry, Group, InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh, Material, Matrix4, Mesh, MeshLambertMaterial, Quaternion, Texture, Vector3 } from "three";
+import { BufferGeometry, Group, InstancedBufferAttribute, InstancedMesh, Material, Matrix4, Mesh, MeshLambertMaterial, Quaternion, Texture, Vector3 } from "three";
 import { AssetLoader } from "./asset-loader";
 import { ThingType, TileVariant } from "./types";
 import { rotEquals } from "./utils";
@@ -170,7 +170,7 @@ export class TileThingGroup extends InstancedThingGroup {
     this.textures = {
       [TileVariant.NO_LABELS]: tileMaterial.map!,
       [TileVariant.LABELS]: this.assetLoader.textures.tilesLabels,
-    }
+    };
   }
 
   setVariant(tileVariant: TileVariant): void {

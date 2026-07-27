@@ -4,7 +4,7 @@ export const SEAT_ROTATIONS = [
   new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), 1 * (Math.PI / 2)),
   new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), 2 * (Math.PI / 2)),
   new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), 3 * (Math.PI / 2)),
-]
+];
 
 export function shuffle<T>(arr: Array<T>): void {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -96,7 +96,7 @@ export function round3(vec: Vector3, factor: number): void {
 
 const EPS = 0.05;
 
-export function rotEquals(rot1: Quaternion, rot2: Quaternion) {
+export function rotEquals(rot1: Quaternion, rot2: Quaternion): boolean {
   return (Math.abs(rot1.x - rot2.x) < EPS &&
           Math.abs(rot1.y - rot2.y) < EPS &&
           Math.abs(rot1.z - rot2.z) < EPS &&
