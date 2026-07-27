@@ -469,7 +469,7 @@
     {
       "wave": "K22",
       "bundler": "vite",
-      "recordedAt": "2026-07-27T11:55:57.216Z",
+      "recordedAt": "2026-07-27T12:03:36.331Z",
       "chunks": {
         "autotable-src-eager": 108956,
         "game-bootstrap": 174693,
