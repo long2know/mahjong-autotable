@@ -153,11 +153,23 @@ public static class ChangshaToAutotableTranslator
             }
         }
 
-        // result — populated once the hand has scored (or washed out).
-        // Phase EndHand is the marker: CurrentWin set + CurrentScore set OR draw-hand event.
+        // result — populated while the completed hand is on screen (EndHand), and explicitly
+        // TOMBSTONED (result['current']=null) the moment the hand advances past EndHand.
+        //
+        // `result` is a NON-ephemeral collection (client.ts: `new Collection('result', this)`),
+        // so AutotableGameState stores it and the WS re-ships it on every StateChanged full
+        // snapshot. Without the tombstone the stored hand-1 result re-broadcasts during hand 2+,
+        // and the bundle's result handler re-opens #result-modal on every broadcast — blocking
+        // multi-hand play (#132). The bundle hides the modal ONLY on an explicit
+        // result['current']=null, so we wire the (previously dead) EncodeHandResultCleared() here
+        // as the authoritative clear. EndHand is the marker: CurrentWin+CurrentScore OR draw event.
         if (state.Phase == ChangshaPhase.EndHand)
         {
             entries.Add(ChangshaCollectionEncoder.EncodeHandResult(BuildHandResult(state)));
+        }
+        else
+        {
+            entries.Add(ChangshaCollectionEncoder.EncodeHandResultCleared());
         }
 
         // gameComplete — #116/#122 (Hudson P0). The authoritative end-of-match signal that
