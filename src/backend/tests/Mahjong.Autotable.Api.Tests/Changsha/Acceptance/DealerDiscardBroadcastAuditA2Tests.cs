@@ -193,11 +193,21 @@ public sealed class DealerDiscardBroadcastAuditA2Tests : IAsyncLifetime
             }
         }
 
-        // Final sanity: the runtime DID accept the discard (rules out a
-        // state-machine regression masquerading as a broadcast bug).
-        Assert.True(runtime.TryGetSnapshot(runtimeGameId!, out var afterDiscard));
-        Assert.Contains(afterDiscard!.DiscardPile,
-            d => d.SeatIndex == 0 && d.TileId == discardTileId);
+        // Final sanity: the runtime DID accept the discard (rules out a state-machine
+        // regression masquerading as a broadcast bug). Assert the DURABLE, claim-safe
+        // `tile-discarded` EventLog entry (append-only, never removed) on a lock-protected
+        // deep-copy snapshot — NOT the transient `DiscardPile`. #145: a bot legitimately
+        // claims the dealer's discard during the 3s wire-watch, which PULLS the tile out of
+        // the pile, so `Assert.Contains(DiscardPile, …)` flaked ("Filter not matched") on
+        // SQL Server / loaded SQLite even though the discard genuinely occurred and was
+        // broadcast. The `tile-discarded` event is appended once and never removed, so it is
+        // provider-independent proof the discard reached the runtime; the deep copy also
+        // avoids racing a concurrent `List<T>` append. Mirrors the RoundRobinDiscardCycleTests
+        // durable-event hardening. Seat + tile-id are preserved verbatim.
+        var afterDiscard = await runtime.TryGetSnapshotCopyAsync(runtimeGameId!);
+        Assert.NotNull(afterDiscard);
+        Assert.Contains(afterDiscard!.EventLog,
+            e => e.EventType == "tile-discarded" && e.SeatIndex == 0 && e.TileId == discardTileId);
 
         Assert.True(sawDiscardOnWire,
             "Vasquez A2/A3 regression: dealer's discard reached the runtime but " +
