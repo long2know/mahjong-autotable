@@ -142,6 +142,38 @@ public sealed class HumanClaimWireContractTests : IAsyncLifetime
         Assert.Contains(discardTile, chow.TileIds);
     }
 
+    [Fact, Trait("Category", "Acceptance"), Trait("Contract", "C-1")]
+    public async Task HumanChowClaim_BundlePayload_WithExplicitTileIds_IsAccepted_UsesChosenPattern()
+    {
+        // Seat 0 holds BOTH chow patterns for a Tong-5 discard: {3,4,5} and {5,6,7}. The runtime's
+        // no-tileIds fallback would pick the lowest-rank pattern ({3,4,5}); an explicit tileIds of
+        // {Tong-6, Tong-7} must instead build {5,6,7}, proving the endpoint forwards the chosen tiles.
+        var tong3 = TH.Tid(Suit.Tong, 3, 0);
+        var tong4 = TH.Tid(Suit.Tong, 4, 0);
+        var tong6 = TH.Tid(Suit.Tong, 6, 0);
+        var tong7 = TH.Tid(Suit.Tong, 7, 0);
+        var seat0 = new[]
+        {
+            tong3, tong4, tong6, tong7, // two chow options for Tong-5: {3,4,5} and {5,6,7}
+            TH.Tid(Suit.Wan, 1, 0), TH.Tid(Suit.Wan, 2, 0), TH.Tid(Suit.Wan, 3, 0),
+            TH.Tid(Suit.Wan, 4, 0), TH.Tid(Suit.Wan, 5, 0), TH.Tid(Suit.Wan, 6, 0),
+            TH.Tid(Suit.Wan, 7, 0), TH.Tid(Suit.Wan, 8, 0), TH.Tid(Suit.Wan, 9, 0),
+        };
+        var discardTile = TH.Tid(Suit.Tong, 5, 2);
+        await using var arranged = await ArrangeSeat0WindowAsync(discarderSeat: 3, discardTile, seat0);
+
+        await arranged.Session.SendClaimAsync(seat: 0, action: "claim", type: "Chow", tileIds: new[] { tong6, tong7 });
+
+        var final = await WaitForResolutionAsync(arranged, s =>
+            s.Hands[0].Melds.Any(m => m.Kind == MeldKind.Chow));
+        Assert.NotEqual(ChangshaPhase.AwaitingClaim, final.Phase);
+        var chow = Assert.Single(final.Hands[0].Melds.Where(m => m.Kind == MeldKind.Chow));
+        // The chosen upper pattern was honored — not the lowest-rank {3,4,5} fallback.
+        Assert.Equal(new[] { discardTile, tong6, tong7 }.OrderBy(t => t), chow.TileIds.OrderBy(t => t));
+        Assert.DoesNotContain(tong3, chow.TileIds);
+        Assert.DoesNotContain(tong4, chow.TileIds);
+    }
+
     // ── Hu (win by claiming the discard) ────────────────────────────────────────────
 
     [Fact, Trait("Category", "Acceptance"), Trait("Contract", "C-1")]
@@ -424,6 +456,11 @@ public sealed class HumanClaimWireContractTests : IAsyncLifetime
         // Emits the EXACT shipped-bundle claim payload: claim[seat] = { action, type }.
         public Task SendClaimAsync(int seat, string action, string? type) =>
             SendUpdateAsync(new object[] { new object[] { "claim", seat, new { action, type } } });
+
+        // Same shape plus explicit `tileIds` (a client that supplies the chosen Chow tiles). The
+        // shipped bundle omits tileIds, but the endpoint must forward them when present.
+        public Task SendClaimAsync(int seat, string action, string? type, int[] tileIds) =>
+            SendUpdateAsync(new object[] { new object[] { "claim", seat, new { action, type, tileIds } } });
 
         public async Task<JsonElement> ReadEnvelopeAsync(int timeoutMs = 5000)
         {
