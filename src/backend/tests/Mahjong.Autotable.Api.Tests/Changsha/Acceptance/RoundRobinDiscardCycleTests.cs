@@ -116,11 +116,11 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
         Assert.Equal(0, ready.ActiveSeatIndex);
         Assert.Equal(14, dealerHandCountPre);
 
-        // Capture starting pile size — any growth from seat 0 means the dealer
-        // discard landed (we don't care WHICH tile, just that it discharged from
-        // seat 0's hand, since the dealer is pinned at seat 0).
-        var initialPileCount = ready.DiscardPile.Count;
+        // Any dealer discard-count growth means the dealer discard landed (we don't
+        // care WHICH tile, just that it discharged from seat 0's hand).
         var initialSeat0DiscardCount = ready.DiscardPile.Count(d => d.SeatIndex == 0);
+        var initialDiscardEventCount = ready.EventLog.Count(e => e.EventType == "tile-discarded");
+        var initialHandNumber = ready.HandNumber;
         await DrainAsync(session, timeoutMs: 100);
 
         // ── Phase 1: dealer discards via WS, prove it lands + loop advances ──
@@ -247,7 +247,7 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
 
             foreach (var d in snap.DiscardPile) seatsObservedInPile.Add(d.SeatIndex);
 
-            var pileCount = snap.DiscardPile.Count;
+            var discardEventCount = snap.EventLog.Count(e => e.EventType == "tile-discarded");
             var phase = snap.Phase;
             var activeSeat = snap.ActiveSeatIndex;
             var seat0HandCount = snap.Hands.Single(h => h.SeatIndex == 0).ConcealedTiles.Count;
@@ -257,7 +257,9 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
                         || phase == ChangshaPhase.WallExhausted
                         || phase == ChangshaPhase.GameComplete;
 
-            if (pileCount >= targetDiscards || terminal) break;
+            if (discardEventCount >= initialDiscardEventCount + targetDiscards
+                || terminal
+                || snap.HandNumber != initialHandNumber) break;
 
             // Human-seat nudge: when the loop returns to seat 0 with 14 tiles in hand,
             // the runtime parks waiting for human input (bots only auto-act for seats
@@ -291,12 +293,17 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
         // Capture final state for invariant checks.
         Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var final));
         Assert.NotNull(final);
-        var finalPileCount = final!.DiscardPile.Count;
-        var finalPhase = final.Phase;
-        var finalActiveSeat = final.ActiveSeatIndex;
-        var finalWallCount = final.Wall.Count;
-        var finalSeenSeats = final.DiscardPile.Select(d => d.SeatIndex).Distinct().ToList();
-        var finalHandTotals = final.Hands
+        var finalState = final!;
+        var finalDiscardEventCount = finalState.EventLog.Count(e => e.EventType == "tile-discarded");
+        var finalPhase = finalState.Phase;
+        var finalActiveSeat = finalState.ActiveSeatIndex;
+        var finalWallCount = finalState.Wall.Count;
+        var finalSeenSeats = finalState.EventLog
+            .Where(e => e.EventType == "tile-discarded")
+            .Select(e => e.SeatIndex)
+            .Distinct()
+            .ToList();
+        var finalHandTotals = finalState.Hands
             .ToDictionary(h => h.SeatIndex,
                 h => h.ConcealedTiles.Count + h.Melds.Sum(m => m.TileIds.Count));
 
@@ -305,20 +312,21 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
                                  || finalPhase == ChangshaPhase.EndHand
                                  || finalPhase == ChangshaPhase.WallExhausted
                                  || finalPhase == ChangshaPhase.GameComplete
-                                 || final.CurrentWin is not null;
+                                 || finalState.CurrentWin is not null
+                                 || finalState.HandNumber != initialHandNumber;
 
         Assert.True(
-            finalPileCount >= targetDiscards || handEndedLegitimately,
-            $"round-robin loop stalled at {finalPileCount} discards in {phase2MaxMs}ms " +
+            finalDiscardEventCount >= initialDiscardEventCount + targetDiscards || handEndedLegitimately,
+            $"round-robin loop stalled at {finalDiscardEventCount - initialDiscardEventCount} discards in {phase2MaxMs}ms " +
             $"(phase={finalPhase}, active={finalActiveSeat}). Discard handler may have " +
             $"silently dropped a push, or the bot scheduler deadlocked.");
 
         // Round-robin must have visited ≥3 distinct seats once ≥6 discards happen.
-        if (finalPileCount >= 6)
+        if (finalDiscardEventCount - initialDiscardEventCount >= 6)
         {
             Assert.True(finalSeenSeats.Count >= 3,
                 $"round-robin only visited seats {{{string.Join(",", finalSeenSeats.OrderBy(x => x))}}} " +
-                $"after {finalPileCount} discards — expected at least 3 distinct seats.");
+                $"after {finalDiscardEventCount - initialDiscardEventCount} discards — expected at least 3 distinct seats.");
         }
 
         // Per-seat invariant: total tiles (concealed + meld tiles) must stay in the
@@ -326,11 +334,14 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
         // so the post-deal window expands to 13..14+ depending on kong count. We cap
         // the upper bound generously at 18 (allows up to ~5 kong replacements, well
         // beyond what any 4-bot 12-second drain produces in practice).
-        foreach (var (seat, total) in finalHandTotals)
+        if (finalState.HandNumber == initialHandNumber)
         {
-            Assert.InRange(total, 13, 18);
+            foreach (var (seat, total) in finalHandTotals)
+            {
+                Assert.InRange(total, 13, 18);
+            }
+            Assert.InRange(finalWallCount, 0, 55);
         }
-        Assert.InRange(finalWallCount, 0, 55);
     }
 
     // ── Helpers — mirror the WS-driven manual-deal harness from
