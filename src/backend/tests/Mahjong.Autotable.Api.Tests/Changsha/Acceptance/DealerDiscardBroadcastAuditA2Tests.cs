@@ -193,17 +193,14 @@ public sealed class DealerDiscardBroadcastAuditA2Tests : IAsyncLifetime
             }
         }
 
-        // Final sanity: the runtime DID accept the discard (rules out a state-machine
-        // regression masquerading as a broadcast bug). Assert the DURABLE, claim-safe
-        // `tile-discarded` EventLog entry (append-only, never removed) on a lock-protected
-        // deep-copy snapshot — NOT the transient `DiscardPile`. #145: a bot legitimately
-        // claims the dealer's discard during the 3s wire-watch, which PULLS the tile out of
-        // the pile, so `Assert.Contains(DiscardPile, …)` flaked ("Filter not matched") on
-        // SQL Server / loaded SQLite even though the discard genuinely occurred and was
-        // broadcast. The `tile-discarded` event is appended once and never removed, so it is
-        // provider-independent proof the discard reached the runtime; the deep copy also
-        // avoids racing a concurrent `List<T>` append. Mirrors the RoundRobinDiscardCycleTests
-        // durable-event hardening. Seat + tile-id are preserved verbatim.
+        // Final sanity: the runtime DID accept the discard (rules out a
+        // state-machine regression masquerading as a broadcast bug).
+        // Assert the PERMANENT `tile-discarded` event on a lock-protected deep copy, not the mutable
+        // DiscardPile: after the dealer's discard the turn passes to bot seat 1 whose worker thread
+        // both appends to DiscardPile (racing live enumeration → "Collection was modified") and may
+        // legitimately CLAIM this discard (removing it from the pile → "Filter not matched"). The
+        // tile-discarded event is appended once and never removed, so it is the stable proof that
+        // the discard reached the runtime. Same root-cause family as the #133 DealerExtra fix.
         var afterDiscard = await runtime.TryGetSnapshotCopyAsync(runtimeGameId!);
         Assert.NotNull(afterDiscard);
         Assert.Contains(afterDiscard!.EventLog,
