@@ -803,10 +803,21 @@ public sealed class AutotableConnectionManager : IDisposable
         if (seatIndex is < 0 or > 3) return;
         if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
 
-        // Client format: { action: "Pung"|"Chow"|"Kong"|"Hu"|"Pass", tileIds?: int[] }
+        // Wire contract — the shipped bundle (game-ui.ts sendClaim) writes:
+        //   claim[seat] = { action: "claim", type: "Pung"|"Chow"|"Kong"|"Hu" }  // a meld / win claim
+        //   claim[seat] = { action: "pass",  type: null }                       // decline
+        // The legacy pre-bundle form { action: "Pung"|"Chow"|"Kong"|"Hu"|"Pass" } is still accepted.
+        // #134 — previously this read `action` AS the claim type, so a real claim passed the literal
+        // "claim" to ParseClaimType (throw, swallowed) and every non-Pass human claim stalled.
         if (!je.TryGetProperty("action", out var actionEl) || actionEl.ValueKind != JsonValueKind.String) return;
         var action = actionEl.GetString() ?? string.Empty;
 
+        string? type = null;
+        if (je.TryGetProperty("type", out var typeEl) && typeEl.ValueKind == JsonValueKind.String)
+            type = typeEl.GetString();
+
+        // The bundle never sends tileIds; accept them if a client does (Chow without tileIds falls
+        // back to the runtime's lowest-rank pattern, matching the bot path).
         int[]? tileIds = null;
         if (je.TryGetProperty("tileIds", out var tileIdsEl) && tileIdsEl.ValueKind == JsonValueKind.Array)
         {
@@ -814,23 +825,64 @@ public sealed class AutotableConnectionManager : IDisposable
             for (var i = 0; i < tileIds.Length; i++) tileIds[i] = tileIdsEl[i].GetInt32();
         }
 
+        // Resolve intent: `action == "pass"` declines; `action == "claim"` carries the meld/win type
+        // in `type`; otherwise treat `action` itself as the type (legacy form).
+        bool isPass;
+        string? claimType;
+        if (string.Equals(action, "pass", StringComparison.OrdinalIgnoreCase))
+        {
+            isPass = true;
+            claimType = null;
+        }
+        else if (string.Equals(action, "claim", StringComparison.OrdinalIgnoreCase))
+        {
+            isPass = false;
+            claimType = type;
+        }
+        else
+        {
+            isPass = false;
+            claimType = action;
+        }
+
+        // Reject malformed / unknown claim types explicitly (visible log) WITHOUT submitting a bogus
+        // claim that would throw inside ClaimAsync — the window stays open for retry / server auto-pass.
+        if (!isPass && !IsKnownClaimType(claimType))
+        {
+            _logger.LogWarning(
+                "Ignoring malformed human claim from seat {Seat} in game {GameId}: action='{Action}', "
+                + "type='{Type}' is not a known claim type (Pung/Chow/Kong/Hu).",
+                seatIndex, connection.GameId, action, type ?? "(none)");
+            return;
+        }
+
+        if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
         try
         {
-            if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
-            if (string.Equals(action, "Pass", StringComparison.OrdinalIgnoreCase))
+            if (isPass)
             {
                 await _runtime.PassAsync(runtimeGameId, seatIndex, ct);
             }
             else
             {
-                await _runtime.ClaimAsync(runtimeGameId, seatIndex, action, tileIds, ct);
+                await _runtime.ClaimAsync(runtimeGameId, seatIndex, claimType!, tileIds, ct);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Claim {Action} failed for seat {Seat}", action, seatIndex);
+            _logger.LogDebug(ex, "Claim {Action}/{Type} for seat {Seat} was rejected by the runtime",
+                action, claimType ?? "pass", seatIndex);
         }
     }
+
+    // #134 — the claim types the runtime's ParseClaimType accepts (case-insensitive). Kept in lock-step
+    // with ChangshaGameRuntime.ParseClaimType so a malformed human claim is rejected up-front rather
+    // than throwing (and being swallowed) inside the runtime.
+    private static bool IsKnownClaimType(string? s) => s is not null && s.ToLowerInvariant() switch
+    {
+        "pung" or "chow" or "kong" or "hu" => true,
+        _ => false,
+    };
 
     /// <summary>
     /// Phase F §3 — manual-pickup routing. Pickup entries from the bundle carry

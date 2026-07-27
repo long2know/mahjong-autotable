@@ -83,6 +83,16 @@ function backendExplicitDispatchKinds(): Set<string> {
   return kinds;
 }
 
+function claimHandlerBody(): string {
+  const src = readRepo('../../../../../src/backend/src/Mahjong.Autotable.Api/Autotable/AutotableWsEndpoint.cs');
+  const marker = 'private async Task TryHandleClaimActionAsync(';
+  const start = src.indexOf(marker);
+  if (start < 0) throw new Error('TryHandleClaimActionAsync not found in AutotableWsEndpoint.cs');
+  const rest = src.slice(start + marker.length);
+  const nextMethod = rest.search(/\n {4}private\s+(static\s+)?(async\s+)?\w/);
+  return nextMethod > -1 ? rest.slice(0, nextMethod) : rest;
+}
+
 test.describe('WP-E/#120 — WS Collection protocol conformance (C-1) static gate', () => {
   test.beforeEach(({}, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium', 'Static gate runs once (chromium project).');
@@ -150,5 +160,38 @@ test.describe('WP-E/#120 — WS Collection protocol conformance (C-1) static gat
         `push of it would hit the default passthrough and relay a spoofed entry to peers.`,
       ).toBe(true);
     }
+  });
+
+  // #134 — the human claim wire shape. The shipped bundle writes
+  //   claim[seat] = { action: 'claim', type: 'Pung'|'Chow'|'Kong'|'Hu' }  (a meld / win)
+  //   claim[seat] = { action: 'pass',  type: null }                        (decline)
+  // The backend TryHandleClaimActionAsync must read BOTH `action` AND `type`. The regression that
+  // motivated this gate read `action` AS the claim type, so every non-Pass human claim passed the
+  // literal "claim" to ParseClaimType and stalled. Behaviour is proven end-to-end in
+  // AutotableWsEndpointTests / HumanClaimWireContractTests; this static gate stops the two sides
+  // from silently drifting apart again.
+  test('human claim wire shape: FE sends { action, type }; backend reads both (#134)', () => {
+    const ui = readRepo('../../src/game-ui.ts');
+    expect(
+      ui,
+      "game-ui.ts must send a meld/win claim as { action: 'claim', type } — the backend keys off it.",
+    ).toMatch(/action:\s*'claim'\s*,\s*type/);
+    expect(
+      ui,
+      "game-ui.ts must send a decline as { action: 'pass', type: null }.",
+    ).toMatch(/action:\s*'pass'\s*,\s*type:\s*null/);
+
+    const handler = claimHandlerBody();
+    expect(
+      handler,
+      "backend claim handler must read the 'action' field.",
+    ).toMatch(/TryGetProperty\(\s*"action"/);
+    expect(
+      handler,
+      "backend claim handler must read the 'type' field — reading only 'action' (the #134 bug) " +
+      'drops every real Pung/Chow/Kong/Hu claim.',
+    ).toMatch(/TryGetProperty\(\s*"type"/);
+    expect(handler, "backend must branch on action == 'claim'.").toMatch(/"claim"/);
+    expect(handler, "backend must branch on action == 'pass'.").toMatch(/"pass"/);
   });
 });
