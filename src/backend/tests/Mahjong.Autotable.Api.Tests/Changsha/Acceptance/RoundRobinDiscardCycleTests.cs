@@ -4,6 +4,7 @@ using System.Text.Json;
 using Mahjong.Autotable.Api.Autotable;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Runtime;
+using Mahjong.Autotable.Api.Tests.Changsha._TestHarness;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -418,6 +419,14 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
         {
             new object[] { "pickup", "take", new { seatIndex = 0, count } }
         });
+
+        // #142: seat 0 (human dealer) took via WS above; the bot seats' pickups are
+        // normally auto-scheduled by the runtime on a Task.Delay chain that STARVES
+        // under loaded full-suite/SqlServer CI, wedging the deal at this pickup round
+        // (0 discards). Deterministically drive the bot takes via the same production
+        // pickup API so the round advances on observable progress, not the thread pool.
+        await ManualDealPickupDriver.DriveBotPickupsToPhaseAsync(
+            runtime, runtimeGameId, untilPhase, humanSeat: 0);
 
         var advanced = await WaitForAsync(() =>
         {
