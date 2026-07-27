@@ -15,6 +15,10 @@ import {
 } from './profile';
 import { formatStats, formatStatsDelta } from './stats';
 import { showEl, hideEl, setElHidden } from './dom-utils';
+import {
+  buildFreshGameUrl,
+  readConcreteGameId,
+} from './session-url';
 
 
 const TITLE_DISCONNECTED = 'Autotable';
@@ -30,12 +34,6 @@ const RECONNECT_MAX_ATTEMPTS = RECONNECT_DELAYS_MS.length;
 
 // Lifetime of the green "reconnected" flash before the banner self-hides.
 const RECONNECT_OK_FLASH_MS = 2000;
-
-// Phase I Wave 3 — Default game routing key.  Mirrors
-// AutotableWsEndpoint.DefaultGameId on the backend; used when the URL
-// carries no ?gameId= and the user hasn't typed anything into the lobby
-// input, so a bare URL keeps the legacy single-game behaviour.
-const DEFAULT_GAME_ID = 'changsha-default';
 
 // Phase I Wave 3 — Game ID validation.  Must match the HTML pattern attribute
 // on #lobby-gameId so HTML5 form validation and the JS gate agree.  ≤64 chars
@@ -337,16 +335,16 @@ export class ClientUi {
     return frag;
   }
 
-  // Phase I Wave 3 — Read ?gameId= from the URL.  Falls back to the
-  // backend default ("changsha-default") when the param is missing or
-  // fails validation, so a hand-typed URL with garbage doesn't poison
-  // the input prefill.
+  // #153 (Ferro) — Read a concrete ?gameId= from the URL for the input
+  // prefill / no-input fallback.  Returns '' when the URL carries no valid
+  // gameId so the field is left BLANK instead of pre-seeding the shared
+  // legacy `changsha-default` room.  A blank target funnels the connect
+  // path into an explicit fresh "New Game" (see connect()), which is what
+  // makes the default navigation honest — the previous `changsha-default`
+  // fallback silently JOINed one long-lived room and inherited its stale
+  // seat/turn/deal state (Hudson #153).
   private readInitialGameId(): string {
-    const q = new URLSearchParams(window.location.search);
-    const raw = q.get('gameId');
-    if (raw === null) return DEFAULT_GAME_ID;
-    const { value } = validateGameId(raw);
-    return value ?? DEFAULT_GAME_ID;
+    return readConcreteGameId(window.location.search) ?? '';
   }
 
   private clearGameIdError(): void {
@@ -384,11 +382,20 @@ export class ClientUi {
   }
 
   // Phase I Wave 3 — Resolve the gameId to use for this connect attempt.
-  // Priority: live input value (if present + valid) > URL ?gameId= > default.
-  // Returns null when the input is present but invalid so the caller can
-  // surface the inline error and abort.
+  // Priority: live input value (if present + valid) > URL ?gameId= > blank.
+  // Returns null when the input holds an INVALID id so the caller can
+  // surface the inline error and abort.  Returns '' when there is no
+  // concrete target at all (blank field + no URL gameId): the caller then
+  // funnels into an explicit fresh "New Game" (#153) rather than joining
+  // the shared legacy `changsha-default` room.
   private resolveGameIdForConnect(): string | null {
     if (this.gameIdInput !== null) {
+      // #153 — a blank field is NOT an error on connect: it means "no
+      // explicit room", which the caller resolves to a fresh New Game.
+      if (this.gameIdInput.value.trim() === '') {
+        this.clearGameIdError();
+        return this.readInitialGameId();
+      }
       const { value, error } = validateGameId(this.gameIdInput.value);
       if (error !== null) {
         this.showGameIdError(error);
@@ -403,7 +410,7 @@ export class ClientUi {
         return value;
       }
     }
-    // No input element on the page (legacy callers) — fall back to URL > default.
+    // No input element on the page (legacy callers) — fall back to URL > blank.
     return this.readInitialGameId();
   }
 
@@ -910,6 +917,29 @@ export class ClientUi {
     // game).  Validation failures show inline and abort the connect.
     const gameId = this.resolveGameIdForConnect();
     if (gameId === null) {
+      return;
+    }
+
+    // #153 (Ferro) — New Game funnel.  A blank connect target ('') means the
+    // navigation carries no concrete gameId (bare `/` or `?variant=changsha`
+    // with the field left empty).  Rather than silently JOINing the shared
+    // legacy `changsha-default` room — which inherits its stale seat/turn/deal
+    // state (Hudson #153) and connects with dealMode/botCount absent (runtime
+    // runs Manual while the lobby UI implies Auto) — redirect to an explicit,
+    // honest fresh-game URL: a minted non-colliding gameId plus the same
+    // default config the lobby's Apply & Start emits (variant / dealMode=auto
+    // / botCount=3 / botDifficulty / handCount).  The reload re-reads this one
+    // consistent source of truth for BOTH the on-screen config display and the
+    // WS handshake, and start()'s `getUrlState() !== null` guard then
+    // auto-connects into the new isolated game.
+    //
+    // A concrete gameId already on the URL (deliberate reload / reconnect /
+    // shared-room join) never reaches this branch, so creator-wins semantics
+    // and reconnect are preserved.
+    if (gameId === '') {
+      window.location.replace(
+        buildFreshGameUrl(window.location.pathname, window.location.search),
+      );
       return;
     }
     this.setUrlState(gameId);
