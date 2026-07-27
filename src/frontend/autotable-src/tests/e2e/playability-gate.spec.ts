@@ -26,7 +26,7 @@
 // =============================================================================
 
 import { test, expect } from '@playwright/test';
-import type { Page, APIRequestContext, ConsoleMessage } from '@playwright/test';
+import type { Page, APIRequestContext, ConsoleMessage, TestInfo } from '@playwright/test';
 import {
   makeConfig,
   buildGameUrl,
@@ -70,6 +70,18 @@ const STALL_MS = 45_000;
 
 function resolveBase(baseURL: string | undefined): string {
   return baseURL ?? process.env.E2E_BASE_URL ?? 'http://localhost:8080/autotable/';
+}
+
+// A server-side gameId that is UNIQUE per (project, worker, repeat). The full
+// `npm run e2e` suite runs BOTH the chromium and mobile-chrome projects on a
+// single worker; chromium runs first and plays its game to GameComplete, so a
+// gameId that omitted the project would make the mobile-chrome run silently
+// JOIN that finished game (observing only a single terminal dealer →
+// dealersSeen==1). Scoping by project+worker+repeat gives every run its own
+// fresh server game so the projects can never collide.
+function scopedGameId(base: string, testInfo: TestInfo): string {
+  const run = process.env.PLAYABILITY_RUN_ID ?? 'local';
+  return `${base}-${run}-${testInfo.project.name}-w${testInfo.workerIndex}-r${testInfo.repeatEachIndex}`;
 }
 
 // ── Error surveillance ──────────────────────────────────────────────────────
@@ -427,19 +439,32 @@ test.describe('@playability-gate P0 real-UI playability (autotable integration a
     request,
     baseURL,
   }, testInfo) => {
-    test.setTimeout(8 * 60_000);
+    // Scope the HEADLINE 4-hand full human playthrough to the desktop project.
+    // It is the heaviest real-time gate (~5-8 min of live play) and is NOT
+    // validated on the mobile-chrome device-emulation; the autotable web bundle
+    // is desktop-first (mouse-drag WebGL), with mobile served by the separate
+    // Capacitor wrapper. Desktop coverage is canonical (this project + the
+    // dedicated `playability-gate` CI job); mobile playability is still
+    // exercised by the hc1 human gate + the hc8/hc16 config gates below, which
+    // DO run on mobile-chrome. Running this heavy gate twice on one worker also
+    // blew the full suite's real-time budget.
+    test.skip(
+      testInfo.project.name === 'mobile-chrome',
+      'headline 4-hand human playthrough is desktop-canonical; mobile covered by hc1/hc8/hc16',
+    );
+    test.setTimeout(12 * 60_000);
     const rec = new Recorder();
     const seed = 4100 + testInfo.repeatEachIndex;
     const cfg = makeConfig({
       handCount: 4,
       seed,
-      gameId: `playability-4hand-${process.env.PLAYABILITY_RUN_ID ?? 'local'}-r${testInfo.repeatEachIndex}`,
+      gameId: scopedGameId('playability-4hand', testInfo),
     });
 
     const run = await playRealGame(page, request, resolveBase(baseURL), cfg, rec, {
       humanPlays: true,
       toggleViews: true,
-      budgetMs: 6 * 60_000,
+      budgetMs: 9 * 60_000,
       label: `4hand-r${testInfo.repeatEachIndex}`,
     });
     rec.log('gate.summary', run.gcComplete && run.modalVisible, run);
@@ -504,7 +529,7 @@ test.describe('@playability-gate P0 real-UI playability (autotable integration a
     const cfg = makeConfig({
       handCount: 1,
       seed: 12345 + testInfo.repeatEachIndex,
-      gameId: `playability-hc1-${process.env.PLAYABILITY_RUN_ID ?? 'local'}-r${testInfo.repeatEachIndex}`,
+      gameId: scopedGameId('playability-hc1', testInfo),
     });
     const run = await playRealGame(page, request, resolveBase(baseURL), cfg, rec, {
       humanPlays: true,
@@ -536,7 +561,7 @@ test.describe('@playability-gate P0 real-UI playability (autotable integration a
       page,
       request,
       baseURL,
-    }) => {
+    }, testInfo) => {
       test.setTimeout((hc * 45 + 120) * 1000);
       const rec = new Recorder();
       const cfg = makeConfig({
@@ -546,7 +571,7 @@ test.describe('@playability-gate P0 real-UI playability (autotable integration a
         dealMode: 'auto',
         botDifficulty: 'Medium',
         seed: 900 + hc,
-        gameId: `playability-hc${hc}-${process.env.PLAYABILITY_RUN_ID ?? 'local'}`,
+        gameId: scopedGameId(`playability-hc${hc}`, testInfo),
       });
       const run = await playRealGame(page, request, resolveBase(baseURL), cfg, rec, {
         humanPlays: false,
