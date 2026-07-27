@@ -405,6 +405,10 @@ body.variant-riichi   .changsha-only { display: none !important; }
     top: 12px;
     right: 12px;
     z-index: 50;
+    max-width: 116px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     background-color: rgba(0, 0, 0, 0.65);
     color: #ffd75e;
     padding: 4px 12px;
@@ -571,7 +575,11 @@ body.my-turn-discard #main canvas {
 #lobby-toggle {
     position: absolute;
     top: 12px;
-    left: 12px;
+    /* #152 — moved out of the top-left where it overlapped the legacy
+       #sidebar / #deal control panel.  It is an app-chrome affordance, so it
+       now lives in the deterministic top-right toolbar alongside the gear
+       icons and the install button (see the `#152 top-bar layout` block). */
+    right: 228px;
     z-index: 80;
     background-color: rgba(0, 0, 0, 0.7);
     color: #ffd75e;
@@ -1279,7 +1287,7 @@ body.spectating #roll-dice { display: none !important; }
 #settings-toggle {
     position: absolute;
     top: 12px;
-    right: 158px;
+    right: 184px;
     z-index: 51;
     background-color: rgba(0, 0, 0, 0.65);
     color: #ffd75e;
@@ -2234,7 +2242,7 @@ body.spectating #roll-dice { display: none !important; }
 #settings-button {
     position: fixed;
     top: 12px;
-    right: 56px;
+    right: 136px;
     z-index: 1100;
     width: 40px;
     height: 40px;
@@ -2722,7 +2730,10 @@ body.spectating #roll-dice { display: none !important; }
 
 @media (max-width: 720px) {
     .settings-drawer-v2 { width: 100vw; }
-    #settings-button { right: 52px; top: 8px; }
+    /* #152 — keep the square gear aligned with the top-bar cluster
+       (variant-badge right:12 / settings-toggle right:184) instead of the old
+       right:52 which overlapped the variant badge. */
+    #settings-button { right: 136px; top: 12px; }
     .profile-page { padding: 16px 8px; }
 }
 

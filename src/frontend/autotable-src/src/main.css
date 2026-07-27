@@ -1037,8 +1037,15 @@
 .pwa-install-button {
     position: fixed;
     top: 12px;
-    right: 12px;
+    /* #152 — the install affordance is the widest top-bar item; anchor it to
+       the LEFT of the gear/badge cluster (variant-badge right:12, settings
+       right:136/184, lobby-toggle right:228) so nothing overlaps. */
+    right: 327px;
     z-index: 5500;
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     border-radius: 999px;
     padding: 6px 14px;
     font-size: 0.85rem;
@@ -1046,6 +1053,16 @@
 }
 @media (max-width: 600px) {
     .pwa-install-button { font-size: 0.78rem; padding: 5px 10px; }
+}
+/* #152 — on narrow viewports the top bar has no room for the wide install
+   pill; drop it to the bottom-right where it clears every top-bar control. */
+@media (max-width: 768px) {
+    .pwa-install-button {
+        top: auto;
+        right: 12px;
+        bottom: 12px;
+        max-width: min(70vw, 240px);
+    }
 }
 
 /* ── Phase K Wave 6 — Spectator livestream viewer ───────────────── */
