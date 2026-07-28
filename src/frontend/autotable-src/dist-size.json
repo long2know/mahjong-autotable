@@ -469,9 +469,9 @@
     {
       "wave": "K22",
       "bundler": "vite",
-      "recordedAt": "2026-07-27T20:41:17.115Z",
+      "recordedAt": "2026-07-28T01:11:13.898Z",
       "chunks": {
-        "autotable-src-eager": 108956,
+        "autotable-src-eager": 109796,
         "game-bootstrap": 174693,
         "scene-shell": 2572,
         "scene-effects": 62348,
@@ -480,12 +480,12 @@
         "gltf-loader": 44223,
         "stats-module": 3227,
         "commentary-panel": 8269,
-        "spectator-livestream": 5332,
+        "spectator-livestream": 5327,
         "hls": 286514,
         "tournaments": 41526,
-        "chat": 12340,
+        "chat": 12346,
         "voice": 9032,
-        "audit": 7562,
+        "audit": 7563,
         "history": 12441,
         "tour": 10454,
         "bracket-listing": 6544,
@@ -497,18 +497,18 @@
         "sentry-shim": 2307,
         "sentry": 342614,
         "leaderboard": 11369,
-        "settings-drawer": 18182,
-        "profile-page": 9560,
+        "settings-drawer": 18184,
+        "profile-page": 9561,
         "admin-panel-core": 31164,
         "admin-panel-tournaments": 32579,
         "pwa": 2320,
         "reconnect": 3067,
         "spectator-follow": 3602,
         "matchmaking": 2681,
-        "rule-presets": 10009,
+        "rule-presets": 10010,
         "auth": 21799,
-        "identity-onboarding": 3293,
-        "identity-avatar-migration": 2329
+        "identity-onboarding": 3294,
+        "identity-avatar-migration": 2335
       }
     }
   ]

@@ -34,6 +34,10 @@
 //     + avatarColor over the WS-broadcast nick / djb2 hue fallback.
 
 import type { Client } from './client';
+// #153 (Ferro) — shared default-game URL helpers so the lobby's New Game
+// surface gate and client-ui.ts's connect funnel agree on what counts as a
+// "concrete game" (deliberate reload/reconnect) vs a fresh New Game.
+import { hasConcreteGameId, mintFreshGameId as mintFreshGameIdShared } from './session-url';
 // Phase K Wave 19 — Hicks (bundle-audit §3.4).  `matchmaking` (~7.7 KB
 // minified) is now lazy-loaded behind `loadMatchmaking()` /
 // `schedulePublicGamesPaneLazyMount()` / `scheduleMakePublicToggleLazy
@@ -438,26 +442,12 @@ function resolveInitialState(): LobbyState {
 
 // Hicks 2026-05-26 — first-play P0 unblock.  Mints `changsha-<8 hex
 // chars>` so each lobby-initiated session lands in its own isolated
-// game.  Prefers `crypto.randomUUID()` (everywhere in supported
-// browsers); falls back to `crypto.getRandomValues` and finally to
-// `Math.random()` so the helper never throws on legacy / non-secure
-// contexts.  See `buildUrl` for the call-site rationale.
+// game.  #153 (Ferro) — the implementation now lives in the shared
+// `session-url.ts` so the lobby's Apply & Start and client-ui.ts's bare
+// Connect funnel mint identical id shapes; this thin alias preserves the
+// existing call sites in `buildUrl`.
 function mintFreshGameId(): string {
-  let hex = '';
-  try {
-    const c = (window as { crypto?: Crypto }).crypto;
-    if (c !== undefined && typeof c.randomUUID === 'function') {
-      hex = c.randomUUID().replace(/-/g, '').slice(0, 8);
-    } else if (c !== undefined && typeof c.getRandomValues === 'function') {
-      const buf = new Uint8Array(4);
-      c.getRandomValues(buf);
-      hex = Array.from(buf, b => b.toString(16).padStart(2, '0')).join('');
-    }
-  } catch { /* fall through to Math.random fallback */ }
-  if (hex === '') {
-    hex = Math.floor(Math.random() * 0x100000000).toString(16).padStart(8, '0');
-  }
-  return `changsha-${hex}`;
+  return mintFreshGameIdShared();
 }
 
 function writeLocalStorageDefaults(state: LobbyState): void {
@@ -535,12 +525,27 @@ function buildUrl(state: LobbyState): string {
   return window.location.pathname + '?' + p.toString();
 }
 
-// First-load policy: show the lobby when the user lands on a bare URL
-// (no query params at all).  Once the user has applied a setting the URL
-// always carries params, so subsequent loads go straight into the game
-// and the lobby is only available via the toggle button.
+// First-load policy: show the lobby (the "New Game" surface) whenever the
+// navigation does NOT target a concrete game.
+//
+// #153 (Ferro) — widened from `search === ''` to also cover the bare-default
+// case where the URL carries some params (e.g. `?variant=changsha`) but NO
+// concrete `?gameId=`.  Previously such a URL suppressed the lobby and dumped
+// the user onto the game shell whose Connect button silently JOINed the shared
+// legacy `changsha-default` room (stale seat/turn state; dealMode/botCount
+// absent).  Funnelling it into the lobby makes "New Game" explicit: Apply &
+// Start mints a fresh, isolated gameId with the full honest config.
+//
+// A concrete `?gameId=` (deliberate reload / reconnect / shared-room join) or
+// an explicit `?seat=` deep-link (spectator / seat-take flows that connect
+// directly without the lobby) keeps the game shell — reload/reconnect and the
+// existing deep-link contracts are preserved.
 function shouldShowOnLoad(): boolean {
-  return window.location.search === '';
+  if (window.location.search === '') return true;
+  const q = new URLSearchParams(window.location.search);
+  if (hasConcreteGameId(window.location.search)) return false;
+  if (q.has('seat')) return false;
+  return true;
 }
 
 // Hicks playability iter2 — Quick Match continuity flag.  The Quick Match
