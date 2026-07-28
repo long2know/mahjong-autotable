@@ -690,9 +690,16 @@ public sealed class AutotableConnectionManager : IDisposable
             // SetBotStrategyAsync call when a non-empty difficulty is
             // supplied; the runtime default (Medium) covers callers that
             // never specified one.
+            //
+            // #153 — this is the ONLY caller that passes resettingConnection, so the stale
+            // default-game guard fires exclusively for a human sitting down to play. A newcomer
+            // meeting an abandoned, already-started `changsha-default` gets a fresh table instead of
+            // inheriting its frozen seat/turn state; a deliberate reconnect and live co-play games
+            // are untouched (see EnsureRuntimeBoundAsync / ShouldRetireStaleDefault).
             var runtimeGameId = await EnsureRuntimeBoundAsync(
                 connection.GameId!, connection.PlayerId, ct,
-                botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands);
+                botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands,
+                resettingConnection: connection);
             // Phase J Wave 6 — pass the persistent player id alongside the
             // per-connection transport id (the AutotableConnection.Id GUID
             // serves as the connection-level routing key inside the runtime).
@@ -1118,9 +1125,10 @@ public sealed class AutotableConnectionManager : IDisposable
     /// public via the matchmaking service (closes Vasquez's Wave-5 blind
     /// spot #4 where autotable games carried a null host id).
     /// </summary>
-    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct, string? botDifficulty = null, int? seed = null, int? maxHands = null)
+    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct, string? botDifficulty = null, int? seed = null, int? maxHands = null, AutotableConnection? resettingConnection = null)
     {
-        if (_runtimeBinding.TryGetValue(relayGameId, out var existing))
+        if (_runtimeBinding.TryGetValue(relayGameId, out var existing)
+            && !(resettingConnection is not null && string.Equals(relayGameId, AutotableWsEndpoint.DefaultGameId, StringComparison.Ordinal)))
         {
             // #121 (Lead decision) — first-creator-wins: a re-bind (late joiner / reconnect) must
             // NOT silently mutate the bound game's config. The bot difficulty (like seed/handCount)
@@ -1135,7 +1143,40 @@ public sealed class AutotableConnectionManager : IDisposable
         {
             if (_runtimeBinding.TryGetValue(relayGameId, out existing))
             {
-                return existing;
+                // #153 — stale default-game guard. The persistent DefaultGameId ("changsha-default")
+                // is the fallback binding for bare `?variant=changsha` connections that carry no
+                // explicit gameId. Once created it is reused forever (and rehydrated across a backend
+                // restart), so a fresh browser that opens the bare URL after a previous match was
+                // dealt / stalled / completed silently JOINs that leftover state — seat 0 still owned
+                // by a departed player, the hand frozen mid-ceremony, zero progression (Hudson's
+                // #153 diagnosis). When the caller is a seat-seeking newcomer (resettingConnection
+                // set) we retire the stale default game and mint a fresh one so the newcomer gets a
+                // clean, playable table. Preserved verbatim: a DELIBERATE reconnect (same persistent
+                // playerId still owns a seat) reattaches; a still-joinable (Seating) or live game with
+                // other connected players is kept; and every non-default (explicit `?gameId=`) game
+                // keeps first-creator-wins + multi-human join semantics untouched.
+                if (resettingConnection is not null
+                    && string.Equals(relayGameId, AutotableWsEndpoint.DefaultGameId, StringComparison.Ordinal)
+                    && ShouldRetireStaleDefault(existing, hostPlayerId, resettingConnection))
+                {
+                    _runtimeBinding.TryRemove(relayGameId, out _);
+                    _relayBinding.TryRemove(existing, out _);
+                    try
+                    {
+                        await _runtime.RemoveGameAsync(existing, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex,
+                            "Retiring stale default runtime game {RuntimeGameId} failed; minting a fresh {DefaultGameId} anyway.",
+                            existing, relayGameId);
+                    }
+                    // fall through to create a fresh default game below
+                }
+                else
+                {
+                    return existing;
+                }
             }
             // botSeatIndexes = empty so the runtime starts with all-human seats;
             // we'll convert seats to bots on demand via FillEmptySeatsWithBotsAsync.
@@ -1170,6 +1211,39 @@ public sealed class AutotableConnectionManager : IDisposable
         {
             _bindingLock.Release();
         }
+    }
+
+    /// <summary>
+    /// #153 — decides whether the currently-bound <see cref="DefaultGameId"/> runtime game is stale
+    /// and must be retired so a seat-seeking newcomer gets a fresh, playable table instead of silently
+    /// inheriting leftover seat/turn state. Returns <c>true</c> only when ALL hold:
+    /// <list type="bullet">
+    ///   <item>the newcomer has a persistent identity (a seat-take, not a host-less spectator bind);</item>
+    ///   <item>the existing default game has advanced past <see cref="ChangshaPhase.Seating"/> (it has
+    ///   already dealt / is mid-hand / stalled / terminal — a Seating-phase game is still freshly
+    ///   joinable and is never retired);</item>
+    ///   <item>the newcomer is NOT already a seated participant — a deliberate reconnect (same
+    ///   <see cref="ChangshaSeatState.PlayerId"/>) must reattach, never reset;</item>
+    ///   <item>no OTHER live connection is still attached to the default game — a game with active
+    ///   co-players is live, not abandoned, and is never torn out from under them.</item>
+    /// </list>
+    /// </summary>
+    private bool ShouldRetireStaleDefault(string runtimeGameId, string? hostPlayerId, AutotableConnection resettingConnection)
+    {
+        // Only a seat-seeking human (durable identity present) may trigger a reset.
+        if (string.IsNullOrEmpty(hostPlayerId)) return false;
+        // Never retire a game that other clients are still actively connected to.
+        if (ConnectionsInGame(AutotableWsEndpoint.DefaultGameId, except: resettingConnection.Id) > 0) return false;
+        if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return false;
+        // A game still in Seating is freshly joinable — not stale.
+        if (snap.Phase == ChangshaPhase.Seating) return false;
+        // Deliberate reconnect: the returning player already owns a seat → keep the game.
+        if (_runtime.TryGetSeatForPlayer(runtimeGameId, hostPlayerId) is not null) return false;
+        // Newcomer meeting an already-started / stalled / terminal, abandoned default game → retire it.
+        _logger.LogInformation(
+            "Retiring stale default game (runtimeGameId={RuntimeGameId}, phase={Phase}) for new player {PlayerId}; minting a fresh {DefaultGameId}.",
+            runtimeGameId, snap.Phase, hostPlayerId, AutotableWsEndpoint.DefaultGameId);
+        return true;
     }
 
     private async Task HandleDisconnectAsync(AutotableConnection connection)

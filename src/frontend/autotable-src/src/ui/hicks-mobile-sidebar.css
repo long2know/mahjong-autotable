@@ -130,25 +130,52 @@
         margin-right: 2px !important;
     }
     /* Lobby toggle (☰) is the always-on entry point to the variant
-     * switcher; keep it 44 px tall but anchor it at safe-area-top. */
+     * switcher; keep it 44 px tall but anchor it at safe-area-top.
+     * #152 — reset the desktop `right:228` anchor (top-right toolbar) so the
+     * mobile pill sits top-LEFT, and drop the text label so it stays a
+     * compact icon that leaves room for the right-hand chrome cluster. */
     #lobby-toggle {
         top: max(8px, env(safe-area-inset-top, 8px));
         left: max(8px, env(safe-area-inset-left, 8px));
+        right: auto;
         min-height: 44px;
         padding: 8px 12px;
     }
+    #lobby-toggle .lobby-toggle-label {
+        display: none;
+    }
 
-    /* Move-log toggle stays anchored top-right and respects safe-area. */
+    /* #152 — deterministic mobile top-right chrome cluster (single row).
+     * From the right edge: move-log hamburger (8), square gear (58), round
+     * gear (102), variant badge (146, capped). None overlap each other, the
+     * top-left lobby pill, or the dice HUD (which drops to row 2 below). */
     #move-log-toggle {
         top: max(8px, env(safe-area-inset-top, 8px));
         right: max(8px, env(safe-area-inset-right, 8px));
     }
-
-    /* Variant badge — when the sidebar collapses, the badge gets
-     * shifted further right by the safe-area rule above; clamp it so
-     * it never overlaps the move-log toggle. */
+    #settings-button {
+        top: max(8px, env(safe-area-inset-top, 8px));
+        right: 58px;
+    }
+    #settings-toggle {
+        top: max(8px, env(safe-area-inset-top, 8px));
+        right: 102px;
+    }
     #variant-badge {
-        right: 64px;
+        top: max(8px, env(safe-area-inset-top, 8px));
+        right: 146px;
+        max-width: 96px;
+    }
+
+    /* Dice HUD drops to a second row on phones so it never collides with the
+     * top-row chrome cluster or the top-left lobby pill. */
+    #dice-hud {
+        top: 56px;
+        font-size: 0.92rem;
+        max-width: 70vw;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     /* Pickup HUD: stack its label + take button vertically so the text
