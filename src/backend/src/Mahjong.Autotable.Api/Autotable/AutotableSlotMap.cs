@@ -138,4 +138,51 @@ public static class AutotableSlotMap
             }
         }
     }
+
+    /// <summary>
+    /// Maps a <b>perimeter ordinal</b> in [0, 108) to a stable physical wall
+    /// slot, walking <b>seat-major</b> (seat 0's whole wall, then seat 1, 2, 3),
+    /// columns ascending, layer 0 (bottom) then layer 1 (top). Consecutive
+    /// ordinals are physically adjacent, so a contiguous draw-order run occupies
+    /// a contiguous physical arc — the invariant that makes the live wall
+    /// deplete from the break point around the perimeter instead of scattering
+    /// evenly across all four seats (issue #152).
+    ///
+    /// <para>Per-seat capacity is <c>WallStackCount(seat) * 2</c>
+    /// (28/28/26/26), so the returned <c>col</c> is always within
+    /// <c>[0, WallStackCount(seat) - 1]</c> — never an over-limit emit.</para>
+    /// </summary>
+    public static (int Seat, int Col, int Layer) WallOrdinalToSlot(int ordinal)
+    {
+        var o = ((ordinal % TotalTiles) + TotalTiles) % TotalTiles;
+        for (var seat = 0; seat < 4; seat++)
+        {
+            var capacity = WallTileCapacity(seat);
+            if (o < capacity) return (seat, o / 2, o % 2);
+            o -= capacity;
+        }
+        // Unreachable: o is reduced modulo TotalTiles and the seat capacities sum to TotalTiles.
+        throw new ArgumentOutOfRangeException(nameof(ordinal), ordinal, "ordinal must map within the 108-slot perimeter.");
+    }
+
+    /// <summary>
+    /// Perimeter ordinal of the dice break point (the first tile drawn), anchored
+    /// within the marked break seat's physical wall so the depletion visibly
+    /// starts where the break marker sits.
+    ///
+    /// <para>The stack index is clamped to the seat's render capacity: the engine's
+    /// <see cref="Mahjong.Autotable.Api.Changsha.BreakPointService"/> models wall
+    /// sizes as dealer-relative 14/13/14/13 while the render is absolute
+    /// 14/14/13/13, so a raw stack index can exceed a 13-stack render wall for
+    /// dealer≠0. Physical wall dimensions are a rendering concern (changsha-spec
+    /// §2.3), so clamping the anchor is correct and keeps depletion contiguous.</para>
+    /// </summary>
+    public static int WallBreakOrdinal(int wallSeatIndex, int stackIndex)
+    {
+        var seat = ((wallSeatIndex % 4) + 4) % 4;
+        var start = 0;
+        for (var s = 0; s < seat; s++) start += WallTileCapacity(s);
+        var stack = Math.Clamp(stackIndex, 0, WallStackCount(seat) - 1);
+        return start + stack * 2;
+    }
 }
