@@ -127,9 +127,12 @@ public sealed class GameCompleteEmissionTests
         // Capture the gameComplete entry the WS path would emit: translate the exact terminal
         // snapshot pushed by StateChanged (the same call AutotableWsEndpoint.OnStateChanged makes).
         var emitted = new TaskCompletionSource<GameCompleteEntry>(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnChanged(string gid)
+        void OnChanged(string gid, ChangshaGameState s)
         {
-            if (!runtime.TryGetSnapshot(gid, out var s) || s is null || !s.IsGameComplete) return;
+            // #137 — StateChanged now hands us the snapshot the runtime froze at the
+            // mutation instant (identical to what AutotableWsEndpoint.OnStateChanged
+            // translates), so we translate THAT rather than re-reading the live state.
+            if (!s.IsGameComplete) return;
             var entries = ChangshaToAutotableTranslator.Translate(s, viewerSeat: null);
             if (entries.FirstOrDefault(e => e.Kind == ChangshaCollectionKinds.GameComplete)?.Value is GameCompleteEntry gc)
                 emitted.TrySetResult(gc);

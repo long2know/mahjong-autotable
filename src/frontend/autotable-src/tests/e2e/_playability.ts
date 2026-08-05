@@ -677,6 +677,60 @@ export async function readDiscardCount(page: Page): Promise<number> {
   });
 }
 
+export interface BotActivityView {
+  mySeat: number | null;
+  /** discard-group tiles owned by a seat OTHER than the local seat. */
+  botDiscards: number;
+  /** meld-group tiles owned by a seat OTHER than the local seat (a claim). */
+  botMelds: number;
+  /** authoritative hand end — result / gameComplete singleton is present. */
+  handEnded: boolean;
+}
+
+/**
+ * OBSERVE — authoritative "a NON-LOCAL seat acted" snapshot, read from the same
+ * client collections the shipped bundle renders. It is the bounded liveness
+ * signal for "a bot responded / the turn advanced past the human", covering
+ * every legitimate bot outcome:
+ *   • a bot's own discard  → a `discard` slot owned by a non-local seat;
+ *   • a bot claim (Pung/Chow/Kong) → a `meld` slot owned by a non-local seat.
+ *     A claim moves the claimed tile OUT of the shared discard pile, so a raw
+ *     discard-pile *total* is non-monotonic and cannot prove liveness — this is
+ *     the exact seam that made `readDiscardCount() > postHumanDiscard` flaky;
+ *   • the hand ending → the `result` / `gameComplete` singleton is present.
+ * Read-only: emits nothing and advances no gameplay, so it is not a backdoor.
+ */
+export async function readBotActivity(page: Page): Promise<BotActivityView> {
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const g = (window as any).game;
+    const w = g?.world;
+    const c = g?.client;
+    const mySeat =
+      typeof c?.seat === 'number' ? c.seat : typeof w?.seat === 'number' ? w.seat : null;
+    let botDiscards = 0;
+    let botMelds = 0;
+    if (w?.things) {
+      for (const t of w.things.values()) {
+        const grp = t?.slot?.group;
+        const st = t?.slot?.seat;
+        if (typeof st !== 'number' || st === mySeat) continue;
+        if (grp === 'discard') botDiscards++;
+        else if (grp === 'meld') botMelds++;
+      }
+    }
+    let handEnded = false;
+    try {
+      const r = c?.result?.get('current');
+      const gc = c?.gameComplete?.get('current');
+      handEnded = (r !== null && r !== undefined) || (gc !== null && gc !== undefined);
+    } catch {
+      /* collections not ready — treat as no hand-end */
+    }
+    return { mySeat, botDiscards, botMelds, handEnded };
+  });
+}
+
 export interface TileScreenPos {
   ok: boolean;
   reason?: string;
@@ -934,22 +988,47 @@ export async function discardByPointer(page: Page): Promise<DiscardOutcome> {
 /**
  * ADVANCE — respond to a claim window with a real button click. Prefers a real
  * Hu (win) when offered, otherwise passes. Returns which button was clicked.
+ *
+ * #137: click the ON-TOP claim overlay (`.ferro-claim-*`) — the primary claim UI
+ * a real player sees and clicks — rather than the side-panel `#claim-*` buttons.
+ * The 720px-wide bottom-center overlay (z-index 1080, pointer-events:auto while a
+ * window is open) overlaps the side-panel controls, so a click aimed at the
+ * occluded `#claim-pass` / `#claim-hu` is intermittently hit-tested onto an
+ * overlay MELD badge and commits an accidental Pung/Chow — which then floods the
+ * page with uncaught errors and wedges the hand. The overlay's Hu badge and Pass
+ * button are the top layer (Pass sits in its own grid column, never under a meld
+ * badge), so they receive the click unambiguously. Side-panel is a defensive
+ * fallback only (e.g. if the overlay isn't mounted).
  */
 export async function claimByClick(page: Page): Promise<string | null> {
   const claim = await readClaimWindow(page);
   if (!claim.open) return null;
   const wantHu = claim.available.includes('Hu');
-  const selector = wantHu ? '#claim-hu' : '#claim-pass';
-  const btn = page.locator(selector);
-  if (await btn.first().isEnabled().catch(() => false)) {
-    await btn.first().click({ timeout: 3000 }).catch(() => undefined);
-    await page.waitForTimeout(400);
-    return wantHu ? 'Hu' : 'Pass';
+  if (wantHu) {
+    // Overlay Hu badge (lit + enabled only when Hu is available), else side-panel.
+    const huBadge = page.locator('.ferro-claim-badge-hu');
+    if (await huBadge.first().isEnabled().catch(() => false)) {
+      await huBadge.first().click({ timeout: 3000 }).catch(() => undefined);
+      await page.waitForTimeout(400);
+      return 'Hu';
+    }
+    const sideHu = page.locator('#claim-hu');
+    if (await sideHu.first().isEnabled().catch(() => false)) {
+      await sideHu.first().click({ timeout: 3000 }).catch(() => undefined);
+      await page.waitForTimeout(400);
+      return 'Hu';
+    }
   }
-  // If Hu wasn't clickable, fall back to a real Pass so play continues.
-  const pass = page.locator('#claim-pass');
-  if (await pass.first().isEnabled().catch(() => false)) {
-    await pass.first().click({ timeout: 3000 }).catch(() => undefined);
+  // Decline via the overlay Pass button (its own column — never under a meld badge).
+  const overlayPass = page.locator('.ferro-claim-pass');
+  if (await overlayPass.first().isVisible().catch(() => false)) {
+    await overlayPass.first().click({ timeout: 3000 }).catch(() => undefined);
+    await page.waitForTimeout(400);
+    return 'Pass';
+  }
+  const sidePass = page.locator('#claim-pass');
+  if (await sidePass.first().isEnabled().catch(() => false)) {
+    await sidePass.first().click({ timeout: 3000 }).catch(() => undefined);
     await page.waitForTimeout(400);
     return 'Pass';
   }

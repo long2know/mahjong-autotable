@@ -13,6 +13,7 @@ import {
 } from "./types";
 import { Slot } from "./slot";
 import { Thing } from "./thing";
+import { hasExtraDiscardTile, HandSlotView } from "./hand-accounting";
 // Hicks 2026-05-26 — first-play P1 unblock (B4 / Vasquez P0-H).  When
 // a click-to-discard is silently rejected we surface a one-line toast
 // so the user knows why the click didn't fire instead of assuming the
@@ -560,33 +561,59 @@ export class World {
   }
 
   /**
-   * Hicks playability iter2 — heuristic: this seat has an extra tile in
-   * hand (more than 13 concealed) AND no pickup affordance is pending,
-   * so the player must discard to continue the turn.  Used to gate the
-   * click-to-discard intercept in {@link onDragStart} so a casual drag
-   * of a tile in-place between draws doesn't accidentally discard.
+   * Hicks playability iter2 — heuristic: this seat holds an extra tile it
+   * must discard to continue its turn (and no pickup affordance is pending).
+   * Used to gate the click-to-discard intercept in {@link onDragStart} so a
+   * casual drag of a tile in-place between draws doesn't accidentally discard.
+   *
+   * #147 (Hicks) — the old test counted only `hand`-group (concealed) tiles
+   * and required `> 13`.  But Changsha routes every exposed/concealed meld
+   * (Pung / Chow / exposed·concealed·added Kong) into the separate `meld`
+   * slot group (`ChangshaToAutotableTranslator.BuildThings` →
+   * `AutotableSlotMap.MeldSlot`).  After a claim the seat holds only 11
+   * concealed tiles + a meld while the runtime has ALREADY handed it the turn
+   * (`ActiveSeat == self`, `Phase == AwaitingDiscard`); the concealed-only
+   * count read 11 → false → the sole real discard route (click-to-discard →
+   * {@link emitDiscard}) was refused and the hand hard-stalled.
+   *
+   * Correct mahjong hand-size accounting: a "rest" hand is 13 tiles =
+   * concealed + 3 per meld — each Kong's 4th physical tile is offset by its
+   * replacement draw, so EVERY meld (Pung, Chow, or any Kong) counts as 3
+   * toward the 13.  The seat owes a discard exactly when that total exceeds
+   * 13, which holds for a normal draw (14 + 0) AND every post-meld case
+   * (11 + 3, 8 + 6, …).  This reads the authoritative tile state the backend
+   * pushed; `TryHandleDiscardActionAsync` stays the authoritative validator,
+   * and the `> 13` bound means the intercept only fires on the seat's own
+   * turn (a rest hand totals exactly 13), never out of turn.
+   *
+   * Relay variants (four_player/three_player/bamboo/minefield) have no server
+   * rules engine and drive melds/discards by free drag, so the meld
+   * contribution is gated to server-authoritative Changsha — relay keeps the
+   * exact upstream concealed-only behaviour.
    */
   hasExtraHandTile(): boolean {
     if (this.seat === null) return false;
     if (this.isMyPickupTurn()) return false;
-    let count = 0;
+
+    // Delegate the tile accounting to the pure, dependency-free helper (see
+    // hand-accounting.ts) so every meld variant is covered by a deterministic
+    // contract test.  We hand it a lightweight slot view of each rendered
+    // tile; the helper filters by seat + slot ownership.
+    const entries: HandSlotView[] = [];
     for (const thing of this.things.values()) {
-      // Hicks 2026-05-29 — count only backend-authoritative hand tiles:
-      // skip orphans whose `.slot` still points at a hand slot that has
-      // since been re-bound to a backend tile, and skip the frontend-only
-      // `hand.extra@N` preview slot.  Without these guards the count is
-      // inflated by phantom local-deal residues and we'd intercept
-      // click-to-discard before the dealer has actually drawn the 14th
-      // tile.  See `emitDiscard` for the full mechanics.
-      if (thing.slot.group === 'hand'
-          && thing.slot.seat === this.seat
-          && thing.slot.thing === thing
-          && !thing.slot.name.startsWith('hand.extra@')) {
-        count++;
-        if (count > 13) return true;
-      }
+      const slot = thing.slot;
+      entries.push({
+        group: slot.group,
+        seat: slot.seat,
+        name: slot.name,
+        ownsSlot: slot.thing === thing,
+      });
     }
-    return false;
+    return hasExtraDiscardTile(
+      entries,
+      this.seat,
+      this.conditions.gameType === GameType.CHANGSHA,
+    );
   }
 
   /**
@@ -807,11 +834,27 @@ export class World {
     //    spin forever; a non-dealer seat simply times out after its 4th take.
     //    The 12s per-round timeout accommodates the bot pickup delay
     //    (BotPickupDelayMs default) × 3 bots + slack.
+    //
+    //    #137 (Bishop): the loop must NOT re-consume the affordance it just took.
+    //    After emitTakePickup the server needs a beat to advance the pickup cursor
+    //    off our seat (dealer's take → cursor rotates to seats 1..3 → back to us
+    //    for the next round). Until that authoritative advance lands, `this.pickup`
+    //    still shows the SAME seat-0 affordance we already took. A fixed sleep did
+    //    not close this race: if the stale seat-0 entry was still present when the
+    //    next iteration's predicate ran, the loop burned an iteration on a no-op
+    //    re-take (the server rejects the out-of-phase `take`), exhausting
+    //    MAX_DEAL_PICKUPS BEFORE reaching DealerExtra and stranding the dealer at
+    //    13 tiles (intermittent — timing dependent). The dealer walks a strictly
+    //    increasing sequence of DISTINCT ceremony phases, so we now wait for a
+    //    seat-0 affordance whose phase differs from the one we last took: the
+    //    stale entry can never satisfy it, and the next real round always does.
     const MAX_DEAL_PICKUPS = 5;
+    let lastTakenPhase: string | null = null;
     for (let round = 0; round < MAX_DEAL_PICKUPS; round++) {
       const myTurn = await this.waitForPickup(
         gen,
-        p => p !== null && p.seatIndex === seat && p.count > 0,
+        p => p !== null && p.seatIndex === seat && p.count > 0
+          && World.normalizePickupPhase(p.phase) !== lastTakenPhase,
         12000,
       );
       if (!myTurn) return;
@@ -819,12 +862,12 @@ export class World {
       const phase = World.normalizePickupPhase(this.pickup?.phase);
       const ok = this.emitTakePickup();
       if (!ok) return;
+      lastTakenPhase = phase;
       // DealerExtra is the dealer's terminal 14th-tile pickup — the runtime
       // arms AwaitingDiscard next and never targets our seat with another
       // ceremony pickup, so stop here rather than dead-waiting 12s for an
       // affordance that will never arrive.
       if (phase === 'dealerextra') return;
-      await new Promise<void>(r => setTimeout(r, 120));
     }
   }
 

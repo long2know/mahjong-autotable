@@ -105,6 +105,7 @@ public sealed class ChangshaGameStateMachine
         state.Wall = dealResult.RemainingWall;
         state.WallDrawIndex = 0;
         state.WallBackIndex = state.Wall.Count - 1;
+        state.WallBackDrawn = 0;
         state.ActiveSeatIndex = state.DealerSeatIndex;
         state.TurnNumber = 1;
         state.DiscardPile.Clear();
@@ -181,6 +182,7 @@ public sealed class ChangshaGameStateMachine
         }
         state.WallDrawIndex = 0;
         state.WallBackIndex = state.Wall.Count - 1;
+        state.WallBackDrawn = 0;
         state.ActiveSeatIndex = state.DealerSeatIndex;
         state.TurnNumber = 1;
         state.DiscardPile.Clear();
@@ -1262,6 +1264,10 @@ public sealed class ChangshaGameStateMachine
         var last = state.Wall.Count - 1;
         var tileId = state.Wall[last];
         state.Wall.RemoveAt(last);
+        // #152 — rendering bookkeeping so the translator can derive the
+        // front-draw anchor (108 - Wall.Count - WallBackDrawn) and keep the
+        // remaining wall tiles at stable physical slots.
+        state.WallBackDrawn++;
         return tileId;
     }
 

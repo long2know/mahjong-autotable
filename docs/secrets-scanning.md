@@ -180,9 +180,19 @@ both.
 | Workflow | Triggers | Gates | What it produces |
 | --- | --- | --- | --- |
 | [`container-scan.yml`](../.github/workflows/container-scan.yml) (W3 / W6) | every PR, push to main, nightly 04:00 UTC | block-merge on HIGH+CRITICAL CVE (PR) | SARIF → Security tab; sticky PR comment; `container-scan-findings-<run>` artefact |
-| [`container-scan-remediation.yml`](../.github/workflows/container-scan-remediation.yml) (W10) | nightly 05:00 UTC (1 h after `container-scan`), `workflow_run` on failure, manual | no merge gate; opens / updates a GitHub issue | de-duped open issue with title `[container-scan] CVE remediation — <YYYY-MM-DD>`, labels `security` + `automated` |
+| [`container-scan-remediation.yml`](../.github/workflows/container-scan-remediation.yml) (W10) | nightly 05:00 UTC (1 h after `container-scan`), `workflow_run` on failure, manual | no merge gate; opens / updates a GitHub issue **only when findings above the severity floor are > 0** | de-duped open issue with title `[container-scan] CVE remediation — <YYYY-MM-DD>`, labels `security` + `automated` |
 
 The first one is the **gate**; the second is the **paper trail**.
+
+> **Zero-finding runs stay silent.** The remediation workflow opens or
+> updates the sticky `[container-scan] CVE remediation` issue **only when
+> the scan reports findings at or above the configured severity floor
+> (`HIGH` by default)**. A scheduled, `workflow_dispatch`, or
+> `workflow_run` invocation that finds **0 CVEs above the floor files
+> nothing** — it does not open a "no findings above floor" issue. When
+> real HIGH/CRITICAL findings appear, it still opens a new sticky issue
+> (or updates the existing open one) exactly as before, so genuine CVEs
+> are never suppressed.
 
 ### 4.2 Triage tree
 

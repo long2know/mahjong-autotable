@@ -602,7 +602,7 @@ public class BotContextualHuTests
     private sealed class WinObserver : IDisposable
     {
         private readonly IChangshaGameRuntime _runtime;
-        private readonly Action<string> _handler;
+        private readonly Action<string, ChangshaGameState> _handler;
 
         public WinResult? CapturedWin { get; private set; }
         public ScoreResult? CapturedScore { get; private set; }
@@ -611,10 +611,10 @@ public class BotContextualHuTests
         public WinObserver(IChangshaGameRuntime runtime, string gameId)
         {
             _runtime = runtime;
-            _handler = id =>
+            _handler = (id, s) =>
             {
                 if (id != gameId) return;
-                if (!runtime.TryGetSnapshot(gameId, out var s) || s is null) return;
+                // #137 — use the snapshot StateChanged captured at the mutation instant.
                 // Capture only the FIRST observed win. Subsequent StateChanged events
                 // from the re-dealt next hand will have CurrentWin=null and be ignored.
                 if (CapturedWin is null && s.CurrentWin is not null)

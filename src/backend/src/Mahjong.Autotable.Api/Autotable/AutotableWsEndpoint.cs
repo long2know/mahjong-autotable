@@ -124,7 +124,7 @@ public sealed class AutotableConnectionManager : IDisposable
     private readonly ConcurrentDictionary<string, string> _relayBinding = new(StringComparer.Ordinal);
     // Lock to serialise lazy runtime-game creation per relay gameId.
     private readonly SemaphoreSlim _bindingLock = new(1, 1);
-    private readonly Action<string> _stateChangedHandler;
+    private readonly Action<string, ChangshaGameState> _stateChangedHandler;
     // Frost 2026-05-29 — surfaced via the translator's claim-entry deadline so the
     // autotable client can render a real countdown.  Snapshot at construction time
     // (singleton) — runtime options are read-only at startup.
@@ -690,9 +690,16 @@ public sealed class AutotableConnectionManager : IDisposable
             // SetBotStrategyAsync call when a non-empty difficulty is
             // supplied; the runtime default (Medium) covers callers that
             // never specified one.
+            //
+            // #153 — this is the ONLY caller that passes resettingConnection, so the stale
+            // default-game guard fires exclusively for a human sitting down to play. A newcomer
+            // meeting an abandoned, already-started `changsha-default` gets a fresh table instead of
+            // inheriting its frozen seat/turn state; a deliberate reconnect and live co-play games
+            // are untouched (see EnsureRuntimeBoundAsync / ShouldRetireStaleDefault).
             var runtimeGameId = await EnsureRuntimeBoundAsync(
                 connection.GameId!, connection.PlayerId, ct,
-                botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands);
+                botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands,
+                resettingConnection: connection);
             // Phase J Wave 6 — pass the persistent player id alongside the
             // per-connection transport id (the AutotableConnection.Id GUID
             // serves as the connection-level routing key inside the runtime).
@@ -1118,9 +1125,10 @@ public sealed class AutotableConnectionManager : IDisposable
     /// public via the matchmaking service (closes Vasquez's Wave-5 blind
     /// spot #4 where autotable games carried a null host id).
     /// </summary>
-    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct, string? botDifficulty = null, int? seed = null, int? maxHands = null)
+    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct, string? botDifficulty = null, int? seed = null, int? maxHands = null, AutotableConnection? resettingConnection = null)
     {
-        if (_runtimeBinding.TryGetValue(relayGameId, out var existing))
+        if (_runtimeBinding.TryGetValue(relayGameId, out var existing)
+            && !(resettingConnection is not null && string.Equals(relayGameId, AutotableWsEndpoint.DefaultGameId, StringComparison.Ordinal)))
         {
             // #121 (Lead decision) — first-creator-wins: a re-bind (late joiner / reconnect) must
             // NOT silently mutate the bound game's config. The bot difficulty (like seed/handCount)
@@ -1135,7 +1143,40 @@ public sealed class AutotableConnectionManager : IDisposable
         {
             if (_runtimeBinding.TryGetValue(relayGameId, out existing))
             {
-                return existing;
+                // #153 — stale default-game guard. The persistent DefaultGameId ("changsha-default")
+                // is the fallback binding for bare `?variant=changsha` connections that carry no
+                // explicit gameId. Once created it is reused forever (and rehydrated across a backend
+                // restart), so a fresh browser that opens the bare URL after a previous match was
+                // dealt / stalled / completed silently JOINs that leftover state — seat 0 still owned
+                // by a departed player, the hand frozen mid-ceremony, zero progression (Hudson's
+                // #153 diagnosis). When the caller is a seat-seeking newcomer (resettingConnection
+                // set) we retire the stale default game and mint a fresh one so the newcomer gets a
+                // clean, playable table. Preserved verbatim: a DELIBERATE reconnect (same persistent
+                // playerId still owns a seat) reattaches; a still-joinable (Seating) or live game with
+                // other connected players is kept; and every non-default (explicit `?gameId=`) game
+                // keeps first-creator-wins + multi-human join semantics untouched.
+                if (resettingConnection is not null
+                    && string.Equals(relayGameId, AutotableWsEndpoint.DefaultGameId, StringComparison.Ordinal)
+                    && ShouldRetireStaleDefault(existing, hostPlayerId, resettingConnection))
+                {
+                    _runtimeBinding.TryRemove(relayGameId, out _);
+                    _relayBinding.TryRemove(existing, out _);
+                    try
+                    {
+                        await _runtime.RemoveGameAsync(existing, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex,
+                            "Retiring stale default runtime game {RuntimeGameId} failed; minting a fresh {DefaultGameId} anyway.",
+                            existing, relayGameId);
+                    }
+                    // fall through to create a fresh default game below
+                }
+                else
+                {
+                    return existing;
+                }
             }
             // botSeatIndexes = empty so the runtime starts with all-human seats;
             // we'll convert seats to bots on demand via FillEmptySeatsWithBotsAsync.
@@ -1170,6 +1211,39 @@ public sealed class AutotableConnectionManager : IDisposable
         {
             _bindingLock.Release();
         }
+    }
+
+    /// <summary>
+    /// #153 — decides whether the currently-bound <see cref="DefaultGameId"/> runtime game is stale
+    /// and must be retired so a seat-seeking newcomer gets a fresh, playable table instead of silently
+    /// inheriting leftover seat/turn state. Returns <c>true</c> only when ALL hold:
+    /// <list type="bullet">
+    ///   <item>the newcomer has a persistent identity (a seat-take, not a host-less spectator bind);</item>
+    ///   <item>the existing default game has advanced past <see cref="ChangshaPhase.Seating"/> (it has
+    ///   already dealt / is mid-hand / stalled / terminal — a Seating-phase game is still freshly
+    ///   joinable and is never retired);</item>
+    ///   <item>the newcomer is NOT already a seated participant — a deliberate reconnect (same
+    ///   <see cref="ChangshaSeatState.PlayerId"/>) must reattach, never reset;</item>
+    ///   <item>no OTHER live connection is still attached to the default game — a game with active
+    ///   co-players is live, not abandoned, and is never torn out from under them.</item>
+    /// </list>
+    /// </summary>
+    private bool ShouldRetireStaleDefault(string runtimeGameId, string? hostPlayerId, AutotableConnection resettingConnection)
+    {
+        // Only a seat-seeking human (durable identity present) may trigger a reset.
+        if (string.IsNullOrEmpty(hostPlayerId)) return false;
+        // Never retire a game that other clients are still actively connected to.
+        if (ConnectionsInGame(AutotableWsEndpoint.DefaultGameId, except: resettingConnection.Id) > 0) return false;
+        if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return false;
+        // A game still in Seating is freshly joinable — not stale.
+        if (snap.Phase == ChangshaPhase.Seating) return false;
+        // Deliberate reconnect: the returning player already owns a seat → keep the game.
+        if (_runtime.TryGetSeatForPlayer(runtimeGameId, hostPlayerId) is not null) return false;
+        // Newcomer meeting an already-started / stalled / terminal, abandoned default game → retire it.
+        _logger.LogInformation(
+            "Retiring stale default game (runtimeGameId={RuntimeGameId}, phase={Phase}) for new player {PlayerId}; minting a fresh {DefaultGameId}.",
+            runtimeGameId, snap.Phase, hostPlayerId, AutotableWsEndpoint.DefaultGameId);
+        return true;
     }
 
     private async Task HandleDisconnectAsync(AutotableConnection connection)
@@ -1270,7 +1344,7 @@ public sealed class AutotableConnectionManager : IDisposable
         await SendJsonAsync(connection, msg, ct);
     }
 
-    private async Task SendFullSnapshotAsync(AutotableConnection connection, string? gameId, CancellationToken ct)
+    private async Task SendFullSnapshotAsync(AutotableConnection connection, string? gameId, CancellationToken ct, ChangshaGameState? capturedState = null)
     {
         if (string.IsNullOrEmpty(gameId))
         {
@@ -1284,8 +1358,10 @@ public sealed class AutotableConnectionManager : IDisposable
             return;
         }
 
-        // Look up the bound runtime game (may be null if no seat has been
-        // taken yet). The translator absorbs nulls and degrades to match-only.
+        // #137 — StateChanged broadcasts pass the snapshot the runtime froze at the
+        // mutation instant (capturedState); use it verbatim so a transient EndHand
+        // result isn't lost to a later re-read. Initial-snapshot callers (connect /
+        // seat) pass null and fall through to a fresh lock-protected copy.
         //
         // Vasquez integration audit A2/A3 — use TryGetSnapshotCopyAsync (lock-
         // protected JSON deep clone) instead of TryGetSnapshot (live reference)
@@ -1295,8 +1371,8 @@ public sealed class AutotableConnectionManager : IDisposable
         // worker thread — producing a snapshot that drops the most-recent
         // discard from the wire view (the runtime keeps it, but the broadcast
         // does not) and gaslights the client into rendering a stale board.
-        ChangshaGameState? runtimeState = null;
-        if (_runtimeBinding.TryGetValue(gameId, out var runtimeGameId))
+        ChangshaGameState? runtimeState = capturedState;
+        if (runtimeState is null && _runtimeBinding.TryGetValue(gameId, out var runtimeGameId))
         {
             runtimeState = await _runtime.TryGetSnapshotCopyAsync(runtimeGameId, ct);
         }
@@ -1675,28 +1751,57 @@ public sealed class AutotableConnectionManager : IDisposable
     /// bundle games — Phase D-backend will own the merge between runtime
     /// authority and the bundle-driven relay state.</para>
     /// </summary>
-    private void OnStateChanged(string runtimeGameId)
+    private void OnStateChanged(string runtimeGameId, ChangshaGameState snapshot)
     {
-        // Fire-and-forget broadcast. State events arrive on runtime worker
-        // threads — we don't want to block them on WS sends.
+        // #137 — deliver the snapshot the runtime captured AT THE MOMENT OF THE
+        // MUTATION (see ChangshaGameRuntime.PersistSnapshotAsync), never a later
+        // re-read. Enqueue it per-connection and drain FIFO through a single
+        // drainer so ordering is preserved: the transient EndHand result must land
+        // BEFORE the next hand's RollingDice tombstone, or the client's hand-end
+        // observer would collapse two hand-ends into one null→present flip.
         if (!_relayBinding.TryGetValue(runtimeGameId, out var relayGameId)) return;
         foreach (var connection in _connections.Values)
         {
             if (!string.Equals(connection.GameId, relayGameId, StringComparison.Ordinal)) continue;
-            _ = BroadcastSnapshotAsync(connection, relayGameId);
+            connection.BroadcastQueue.Enqueue(snapshot);
+            _ = DrainBroadcastQueueAsync(connection, relayGameId);
         }
     }
 
-    private async Task BroadcastSnapshotAsync(AutotableConnection connection, string gameId)
+    /// <summary>
+    /// #137 — single-drainer per connection. Broadcasts are fire-and-forget from
+    /// the runtime thread, but WS sends for one connection must stay strictly
+    /// ordered (and never overlap — a concurrent WebSocket.SendAsync throws). The
+    /// <c>Interlocked</c> gate guarantees exactly one active drainer; the FIFO
+    /// <see cref="AutotableConnection.BroadcastQueue"/> preserves enqueue order,
+    /// which equals the runtime's mutation order (StateChanged fires synchronously
+    /// under the per-game lock). The re-check after releasing the gate closes the
+    /// enqueue-after-drain race.
+    /// </summary>
+    private async Task DrainBroadcastQueueAsync(AutotableConnection connection, string gameId)
     {
+        if (Interlocked.CompareExchange(ref connection.BroadcastDrainerActive, 1, 0) != 0) return;
         try
         {
-            await SendFullSnapshotAsync(connection, gameId, CancellationToken.None);
+            while (connection.BroadcastQueue.TryDequeue(out var snapshot))
+            {
+                try
+                {
+                    await SendFullSnapshotAsync(connection, gameId, CancellationToken.None, snapshot);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Failed to broadcast snapshot to connection {ConnectionId}", connection.Id);
+                }
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            _logger.LogDebug(ex, "Failed to broadcast snapshot to connection {ConnectionId}", connection.Id);
+            Interlocked.Exchange(ref connection.BroadcastDrainerActive, 0);
         }
+        // An item may have been enqueued between our last dequeue and the reset.
+        if (!connection.BroadcastQueue.IsEmpty)
+            _ = DrainBroadcastQueueAsync(connection, gameId);
     }
 
     public void Dispose()
@@ -1750,6 +1855,18 @@ public sealed class AutotableConnection
     /// </summary>
     public string PlayerId { get; init; } = Guid.NewGuid().ToString("N").Substring(0, 8);
     public SemaphoreSlim SendLock { get; } = new(1, 1);
+
+    /// <summary>
+    /// #137 — per-connection ordered broadcast queue. The runtime hands the WS
+    /// endpoint the snapshot it froze at each mutation (StateChanged); those are
+    /// enqueued here and drained FIFO by a single drainer (see
+    /// <c>AutotableConnectionManager.DrainBroadcastQueueAsync</c>) so per-hand
+    /// results are delivered in mutation order and never overlap on the socket.
+    /// </summary>
+    public ConcurrentQueue<ChangshaGameState> BroadcastQueue { get; } = new();
+
+    /// <summary>#137 — 0/1 Interlocked gate ensuring exactly one active broadcast drainer.</summary>
+    public int BroadcastDrainerActive;
 
     /// <summary>
     /// When true, taking a seat triggers auto-fill of remaining seats with bots

@@ -482,25 +482,55 @@ public static class ChangshaToAutotableTranslator
         // to the server. Tile ids are emitted in canonical order (0..107);
         // the actual shuffled ordering is materialized later by
         // BeginManualDeal — at which point state.Wall takes over.
-        var wallTiles = ShouldSynthesizeWall(state)
-            ? Enumerable.Range(0, AutotableSlotMap.TotalTiles)
-            : (IEnumerable<int>)state.Wall;
-
-        using var slotEnumerator = AutotableSlotMap.EnumerateWallSlotsInOrder().GetEnumerator();
-        foreach (var tileId in wallTiles)
+        // Wall — remaining tiles placed at STABLE physical slots so the live
+        // wall depletes contiguously from the dice break point around the
+        // perimeter (issue #152) instead of being re-packed/scattered evenly
+        // across all four seats on every mutation.
+        //
+        // Each remaining tile's physical perimeter ordinal is
+        //   breakOrdinal + frontDrawn + listIndex   (mod 108)
+        // where frontDrawn = 108 - Wall.Count - WallBackDrawn. Because a
+        // front-draw decrements Wall.Count and shifts every remaining tile's
+        // listIndex down by one, `frontDrawn + listIndex` is invariant per
+        // tile — so a given tile keeps the same slot until it is itself drawn,
+        // and the drawn/kong slots simply go empty (contiguous arc).
+        //
+        // Pre-deal (Seating / RollingDice, empty wall, nothing dealt) still
+        // synthesizes a full 108-tile face-down wall so the four canonical
+        // walls are visible from connect through the pickup ceremony
+        // (Stephen 2026-05-27). A full wall fills every slot regardless of
+        // anchor, so the ordinal walk is identity there.
+        if (ShouldSynthesizeWall(state))
         {
-            if (!slotEnumerator.MoveNext())
+            for (var ordinal = 0; ordinal < AutotableSlotMap.TotalTiles; ordinal++)
+            {
+                var (seat, col, layer) = AutotableSlotMap.WallOrdinalToSlot(ordinal);
+                placedTiles.Add(ordinal);
+                yield return BuildThingEntry(ordinal, AutotableSlotMap.WallSlot(seat, col, layer), WallRotFaceDown);
+            }
+        }
+        else
+        {
+            var breakOrdinal = state.BreakPoint is { } bp
+                ? AutotableSlotMap.WallBreakOrdinal(bp.WallIndex, bp.StackIndex)
+                : 0;
+            var frontDrawn = AutotableSlotMap.TotalTiles - state.Wall.Count - state.WallBackDrawn;
+            if (frontDrawn < 0) frontDrawn = 0;
+
+            if (state.Wall.Count > AutotableSlotMap.TotalTiles)
             {
                 throw new InvalidOperationException(
                     $"Wall slot capacity exceeded — state.Wall has {state.Wall.Count} tiles " +
                     $"but only {AutotableSlotMap.TotalTiles} canonical Changsha wall slots exist.");
             }
-            var (seat, col, layer) = slotEnumerator.Current;
-            placedTiles.Add(tileId);
-            yield return BuildThingEntry(
-                tileId,
-                AutotableSlotMap.WallSlot(seat, col, layer),
-                WallRotFaceDown);
+
+            for (var i = 0; i < state.Wall.Count; i++)
+            {
+                var ordinal = breakOrdinal + frontDrawn + i;
+                var (seat, col, layer) = AutotableSlotMap.WallOrdinalToSlot(ordinal);
+                placedTiles.Add(state.Wall[i]);
+                yield return BuildThingEntry(state.Wall[i], AutotableSlotMap.WallSlot(seat, col, layer), WallRotFaceDown);
+            }
         }
     }
 

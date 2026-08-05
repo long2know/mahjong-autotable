@@ -122,6 +122,17 @@ public interface IChangshaGameRuntime
     /// bundle has no AckDeal route of its own.
     /// </summary>
     int? TryGetSeatForConnection(string gameId, string connectionId);
+
+    /// <summary>
+    /// #153 — returns the seat index whose persistent <see cref="ChangshaSeatState.PlayerId"/> matches
+    /// <paramref name="playerId"/> (and is not a bot seat), or <c>null</c> if that player owns no
+    /// seat / the game doesn't exist. Unlike <see cref="TryGetSeatForConnection"/> this keys off the
+    /// durable cookie-derived identity, so it stays true across a transport reconnect where the
+    /// per-connection <c>SeatConnections</c> entry was cleared on disconnect. Used by the autotable
+    /// WS endpoint to tell a <em>deliberate reconnect</em> (same player returning to its seat) apart
+    /// from a fresh newcomer when deciding whether to retire a stale default game.
+    /// </summary>
+    int? TryGetSeatForPlayer(string gameId, string playerId);
     Task DiscardAsync(string gameId, int seatIndex, int tileId, CancellationToken ct = default, int? expectedVersion = null);
     Task ClaimAsync(string gameId, int seatIndex, string claimType, int[]? tileIds, CancellationToken ct = default, int? expectedVersion = null);
     Task PassAsync(string gameId, int seatIndex, CancellationToken ct = default, int? expectedVersion = null);
@@ -210,7 +221,7 @@ public interface IChangshaGameRuntime
     /// <see cref="TryGetSnapshot"/> and broadcast it. Handlers must not throw; the
     /// event is intentionally fire-and-forget (synchronous invocation).
     /// </summary>
-    event Action<string>? StateChanged;
+    event Action<string, ChangshaGameState>? StateChanged;
 
     // ── Phase J Wave 5 — Public matchmaking lobby ────────────────────
 
@@ -280,7 +291,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     // pre-Phase-H behaviour where ChangshaBotPolicy delegated to ChangshaBotEngine.Resolve("medium")).
     private IChangshaBotStrategy _strategy = ChangshaBotEngine.Default;
 
-    public event Action<string>? StateChanged;
+    public event Action<string, ChangshaGameState>? StateChanged;
 
     private static readonly JsonSerializerOptions SnapshotJson = new()
     {
@@ -356,6 +367,22 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             if (string.Equals(kvp.Value, connectionId, StringComparison.Ordinal))
             {
                 return kvp.Key;
+            }
+        }
+        return null;
+    }
+
+    public int? TryGetSeatForPlayer(string gameId, string playerId)
+    {
+        if (string.IsNullOrEmpty(gameId) || string.IsNullOrEmpty(playerId)) return null;
+        if (!_games.TryGetValue(gameId, out var instance)) return null;
+        var seats = instance.State.Seats;
+        for (var i = 0; i < seats.Count; i++)
+        {
+            var seat = seats[i];
+            if (!seat.IsBot && string.Equals(seat.PlayerId, playerId, StringComparison.Ordinal))
+            {
+                return i;
             }
         }
         return null;
@@ -749,7 +776,6 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             // the dealer (or auto-ack-on-bot) drives RollDice → pickup loop.
             if (instance.State.DealMode == DealMode.Manual)
             {
-                StateChanged?.Invoke(instance.GameId);
                 await PersistSnapshotAsync(instance, ct);
                 return;
             }
@@ -802,7 +828,6 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         {
             instance.Lock.Release();
         }
-        StateChanged?.Invoke(instance.GameId);
 
         // Phase G §1 — kick off the bot pickup chain. BeginManualDeal lands in
         // BreakPointMarked with PickupSeatIndex == DealerSeatIndex; if the dealer
@@ -824,7 +849,6 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         {
             instance.Lock.Release();
         }
-        StateChanged?.Invoke(instance.GameId);
 
         // If the deal just completed (DealerExtra advanced into AwaitingDiscard),
         // engage the standard post-deal acknowledgement / turn-loop path so bots
@@ -1860,7 +1884,6 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 // ScheduleBotIfNeededAsync below. Reset the deal-ack tracking so the
                 // post-deal turn-start sentinel is fresh for the new hand.
                 instance.DealAcks.Clear();
-                StateChanged?.Invoke(instance.GameId);
                 manualReentry = true;
             }
             else
@@ -2726,10 +2749,33 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         var handler = StateChanged;
         if (handler is not null)
         {
-            try { handler.Invoke(instance.GameId); }
+            // #137 — capture a deep-clone snapshot of the state AS IT IS RIGHT NOW,
+            // under the instance lock (PersistSnapshotAsync is always invoked while the
+            // caller holds it), and hand THAT to subscribers. The broadcast pipeline must
+            // NOT re-read the live state later: a transient phase — e.g. EndHand, whose
+            // result['current'] is tombstoned the instant the runtime rotates the banker
+            // into the next hand's RollingDice — would otherwise already be gone by the
+            // time a fire-and-forget broadcast task acquires the lock, silently dropping
+            // the per-hand result the autotable client's hand-end observer latches on
+            // (handEnds under-counts and the 4-hand gate fails even though the game
+            // completed). Capturing here freezes every transition exactly as it occurred.
+            ChangshaGameState? snapshot = null;
+            try
+            {
+                var snapshotJson = JsonSerializer.Serialize(instance.State, SnapshotJson);
+                snapshot = JsonSerializer.Deserialize<ChangshaGameState>(snapshotJson, SnapshotJson);
+            }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "StateChanged handler threw for game {GameId}", instance.GameId);
+                _logger.LogWarning(ex, "StateChanged snapshot capture failed for game {GameId}", instance.GameId);
+            }
+            if (snapshot is not null)
+            {
+                try { handler.Invoke(instance.GameId, snapshot); }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "StateChanged handler threw for game {GameId}", instance.GameId);
+                }
             }
         }
 
