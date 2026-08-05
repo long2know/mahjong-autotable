@@ -190,9 +190,11 @@ public sealed class ResultTombstoneLifecycleTests
         var sawResultAtEndHand = false;
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        void OnChanged(string gid)
+        void OnChanged(string gid, ChangshaGameState s)
         {
-            if (!runtime.TryGetSnapshot(gid, out var s) || s is null) return;
+            // #137 — translate the snapshot StateChanged froze at the mutation instant
+            // (was: re-read the live state, which could already have advanced past the
+            // transient EndHand — the very race this fix closes).
             var entries = ChangshaToAutotableTranslator.Translate(s, viewerSeat: null);
             var result = entries.FirstOrDefault(e => e.Kind == ChangshaCollectionKinds.Result);
 

@@ -79,6 +79,13 @@ jobs:
     needs: build-frontend-bundle
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Phase L (#143 — Apone). Expose keystore presence as a job output so the
+    # SIGNED-only `android-e2e` job can be SKIPPED (never scheduled on the
+    # `ubuntu-latest-8-cores` larger runner) when signing secrets are absent —
+    # see the `android-e2e` `if:` gate below. Additive only; the android job's
+    # own behaviour is unchanged.
+    outputs:
+      signed: ${{ steps.keystore.outputs.keystore-present }}
     # Phase K Wave 17 — Apone (DevOps). Android signing groundwork.
     # The secret-presence test below toggles the build between
     # SIGNED-RELEASE and UNSIGNED-RELEASE paths. The four
@@ -246,7 +253,18 @@ jobs:
     # runs would 4x the credit burn per push; the SIGNED
     # branch only runs when the operator secrets are present
     # (typically only on main / workflow_dispatch).
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    #
+    # Phase L (#143 — Apone). Also gate on the SIGNED path having actually
+    # run (`needs.android.outputs.signed`). Without this the job is scheduled
+    # on the `ubuntu-latest-8-cores` larger runner on every push merely to
+    # short-circuit its "skip if secrets absent" step — and since that larger
+    # runner is not provisioned here, it queues forever and is eventually
+    # cancelled. Gating the job means it is cleanly SKIPPED (no runner needed)
+    # when signing secrets are absent, and runs on the larger runner exactly
+    # as designed once signing is configured.
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && needs.android.outputs.signed == 'true'
     env:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
