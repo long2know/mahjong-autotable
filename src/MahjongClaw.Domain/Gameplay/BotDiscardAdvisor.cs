@@ -1003,7 +1003,8 @@ public static class BotDiscardAdvisor
                     var shouldDiscardSingleton = !preserveDominantSuitSingleton
                         && handTiles.Count >= 10
                         && hasAlternateStrongSmallWinCandidate
-                        && !HasInHandSequenceAnchor(liveSingleton.Tile, handCounts);
+                        && !HasInHandSequenceAnchor(liveSingleton.Tile, handCounts)
+                        && !HasAdjacentSuitedTile(handCounts, liveSingleton.Tile);
 
                     if (shouldDiscardSingleton)
                     {
