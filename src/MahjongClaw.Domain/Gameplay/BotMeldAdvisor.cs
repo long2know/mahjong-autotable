@@ -5,6 +5,7 @@ namespace MahjongClaw.Domain.Gameplay;
 
 public static class BotMeldAdvisor
 {
+    private const int KongPotentialOutsDropTolerance = 0;
     private static readonly IReadOnlyList<Tile> ChineseOfficialDrawTileTypes = BuildDrawTileTypes(MahjongRuleset.ChineseOfficial);
     private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
 
@@ -92,9 +93,9 @@ public static class BotMeldAdvisor
             }
         }
 
-        var bestPreKongOuts = CountBestWinningOutsWithoutKong(handTiles, meldTiles, visibleCounts, ruleset);
+        var bestPreKongOuts = CountBestWinningOutsWithoutKong(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
         var candidateOuts = candidates
-            .ToDictionary(candidate => candidate, candidate => CountWinningOutsAfterConcealedKong(handTiles, meldTiles, visibleCounts, candidate, ruleset));
+            .ToDictionary(candidate => candidate, candidate => CountWinningOutsAfterConcealedKong(handTiles, meldTiles, visibleCounts, candidate, ruleset, requireMinimumFan: true));
         if (bestPreKongOuts > 0)
         {
             var candidatesThatKeepOuts = candidates
@@ -118,6 +119,49 @@ public static class BotMeldAdvisor
                 candidates = candidates
                     .Where(candidate => candidateOuts[candidate] == maxPostKongOuts)
                     .ToList();
+            }
+        }
+
+        if (ruleset == MahjongRuleset.ChineseOfficial && bestPreKongOuts == 0)
+        {
+            var bestPreKongPotentialOuts = CountBestWinningOutsWithoutKong(
+                handTiles,
+                meldTiles,
+                visibleCounts,
+                ruleset,
+                requireMinimumFan: false);
+
+            if (bestPreKongPotentialOuts > 0)
+            {
+                var candidatePotentialOuts = candidates
+                    .ToDictionary(candidate => candidate,
+                        candidate => CountWinningOutsAfterConcealedKong(
+                            handTiles,
+                            meldTiles,
+                            visibleCounts,
+                            candidate,
+                            ruleset,
+                            requireMinimumFan: false));
+
+                var candidatesThatKeepPotential = candidates
+                    .Where(candidate => candidatePotentialOuts[candidate] + KongPotentialOutsDropTolerance >= bestPreKongPotentialOuts)
+                    .ToList();
+
+                if (candidatesThatKeepPotential.Count == 0)
+                {
+                    kongTile = null!;
+                    return false;
+                }
+
+                candidates = candidatesThatKeepPotential;
+
+                if (candidates.Count > 1)
+                {
+                    var maxPostKongPotentialOuts = candidates.Max(candidate => candidatePotentialOuts[candidate]);
+                    candidates = candidates
+                        .Where(candidate => candidatePotentialOuts[candidate] == maxPostKongPotentialOuts)
+                        .ToList();
+                }
             }
         }
 
@@ -210,9 +254,9 @@ public static class BotMeldAdvisor
             }
         }
 
-        var bestPreKongOuts = CountBestWinningOutsWithoutKong(handTiles, meldTiles, visibleCounts, ruleset);
+        var bestPreKongOuts = CountBestWinningOutsWithoutKong(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
         var candidateOuts = candidates
-            .ToDictionary(candidate => candidate, candidate => CountWinningOutsAfterPromotedKong(handTiles, meldTiles, visibleCounts, candidate, ruleset));
+            .ToDictionary(candidate => candidate, candidate => CountWinningOutsAfterPromotedKong(handTiles, meldTiles, visibleCounts, candidate, ruleset, requireMinimumFan: true));
         if (bestPreKongOuts > 0)
         {
             var candidatesThatKeepOuts = candidates
@@ -236,6 +280,49 @@ public static class BotMeldAdvisor
                 candidates = candidates
                     .Where(candidate => candidateOuts[candidate] == maxPostKongOuts)
                     .ToList();
+            }
+        }
+
+        if (ruleset == MahjongRuleset.ChineseOfficial && bestPreKongOuts == 0)
+        {
+            var bestPreKongPotentialOuts = CountBestWinningOutsWithoutKong(
+                handTiles,
+                meldTiles,
+                visibleCounts,
+                ruleset,
+                requireMinimumFan: false);
+
+            if (bestPreKongPotentialOuts > 0)
+            {
+                var candidatePotentialOuts = candidates
+                    .ToDictionary(candidate => candidate,
+                        candidate => CountWinningOutsAfterPromotedKong(
+                            handTiles,
+                            meldTiles,
+                            visibleCounts,
+                            candidate,
+                            ruleset,
+                            requireMinimumFan: false));
+
+                var candidatesThatKeepPotential = candidates
+                    .Where(candidate => candidatePotentialOuts[candidate] + KongPotentialOutsDropTolerance >= bestPreKongPotentialOuts)
+                    .ToList();
+
+                if (candidatesThatKeepPotential.Count == 0)
+                {
+                    kongTile = null!;
+                    return false;
+                }
+
+                candidates = candidatesThatKeepPotential;
+
+                if (candidates.Count > 1)
+                {
+                    var maxPostKongPotentialOuts = candidates.Max(candidate => candidatePotentialOuts[candidate]);
+                    candidates = candidates
+                        .Where(candidate => candidatePotentialOuts[candidate] == maxPostKongPotentialOuts)
+                        .ToList();
+                }
             }
         }
 
@@ -270,7 +357,8 @@ public static class BotMeldAdvisor
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
         IReadOnlyDictionary<Tile, int> visibleCounts,
-        MahjongRuleset ruleset)
+        MahjongRuleset ruleset,
+        bool requireMinimumFan)
     {
         var bestOuts = 0;
 
@@ -280,7 +368,12 @@ public static class BotMeldAdvisor
                 .Where((_, index) => index != discardIndex)
                 .ToList();
 
-            var outs = CountWinningDrawOutsAfterSupplementDraw(reducedHand, meldTiles, visibleCounts, ruleset);
+            var outs = CountWinningDrawOutsAfterSupplementDraw(
+                reducedHand,
+                meldTiles,
+                visibleCounts,
+                ruleset,
+                requireMinimumFan);
             if (outs > bestOuts)
             {
                 bestOuts = outs;
@@ -295,7 +388,8 @@ public static class BotMeldAdvisor
         IReadOnlyList<Tile> meldTiles,
         IReadOnlyDictionary<Tile, int> visibleCounts,
         Tile kongTile,
-        MahjongRuleset ruleset)
+        MahjongRuleset ruleset,
+        bool requireMinimumFan)
     {
         var handAfterKong = new List<Tile>(handTiles);
 
@@ -314,7 +408,12 @@ public static class BotMeldAdvisor
             .Concat(Enumerable.Repeat(kongTile, 4))
             .ToList();
 
-        return CountWinningDrawOutsAfterSupplementDraw(handAfterKong, meldAfterKong, visibleCounts, ruleset);
+        return CountWinningDrawOutsAfterSupplementDraw(
+            handAfterKong,
+            meldAfterKong,
+            visibleCounts,
+            ruleset,
+            requireMinimumFan);
     }
 
     private static int CountWinningOutsAfterPromotedKong(
@@ -322,7 +421,8 @@ public static class BotMeldAdvisor
         IReadOnlyList<Tile> meldTiles,
         IReadOnlyDictionary<Tile, int> visibleCounts,
         Tile kongTile,
-        MahjongRuleset ruleset)
+        MahjongRuleset ruleset,
+        bool requireMinimumFan)
     {
         var handAfterKong = new List<Tile>(handTiles);
         var kongTileIndex = handAfterKong.FindIndex(tile => tile.Equals(kongTile));
@@ -337,14 +437,20 @@ public static class BotMeldAdvisor
             .Concat(new[] { kongTile })
             .ToList();
 
-        return CountWinningDrawOutsAfterSupplementDraw(handAfterKong, meldAfterKong, visibleCounts, ruleset);
+        return CountWinningDrawOutsAfterSupplementDraw(
+            handAfterKong,
+            meldAfterKong,
+            visibleCounts,
+            ruleset,
+            requireMinimumFan);
     }
 
     private static int CountWinningDrawOutsAfterSupplementDraw(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
         IReadOnlyDictionary<Tile, int> visibleCounts,
-        MahjongRuleset ruleset)
+        MahjongRuleset ruleset,
+        bool requireMinimumFan)
     {
         var drawTileTypes = ruleset == MahjongRuleset.Changsha258
             ? Changsha258DrawTileTypes
@@ -372,13 +478,28 @@ public static class BotMeldAdvisor
             var candidateTiles = ownedTiles
                 .Append(drawTileType)
                 .ToList();
-            if (RulesetHandAnalyzer.IsWinningHand(candidateTiles, ruleset))
+            if (IsWinningHand(candidateTiles, ruleset, requireMinimumFan))
             {
                 winningOuts++;
             }
         }
 
         return winningOuts;
+    }
+
+    private static bool IsWinningHand(
+        IReadOnlyList<Tile> tiles,
+        MahjongRuleset ruleset,
+        bool requireMinimumFan)
+    {
+        if (requireMinimumFan)
+        {
+            return RulesetHandAnalyzer.IsWinningHand(tiles, ruleset);
+        }
+
+        return ruleset == MahjongRuleset.Changsha258
+            ? Changsha258Ruleset.TryGetWinningHand(tiles, out _)
+            : HandAnalyzer.TryGetWinningHand(tiles, out _);
     }
 
     private static IReadOnlyDictionary<Tile, int> BuildVisibleCounts(IReadOnlyList<Tile> visibleTiles)
