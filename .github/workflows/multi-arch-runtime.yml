@@ -28,14 +28,6 @@ on:
       - "src/backend/**"
       - "src/frontend/autotable-src/**"
       - ".github/workflows/multi-arch-runtime.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - "Dockerfile"
-      - "src/backend/**"
-      - "src/frontend/autotable-src/**"
-      - ".github/workflows/multi-arch-runtime.yml"
   workflow_dispatch:
 
 permissions:
@@ -50,7 +42,8 @@ jobs:
   build-and-run:
     name: Build + run /health (${{ matrix.platform }})
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Cold QEMU arm64 builds can exceed 25 minutes on shared runners.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
