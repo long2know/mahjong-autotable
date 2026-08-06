@@ -409,7 +409,13 @@ public static class BotDiscardAdvisor
                 {
                     var pairCount = handCounts.Count(entry => entry.Value >= 2);
                     var candidate = smallWinSingletons[0];
-                    if (candidate.RemainingCopies >= 2 || pairCount == 0)
+                    var hasAlternateStrongSmallWinCandidate = HasAlternateStrongSmallWinPairCandidate(
+                        candidate.Tile,
+                        handCounts,
+                        ownedCounts,
+                        visibleCounts);
+
+                    if (candidate.RemainingCopies >= 2 || pairCount == 0 || !hasAlternateStrongSmallWinCandidate)
                     {
                         if (!hasDominantSuitLiveSmallWinCandidate
                             || candidate.Tile.Suit == changshaDominantSuit.GetValueOrDefault())
