@@ -140,15 +140,11 @@ public sealed class ScoringService : IScoringService
 
     private static ScoreCategory ClassifyWin(WinResult win)
     {
-        return win.Pattern switch
-        {
-            WinPattern.SevenPairs => ScoreCategory.BigWin,
-            WinPattern.AllPungs => ScoreCategory.BigWin,
-            WinPattern.FullFlush => ScoreCategory.BigWin,
-            WinPattern.NineTerminals => ScoreCategory.BigWin,
-            WinPattern.Standard => ScoreCategory.SmallWin,
-            _ => ScoreCategory.SmallWin
-        };
+        // Issue #157 — classification is centralised in ChangshaWinCategory so that the
+        // contextual Big Wins (天和 / 地和 / 海底捞月 / 河底捞鱼 / 杠上开花) and 抢杠胡
+        // (WinResult.IsRobbedKong) are scored as Big Wins even on a Standard shape, and
+        // the Big-Win pattern set cannot drift between the detector and this service.
+        return ChangshaWinCategory.Classify(win);
     }
 
     private static void CalculateSelfDrawPayments(
