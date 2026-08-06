@@ -107,24 +107,34 @@ public sealed class DealerExtraTransitionsToAwaitingDiscardTests : IAsyncLifetim
         await runtime.RollDiceAsync(gameId, seatIndex: 0, cts.Token);
 
         await runtime.TakeTilesFromWallAsync(gameId, seatIndex: 0, count: 4, cts.Token); // R1
+        // #142: drive bot pickups deterministically — the runtime auto-schedule
+        // (Task.Delay chain) starves under loaded CI. See ManualDealPickupDriver.
+        await ManualDealPickupDriver.DriveBotPickupsToPhaseAsync(
+            runtime, gameId, ChangshaPhase.PickupRound2, ct: cts.Token);
         await WaitForAsync(() => Snapshot(runtime, gameId).PickupSeatIndex == 0
                               && Snapshot(runtime, gameId).Phase == ChangshaPhase.PickupRound2,
             TimeSpan.FromSeconds(3),
             "cursor did not return to dealer for round 2");
 
         await runtime.TakeTilesFromWallAsync(gameId, seatIndex: 0, count: 4, cts.Token); // R2
+        await ManualDealPickupDriver.DriveBotPickupsToPhaseAsync(
+            runtime, gameId, ChangshaPhase.PickupRound3, ct: cts.Token);
         await WaitForAsync(() => Snapshot(runtime, gameId).PickupSeatIndex == 0
                               && Snapshot(runtime, gameId).Phase == ChangshaPhase.PickupRound3,
             TimeSpan.FromSeconds(3),
             "cursor did not return to dealer for round 3");
 
         await runtime.TakeTilesFromWallAsync(gameId, seatIndex: 0, count: 4, cts.Token); // R3
+        await ManualDealPickupDriver.DriveBotPickupsToPhaseAsync(
+            runtime, gameId, ChangshaPhase.SingleTilePickup, ct: cts.Token);
         await WaitForAsync(() => Snapshot(runtime, gameId).PickupSeatIndex == 0
                               && Snapshot(runtime, gameId).Phase == ChangshaPhase.SingleTilePickup,
             TimeSpan.FromSeconds(3),
             "cursor did not return to dealer for single-tile round");
 
         await runtime.TakeTilesFromWallAsync(gameId, seatIndex: 0, count: 1, cts.Token); // single
+        await ManualDealPickupDriver.DriveBotPickupsToPhaseAsync(
+            runtime, gameId, ChangshaPhase.DealerExtra, ct: cts.Token);
         await WaitForAsync(() => Snapshot(runtime, gameId).PickupSeatIndex == 0
                               && Snapshot(runtime, gameId).Phase == ChangshaPhase.DealerExtra,
             TimeSpan.FromSeconds(3),
@@ -189,18 +199,28 @@ public sealed class DealerExtraTransitionsToAwaitingDiscardTests : IAsyncLifetim
 
         // Drive ceremony through DealerExtra.
         await runtime.TakeTilesFromWallAsync(gameId, seatIndex: 0, count: 4, cts.Token);
+        // #142: deterministic bot-pickup drive (see ManualDealPickupDriver) — the
+        // runtime auto-schedule Task.Delay chain starves under loaded CI.
+        await ManualDealPickupDriver.DriveBotPickupsToPhaseAsync(
+            runtime, gameId, ChangshaPhase.PickupRound2, ct: cts.Token);
         await WaitForAsync(() => Snapshot(runtime, gameId).PickupSeatIndex == 0
                               && Snapshot(runtime, gameId).Phase == ChangshaPhase.PickupRound2,
             TimeSpan.FromSeconds(3), "round 1 did not complete");
         await runtime.TakeTilesFromWallAsync(gameId, seatIndex: 0, count: 4, cts.Token);
+        await ManualDealPickupDriver.DriveBotPickupsToPhaseAsync(
+            runtime, gameId, ChangshaPhase.PickupRound3, ct: cts.Token);
         await WaitForAsync(() => Snapshot(runtime, gameId).PickupSeatIndex == 0
                               && Snapshot(runtime, gameId).Phase == ChangshaPhase.PickupRound3,
             TimeSpan.FromSeconds(3), "round 2 did not complete");
         await runtime.TakeTilesFromWallAsync(gameId, seatIndex: 0, count: 4, cts.Token);
+        await ManualDealPickupDriver.DriveBotPickupsToPhaseAsync(
+            runtime, gameId, ChangshaPhase.SingleTilePickup, ct: cts.Token);
         await WaitForAsync(() => Snapshot(runtime, gameId).PickupSeatIndex == 0
                               && Snapshot(runtime, gameId).Phase == ChangshaPhase.SingleTilePickup,
             TimeSpan.FromSeconds(3), "round 3 did not complete");
         await runtime.TakeTilesFromWallAsync(gameId, seatIndex: 0, count: 1, cts.Token);
+        await ManualDealPickupDriver.DriveBotPickupsToPhaseAsync(
+            runtime, gameId, ChangshaPhase.DealerExtra, ct: cts.Token);
         await WaitForAsync(() => Snapshot(runtime, gameId).PickupSeatIndex == 0
                               && Snapshot(runtime, gameId).Phase == ChangshaPhase.DealerExtra,
             TimeSpan.FromSeconds(3), "DealerExtra not reached");
@@ -393,6 +413,14 @@ public sealed class DealerExtraTransitionsToAwaitingDiscardTests : IAsyncLifetim
         {
             new object[] { "pickup", "take", new { seatIndex = 0, count } }
         });
+
+        // #142: seat 0 (human dealer) took via WS above; the bot seats' pickups are
+        // normally auto-scheduled by the runtime on a Task.Delay chain that STARVES
+        // under loaded full-suite/SqlServer CI, wedging the deal at this pickup round
+        // (0 discards). Deterministically drive the bot takes via the same production
+        // pickup API so the round advances on observable progress, not the thread pool.
+        await ManualDealPickupDriver.DriveBotPickupsToPhaseAsync(
+            runtime, runtimeGameId, untilPhase, humanSeat: 0);
 
         var advanced = await WaitForAsync(() =>
         {
