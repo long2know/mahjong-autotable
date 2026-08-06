@@ -388,7 +388,7 @@ public class BotClaimAdvisorTests
         };
         var meldTiles = new List<Tile>();
         var discardedTile = new Tile(TileSuit.Dots, 7);
-        var visibleTiles = new List<Tile> { discardedTile };
+        var visibleTiles = new List<Tile>();
 
         var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
             handTiles,

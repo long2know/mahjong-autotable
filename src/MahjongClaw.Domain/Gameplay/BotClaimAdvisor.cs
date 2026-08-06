@@ -100,11 +100,9 @@ public static class BotClaimAdvisor
         }
 
         var visibleCounts = BuildVisibleCounts(visibleTiles);
-        if (!visibleTiles.Any(tile => tile.Equals(discardedTile)))
-        {
-            visibleCounts.TryGetValue(discardedTile, out var discardCount);
-            visibleCounts[discardedTile] = discardCount + 1;
-        }
+        // visibleTiles should exclude the current discard; add it here so outs reflect the new visible tile.
+        visibleCounts.TryGetValue(discardedTile, out var discardCount);
+        visibleCounts[discardedTile] = discardCount + 1;
 
         if (ruleset == MahjongRuleset.Changsha258 && Changsha258Ruleset.IsSmallWinPair(discardedTile))
         {

@@ -2373,9 +2373,10 @@ static async Task ProcessBotClaimsAsync(
         gameLocks?.TryGetValue(botPlayerId, out missedWinLock);
 
         var visibleTileEntities = game.Tiles
-            .Where(tile => string.Equals(tile.Location, "Discard", StringComparison.OrdinalIgnoreCase)
-                || (string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase)
-                    && tile.PlayerId != botPlayerId))
+            .Where(tile => tile.Id != claimWindow.DiscardedTileId
+                && (string.Equals(tile.Location, "Discard", StringComparison.OrdinalIgnoreCase)
+                    || (string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase)
+                        && tile.PlayerId != botPlayerId)))
             .ToList();
 
         if (!TryBuildTileHand(visibleTileEntities, out var visibleTiles))
