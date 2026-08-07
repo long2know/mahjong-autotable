@@ -586,6 +586,12 @@ public sealed class AutotableConnectionManager : IDisposable
                     // fake end-of-match signal to peers and spuriously trigger their modals.
                     break;
 
+                case ChangshaCollectionKinds.Turn:
+                    // C-1/C-2 — the discard-turn cue is server-emitted only. Drop any client
+                    // push so a client can't forge whose turn it is; the runtime re-broadcasts
+                    // the authoritative turn on every AwaitingDiscard snapshot.
+                    break;
+
                 default:
                     // mouse, sound, dice, things, nicks, ephemeral, unique, perPlayer
                     // — pure cosmetic / meta. Pass through to the relay store.

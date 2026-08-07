@@ -15,6 +15,7 @@ import {
   ClaimWindowEntry,
   HandResultEntry,
   PickupEntry,
+  TurnEntry,
 } from './types';
 import { clearSession, saveSession } from './reconnect';
 import {
@@ -98,6 +99,16 @@ export class Client extends BaseClient {
   // entries share one collection without a parallel event system.
   pickup: Collection<string | number, PickupEntry>;
 
+  // Stuck-turn fix (Hicks) — authoritative turn signal from Bishop's
+  // translator.  Singleton key="current": ["turn","current",{ activeSeat,
+  // phase, awaitingDiscard }].  Ephemeral (pushed live on JOIN/NEW, never
+  // replayed).  Read-only from the client's side; drives the turn banner +
+  // the click-to-discard gate so the "your turn to discard" affordance is
+  // authoritative and survives the one-batch `things` geometry lag after a
+  // claim/deal.  Absent (empty) when the backend hasn't landed the signal —
+  // the client then falls back to meld-aware geometry (see world.ts).
+  turn: Collection<string, TurnEntry>;
+
   // Hicks playability iter2 — human click-to-discard.  Keyed by seat index
   // (0..3), value = { tileId: int }.  Outbound only (the backend interprets
   // the entry and emits the resulting tile move via the `things` collection;
@@ -137,6 +148,7 @@ export class Client extends BaseClient {
     this.claim = new Collection('claim', this, { ephemeral: true });
     this.result = new Collection('result', this);
     this.pickup = new Collection('pickup', this, { ephemeral: true });
+    this.turn = new Collection('turn', this, { ephemeral: true });
     this.discard = new Collection('discard', this, { ephemeral: true });
     this.gameComplete = new Collection('gameComplete', this, { ephemeral: true });
     this.seats.on('update', this.onSeats.bind(this));

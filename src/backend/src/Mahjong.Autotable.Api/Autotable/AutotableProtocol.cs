@@ -85,6 +85,33 @@ public static class ChangshaCollectionKinds
     public const string Pickup = "pickup";
 
     /// <summary>
+    /// Server-emitted only (inbound to clients): the authoritative "whose turn / must a seat
+    /// discard" signal. Singleton keyed <c>"current"</c>, value = <see cref="TurnEntry"/>
+    /// (<c>{ activeSeat: 0..3 | null, phase: string, awaitingDiscard: bool }</c>). Emitted by
+    /// <see cref="ChangshaToAutotableTranslator"/> on every snapshot:
+    /// <list type="bullet">
+    ///   <item>While <see cref="Mahjong.Autotable.Api.Changsha.ChangshaPhase.AwaitingDiscard"/>
+    ///   holds → <c>activeSeat</c> = the authoritative
+    ///   <see cref="Mahjong.Autotable.Api.Changsha.ChangshaGameState.ActiveSeatIndex"/> and
+    ///   <c>awaitingDiscard</c> = <c>true</c>. That seat owes the discard whatever produced the
+    ///   turn — the dealer's initial 14, an ordinary auto-draw, a Chow/Pung claim, or a Kong
+    ///   replacement draw — for human and bot seats alike (C-2).</item>
+    ///   <item>On every other phase → <c>activeSeat</c> = <c>null</c> and
+    ///   <c>awaitingDiscard</c> = <c>false</c>: the discard cue is explicitly RETRACTED so it can
+    ///   never linger past phase exit (C-1's tombstone discipline). An explicit
+    ///   <c>activeSeat: null</c> (not an omitted field or a JS-null tombstone) is deliberate —
+    ///   the frontend's <c>resolveActiveSeat</c> trusts an explicit null over stale
+    ///   <c>things</c> geometry, so this keeps the turn cue authoritative rather than
+    ///   geometry-derived.</item>
+    /// </list>
+    /// This is the authoritative turn cue: the frontend must not infer the discard turn from tile
+    /// geometry alone (geometry stays as defence-in-depth only). Clients never push this kind (the
+    /// endpoint drops any inbound <c>turn</c>). Wire shape locked with Hicks (see frontend
+    /// <c>types.ts:TurnEntry</c> / <c>world.ts:normalizeTurnEntry</c>).
+    /// </summary>
+    public const string Turn = "turn";
+
+    /// <summary>
     /// Client-emitted only: an active-seat human player clicked a hand tile to
     /// discard it. Keyed by seat index (0..3), value =
     /// <c>{ tileId: int }</c>. The backend routes it to
@@ -104,6 +131,38 @@ public static class ChangshaCollectionKinds
     /// never push this kind (the endpoint drops any inbound <c>gameComplete</c>); locked C-1.
     /// </summary>
     public const string GameComplete = "gameComplete";
+}
+
+/// <summary>
+/// Server-emitted authoritative turn cue. Maps to the
+/// <see cref="ChangshaCollectionKinds.Turn"/> collection value under key <c>"current"</c>.
+/// Wire shape locked with Hicks's consumer (frontend <c>types.ts:TurnEntry</c> /
+/// <c>world.ts:normalizeTurnEntry</c>): <c>{ activeSeat, phase, awaitingDiscard }</c>.
+/// <para>The frontend treats <c>activeSeat === mySeat &amp;&amp; awaitingDiscard</c> as the single
+/// source of truth for enabling the local discard affordance, and an explicit
+/// <c>activeSeat: null</c> as "no seat is on the clock" (overriding stale tile geometry) — so
+/// <see cref="ActiveSeat"/> is serialized even when null (see the
+/// <see cref="JsonIgnoreCondition.Never"/> below), otherwise the shared
+/// <see cref="JsonIgnoreCondition.WhenWritingNull"/> serializer would drop it and the reader would
+/// fall back to geometry.</para>
+/// </summary>
+public sealed class TurnEntry
+{
+    /// <summary>Seat (0..3) that owes the discard while AwaitingDiscard, or <c>null</c> when no seat
+    /// is on the clock (any other phase). Always emitted — an explicit null is meaningful.</summary>
+    [JsonPropertyName("activeSeat")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public int? ActiveSeat { get; set; }
+
+    /// <summary>The current <see cref="Mahjong.Autotable.Api.Changsha.ChangshaPhase"/> name
+    /// (e.g. <c>"AwaitingDiscard"</c>); lets the client derive/verify the cue and aids debugging.</summary>
+    [JsonPropertyName("phase")]
+    public string Phase { get; set; } = string.Empty;
+
+    /// <summary>True exactly when <see cref="ActiveSeat"/> must discard now
+    /// (phase == AwaitingDiscard); false on every other phase (cue retracted).</summary>
+    [JsonPropertyName("awaitingDiscard")]
+    public bool AwaitingDiscard { get; set; }
 }
 
 /// <summary>
@@ -433,6 +492,24 @@ public static class ChangshaCollectionEncoder
     /// <summary>Encodes a tombstone for the pickup cursor (manual deal complete).</summary>
     public static CollectionEntry EncodePickupCleared()
         => new(ChangshaCollectionKinds.Pickup, "current", null);
+
+    // ── C-1/C-2: authoritative discard-turn cue ──
+
+    /// <summary>
+    /// Encodes the authoritative turn cue as the <c>turn["current"]</c> entry (wire shape locked
+    /// with Hicks: <c>{ activeSeat, phase, awaitingDiscard }</c>). Emitted on every snapshot:
+    /// while <c>AwaitingDiscard</c> holds, <paramref name="activeSeat"/> is the seat that owes the
+    /// discard and <paramref name="awaitingDiscard"/> is true; on every other phase
+    /// <paramref name="activeSeat"/> is <c>null</c> and <paramref name="awaitingDiscard"/> is false
+    /// (the cue is explicitly retracted — C-1 tombstone discipline).
+    /// </summary>
+    public static CollectionEntry EncodeTurn(int? activeSeat, string phase, bool awaitingDiscard)
+        => new(ChangshaCollectionKinds.Turn, "current", new TurnEntry
+        {
+            ActiveSeat = activeSeat,
+            Phase = phase,
+            AwaitingDiscard = awaitingDiscard
+        });
 }
 
 /// <summary>

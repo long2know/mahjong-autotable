@@ -1,6 +1,8 @@
 import $ from 'jquery';
 import { Client, GameCompleteEntry } from "./client";
 import { readSpectatorFromUrl } from './client-ui';
+import { computeTurnCue, newGameBannerA11y } from './turn-cue';
+import { showToast } from './toast';
 import { Sound } from './sound';
 import { Replay } from './replay';
 import { openReplayForGame } from './replay-launcher';
@@ -1696,6 +1698,11 @@ export class GameUi {
     // `things.update` fires per-batch; we debounce to the next animation
     // frame so a 32-tile deal doesn't recompute 32 times in a row.
     this.client.things.on('update', () => this.scheduleTurnBannerRefresh());
+    // Stuck-turn fix (Hicks) — also refresh when the authoritative turn signal
+    // (Bishop), seat occupancy, or a claim change lands, so "Your turn" /
+    // "Waiting for Seat N" flips without waiting for the next tile batch.
+    this.client.turn.on('update', () => this.scheduleTurnBannerRefresh());
+    this.client.seats.on('update', () => this.scheduleTurnBannerRefresh());
     // Re-evaluate at boot so the banner picks up any state that was
     // already present before our listeners attached (rare but safe).
     this.refreshTurnBanner();
@@ -1722,14 +1729,15 @@ export class GameUi {
     const selfSeat = this.client.seat;
     const spectating = readSpectatorFromUrl();
 
-    // Spectators / unseated viewers never see a "your turn" cue.
-    if (spectating || selfSeat === null) {
-      this.applyTurnBannerState('', null, null, null);
-      return;
-    }
+    // Stuck-turn fix (Hicks): a spectator / unseated viewer must never see a
+    // "your turn" cue, but we no longer blanket-hide the banner for them — the
+    // low-priority `computeTurnCue` below renders their correct state
+    // ("Spectating" / "No open seat — New Game").  The claim (P1) and pickup
+    // (P2) priorities are inherently self-targeted, so they stay no-ops when
+    // `selfSeat === null` (no self claim/pickup entry exists).
 
     // Priority 1 — claim window targeting self.
-    if (this.activeClaim !== null) {
+    if (selfSeat !== null && this.activeClaim !== null) {
       const available = Array.isArray(this.activeClaim.available)
         ? this.activeClaim.available.join(' / ')
         : '';
@@ -1753,21 +1761,132 @@ export class GameUi {
       return;
     }
 
-    // Priority 3 — extra hand tile (14 tiles, no pickup/claim in flight).
-    // `world.hasExtraHandTile()` already encodes the count-only-real-
-    // backend-tiles + skip-extra-preview-slot logic; reuse it so we don't
-    // duplicate the discard-gate semantics.
-    if (this.world.hasExtraHandTile()) {
-      this.applyTurnBannerState(
-        'discard',
-        'Your turn — click a tile to discard',
-        'discard',
-        null,
-      );
-      return;
+    // Priority 3+ — stuck-turn fix (Hicks): authoritative-first turn cue.
+    // `world.getTurnCueInput()` folds Bishop's `turn` signal ∪ meld-aware
+    // geometry; the pure `computeTurnCue` resolver decides between:
+    //   • discard        — it is MY turn to discard (fires even while the
+    //                      post-claim `things` geometry is a batch behind, so
+    //                      the "looks stuck after a claim" case is gone);
+    //   • waiting        — another seat is on the clock (the auto-draw + bots
+    //                      run server-side; the human now SEES whose turn it
+    //                      is instead of a frozen, empty table);
+    //   • spectating     — intentional spectator (no seat, ?seat=-1);
+    //   • no-open-seat   — landed on an in-progress game with every seat taken
+    //                      (the stale-gameId-reuse deadlock): offer New Game.
+    const cue = computeTurnCue(this.world.getTurnCueInput(spectating));
+    this.applyNewGameAffordance(cue.kind === 'no-open-seat');
+    switch (cue.kind) {
+      case 'discard':
+        this.applyTurnBannerState(
+          'discard', 'Your turn — click a tile to discard', 'discard', null);
+        return;
+      case 'waiting':
+        this.applyTurnBannerState(
+          'waiting', `Waiting for Seat ${cue.seat}…`, null, null);
+        return;
+      case 'waiting-unknown':
+        this.applyTurnBannerState(
+          'waiting', 'Waiting for the next player…', null, null);
+        return;
+      case 'spectating':
+        this.applyTurnBannerState(
+          'spectating',
+          cue.seat !== null ? `Spectating — Seat ${cue.seat}'s turn` : 'Spectating',
+          null,
+          null,
+        );
+        return;
+      case 'no-open-seat':
+        this.applyTurnBannerState(
+          'no-open-seat',
+          'This game is already in progress — no open seat. Start a New Game.',
+          null,
+          null,
+        );
+        return;
+      case 'none':
+      default:
+        this.applyTurnBannerState('', null, null, null);
+        return;
     }
+  }
 
-    this.applyTurnBannerState('', null, null, null);
+  // Stuck-turn fix (Hicks, Req 4) — when the viewer holds no actionable seat in
+  // an in-progress game (all seats taken, one likely by an absent human — the
+  // stale-gameId-reuse deadlock), make the turn banner a genuine one-tap New
+  // Game control + a one-time toast, instead of a frozen table / misleading
+  // "Not your turn".
+  //
+  // The banner is normally `pointer-events: none` (style.css) so it never eats
+  // 3D-table clicks; for THIS one actionable state we must flip it to
+  // `pointer-events: auto` or the control is visually live but DEAD (Hudson's
+  // finding).  We also make it keyboard-operable (role=button, tabindex,
+  // Enter/Space) and fully reset every mutated property + both listeners when
+  // the cue leaves this state so normal status banners stay click-through.
+  private noOpenSeatToastShown = false;
+  private bannerNewGameHandler: ((ev: Event) => void) | null = null;
+  private bannerNewGameKeyHandler: ((ev: KeyboardEvent) => void) | null = null;
+  private applyNewGameAffordance(enabled: boolean): void {
+    const banner = this.elements.turnBanner;
+    if (!banner) return;
+    const a11y = newGameBannerA11y(enabled);
+    if (a11y !== null) {
+      // Apply the actionable a11y/pointer state every refresh (idempotent) so
+      // it is correct even if applyTurnBannerState re-rendered the label.
+      banner.style.pointerEvents = a11y.pointerEvents; // override the base `none`
+      banner.style.cursor = a11y.cursor;
+      banner.setAttribute('role', a11y.role);
+      banner.setAttribute('tabindex', String(a11y.tabIndex));
+      banner.setAttribute('aria-label', a11y.ariaLabel);
+      // Bind click + keyboard activation exactly once.
+      if (this.bannerNewGameHandler === null) {
+        this.bannerNewGameHandler = () => this.openNewGameSurface();
+        this.bannerNewGameKeyHandler = (ev: KeyboardEvent) => {
+          if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
+            ev.preventDefault();
+            this.openNewGameSurface();
+          }
+        };
+        banner.addEventListener('click', this.bannerNewGameHandler);
+        banner.addEventListener('keydown', this.bannerNewGameKeyHandler as EventListener);
+      }
+      if (!this.noOpenSeatToastShown) {
+        this.noOpenSeatToastShown = true;
+        try {
+          showToast(
+            'No open seat in this game — start a New Game from the Lobby.',
+            'info',
+            4000,
+          );
+        } catch { /* toast region optional */ }
+      }
+    } else if (this.bannerNewGameHandler !== null) {
+      // Fully revert to the non-interactive status pill.
+      banner.removeEventListener('click', this.bannerNewGameHandler);
+      if (this.bannerNewGameKeyHandler !== null) {
+        banner.removeEventListener('keydown', this.bannerNewGameKeyHandler as EventListener);
+        this.bannerNewGameKeyHandler = null;
+      }
+      this.bannerNewGameHandler = null;
+      banner.style.pointerEvents = ''; // back to style.css `none` (click-through)
+      banner.style.cursor = '';
+      banner.setAttribute('role', 'status');
+      banner.removeAttribute('tabindex');
+      banner.removeAttribute('aria-label');
+      this.noOpenSeatToastShown = false;
+    }
+  }
+
+  // Opens a fresh New Game path.  Prefers the canonical `#new-game` action
+  // (clears the reconnect session + navigates to a bare URL whose lobby mints a
+  // fresh, isolated gameId) so the escape from a stale no-seat game can never
+  // loop back into the same stalled runtime game; falls back to the lobby
+  // toggle if that control is absent.
+  private openNewGameSurface(): void {
+    const newGame = document.getElementById('new-game') as HTMLButtonElement | null;
+    if (newGame) { newGame.click(); return; }
+    const toggle = document.getElementById('lobby-toggle') as HTMLButtonElement | null;
+    toggle?.click();
   }
 
   /**
@@ -1776,7 +1895,7 @@ export class GameUi {
    * for the canvas cursor affordance (P1 addition).
    */
   private applyTurnBannerState(
-    kind: 'claim' | 'pickup' | 'discard' | '',
+    kind: 'claim' | 'pickup' | 'discard' | 'waiting' | 'spectating' | 'no-open-seat' | '',
     text: string | null,
     cls: 'claim' | 'pickup' | 'discard' | null,
     countdown: boolean | null,

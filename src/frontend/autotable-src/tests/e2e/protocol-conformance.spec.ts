@@ -21,11 +21,16 @@ import * as path from 'path';
 const C1_KINDS = [
   'match', 'seats', 'things', 'nicks', 'mouse', 'sound',
   'dice', 'claim', 'pickup', 'discard', 'result', 'gameComplete',
+  // Stuck-turn fix (squad/fix-live-gameplay-defects) — server-authoritative
+  // discard-turn cue. Server-emitted only (ChangshaCollectionEncoder.EncodeTurn),
+  // client push dropped (AutotableWsEndpoint `case ChangshaCollectionKinds.Turn`),
+  // FE receives it as an ephemeral collection. Inbound-only, like result/gameComplete.
+  'turn',
 ].sort();
 
 // Server → client only.  The FE receives these; it never sends them as
 // commands (C-1: "result / gameComplete are inbound-only").
-const INBOUND_ONLY = new Set(['result', 'gameComplete']);
+const INBOUND_ONLY = new Set(['result', 'gameComplete', 'turn']);
 
 // FE → server game commands.  The backend MUST route each of these through
 // an *explicit* case in HandleUpdateAsync — a silent default-passthrough

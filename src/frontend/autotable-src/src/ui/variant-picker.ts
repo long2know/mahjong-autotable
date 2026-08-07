@@ -15,7 +15,11 @@
 //
 //   1) Writes the chosen value to `localStorage['mahjong.preferredVariant']`
 //      so it sticks across reloads.
-//   2) Updates the URL `?variant=` param.
+//   2) Rewrites the URL `?variant=` param AND mints a FRESH `?gameId=`
+//      (via session-url's resolveApplyGameId) so switching variant starts
+//      a new, isolated game instead of silently re-joining the stale game
+//      already running under the current concrete gameId.  An unchanged
+//      concrete URL is left untouched so a deliberate reconnect is kept.
 //   3) Reloads the page (`window.location.replace`) so the backend WS
 //      handshake re-runs with the new variant and the frontend bundle
 //      rehydrates against the matching runtime.
@@ -38,6 +42,13 @@
 //     idempotent (no-op if the dropdown is already attached).
 
 import './variant-picker.css';
+import {
+  resolveApplyGameId,
+  buildFreshGameUrl,
+  readConcreteGameId,
+  NEW_GAME_DEFAULTS,
+  type GameDefiningConfig,
+} from '../session-url';
 
 const STORAGE_KEY = 'mahjong.preferredVariant';
 const QUERY_PARAM = 'variant';
@@ -216,7 +227,7 @@ function buildDropdownSection(): HTMLElement {
 
   const hint = document.createElement('div');
   hint.className = 'ferro-variant-picker-hint';
-  hint.textContent = 'Changes variant and reloads the table.';
+  hint.textContent = 'Switching variant starts a fresh table.';
 
   section.appendChild(select);
   section.appendChild(hint);
@@ -250,26 +261,83 @@ function buildDropdownSection(): HTMLElement {
   return section;
 }
 
+// Pure, DOM-free decision for where a variant switch should navigate.
+// Exported for the browser-free contract test; the DOM handler below is a
+// thin wrapper that persists the preference and performs the reload.
+//
+// Returns the target URL, or `null` when nothing game-defining changes (an
+// unchanged concrete `?gameId=` URL — a deliberate reconnect — is left
+// untouched).  Switching variant is a reconfiguration, so Hicks's
+// `resolveApplyGameId` mints a FRESH, isolated gameId rather than silently
+// re-opening the stale/reused game running under the current concrete
+// gameId (the "Setting to Changsha reuses the old game" complaint), and
+// `buildFreshGameUrl` stamps the honest New-Game defaults for any config the
+// URL omits (crucially `dealMode=auto` for Changsha) so the fresh table
+// never boots a different dealMode/botCount than intended.  Every other
+// query param is carried through verbatim; `mint` is injectable so the
+// contract test is deterministic.
+export function computeVariantNavigation(
+  href: string,
+  value: string,
+  mint?: () => string,
+): string | null {
+  const url = new URL(href);
+  const search = url.search;
+
+  const cfg = gameConfigFromSearch(search, value);
+  const nextGameId = resolveApplyGameId(search, cfg, mint);
+
+  // resolveApplyGameId returns the SAME concrete id only when the URL already
+  // targets a concrete game whose game-defining config is unchanged — i.e. a
+  // deliberate reconnect.  Nothing to reload for; leave the URL untouched.
+  if (nextGameId === readConcreteGameId(search)) {
+    return null;
+  }
+
+  // Reconfiguration (variant switch) ⇒ start a FRESH, isolated game: set the
+  // chosen variant, then let buildFreshGameUrl mint-in the fresh gameId and
+  // fill any omitted New-Game defaults.  Params the user already set survive.
+  url.searchParams.set(QUERY_PARAM, value);
+  return buildFreshGameUrl(url.pathname, url.search, nextGameId);
+}
+
+// Build the game-defining config the user is switching TO: the chosen
+// variant, plus every other game-defining param carried verbatim from the
+// current URL (so the diff detects ONLY the variant change and the user's
+// other settings survive the switch).
+function gameConfigFromSearch(search: string, variant: string): GameDefiningConfig {
+  const p = new URLSearchParams(search);
+  const seedRaw = p.get('seed');
+  return {
+    variant,
+    dealMode: p.get('dealMode') ?? undefined,
+    botCount: p.has('botCount') ? Number(p.get('botCount')) : NEW_GAME_DEFAULTS.botCount,
+    botDifficulty: p.get('botDifficulty') ?? undefined,
+    handCount: p.has('handCount') ? Number(p.get('handCount')) : NEW_GAME_DEFAULTS.handCount,
+    seed: seedRaw === null || seedRaw.trim() === '' ? null : Number(seedRaw),
+  };
+}
+
 function onVariantChosen(value: string): void {
+  // Persist the preference so a fresh lobby visit restores it even if the
+  // navigation below is blocked (private mode / quota exceeded).
   try {
     window.localStorage.setItem(STORAGE_KEY, value);
   } catch {
-    // localStorage may be unavailable (private mode, quota exceeded);
-    // the URL update below still drives the reload.
+    // localStorage may be unavailable; the navigation still drives the switch.
   }
 
-  const url = new URL(window.location.href);
-  if (url.searchParams.get(QUERY_PARAM) === value) {
-    // Same variant — nothing to reload for.  We still wrote LS above so
-    // the next fresh lobby visit picks it up.
+  const target = computeVariantNavigation(window.location.href, value);
+  if (target === null) {
+    // Unchanged concrete URL — nothing to reload for; a deliberate reconnect
+    // to the same game is preserved.  (LS was still written above.)
     return;
   }
-  url.searchParams.set(QUERY_PARAM, value);
 
   // `location.replace` (not `assign`) so the browser back button doesn't
   // bounce between variants — mirrors Hicks's Apply & Start exit path
   // in lobby.ts:apply.addEventListener('click').
-  window.location.replace(url.toString());
+  window.location.replace(target);
 }
 
 function resolveInitialVariant(): string {
