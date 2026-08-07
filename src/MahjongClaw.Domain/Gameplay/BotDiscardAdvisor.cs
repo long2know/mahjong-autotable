@@ -1015,14 +1015,32 @@ public static class BotDiscardAdvisor
 
                     if (shouldDiscardSingleton)
                     {
-                        var singletonCandidates = candidates
-                            .Where(candidate => candidate.Tile.Equals(liveSingleton.Tile))
+                        var deadOffRankPairCandidates = candidates
+                            .Where(candidate =>
+                            {
+                                handCounts.TryGetValue(candidate.Tile, out var handCount);
+                                return handCount == 2
+                                    && !Changsha258Ruleset.IsSmallWinPair(candidate.Tile)
+                                    && candidate.RemainingCopies <= 0
+                                    && !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                            })
                             .ToList();
 
-                        if (singletonCandidates.Count > 0)
+                        if (deadOffRankPairCandidates.Count > 0)
                         {
-                            candidates = singletonCandidates;
-                            filteredByNearDeadSmallWinSingleton = true;
+                            candidates = deadOffRankPairCandidates;
+                        }
+                        else
+                        {
+                            var singletonCandidates = candidates
+                                .Where(candidate => candidate.Tile.Equals(liveSingleton.Tile))
+                                .ToList();
+
+                            if (singletonCandidates.Count > 0)
+                            {
+                                candidates = singletonCandidates;
+                                filteredByNearDeadSmallWinSingleton = true;
+                            }
                         }
                     }
                     else
