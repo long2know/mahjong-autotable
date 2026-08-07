@@ -166,23 +166,34 @@ public static class AutotableSlotMap
     }
 
     /// <summary>
-    /// Perimeter ordinal of the dice break point (the first tile drawn), anchored
-    /// within the marked break seat's physical wall so the depletion visibly
-    /// starts where the break marker sits.
+    /// Render-ring ordinal of the START (col 0, layer 0) of a seat's physical wall —
+    /// the sum of the render wall capacities of every lower-indexed seat. Because the
+    /// four physical walls are laid out seat-major (seat 0's whole wall, then 1, 2, 3)
+    /// this is the physical origin of that seat's wall.
     ///
-    /// <para>The stack index is clamped to the seat's render capacity: the engine's
-    /// <see cref="Mahjong.Autotable.Api.Changsha.BreakPointService"/> models wall
-    /// sizes as dealer-relative 14/13/14/13 while the render is absolute
-    /// 14/14/13/13, so a raw stack index can exceed a 13-stack render wall for
-    /// dealer≠0. Physical wall dimensions are a rendering concern (changsha-spec
-    /// §2.3), so clamping the anchor is correct and keeps depletion contiguous.</para>
+    /// <para><b>Why this is the correct break anchor (issue: stuck-turn wall mapping /
+    /// C-3):</b> the rules engine
+    /// (<see cref="Mahjong.Autotable.Api.Changsha.BreakPointService"/>) models the wall
+    /// as one flat list whose index 0 is the first tile of the <b>dealer's</b> wall,
+    /// running counter-clockwise; <see cref="Mahjong.Autotable.Api.Changsha.BreakPointResult.TileIndex"/>
+    /// is that authoritative flat index of the break tile. Mapping an engine flat index
+    /// <c>k</c> to the render ring as <c>WallDealerOriginOrdinal(dealer) + k</c>
+    /// (mod <see cref="TotalTiles"/>) reproduces the true draw order as one contiguous
+    /// physical arc for <b>every</b> dealer seat 0–3.</para>
+    ///
+    /// <para>The superseded <c>WallBreakOrdinal(wallSeatIndex, stackIndex)</c> re-derived
+    /// the anchor from the render's absolute 14/14/13/13 cumulative sizes plus the engine's
+    /// dealer-relative 14/13/14/13 stack index and clamped the result. Those two frames only
+    /// agree when the walls between the dealer and the break wall happen to have equal sizes,
+    /// so the anchor drifted by one stack for most dealer-2 rolls (and some rolls at every
+    /// other dealer) — a real cross-dealer defect. Anchoring on the authoritative flat
+    /// <c>TileIndex</c> removes the frame confusion and the dead clamp entirely.</para>
     /// </summary>
-    public static int WallBreakOrdinal(int wallSeatIndex, int stackIndex)
+    public static int WallDealerOriginOrdinal(int dealerSeatIndex)
     {
-        var seat = ((wallSeatIndex % 4) + 4) % 4;
+        var seat = ((dealerSeatIndex % 4) + 4) % 4;
         var start = 0;
         for (var s = 0; s < seat; s++) start += WallTileCapacity(s);
-        var stack = Math.Clamp(stackIndex, 0, WallStackCount(seat) - 1);
-        return start + stack * 2;
+        return start;
     }
 }

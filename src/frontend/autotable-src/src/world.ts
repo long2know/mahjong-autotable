@@ -9,11 +9,16 @@ import { ObjectView, Render } from "./object-view";
 import { SoundPlayer } from "./sound-player";
 import {
   Conditions, ThingInfo, SoundType, Place, ThingType, Size, DealType,
-  DiceInfo, GameType, PickupEntry,
+  DiceInfo, GameType, PickupEntry, TurnEntry,
 } from "./types";
 import { Slot } from "./slot";
 import { Thing } from "./thing";
 import { hasExtraDiscardTile, HandSlotView } from "./hand-accounting";
+import {
+  isMyDiscardTurn as cueIsMyDiscardTurn,
+  resolveActiveSeat as cueResolveActiveSeat,
+  TurnCueInput,
+} from "./turn-cue";
 // Hicks 2026-05-26 — first-play P1 unblock (B4 / Vasquez P0-H).  When
 // a click-to-discard is silently rejected we surface a one-line toast
 // so the user knows why the click didn't fire instead of assuming the
@@ -26,6 +31,38 @@ interface Select extends Place {
 }
 
 const SHIFT_TIME = 100;
+
+// Stuck-turn fix (Hicks) — tolerant reader for Bishop's `turn` signal.
+// Canonical shape is `{ activeSeat, phase, awaitingDiscard }` (see
+// types.ts:TurnEntry); we also accept `activeSeatIndex` / `seat` spellings and
+// derive `awaitingDiscard` from the phase name so a small backend shape drift
+// does not silently strand the affordance.  Returns null when the entry is
+// absent or not turn-shaped (the caller then falls back to meld-aware
+// geometry).
+function normalizeTurnEntry(raw: unknown): TurnEntry | null {
+  if (raw === null || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  // Determine the active-seat field, treating an EXPLICIT null as meaningful
+  // ("no seat on the clock" — Bishop emits it on every non-AwaitingDiscard
+  // phase to retract the cue) vs an ABSENT field (not a turn entry).  Using
+  // `in` rather than `??` is essential: `?? ` would collapse an explicit null
+  // to the next candidate / undefined and defeat the retraction, letting stale
+  // `things` geometry resurrect a discard cue during Scoring/claim windows.
+  let cand: unknown;
+  if ('activeSeat' in o) cand = o.activeSeat;
+  else if ('activeSeatIndex' in o) cand = o.activeSeatIndex;
+  else if ('seat' in o) cand = o.seat;
+  else return null; // no active-seat field ⇒ not a turn entry
+  let activeSeat: number | null;
+  if (typeof cand === 'number') activeSeat = cand;
+  else if (cand === null) activeSeat = null;
+  else return null;
+  const phase = typeof o.phase === 'string' ? o.phase : undefined;
+  let awaitingDiscard: boolean | undefined;
+  if (typeof o.awaitingDiscard === 'boolean') awaitingDiscard = o.awaitingDiscard;
+  else if (phase !== undefined) awaitingDiscard = /awaitingdiscard/i.test(phase);
+  return { activeSeat, phase, awaitingDiscard };
+}
 
 export class World {
   private setup: Setup;
@@ -547,6 +584,23 @@ export class World {
   // from the wall first" for ~2 s and learn the rules by playing.
   // The 1500 ms guard prevents toast spam if the user keeps clicking.
   private lastDiscardToastAt = 0;
+
+  /**
+   * Stuck-turn fix (Hicks, Req 5) — authoritative, non-misleading reason a
+   * hand-tile click did not discard.  Called only when the viewer clicked
+   * their OWN hand tile but it is not their discard turn.  Prefers the true
+   * cause (pickup owed / another seat on the clock) over the old blanket
+   * "Not your turn", which was wrong during the post-claim geometry lag.
+   */
+  private describeWhyCannotDiscard(): string {
+    if (this.isMyPickupTurn()) return 'Pick your tiles from the wall first';
+    const active = this.effectiveActiveSeat();
+    if (active !== null && active !== this.seat) {
+      return `Waiting for Seat ${active} to play`;
+    }
+    return 'Not your turn yet';
+  }
+
   private surfaceDiscardRejection(reason: string): void {
     const now = Date.now();
     if (now - this.lastDiscardToastAt < 1500) return;
@@ -614,6 +668,136 @@ export class World {
       this.seat,
       this.conditions.gameType === GameType.CHANGSHA,
     );
+  }
+
+  // ── Stuck-turn fix (Hicks) — authoritative turn signal + turn cue ─────────
+
+  /** Bishop's authoritative turn signal, normalized, or null when absent. */
+  private currentTurnSignal(): TurnEntry | null {
+    return normalizeTurnEntry(this.client.turn.get('current') ?? null);
+  }
+
+  private isChangsha(): boolean {
+    return this.conditions.gameType === GameType.CHANGSHA;
+  }
+
+  /**
+   * True when it is the local seat's turn to discard.  Delegates to the pure
+   * {@link cueIsMyDiscardTurn}: Bishop's authoritative `turn` signal wins when
+   * present (fires the cue regardless of `things` snapshot timing AND honours
+   * the retraction so it can't linger past AwaitingDiscard); meld-aware
+   * geometry is the defense-in-depth fallback consulted only when the signal is
+   * absent (older backend / before the first `turn` UPDATE).
+   */
+  isMyDiscardTurn(): boolean {
+    if (this.seat === null) return false;
+    if (this.isMyPickupTurn()) return false;
+    const signal = this.isChangsha() ? this.currentTurnSignal() : null;
+    return cueIsMyDiscardTurn({
+      mySeat: this.seat,
+      activeSeatSignal: signal ? signal.activeSeat : undefined,
+      awaitingDiscardSignal: signal ? signal.awaitingDiscard : undefined,
+      myHasExtraTile: this.hasExtraHandTile(),
+    });
+  }
+
+  /** Per-seat effective hand size (concealed + 3·melds), Changsha meld-aware. */
+  private perSeatEffective(): number[] {
+    const hand = [0, 0, 0, 0];
+    const melds: Array<Set<string>> = [new Set(), new Set(), new Set(), new Set()];
+    const meldAware = this.isChangsha();
+    for (const thing of this.things.values()) {
+      const slot = thing.slot;
+      if (slot.thing !== thing) continue; // owned slots only
+      const s = slot.seat;
+      if (s === null || s < 0 || s > 3) continue;
+      if (slot.group === 'hand') {
+        if (!slot.name.startsWith('hand.extra@')) hand[s]++;
+      } else if (meldAware && slot.group === 'meld') {
+        const mi = slot.name.split('.')[1];
+        if (mi !== undefined && mi !== '') melds[s].add(mi);
+      }
+    }
+    return hand.map((h, i) => h + 3 * melds[i].size);
+  }
+
+  /**
+   * Geometry heuristic for whose turn it is when Bishop's signal is absent:
+   * the sole seat holding 14 effective tiles (owes a discard).  Ambiguity
+   * (zero or more than one such seat — e.g. mid-claim-window) ⇒ null.
+   */
+  private activeSeatByGeometry(): number | null {
+    if (!this.isChangsha()) return null;
+    const eff = this.perSeatEffective();
+    let found: number | null = null;
+    for (let i = 0; i < 4; i++) {
+      if (eff[i] > 13) {
+        if (found !== null) return null;
+        found = i;
+      }
+    }
+    return found;
+  }
+
+  /** All four seats currently occupied (human or bot). */
+  private allSeatsOccupied(): boolean {
+    return this.client.seatPlayers.every(p => p !== null && p !== '');
+  }
+
+  /** A hand has been dealt / is live (tiles are in play), server-authoritative. */
+  private isHandInProgress(): boolean {
+    const signal = this.currentTurnSignal();
+    if (signal !== null && signal.activeSeat !== null) return true;
+    for (const thing of this.things.values()) {
+      const slot = thing.slot;
+      if (slot.thing !== thing) continue;
+      if (slot.group === 'discard') return true;
+      if ((slot.group === 'hand' || slot.group === 'meld') && slot.seat !== null) return true;
+    }
+    return false;
+  }
+
+  /** Authoritative-first active seat (0..3) or null — for waiting cues/toasts. */
+  private effectiveActiveSeat(): number | null {
+    const signal = this.isChangsha() ? this.currentTurnSignal() : null;
+    return cueResolveActiveSeat({
+      activeSeatSignal: signal ? signal.activeSeat : undefined,
+      activeSeatByGeometry: this.activeSeatByGeometry(),
+    });
+  }
+
+  /**
+   * Snapshot of everything the pure {@link computeTurnCue} resolver needs.
+   * game-ui consumes this to render the low-priority banner states (discard /
+   * waiting / spectating / no-open-seat) after it has handled the claim +
+   * pickup affordances.  Non-Changsha (relay) variants have no server turn
+   * model, so we feed a minimal input that yields only discard-or-none — the
+   * exact upstream free-drag behaviour.
+   */
+  getTurnCueInput(isSpectatorUrl: boolean): TurnCueInput {
+    if (!this.isChangsha()) {
+      return {
+        mySeat: this.seat,
+        isSpectatorUrl,
+        inProgress: false,
+        activeSeatSignal: undefined,
+        awaitingDiscardSignal: undefined,
+        myHasExtraTile: this.hasExtraHandTile(),
+        activeSeatByGeometry: null,
+        allSeatsOccupied: false,
+      };
+    }
+    const signal = this.currentTurnSignal();
+    return {
+      mySeat: this.seat,
+      isSpectatorUrl,
+      inProgress: this.isHandInProgress(),
+      activeSeatSignal: signal ? signal.activeSeat : undefined,
+      awaitingDiscardSignal: signal ? signal.awaitingDiscard : undefined,
+      myHasExtraTile: this.hasExtraHandTile(),
+      activeSeatByGeometry: this.activeSeatByGeometry(),
+      allSeatsOccupied: this.allSeatsOccupied(),
+    };
   }
 
   /**
@@ -1123,36 +1307,38 @@ export class World {
       return false;
     }
 
-    // Hicks playability iter2 — click-to-discard.  When the local player has
-    // an extra tile in hand (>13 concealed) and clicks on one of their own
-    // hand tiles, treat the click as a single-action discard instead of a
-    // drag.  Matches "playing in person" semantics: tap a tile, it goes to
-    // the discard area.  The backend validates phase + active-seat — an
-    // off-turn click is silently dropped server-side.
+    // Hicks playability iter2 — click-to-discard.  When it is the local
+    // player's turn to discard and they click one of their own hand tiles,
+    // treat the click as a single-action discard instead of a drag.  Matches
+    // "playing in person" semantics: tap a tile, it goes to the discard area.
+    // The backend validates phase + active-seat — an off-turn click is
+    // silently dropped server-side.
     //
-    // Hicks 2026-05-26 — first-play P1 unblock (B4 / Vasquez P0-H).  When
-    // the click DOES NOT have an extra tile (it's not our turn, or we
-    // haven't drawn the 14th tile yet), the legacy path silently fell
-    // through to drag.  We now surface a one-line toast so the user
-    // learns the rule instead of perceiving the click as a NO-OP.  We
-    // still let the drag fall through so power-users can re-order tiles
-    // by hand.
+    // Stuck-turn fix (Hicks): gate on the AUTHORITATIVE {@link isMyDiscardTurn}
+    // (Bishop's turn signal ∪ meld-aware geometry) rather than geometry alone,
+    // so a legal post-claim discard is offered the instant the runtime hands
+    // us the turn — even while the `things` snapshot confirming our 14th tile
+    // is still one UPDATE batch behind (the "post-claim looks stuck" case).
+    //
+    // Hicks 2026-05-26 — first-play P1 unblock (B4 / Vasquez P0-H).  When it is
+    // NOT our turn the legacy path silently fell through to drag; we surface a
+    // one-line toast so the user learns why the click didn't discard instead of
+    // perceiving a NO-OP.  Wording is now derived from authoritative state
+    // (Req 5) so we never say "Not your turn" when it demonstrably is.  We
+    // still let the drag fall through so power-users can re-order tiles.
     if (this.hovered !== null
         && this.hovered.slot.group === 'hand'
         && this.hovered.slot.seat === this.seat) {
-      if (this.hasExtraHandTile()) {
+      if (this.isMyDiscardTurn()) {
         const tile = this.hovered;
         this.emitDiscard(tile);
         this.hovered = null;
         this.selected.splice(0);
         return false;
       }
-      // Inform — but don't intercept; the drag-fallthrough still runs
-      // so existing re-ordering UX is unchanged.
-      const reason = this.isMyPickupTurn()
-        ? 'Pick from the wall first'
-        : 'Not your turn';
-      this.surfaceDiscardRejection(reason);
+      // Inform — but don't intercept; the drag-fallthrough still runs so
+      // existing re-ordering UX is unchanged.
+      this.surfaceDiscardRejection(this.describeWhyCannotDiscard());
     }
 
     if (this.hovered !== null && !this.isHolding()) {

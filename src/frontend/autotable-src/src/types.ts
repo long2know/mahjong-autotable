@@ -196,6 +196,34 @@ export interface ClaimWindowEntry {
   tile: number;
 }
 
+// Stuck-turn fix (Hicks) — authoritative turn signal.
+//
+// Bishop's backend translator emits this on a dedicated ephemeral `turn`
+// collection (singleton key "current") so the client can render the "your
+// turn / waiting for seat N" affordance from AUTHORITATIVE runtime state
+// instead of inferring it from `things` geometry (which lags a claim/deal by
+// one UPDATE batch and briefly reads the wrong hand size — the root of the
+// "post-claim looks stuck" perception).
+//
+// WIRE ASSUMPTION (documented for the Bishop integration seam):
+//   ["turn", "current", { activeSeat, phase, awaitingDiscard }]
+//     • activeSeat      — seat (0..3) whose action the runtime awaits, or null
+//                         when no seat is on the clock (pre-deal, scoring,
+//                         game-complete, or a claim window resolving).
+//     • phase           — ChangshaPhase name (e.g. "AwaitingDiscard",
+//                         "AwaitingClaim", "RollingDice", ...). Optional.
+//     • awaitingDiscard — true when `activeSeat` must discard (phase ===
+//                         AwaitingDiscard). Optional; the client also derives
+//                         it from `phase` when omitted.
+// The client tolerates alternate field spellings (activeSeatIndex/seat) so a
+// small backend shape drift does not strand the affordance — see
+// world.ts:onTurn / normalizeTurnEntry.
+export interface TurnEntry {
+  activeSeat: number | null;
+  phase?: string;
+  awaitingDiscard?: boolean;
+}
+
 export interface ScoreDelta {
   seat: number;
   delta: number;

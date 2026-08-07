@@ -37,7 +37,7 @@ import type { Client } from './client';
 // #153 (Ferro) — shared default-game URL helpers so the lobby's New Game
 // surface gate and client-ui.ts's connect funnel agree on what counts as a
 // "concrete game" (deliberate reload/reconnect) vs a fresh New Game.
-import { hasConcreteGameId, mintFreshGameId as mintFreshGameIdShared } from './session-url';
+import { hasConcreteGameId, mintFreshGameId as mintFreshGameIdShared, resolveApplyGameId } from './session-url';
 // Phase K Wave 19 — Hicks (bundle-audit §3.4).  `matchmaking` (~7.7 KB
 // minified) is now lazy-loaded behind `loadMatchmaking()` /
 // `schedulePublicGamesPaneLazyMount()` / `scheduleMakePublicToggleLazy
@@ -467,7 +467,7 @@ function writeLocalStorageDefaults(state: LobbyState): void {
   }
 }
 
-function buildUrl(state: LobbyState): string {
+function buildUrl(state: LobbyState, forceFreshGame = false): string {
   const p = new URLSearchParams();
   // Phase I Wave 3 — preserve any ?gameId= already on the page URL so
   // a lobby Apply & Start doesn't silently switch the user back to the
@@ -481,14 +481,25 @@ function buildUrl(state: LobbyState): string {
   // client-ui.ts:490 and triggers auto-connect, and (b) every fresh
   // user lands in their own isolated game instead of sharing the
   // legacy `changsha-default` room with everyone else on the host.
-  // An explicit user-set gameId (tournaments / shared rooms) is kept
-  // verbatim — minting only happens on the bare-URL → lobby path.
-  const currentGameId = new URLSearchParams(window.location.search).get('gameId');
-  if (currentGameId !== null && currentGameId !== '') {
-    p.set('gameId', currentGameId);
-  } else {
-    p.set('gameId', mintFreshGameId());
-  }
+  //
+  // Stuck-turn fix (Hicks, Ripley Design Review defect 1): an explicit gameId
+  // is preserved ONLY when the game-defining config is unchanged (a deliberate
+  // reconnect/reload of the same concrete game).  When the user changes
+  // variant/dealMode/botCount/botDifficulty/handCount/seed via the setup UI we
+  // mint a FRESH gameId so Apply starts a new game instead of silently
+  // re-opening an already-running game whose seats may belong to other/absent
+  // connections (which the server would leave stalled — Hudson stale-gameId
+  // deadlock).  `forceFreshGame` (Quick Match) always starts a new game so its
+  // one-click "new quick game" never rejoins a stalled room even when the
+  // config happens to match.  `resolveApplyGameId` encodes the rest.
+  p.set('gameId', forceFreshGame ? mintFreshGameId() : resolveApplyGameId(window.location.search, {
+    variant: state.variant,
+    dealMode: state.dealMode,
+    botCount: state.botCount,
+    botDifficulty: state.botDifficulty,
+    handCount: state.handCount,
+    seed: state.seed,
+  }, mintFreshGameId));
   p.set('variant', state.variant);
   // dealMode is Changsha-only — Riichi variants ignore it.  Emit only
   // when relevant so the URL stays tidy.
@@ -831,7 +842,7 @@ export function initLobby(client?: Client): void {
         handCount: current.handCount,
         seat: null,
       };
-      const url = buildUrl(quick);
+      const url = buildUrl(quick, /* forceFreshGame */ true);
       // Hicks playability iter2 — close the panel locally AND mark the
       // skip-open-on-load flag so the reload doesn't re-open the lobby
       // (which would intercept pointer events on #connect / #deal /

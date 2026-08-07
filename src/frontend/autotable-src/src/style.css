@@ -165,6 +165,24 @@
     box-shadow: 0 0 0 0.2rem rgba(130, 138, 145, 0.5) !important;
 }
 
+/* Ripley Design Review C-4/C-5/C-6 — a themed <select> must paint its
+   own <option>/<optgroup> foreground AND background.  `.dark-select`
+   only recolors the CLOSED control (white text on #343a40); the native
+   listbox that opens on click inherits that white `color` but keeps a
+   transparent background, so the options render white-on-white over the
+   browser/OS default (light) popup surface — the reported unreadable
+   "setup dropdown".  Every live setup/settings select is `.dark-select`
+   (settings-drawer language/motion/theme, the rule-preset picker); the
+   lobby variant-picker already pins this in its own module CSS.  White
+   (#fff) on #343a40 ≈ 11.5:1 — clears WCAG AA (4.5:1). */
+.dark-select option,
+.dark-select optgroup,
+.settings-v2-select option,
+.settings-v2-select optgroup {
+    background-color: #343a40;
+    color: #ffffff;
+}
+
 /* Override system setting */
 .collapsing {
 	transition:height 0.2s ease !important;

@@ -194,6 +194,23 @@ public static class ChangshaToAutotableTranslator
             entries.Add(ChangshaCollectionEncoder.EncodePickup(BuildPickupEntry(state)));
         }
 
+        // ── C-1/C-2: authoritative turn cue ──
+        // Emit the turn cue on every snapshot (wire shape locked with Hicks:
+        // { activeSeat, phase, awaitingDiscard }). While AwaitingDiscard holds, activeSeat is the
+        // seat that owes the discard and awaitingDiscard is true; every path that reaches
+        // AwaitingDiscard (dealer's initial 14, an ordinary auto-draw, a Chow/Pung claim, or a
+        // Kong replacement draw — human or bot) sets ActiveSeatIndex to that seat, so this single
+        // check covers them all (C-2). On every other phase activeSeat is an explicit null and
+        // awaitingDiscard is false, retracting the cue so it can never linger past phase exit
+        // (C-1's tombstone discipline). The explicit null (rather than a JS-null tombstone) is
+        // deliberate: the frontend trusts an explicit null over stale `things` geometry, keeping
+        // the turn authoritative rather than geometry-derived.
+        var awaitingDiscard = state.Phase == ChangshaPhase.AwaitingDiscard;
+        entries.Add(ChangshaCollectionEncoder.EncodeTurn(
+            activeSeat: awaitingDiscard ? state.ActiveSeatIndex : null,
+            phase: state.Phase.ToString(),
+            awaitingDiscard: awaitingDiscard));
+
         return entries;
     }
 
@@ -487,13 +504,20 @@ public static class ChangshaToAutotableTranslator
         // perimeter (issue #152) instead of being re-packed/scattered evenly
         // across all four seats on every mutation.
         //
-        // Each remaining tile's physical perimeter ordinal is
-        //   breakOrdinal + frontDrawn + listIndex   (mod 108)
-        // where frontDrawn = 108 - Wall.Count - WallBackDrawn. Because a
-        // front-draw decrements Wall.Count and shifts every remaining tile's
-        // listIndex down by one, `frontDrawn + listIndex` is invariant per
-        // tile — so a given tile keeps the same slot until it is itself drawn,
-        // and the drawn/kong slots simply go empty (contiguous arc).
+        // Each remaining tile maps from its authoritative rules-engine flat wall
+        // index to a render-ring ordinal:
+        //   ordinal = WallDealerOriginOrdinal(dealer) + (BreakPoint.TileIndex + frontDrawn + listIndex)   (mod 108)
+        // where frontDrawn = 108 - Wall.Count - WallBackDrawn. The rules engine's
+        // flat wall index 0 is the first tile of the DEALER's physical wall
+        // (BreakPointService counts counter-clockwise from there), so anchoring on
+        // WallDealerOriginOrdinal(dealer) reproduces the true draw order as ONE
+        // contiguous arc for every dealer seat 0–3 (C-3). Because a front-draw
+        // decrements Wall.Count and shifts every remaining tile's listIndex down by
+        // one, `frontDrawn + listIndex` is invariant per tile — a given tile keeps
+        // the same slot until it is itself drawn, and the drawn slots simply go
+        // empty. Kong replacements draw from the BACK (state.WallBackDrawn), so they
+        // consume the far end of the arc while ordinary front draws consume the near
+        // (break) end — both leave a single contiguous middle arc.
         //
         // Pre-deal (Seating / RollingDice, empty wall, nothing dealt) still
         // synthesizes a full 108-tile face-down wall so the four canonical
@@ -511,9 +535,16 @@ public static class ChangshaToAutotableTranslator
         }
         else
         {
+            // Authoritative break anchor: the render-ring origin of the dealer's
+            // physical wall plus the engine's flat break TileIndex. This replaces the
+            // superseded dealer-relative/absolute WallBreakOrdinal clamp, which drifted
+            // one stack off the true break for most dealer-2 rolls (and some rolls at
+            // every dealer). When there is no break point yet the wall is full, so the
+            // origin alone is a harmless identity anchor.
+            var dealerOrigin = AutotableSlotMap.WallDealerOriginOrdinal(state.DealerSeatIndex);
             var breakOrdinal = state.BreakPoint is { } bp
-                ? AutotableSlotMap.WallBreakOrdinal(bp.WallIndex, bp.StackIndex)
-                : 0;
+                ? dealerOrigin + bp.TileIndex
+                : dealerOrigin;
             var frontDrawn = AutotableSlotMap.TotalTiles - state.Wall.Count - state.WallBackDrawn;
             if (frontDrawn < 0) frontDrawn = 0;
 

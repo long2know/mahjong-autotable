@@ -73,6 +73,107 @@ export function hasConcreteGameId(search: string): boolean {
   return readConcreteGameId(search) !== null;
 }
 
+// Stuck-turn fix (Hicks) — game-defining config used to decide whether an
+// "Apply & Start" / variant switch is a *reconfiguration* (⇒ mint a fresh,
+// isolated gameId) or an *unchanged reload* (⇒ reuse the gameId so a deliberate
+// reconnect to the same concrete game is preserved).
+//
+// Why this matters (Ripley Design Review defect 1 / Hudson stale-gameId reuse):
+// changing variant/config while a concrete `?gameId=` is on the URL used to
+// keep that gameId, so Apply re-JOINed the SAME already-running runtime game
+// (whose seats may be owned by other/absent connections) — the server ignores
+// the new config for an existing game, stranding the viewer in a stalled hand
+// with no open seat.  Reconfiguration must therefore start a new game.
+//
+// Seat choice is intentionally NOT part of this comparison — it is a per-viewer
+// join preference, not a property of the game.
+export interface GameDefiningConfig {
+  variant: string;
+  dealMode?: string;        // Changsha-only; ignored for other variants
+  botCount: number;
+  botDifficulty?: string;   // only meaningful when botCount > 0
+  handCount: number;
+  seed?: number | null;
+}
+
+interface CanonicalConfig {
+  variant: string;
+  dealMode: string;
+  botCount: number;
+  botDifficulty: string;
+  handCount: number;
+  seed: number | null;
+}
+
+function canonicalizeConfig(src: GameDefiningConfig): CanonicalConfig {
+  const variant = src.variant || NEW_GAME_DEFAULTS.variant;
+  const botCount = src.botCount;
+  return {
+    variant,
+    // dealMode only affects Changsha; blank it out elsewhere so a Riichi
+    // reload is never spuriously treated as a reconfiguration.
+    dealMode: variant === 'changsha' ? (src.dealMode || NEW_GAME_DEFAULTS.dealMode) : '',
+    botCount,
+    botDifficulty: botCount > 0 ? (src.botDifficulty || NEW_GAME_DEFAULTS.botDifficulty) : '',
+    handCount: src.handCount,
+    seed: src.seed ?? null,
+  };
+}
+
+function canonicalConfigFromSearch(search: string): CanonicalConfig {
+  const p = new URLSearchParams(search);
+  const variant = p.get('variant') || NEW_GAME_DEFAULTS.variant;
+  const botCount = p.has('botCount')
+    ? Number(p.get('botCount'))
+    : NEW_GAME_DEFAULTS.botCount;
+  const handCount = p.has('handCount')
+    ? Number(p.get('handCount'))
+    : NEW_GAME_DEFAULTS.handCount;
+  const seedRaw = p.get('seed');
+  return canonicalizeConfig({
+    variant,
+    dealMode: p.get('dealMode') ?? undefined,
+    botCount,
+    botDifficulty: p.get('botDifficulty') ?? undefined,
+    handCount,
+    seed: seedRaw === null || seedRaw.trim() === '' ? null : Number(seedRaw),
+  });
+}
+
+// True when `cfg` differs from the game-defining config already encoded on the
+// current URL (defaults normalised on both sides so an omitted param never
+// reads as a change).
+export function gameConfigDiffersFromUrl(search: string, cfg: GameDefiningConfig): boolean {
+  const a = canonicalConfigFromSearch(search);
+  const b = canonicalizeConfig(cfg);
+  return (
+    a.variant !== b.variant ||
+    a.dealMode !== b.dealMode ||
+    a.botCount !== b.botCount ||
+    a.botDifficulty !== b.botDifficulty ||
+    a.handCount !== b.handCount ||
+    a.seed !== b.seed
+  );
+}
+
+// Decide the gameId an Apply/variant-switch should target:
+//   • No concrete gameId on the URL            ⇒ mint a fresh one (New Game).
+//   • Concrete gameId + config CHANGED         ⇒ mint a fresh one (fresh game;
+//     never silently re-open a stranger's in-progress game).
+//   • Concrete gameId + config UNCHANGED       ⇒ reuse it (deliberate reconnect
+//     to the same concrete game is preserved).
+// `mint` is injectable so the contract test is deterministic.
+export function resolveApplyGameId(
+  search: string,
+  cfg: GameDefiningConfig,
+  mint: () => string = mintFreshGameId,
+): string {
+  const current = readConcreteGameId(search);
+  if (current === null) return mint();
+  if (gameConfigDiffersFromUrl(search, cfg)) return mint();
+  return current;
+}
+
 // Build an explicit, honest "New Game" URL for a default navigation: mint a
 // fresh gameId and fill in any config params the current URL is missing with
 // the shared New Game defaults.  Params the user already set on the URL are

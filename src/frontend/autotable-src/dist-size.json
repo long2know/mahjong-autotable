@@ -469,18 +469,18 @@
     {
       "wave": "K22",
       "bundler": "vite",
-      "recordedAt": "2026-07-28T01:11:13.898Z",
+      "recordedAt": "2026-08-07T01:12:27.581Z",
       "chunks": {
-        "autotable-src-eager": 109796,
-        "game-bootstrap": 174693,
-        "scene-shell": 2572,
-        "scene-effects": 62348,
+        "autotable-src-eager": 110826,
+        "game-bootstrap": 174696,
+        "scene-shell": 2577,
+        "scene-effects": 64555,
         "three-renderer-big": 406736,
-        "three-renderer-small": 79558,
+        "three-renderer-small": 82345,
         "gltf-loader": 44223,
         "stats-module": 3227,
         "commentary-panel": 8269,
-        "spectator-livestream": 5327,
+        "spectator-livestream": 5332,
         "hls": 286514,
         "tournaments": 41526,
         "chat": 12346,
@@ -507,7 +507,7 @@
         "matchmaking": 2681,
         "rule-presets": 10010,
         "auth": 21799,
-        "identity-onboarding": 3294,
+        "identity-onboarding": 3289,
         "identity-avatar-migration": 2335
       }
     }
