@@ -191,10 +191,6 @@ public static class BotDiscardAdvisor
         }
 
         var noPotentialOutsIgnoringMinimumFan = false;
-        if (visibleMeldCounts.Count > 0 && potentialOutSummaries is not null)
-        {
-            noPotentialOutsIgnoringMinimumFan = potentialOutSummaries.Max(summary => summary.TileTypes) == 0;
-        }
 
         if (ruleset == MahjongRuleset.ChineseOfficial && maxWinningOuts == 0 && potentialOutSummaries is null)
         {
@@ -207,6 +203,11 @@ public static class BotDiscardAdvisor
                     ruleset,
                     requireMinimumFan: false))
                 .ToList();
+        }
+
+        if (potentialOutSummaries is not null)
+        {
+            noPotentialOutsIgnoringMinimumFan = potentialOutSummaries.Max(summary => summary.TileTypes) == 0;
         }
 
         var hasChangshaPureSuitLean = false;

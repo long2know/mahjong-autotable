@@ -6799,6 +6799,42 @@ public class BotDiscardAdvisorTests
         handTiles[discardIndex].Should().Be(new Tile(TileSuit.Winds, 0, Wind.South));
     }
 
+    [Fact]
+    public void SelectDiscardIndex_WithKongThreatsAndNoPotentialOuts_DoesNotForceMultiCopyThreatDiscard()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Flowers, 1),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 8), new(TileSuit.Characters, 8)
+        };
+
+        var kongThreatTiles = new List<Tile>
+        {
+            new(TileSuit.Flowers, 1), new(TileSuit.Flowers, 1), new(TileSuit.Flowers, 1),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 8), new(TileSuit.Characters, 8), new(TileSuit.Characters, 8)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            kongThreatTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Flowers, 1));
+    }
+
     private static List<Tile> BuildExhaustedVisibleTiles()
     {
         var tiles = new List<Tile>();
