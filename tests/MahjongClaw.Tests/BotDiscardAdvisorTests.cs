@@ -217,6 +217,24 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PrioritizesOffSuitTiles_WhenChineseOfficialNearPureSuit()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Suit.Should().NotBe(TileSuit.Dots);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesDeadSingleton_WhenSevenPairsLeanHasTriplet_ForChineseOfficial()
     {
         var handTiles = new List<Tile>
