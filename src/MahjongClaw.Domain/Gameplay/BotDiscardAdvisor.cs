@@ -2592,7 +2592,8 @@ public static class BotDiscardAdvisor
                     var hasLiveThirteenOrphansPath = HasLiveThirteenOrphansPath(
                         ownedCounts,
                         visibleCounts,
-                        distinctOrphanTypes);
+                        distinctOrphanTypes,
+                        nonOrphanCount);
 
                     if (hasLiveThirteenOrphansPath)
                     {
@@ -3770,7 +3771,8 @@ public static class BotDiscardAdvisor
     private static bool HasLiveThirteenOrphansPath(
         IReadOnlyDictionary<Tile, int> ownedCounts,
         IReadOnlyDictionary<Tile, int> visibleCounts,
-        int distinctOrphanTypes)
+        int distinctOrphanTypes,
+        int nonOrphanCount)
     {
         var orphanTypeCount = ChineseOfficialOrphanTileTypes.Count;
         var orphanTilesInHand = ChineseOfficialOrphanTileTypes
@@ -3797,6 +3799,7 @@ public static class BotDiscardAdvisor
 
         var hasMissingOrphan = false;
         var hasMissingPairPotential = false;
+        var hasNearDeadMissingOrphan = false;
         foreach (var tile in ChineseOfficialOrphanTileTypes)
         {
             if (ownedCounts.ContainsKey(tile))
@@ -3812,6 +3815,11 @@ public static class BotDiscardAdvisor
                 return false;
             }
 
+            if (remainingCopies == 1)
+            {
+                hasNearDeadMissingOrphan = true;
+            }
+
             if (remainingCopies >= 2)
             {
                 hasMissingPairPotential = true;
@@ -3821,6 +3829,11 @@ public static class BotDiscardAdvisor
         if (!hasMissingOrphan)
         {
             return hasOrphanPair || hasOwnedPairPotential;
+        }
+
+        if (hasNearDeadMissingOrphan && !hasOrphanPair && nonOrphanCount >= 2)
+        {
+            return false;
         }
 
         if (hasOrphanPair)
