@@ -58,7 +58,7 @@ public static class BotDiscardAdvisor
             throw new ArgumentException("Tiles cannot contain null values.", nameof(visibleTiles));
         }
 
-        return SelectDiscardIndexInternal(handTiles, meldTiles, visibleTiles, visibleMeldTiles, visibleMeldTiles, ruleset);
+        return SelectDiscardIndexInternal(handTiles, meldTiles, visibleTiles, visibleMeldTiles, Array.Empty<Tile>(), ruleset);
     }
 
     public static int SelectDiscardIndex(
