@@ -2754,6 +2754,35 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (ruleset == MahjongRuleset.Changsha258
+            && hasChangshaSevenPairsLean
+            && visibleCounts.Count > 0)
+        {
+            var deadSingletonCandidates = prioritizedCandidates
+                .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var count)
+                    && count == 1
+                    && candidate.RemainingCopies == 0)
+                .ToList();
+
+            if (deadSingletonCandidates.Count > 0)
+            {
+                prioritizedCandidates = deadSingletonCandidates;
+            }
+            else
+            {
+                var nearDeadSingletonCandidates = prioritizedCandidates
+                    .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var count)
+                        && count == 1
+                        && candidate.RemainingCopies == 1)
+                    .ToList();
+
+                if (nearDeadSingletonCandidates.Count > 0)
+                {
+                    prioritizedCandidates = nearDeadSingletonCandidates;
+                }
+            }
+        }
+
         var maxSmallWinOuts = 0;
         var overallMaxSmallWinOuts = 0;
 
