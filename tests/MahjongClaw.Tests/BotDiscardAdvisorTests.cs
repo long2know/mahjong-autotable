@@ -588,6 +588,34 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleTiles_DiscardsOffRankConcealedKong_WhenSequencePotentialIsDead()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 6));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_DoesNotDiscardDominantSuitConcealedKong_WhenPureSuitLean()
     {
         var handTiles = new List<Tile>

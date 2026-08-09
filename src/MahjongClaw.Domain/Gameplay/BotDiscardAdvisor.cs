@@ -362,6 +362,8 @@ public static class BotDiscardAdvisor
         var offRankKongDiscardIndex = TrySelectChangshaIsolatedOffRankConcealedKongDiscardIndex(
             handTiles,
             handCounts,
+            ownedCounts,
+            visibleCounts,
             enforceSmallWinPairBias,
             hasChangshaPureSuitLean,
             changshaDominantSuit);
@@ -4274,6 +4276,8 @@ public static class BotDiscardAdvisor
     private static int? TrySelectChangshaIsolatedOffRankConcealedKongDiscardIndex(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
         bool enforceSmallWinPairBias,
         bool hasChangshaPureSuitLean,
         TileSuit? changshaDominantSuit)
@@ -4300,7 +4304,7 @@ public static class BotDiscardAdvisor
         }
 
         var kongTile = offRankKongTiles[0];
-        if (HasAdjacentSuitedTile(handCounts, kongTile))
+        if (HasSequencePotential(kongTile, handCounts, ownedCounts, visibleCounts))
         {
             return null;
         }
