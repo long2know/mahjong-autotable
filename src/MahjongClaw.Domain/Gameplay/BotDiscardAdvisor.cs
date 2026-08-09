@@ -3944,6 +3944,8 @@ public static class BotDiscardAdvisor
         }
 
         var pairCount = handCounts.Count(entry => entry.Value >= 2);
+        var hasSmallWinEvidence = handCounts.Keys.Any(Changsha258Ruleset.IsSmallWinPair)
+            || visibleCounts.Keys.Any(Changsha258Ruleset.IsSmallWinPair);
 
         foreach (var tile in Changsha258SmallWinPairTiles)
         {
@@ -3975,7 +3977,7 @@ public static class BotDiscardAdvisor
                 continue;
             }
 
-            if (remainingCopies >= 3 && pairCount == 0)
+            if (remainingCopies >= 3 && (pairCount == 0 || hasSmallWinEvidence))
             {
                 return true;
             }
