@@ -8,6 +8,8 @@ public static class BotClaimAdvisor
     private const int ExposedKongOutsDropTolerance = 0;
     private static readonly IReadOnlyList<Tile> ChineseOfficialDrawTileTypes = BuildDrawTileTypes(MahjongRuleset.ChineseOfficial);
     private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
+    private readonly record struct WinningOutSummary(int TileTypes, int RemainingCopies);
+
     public static bool ShouldClaimDiscardWin(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
@@ -130,12 +132,12 @@ public static class BotClaimAdvisor
             visibleCounts,
             ruleset,
             requireMinimumFan: true);
-        if (preClaimOuts > 0 && postClaimOuts == 0)
+        if (preClaimOuts.TileTypes > 0 && postClaimOuts.TileTypes == 0)
         {
             return false;
         }
 
-        if (ruleset == MahjongRuleset.ChineseOfficial && preClaimOuts == 0)
+        if (ruleset == MahjongRuleset.ChineseOfficial && preClaimOuts.TileTypes == 0)
         {
             var preClaimPotentialOuts = CountWinningDrawOutsAfterDraw(
                 handTiles,
@@ -144,7 +146,7 @@ public static class BotClaimAdvisor
                 ruleset,
                 requireMinimumFan: false);
 
-            if (preClaimPotentialOuts > 0)
+            if (preClaimPotentialOuts.TileTypes > 0)
             {
                 var postClaimPotentialOuts = CountWinningDrawOutsAfterExposedKong(
                     handTiles,
@@ -154,7 +156,7 @@ public static class BotClaimAdvisor
                     ruleset,
                     requireMinimumFan: false);
 
-                if (postClaimPotentialOuts + ExposedKongOutsDropTolerance < preClaimPotentialOuts)
+                if (IsOutsDropBeyondTolerance(preClaimPotentialOuts, postClaimPotentialOuts, ExposedKongOutsDropTolerance))
                 {
                     return false;
                 }
@@ -165,8 +167,8 @@ public static class BotClaimAdvisor
             && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
 
         if (!allowChangshaFlexibleEye
-            && preClaimOuts > 0
-            && postClaimOuts + ExposedKongOutsDropTolerance < preClaimOuts)
+            && preClaimOuts.TileTypes > 0
+            && IsOutsDropBeyondTolerance(preClaimOuts, postClaimOuts, ExposedKongOutsDropTolerance))
         {
             return false;
         }
@@ -175,7 +177,7 @@ public static class BotClaimAdvisor
         return true;
     }
 
-    private static int CountWinningDrawOutsAfterDraw(
+    private static WinningOutSummary CountWinningDrawOutsAfterDraw(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
         IReadOnlyDictionary<Tile, int> visibleCounts,
@@ -194,6 +196,7 @@ public static class BotClaimAdvisor
             .ToDictionary(group => group.Key, group => group.Count());
 
         var winningOuts = 0;
+        var winningOutCopies = 0;
 
         foreach (var drawTileType in drawTileTypes)
         {
@@ -246,13 +249,14 @@ public static class BotClaimAdvisor
             }
 
             winningOuts++;
+            winningOutCopies += remainingCopies;
 
         }
 
-        return winningOuts;
+        return new WinningOutSummary(winningOuts, winningOutCopies);
     }
 
-    private static int CountWinningDrawOutsAfterExposedKong(
+    private static WinningOutSummary CountWinningDrawOutsAfterExposedKong(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
         Tile discardedTile,
@@ -267,7 +271,7 @@ public static class BotClaimAdvisor
             var index = handAfterKong.FindIndex(tile => tile.Equals(discardedTile));
             if (index < 0)
             {
-                return 0;
+                return default;
             }
 
             handAfterKong.RemoveAt(index);
@@ -278,6 +282,21 @@ public static class BotClaimAdvisor
             .ToList();
 
         return CountWinningDrawOutsAfterDraw(handAfterKong, meldAfterKong, visibleCounts, ruleset, requireMinimumFan);
+    }
+
+    private static bool IsOutsDropBeyondTolerance(WinningOutSummary preClaimOuts, WinningOutSummary postClaimOuts, int tolerance)
+    {
+        if (postClaimOuts.TileTypes + tolerance < preClaimOuts.TileTypes)
+        {
+            return true;
+        }
+
+        if (postClaimOuts.TileTypes + tolerance == preClaimOuts.TileTypes)
+        {
+            return postClaimOuts.RemainingCopies + tolerance < preClaimOuts.RemainingCopies;
+        }
+
+        return false;
     }
 
     private static bool HasAlternateSmallWinPairCandidate(
