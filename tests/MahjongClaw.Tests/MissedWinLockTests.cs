@@ -415,4 +415,66 @@ public sealed class MissedWinLockTests
         Assert.NotNull(result);
         Assert.Contains(new Tile(TileSuit.Characters, 1), result!.LockedWinningTiles);
     }
+
+    [Fact]
+    public void CreateLock_ChineseOfficial_LowFanCompletion_DoesNotCreateLock()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Characters, 5)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Characters, 5);
+
+        var completedTiles = handTiles
+            .Concat(meldTiles)
+            .Append(discardedTile)
+            .ToList();
+
+        Assert.True(HandAnalyzer.TryGetWinningHand(completedTiles, out var structuralWinningHand));
+        Assert.NotNull(structuralWinningHand);
+        Assert.False(ScoreCalculator.MeetsRulesetMinimumFan(structuralWinningHand!, MahjongRuleset.ChineseOfficial));
+        Assert.False(RulesetHandAnalyzer.TryGetWinningHand(completedTiles, MahjongRuleset.ChineseOfficial, out _));
+
+        var result = MissedWinLockTracker.CreateLock(handTiles, meldTiles, discardedTile, MahjongRuleset.ChineseOfficial);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void ComputeWaitSet_ChineseOfficial_LowFanWait_ReturnsEmptySet()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Characters, 5)
+        };
+
+        var waitSet = MissedWinLockTracker.ComputeWaitSet(handTiles, Array.Empty<Tile>(), MahjongRuleset.ChineseOfficial);
+
+        Assert.Empty(waitSet);
+    }
 }
