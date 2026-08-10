@@ -335,10 +335,7 @@ public static class BotDiscardAdvisor
             && !handTiles.Any(tile => Changsha258Ruleset.IsSmallWinPair(tile)
                 && tile.Suit == changshaDominantSuit.Value))
         {
-            if (changshaDominantSuitTileCount < ChangshaPureSuitBreakSmallWinPairThreshold)
-            {
-                allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
-            }
+            allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
         }
 
 
