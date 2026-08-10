@@ -1332,7 +1332,13 @@ public static class BotDiscardAdvisor
                 })
                 .ToList();
 
-            if (nearDeadOffRankPairCandidates.Count > 0)
+            var skipNearDeadOffRankPairForPureSuit = hasChangshaPureSuitLean
+                && changshaDominantSuit.HasValue
+                && nearDeadOffRankPairCandidates.Count > 0
+                && candidates.Any(candidate => candidate.Tile.Suit != changshaDominantSuit.Value)
+                && nearDeadOffRankPairCandidates.All(candidate => candidate.Tile.Suit == changshaDominantSuit.Value);
+
+            if (nearDeadOffRankPairCandidates.Count > 0 && !skipNearDeadOffRankPairForPureSuit)
             {
                 var bestOverallOuts = candidates.Max(candidate => candidate.SmallWinningDrawOuts);
                 var bestOverallOutCopies = candidates

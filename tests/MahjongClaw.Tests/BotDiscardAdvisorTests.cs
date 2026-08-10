@@ -2018,6 +2018,30 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleTiles_PreservesDominantSuitNearDeadPair_WhenPureSuitLeanHasOffSuitSingletons()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 6), new(TileSuit.Characters, 7)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), visibleTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Suit.Should().Be(TileSuit.Characters);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleTiles_DiscardsIsolatedOffRankPair_WhenSmallWinPairSecured()
     {
         var handTiles = new List<Tile>
