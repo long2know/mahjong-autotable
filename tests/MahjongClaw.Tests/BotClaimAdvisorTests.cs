@@ -512,7 +512,7 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
-    public void TrySelectExposedKongClaim_ReturnsTrue_WhenChangshaAlternateSmallWinSingletonHasSingleLiveCopy()
+    public void TrySelectExposedKongClaim_ReturnsFalse_WhenChangshaAlternateSmallWinSingletonHasSingleLiveCopy()
     {
         var handTiles = new List<Tile>
         {
@@ -528,6 +528,38 @@ public class BotClaimAdvisorTests
         var visibleTiles = new List<Tile>
         {
             new(TileSuit.Dots, 5), new(TileSuit.Dots, 5)
+        };
+
+        var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            visibleTiles,
+            MahjongRuleset.Changsha258,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TrySelectExposedKongClaim_ReturnsTrue_WhenChangshaAlternateSmallWinSingletonsCombineForTwoLiveCopies()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 8),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 3)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 2);
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
         };
 
         var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(

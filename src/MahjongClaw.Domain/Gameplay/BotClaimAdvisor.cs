@@ -313,6 +313,8 @@ public static class BotClaimAdvisor
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
 
+        var singletonLiveCopyCount = 0;
+
         foreach (var entry in handCounts)
         {
             if (!Changsha258Ruleset.IsSmallWinPair(entry.Key) || entry.Key.Equals(discardedTile))
@@ -331,14 +333,19 @@ public static class BotClaimAdvisor
                 visibleCounts.TryGetValue(entry.Key, out var visibleCount);
                 var remainingCopies = 4 - ownedCount - visibleCount;
 
-                if (remainingCopies >= 1)
+                if (remainingCopies >= 2)
                 {
                     return true;
+                }
+
+                if (remainingCopies == 1)
+                {
+                    singletonLiveCopyCount += 1;
                 }
             }
         }
 
-        return false;
+        return singletonLiveCopyCount >= 2;
     }
 
     private static Dictionary<Tile, int> BuildVisibleCounts(IReadOnlyList<Tile> visibleTiles)
