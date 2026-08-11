@@ -109,7 +109,9 @@ public static class BotClaimAdvisor
         if (ruleset == MahjongRuleset.Changsha258 && Changsha258Ruleset.IsSmallWinPair(discardedTile))
         {
             var allowFlexibleEye = Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
-            if (!allowFlexibleEye)
+            var hasSevenPairsLean = IsChangshaSevenPairsLean(handTiles, meldTiles);
+
+            if (!allowFlexibleEye || hasSevenPairsLean)
             {
                 var hasAlternateSmallWinPairCandidate = HasAlternateSmallWinPairCandidate(
                     handTiles,
@@ -166,8 +168,7 @@ public static class BotClaimAdvisor
         var allowChangshaFlexibleEye = ruleset == MahjongRuleset.Changsha258
             && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
 
-        if (!allowChangshaFlexibleEye
-            && preClaimOuts.TileTypes > 0
+        if (preClaimOuts.TileTypes > 0
             && IsOutsDropBeyondTolerance(preClaimOuts, postClaimOuts, ExposedKongOutsDropTolerance))
         {
             return false;
@@ -297,6 +298,22 @@ public static class BotClaimAdvisor
         }
 
         return false;
+    }
+
+    private static bool IsChangshaSevenPairsLean(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles)
+    {
+        if (meldTiles.Count > 0)
+        {
+            return false;
+        }
+
+        var pairCount = handTiles
+            .GroupBy(static tile => tile)
+            .Sum(static group => group.Count() / 2);
+
+        return pairCount >= 6;
     }
 
     private static bool HasAlternateSmallWinPairCandidate(
