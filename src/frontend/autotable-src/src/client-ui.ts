@@ -18,7 +18,9 @@ import { showEl, hideEl, setElHidden } from './dom-utils';
 import {
   buildFreshGameUrl,
   readConcreteGameId,
+  resolveHandoffSeat,
 } from './session-url';
+import { isNewGameActivation } from './new-game-action';
 
 
 const TITLE_DISCONNECTED = 'Autotable';
@@ -165,6 +167,8 @@ export class ClientUi {
   disconnecting = false;
   reconnectAttempts: number = 0;
   reconnectSeat: number | null = null;
+  // New Game UX P0 — debounce guard: one activation ⇒ exactly one navigation.
+  private newGameInFlight: boolean = false;
   // Phase I Wave 4 — true while the active page URL declares ?seat=-1.
   // Spectator state is page-URL-driven (set on init, refreshed on each
   // connect attempt) so a refresh that lands on the same URL re-joins as
@@ -190,8 +194,15 @@ export class ClientUi {
     connectButton.onclick = () => this.connect();
     const disconnectButton = document.getElementById('disconnect')!;
     disconnectButton.onclick = this.disconnect.bind(this);
-    const newGameButton = document.getElementById('new-game')!;
-    newGameButton.onclick = this.newGame.bind(this);
+    // New Game UX P0 (persistent control, RC-9) — wire the ONE authoritative
+    // fresh-game action to EVERY New Game control by the `data-action="new-game"`
+    // convention (event delegation on document), NOT just the legacy in-sidebar
+    // `#new-game`. This covers Ferro's PERSISTENT outside-sidebar button (same
+    // data-action) the instant it mounts — no id coupling, no relay/local-reset
+    // fallback — plus programmatic `.click()` from action-router, the
+    // GameComplete modal, and the stale-game banner (all bubble here). Bound
+    // once; the debounce in newGame() makes any redundant delivery idempotent.
+    this.bindNewGameControls();
 
     this.statusElement = document.getElementById('status') as HTMLElement;
     this.statusTextElement = document.getElementById('status-text') as HTMLElement;
@@ -983,10 +994,76 @@ export class ClientUi {
   }
 
   newGame(): void {
-    // Phase J Wave 4 — same rationale as disconnect: the user is
-    // intentionally walking away from the current session.
-    this.client.clearReconnectSession();
-    window.location.search = '';
+    // New Game UX P0 — one-click AUTHORITATIVE fresh game. A single activation:
+    //   • mints a cryptographically-fresh gameId (buildFreshGameUrl →
+    //     mintFreshGameId: crypto.randomUUID/getRandomValues);
+    //   • PRESERVES variant/dealMode/botCount/botDifficulty/handCount (verbatim
+    //     from the URL) + the durable player identity (playerId persists — we
+    //     only drop the OLD game's reconnect token so we don't rejoin it);
+    //   • hands off the last OWNED seat (live seat, else the pre-disconnect
+    //     reconnectSeat — resolveHandoffSeat) so the fresh empty game auto-takes
+    //     THAT chair with NO re-pick / Take-Seat click;
+    //   • RELEASES the old game deterministically — a clean WS close NOW (not
+    //     merely the implicit socket drop on unload) so the backend frees the
+    //     old seat/runtime immediately, never left lingering — then navigates
+    //     exactly ONCE (location.replace) and re-bootstraps into the fresh
+    //     isolated game (the WS handshake forwards seat/botCount/dealMode so the
+    //     backend auto-seats bots + auto-deals in Auto to a playable hand, or
+    //     begins the manual ceremony).
+    // NO legacy world.deal/setup/local-match, NO confirmation/setup dialog, NO
+    // stale-game reuse. Debounced so rapid/double clicks are idempotent (exactly
+    // ONE navigation); the guard is released if navigation fails to even start so
+    // the control can never wedge permanently. Works while disconnected or at
+    // GameComplete (pure URL compute + navigate).
+    if (this.newGameInFlight) return;
+    this.newGameInFlight = true;
+    try {
+      // Capture the handoff seat FIRST — from the LIVE game (client.seat) while
+      // it's still intact, else the pre-disconnect reconnectSeat — so the
+      // teardown below can never erase the chair we're handing off.
+      const ownedSeat = resolveHandoffSeat(this.client.seat, this.reconnectSeat);
+
+      // Release / retire the OLD game (mirrors the intentional-teardown path of
+      // disconnect()), so it is cleaned up rather than left lingering:
+      //   • mark the teardown intentional + cancel any pending reconnect timer
+      //     so the ws close below takes the user-initiated branch in
+      //     onDisconnect (no reconnect ladder, no "disconnected" banner flash);
+      //   • clearReconnectSession drops the OLD game's reconnect token + SignalR
+      //     hub + reactive game-state snapshot (the durable playerId identity is
+      //     preserved — it rides the HttpOnly mahjong_pid cookie across reload,
+      //     so the fresh game re-derives the SAME player);
+      //   • disconnect() sends a clean WS close NOW so the backend releases the
+      //     old seat immediately instead of waiting on the browser to drop the
+      //     socket during unload.
+      this.disconnecting = true;
+      this.clearReconnectTimer();
+      this.client.clearReconnectSession();
+      this.client.disconnect();
+
+      // SINGLE navigation into the fresh isolated game.
+      window.location.replace(
+        buildFreshGameUrl(window.location.pathname, window.location.search, undefined, ownedSeat),
+      );
+    } catch (err) {
+      // Navigation could not even be initiated — release the debounce guard so a
+      // retry is possible rather than leaving New Game permanently dead.
+      this.newGameInFlight = false;
+      throw err;
+    }
+  }
+
+  // New Game UX P0 (persistent control) — single delegated click handler that
+  // maps ANY `[data-action="new-game"]` control to the authoritative newGame().
+  // Delegation on document (rather than a per-element onclick) means the
+  // persistent OUTSIDE-sidebar button binds automatically whenever Ferro mounts
+  // it, static or dynamic, without id coupling; programmatic `.click()` bubbles
+  // here too. A New Game control is never a relay/link action ⇒ preventDefault.
+  private bindNewGameControls(): void {
+    document.addEventListener('click', (ev: Event) => {
+      if (!isNewGameActivation(ev.target)) return;
+      ev.preventDefault();   // a New Game control is never a relay/link action
+      this.newGame();
+    });
   }
 }
 

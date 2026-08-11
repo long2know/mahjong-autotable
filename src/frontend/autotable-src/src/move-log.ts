@@ -26,6 +26,7 @@
 
 import { Client } from "./client";
 import { comparePatterns } from "./pattern-utils";
+import { parseRealTileId as changshaParseRealTileId, formatBreakPointLabel } from "./changsha-mode-policy";
 import {
   ClaimWindowEntry,
   DiceInfo,
@@ -299,7 +300,7 @@ export class MoveLog {
       if (!value) continue;
       const d1 = value.d1 ?? value.dice?.[0];
       const d2 = value.d2 ?? value.dice?.[1];
-      if (d1 == null || d2 == null) continue;
+      if (d1 === null || d1 === undefined || d2 === null || d2 === undefined) continue;
       // Skip the "no roll" sentinel (matches game-ui.onDiceUpdate gating).
       if (value.state === 'ignore' && value.breakPoint === undefined) continue;
       const sig = `${d1}-${d2}-${value.breakPoint ?? ''}`;
@@ -330,7 +331,14 @@ export class MoveLog {
     }
   }
 
-  private onThings(entries: Array<[number, ThingInfo | null]>): void {
+  private onThings(allEntries: Array<[string | number, ThingInfo | null]>): void {
+    // FE-7/SC-2 (G19) — keep only ENTITLED real tiles (numeric key 0..107,
+    // number OR numeric-string) and normalize the key to a number; opaque
+    // hidden handles (`h_<base64url>`) never appear in the public discard/meld
+    // slots this log records and are dropped (never used as a fallback face).
+    const entries = allEntries
+      .map(([k, info]): [number | null, ThingInfo | null] => [changshaParseRealTileId(k), info])
+      .filter((e): e is [number, ThingInfo | null] => e[0] !== null);
     for (const [tileIdx, info] of entries) {
       if (!info) continue;
       const slot = info.slotName ?? '';
@@ -427,7 +435,10 @@ export class MoveLog {
   private pickupLabel(phase: string, p: PickupEntry): string | null {
     if (phase === 'rolldice' || phase === 'roll-dice') return 'time to roll the dice';
     if (phase === 'breakpointmarked' || phase === 'break-point-marked') {
-      return `break-point marked${p.breakPoint != null ? ` @ col ${p.breakPoint}` : ''}`;
+      // Hudson rev2 — breakPoint is a typed { wallIndex, stackIndex, tileIndex } object;
+      // format it via the pure helper (was `@ col ${p.breakPoint}` => "[object Object]").
+      const where = formatBreakPointLabel(p.breakPoint);
+      return `break-point marked${where ? ` @ ${where}` : ''}`;
     }
     if (phase === 'inplay' || phase === 'in-play') return null;
     if (phase.startsWith('pickup-r') || phase.startsWith('pickupround') ||

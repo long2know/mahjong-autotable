@@ -229,6 +229,11 @@ export class MainView {
     this.camera = this.makeCamera(this.perspective);
     this.viewGroup.add(this.camera);
     this.outline.setEdgeColor(0xffff99);
+    // FE-6 / G20 — a freshly-made camera carries the default RATIO frustum/
+    // aspect; re-fit it to the current viewport so a perspective toggle keeps
+    // the canvas filling the container without distortion. No-op until the
+    // first updateViewport has recorded a real size.
+    this.updateCameraProjection(this.width, this.height);
 
     // Phase K Wave 7 — Pre-warm the outline shader so the first
     // tile selection does not stutter on shader compile.  The W6
@@ -352,15 +357,16 @@ export class MainView {
       this.width = this.main.parentElement!.clientWidth;
       this.height = this.main.parentElement!.clientHeight;
 
-      let renderWidth: number, renderHeight: number;
-
-      if (this.width / this.height > RATIO) {
-        renderWidth = Math.floor(this.height * RATIO);
-        renderHeight = Math.floor(this.height);
-      } else {
-        renderWidth = Math.floor(this.width);
-        renderHeight = Math.floor(this.width / RATIO);
-      }
+      // FE-6 / G20 — the WebGL canvas FILLS its container (the viewport) at any
+      // aspect: NO fixed-RATIO letterbox/pillarbox dead black bars. Previously
+      // the render size was clamped to RATIO (1.5), so at mobile 390×844
+      // portrait the canvas was 390×260 with ~584px of dead black. We now size
+      // the canvas to the full container and adapt the camera projection to the
+      // container aspect (see updateCameraProjection) so the scene is not
+      // distorted and the table stays framed in portrait AND landscape. Re-runs
+      // on every resize/orientation change (the guard compares the live size).
+      let renderWidth = Math.floor(this.width);
+      let renderHeight = Math.floor(this.height);
       renderWidth -= renderWidth % 2;
       renderHeight -= renderHeight % 2;
 
@@ -370,8 +376,47 @@ export class MainView {
       this.main.style.height = `${renderHeight}px`;
       this.renderer.setSize(renderWidth, renderHeight);
       this.renderer.setPixelRatio(pixelRatio);
+      this.updateCameraProjection(renderWidth, renderHeight);
       // Phase K Wave 7 — The composer (and its FBO) is gone; only
       // the WebGLRenderer needs resizing.
+    }
+  }
+
+  /**
+   * FE-6 / G20 — adapt the camera projection to the current canvas aspect so a
+   * viewport-filling canvas (any aspect: 390×844 portrait ↔ landscape) renders
+   * without distortion. The reference table rectangle (aspect = RATIO) is always
+   * CONTAINED — whichever container axis is relatively smaller becomes the fit
+   * axis — so the whole table stays visible with scene margin (never clipped
+   * off, never a black bar) at extreme aspects. Idempotent; safe to call on
+   * every resize/orientation change and after a perspective toggle.
+   */
+  private updateCameraProjection(width: number, height: number): void {
+    if (width <= 0 || height <= 0) return;
+    const aspect = width / height;
+    if (this.camera instanceof PerspectiveCamera) {
+      this.camera.aspect = aspect;
+      this.camera.updateProjectionMatrix();
+      return;
+    }
+    if (this.camera instanceof OrthographicCamera) {
+      const refW = World.WIDTH * 1.2;   // matches makeCamera's landscape frustum
+      const refH = refW / RATIO;
+      let frustumW: number, frustumH: number;
+      if (aspect > RATIO) {
+        // container wider than the table ⇒ fit height, widen the frustum
+        frustumH = refH;
+        frustumW = refH * aspect;
+      } else {
+        // container narrower/taller (e.g. portrait) ⇒ fit width, raise the frustum
+        frustumW = refW;
+        frustumH = refW / aspect;
+      }
+      this.camera.left = -frustumW / 2;
+      this.camera.right = frustumW / 2;
+      this.camera.top = frustumH / 2;
+      this.camera.bottom = -frustumH / 2;
+      this.camera.updateProjectionMatrix();
     }
   }
 }

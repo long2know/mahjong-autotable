@@ -42,6 +42,11 @@
 //     idempotent (no-op if the dropdown is already attached).
 
 import './variant-picker.css';
+// Co-load the dark-listbox enhancer here too: ferro-bootstrap only imports it
+// on game pages (search !== ''), but this picker also mounts on lobby cold
+// paths — this guarantees the enhanced (screenshottable, readable) popup wraps
+// the variant switcher wherever it appears. Idempotent + fallback-safe.
+import './dark-listbox';
 import {
   resolveApplyGameId,
   buildFreshGameUrl,

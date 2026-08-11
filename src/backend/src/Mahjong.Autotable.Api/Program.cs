@@ -141,6 +141,17 @@ var sentryEnabled = builder.WebHost.AddMahjongSentry(builder.Configuration);
 builder.Services.AddControllers();
 
 builder.Services.Configure<ChangshaRuntimeOptions>(builder.Configuration.GetSection("ChangshaRuntime"));
+// SC-2 / G19 (Ripley, BINDING) — the DEDICATED handle-derivation secret lives under its own
+// `Privacy:HandleSecret` key (server-only IKM), distinct from the ChangshaRuntime section. Bind it
+// onto the runtime options so the connection manager can prefer it over the JWT-key IKM fallback.
+builder.Services.PostConfigure<ChangshaRuntimeOptions>(o =>
+{
+    var handleSecret = builder.Configuration.GetValue<string>("Privacy:HandleSecret");
+    if (!string.IsNullOrWhiteSpace(handleSecret))
+    {
+        o.HandleSecretBase64 = handleSecret;
+    }
+});
 builder.Services.AddSingleton<IChangshaGameRuntime, ChangshaGameRuntime>();
 builder.Services.AddSingleton<AutotableConnectionManager>();
 
@@ -354,6 +365,23 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
     var rotationValidator = new Mahjong.Autotable.Api.Auth.RotationCadenceValidator(jwtAuthOptions);
     rotationValidator.Validate();
     builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IRotationCadenceValidator>(rotationValidator);
+
+    // Blocker E (Bishop rev2) — SC-2/G19 privacy fail-CLOSED in Production. When opaque
+    // hidden-tile handles are enabled (default-on for Changsha) the per-viewer projector
+    // needs >=32 bytes of server-secret IKM (Privacy:HandleSecret base64, else the active
+    // JWT signing key). If NONE is available, the connection manager historically logged a
+    // warning and booted with handles DISABLED — silently emitting REAL tile ids for every
+    // hidden wall/foreign-hand tile (fail-OPEN privacy hole). In Production we now refuse to
+    // boot instead, mirroring the JWT `requireOperatorKeys` convention above so a
+    // misconfigured deployment fails loudly at startup rather than leaking concealed tiles.
+    // Dev/Test keep the historical warn-and-disable shape so `dotnet run` / tests need no
+    // operator secret. Logic + message live in the unit-tested
+    // ChangshaPrivacyStartupValidator (mirrors AutotableConnectionManager's IKM resolution).
+    Mahjong.Autotable.Api.Autotable.ChangshaPrivacyStartupValidator.Validate(
+        isProduction: builder.Environment.IsProduction(),
+        opaqueHandlesEnabled: builder.Configuration.GetValue<bool?>("ChangshaRuntime:OpaqueHiddenHandles") ?? true,
+        handleSecretBase64: builder.Configuration.GetValue<string>("Privacy:HandleSecret"),
+        jwtKeyMaterial: jwtSigningProvider.ActiveKey?.Material);
 }
 // Phase K Wave 17 — Bishop. JWT-issue blocked-path metrics. The
 // JwtIssuingService takes this as an optional dep so the

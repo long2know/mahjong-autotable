@@ -1,7 +1,7 @@
 import $ from 'jquery';
 import { Client, GameCompleteEntry } from "./client";
 import { readSpectatorFromUrl } from './client-ui';
-import { computeTurnCue, newGameBannerA11y } from './turn-cue';
+import { computeTurnCue, newGameBannerA11y, claimActionable as isClaimActionable, selectSelfClaim } from './turn-cue';
 import { showToast } from './toast';
 import { Sound } from './sound';
 import { Replay } from './replay';
@@ -630,9 +630,16 @@ export class GameUi {
   }
 
   private updateVariantBadge(): void {
-    const match = this.client.match.get(0);
-    const conditions = match?.conditions ?? Conditions.initial();
-    this.elements.variantBadge.textContent = variantLabel(conditions.gameType);
+    // FE-4 (UAT §9) — atomic single-source variant label. Derive the badge from
+    // the AUTHORITATIVE variant (the same source `applyVariantBodyClass` uses:
+    // the URL/`phaseF.variant`), NEVER the raw `match.conditions.gameType` — the
+    // backend `BuildMatch` hardcodes `FOUR_PLAYER` there (legacy compat), so
+    // reading it flipped the badge to "Riichi 4p" the instant the first match
+    // UPDATE landed (the reported first-paint→JOIN drift). This is the single
+    // writer for the badge and it never surfaces a Riichi label in Changsha.
+    // (Tolerant seam for BE-1: if the wire ever carries a trusted `variant`
+    // field it can be threaded in here without changing call sites.)
+    this.elements.variantBadge.textContent = variantLabel(this.phaseF.variant);
   }
 
   private updateSeats(): void {
@@ -852,6 +859,21 @@ export class GameUi {
     this.refreshClaimButtons();
   }
 
+  /**
+   * R-1 §D9 (FE-5) — is the current claim window actually actionable, or a stale
+   * remnant? Claim is mutually exclusive with discard/pickup; a window the
+   * backend closed without the `EncodeClaimWindowClosed` tombstone must not keep
+   * claim controls live once it is authoritatively my turn to act. Pure rule in
+   * {@link isClaimActionable} (turn-cue.ts).
+   */
+  private claimActionable(): boolean {
+    return isClaimActionable(
+      this.activeClaim !== null,
+      this.world.isMyDiscardTurn(),
+      this.world.isMyPickupTurn(),
+    );
+  }
+
   private onClaimUpdate(entries: Array<[string, ClaimWindowEntry | null]>): void {
     // Look at every entry — there can be entries for other seats too. We only
     // surface a claim window when one targets `this.client.seat`.
@@ -862,20 +884,26 @@ export class GameUi {
       return;
     }
     const selfKey = String(selfSeat);
-    for (const [key, value] of entries) {
-      if (key !== selfKey) continue;
-      this.activeClaim = value ?? null;
-    }
-    // If no entry in this batch targeted us, fall back to the collection's
-    // current state so reconnect / full-sync paths see the latest.
-    if (this.activeClaim === null) {
-      this.activeClaim = this.client.claim.get(selfKey);
-    }
+    // D4 (Vasquez) — deterministic overlay teardown. When THIS batch explicitly
+    // targets our seat — including the server's `EncodeClaimWindowClosed`
+    // tombstone (null) — honor it VERBATIM and do NOT re-read the collection, so
+    // a closed window tears down deterministically and can never be resurrected
+    // by a stale/racy collection read. Only fall back to the collection when the
+    // batch did not mention us (reconnect / full-sync / other-seat updates).
+    const selfClaim = selectSelfClaim(entries, selfKey);
+    this.activeClaim = selfClaim.targeted
+      ? selfClaim.value
+      : this.client.claim.get(selfKey);
     this.refreshClaimButtons();
   }
 
   private refreshClaimButtons(): void {
-    const claim = this.activeClaim;
+    // R-1 §D9 (FE-5) — suppress a STALE claim: if it is authoritatively my turn
+    // to discard/pick up, any lingering `activeClaim` (a window the backend
+    // closed without emitting `EncodeClaimWindowClosed`) is not actionable, so
+    // the buttons + countdown go inert. Re-runs on turn updates (see the
+    // `turn` subscription) so the buttons flip the instant the turn advances.
+    const claim = this.claimActionable() ? this.activeClaim : null;
     const allTypes: Array<'Pung' | 'Chow' | 'Kong' | 'Hu'> = ['Pung', 'Chow', 'Kong', 'Hu'];
 
     if (!claim) {
@@ -1592,21 +1620,26 @@ export class GameUi {
     this.client.pickup.on('update', this.onPickupUpdate.bind(this));
   }
 
-  private onPickupUpdate(entries: Array<[string | number, PickupEntry | null]>): void {
-    // Only the "current" singleton is the authoritative snapshot.  Outbound
-    // command keys ('rollDice' / 'take') round-trip back to us through the
-    // collection but carry no inbound state.
-    for (const [key,] of entries) {
-      if (key !== 'current') continue;
-      const pickup = this.client.pickup.get('current') ?? null;
-      this.renderPickupHud(pickup);
-      this.renderRollDiceButton(pickup);
-      this.renderBreakMarker(pickup);
-      // Hicks postfix-verify P0 — pickup affordance just shifted; re-check
-      // whether the turn-banner should switch to a pickup cue (or back to
-      // the discard cue once the pickup chain completes).
-      this.refreshTurnBanner();
-    }
+  private onPickupUpdate(): void {
+    // NEW-2 pickup UI lifecycle — the pickup collection is a singleton on
+    // 'current' (+ outbound command keys 'rollDice'/'take' that round-trip but
+    // carry no inbound state). Re-render the HUD from the AUTHORITATIVE 'current'
+    // on EVERY pickup update, UNCONDITIONALLY — crucially including a CLEAR
+    // (EncodePickupCleared / a full-snapshot `map.clear`) that arrives with NO
+    // 'current' entry in the batch. The former key-gated loop only rendered when
+    // 'current' was present in `entries`, so a clear left the stale "Take N"
+    // affordance up (Hudson). Reading get('current') === null here tears the HUD
+    // (+ roll-dice button + break marker) down deterministically — the same
+    // teardown discipline as the D4 claim overlay. Mirrors world.onPickup, which
+    // already re-reads 'current' unconditionally.
+    const pickup = this.client.pickup.get('current') ?? null;
+    this.renderPickupHud(pickup);
+    this.renderRollDiceButton(pickup);
+    this.renderBreakMarker(pickup);
+    // Pickup affordance may have just shifted or cleared — re-check whether the
+    // turn-banner should switch to a pickup cue (or back to the discard cue /
+    // hide once the pickup chain completes).
+    this.refreshTurnBanner();
   }
 
   private renderPickupHud(pickup: PickupEntry | null): void {
@@ -1633,32 +1666,41 @@ export class GameUi {
   }
 
   private renderRollDiceButton(pickup: PickupEntry | null): void {
+    // Hudson rev2 — the roll-dice button must NOT be driven by the `pickup` entry: the
+    // backend TOMBSTONES pickup during RollingDice (which is NOT a pickup phase), so a
+    // human dealer waiting to roll never saw the button and the manual game stalled. Read
+    // the AUTHORITATIVE phase from the `turn` cue (emitted every snapshot, incl. phase
+    // 'RollingDice') and the dealer seat from `match[0].dealer`. The `pickup` arg is kept
+    // for call-site compatibility but ignored; the button shows iff it is the RollingDice
+    // phase AND this client is the dealer. (A bot dealer auto-rolls server-side.)
+    void pickup;
     const btn = this.elements.rollDice;
-    if (!pickup) {
-      hideEl(btn);
-      return;
-    }
-    // The runtime can spell the phase as either 'RollingDice' or 'rollDice'
-    // depending on JSON-serializer settings; accept both.
-    const phaseStr = String(pickup.phase ?? '').toLowerCase();
-    const isRollPhase = phaseStr === 'rollingdice' || phaseStr === 'rolldice';
     const selfSeat = this.client.seat;
-    const isMine = selfSeat !== null && pickup.seatIndex === selfSeat;
-    setElHidden(btn, !(isRollPhase && isMine));
+    const turn = this.client.turn.get('current') ?? null;
+    const phaseStr = String(turn?.phase ?? '').toLowerCase();
+    const isRollPhase = phaseStr === 'rollingdice' || phaseStr === 'rolldice';
+    const match = this.client.match.get(0) ?? null;
+    const dealer = typeof match?.dealer === 'number' ? match.dealer : null;
+    const isDealer = selfSeat !== null && dealer !== null && dealer === selfSeat;
+    setElHidden(btn, !(isRollPhase && isDealer));
   }
 
   private renderBreakMarker(pickup: PickupEntry | null): void {
     const marker = this.elements.breakMarker;
-    if (!pickup || pickup.breakPoint === undefined || pickup.breakPoint === null) {
+    const bp = pickup?.breakPoint;
+    if (!pickup || bp === undefined || bp === null || typeof bp !== 'object') {
       hideEl(marker);
       return;
     }
-    // Position the marker at one of 4 seat positions × ~18 wall columns.
-    // The exact 3D-to-2D projection is owned by world.ts; for the MVP we
-    // pin the marker to a small set of seat-local offsets and let the CSS
-    // do the rest.  Bishop's authoritative breakPoint is a column index.
-    const seat = pickup.seatIndex;
-    const col = Math.max(0, Math.min(17, pickup.breakPoint));
+    // Hudson rev2 — Bishop's authoritative `pickup.breakPoint` is an OBJECT
+    // { wallIndex, stackIndex, tileIndex }, NOT a bare column number. The old code did
+    // `Math.min(17, pickup.breakPoint)` on the object, yielding NaN and pinning every
+    // marker to seat/col 0 regardless of the real break (e.g. wallIndex=2, stackIndex=6).
+    // Position the marker at the break WALL (wallIndex, the physical seat side 0..3) and
+    // the break STACK column within that wall (stackIndex). `pickup.wallIndex` is a
+    // separate draw-offset (front=0) and is NOT the break wall — never use it here.
+    const seat = Math.max(0, Math.min(3, bp.wallIndex ?? pickup.seatIndex));
+    const col = Math.max(0, Math.min(17, bp.stackIndex ?? 0));
     marker.dataset.seat = String(seat);
     marker.dataset.col = String(col);
     showEl(marker);
@@ -1701,10 +1743,45 @@ export class GameUi {
     // Stuck-turn fix (Hicks) — also refresh when the authoritative turn signal
     // (Bishop), seat occupancy, or a claim change lands, so "Your turn" /
     // "Waiting for Seat N" flips without waiting for the next tile batch.
-    this.client.turn.on('update', () => this.scheduleTurnBannerRefresh());
+    this.client.turn.on('update', () => {
+      // R-1 §D9 (FE-5) — also re-evaluate the claim buttons on turn advance so a
+      // stale claim window (no `EncodeClaimWindowClosed`) goes inert the instant
+      // it becomes my discard turn, not just when a claim update happens to fire.
+      this.refreshClaimButtons();
+      // Hudson rev2 — the `turn` cue is the authoritative phase source (it carries
+      // 'RollingDice', which the pickup collection never does). Re-evaluate the roll-dice
+      // button here so a human dealer sees it during RollingDice and can roll.
+      this.renderRollDiceButton(null);
+      this.scheduleTurnBannerRefresh();
+    });
     this.client.seats.on('update', () => this.scheduleTurnBannerRefresh());
+    // FE-3 (UAT §9) — mode-boundary disconnect cleanup. A dropped WS must never
+    // leave a live "Your turn — click a tile to discard" cue (or a claim window)
+    // frozen over a dead connection. Track connection state and re-render the
+    // banner on each transition; `refreshTurnBanner` parks the banner while
+    // disconnected. `onConnect`'s authoritative snapshot then restores it.
+    this.client.on('disconnect', () => this.onConnectionLost());
+    this.client.on('connect', () => this.onConnectionRestored());
     // Re-evaluate at boot so the banner picks up any state that was
     // already present before our listeners attached (rare but safe).
+    this.refreshTurnBanner();
+  }
+
+  // FE-3 (UAT §9) — true from a WS drop until the next authoritative JOIN.
+  private connectionLost = false;
+
+  private onConnectionLost(): void {
+    this.connectionLost = true;
+    // Clear the stale claim cue + any pending claim so a disconnected page never
+    // shows a live claim window; the side-panel claim buttons disable via
+    // refreshClaimButtons. The turn banner is parked by refreshTurnBanner.
+    this.activeClaim = null;
+    this.refreshClaimButtons();
+    this.refreshTurnBanner();
+  }
+
+  private onConnectionRestored(): void {
+    this.connectionLost = false;
     this.refreshTurnBanner();
   }
 
@@ -1726,6 +1803,16 @@ export class GameUi {
     const banner = this.elements.turnBanner;
     if (!banner) return; // defensive — index.html should always carry it
 
+    // FE-3 (UAT §9) — while the WS is down, park the banner: never surface a
+    // live "Your turn" / claim / waiting cue over a dead connection. The
+    // client-ui connection banner communicates the disconnected/reconnecting
+    // state; on reconnect the authoritative snapshot re-drives this banner.
+    if (this.connectionLost) {
+      this.applyNewGameAffordance(false);
+      this.applyTurnBannerState('', null, null, null);
+      return;
+    }
+
     const selfSeat = this.client.seat;
     const spectating = readSpectatorFromUrl();
 
@@ -1736,10 +1823,12 @@ export class GameUi {
     // (P2) priorities are inherently self-targeted, so they stay no-ops when
     // `selfSeat === null` (no self claim/pickup entry exists).
 
-    // Priority 1 — claim window targeting self.
-    if (selfSeat !== null && this.activeClaim !== null) {
-      const available = Array.isArray(this.activeClaim.available)
-        ? this.activeClaim.available.join(' / ')
+    // Priority 1 — claim window targeting self (R-1 §D9: only when actionable —
+    // a stale window that lingered past my discard/pickup turn is suppressed).
+    const activeClaim = this.activeClaim;
+    if (selfSeat !== null && activeClaim !== null && this.claimActionable()) {
+      const available = Array.isArray(activeClaim.available)
+        ? activeClaim.available.join(' / ')
         : '';
       const text = available
         ? `Claim opportunity — ${available}`
@@ -1877,14 +1966,16 @@ export class GameUi {
     }
   }
 
-  // Opens a fresh New Game path.  Prefers the canonical `#new-game` action
-  // (clears the reconnect session + navigates to a bare URL whose lobby mints a
-  // fresh, isolated gameId) so the escape from a stale no-seat game can never
-  // loop back into the same stalled runtime game; falls back to the lobby
-  // toggle if that control is absent.
+  // Opens a fresh New Game path.  Targets ANY authoritative New Game control by
+  // the `data-action="new-game"` convention — the PERSISTENT outside-sidebar
+  // button when present, else the legacy `#new-game` — so the escape from a
+  // stale no-seat game (and the GameComplete "New Game") always funnels through
+  // the ONE authoritative fresh-gameId path (clears the reconnect session +
+  // location.replace to a fresh, isolated gameId), never a relay/local reset.
+  // Falls back to the lobby toggle only if NO New Game control exists at all.
   private openNewGameSurface(): void {
-    const newGame = document.getElementById('new-game') as HTMLButtonElement | null;
-    if (newGame) { newGame.click(); return; }
+    const newGame = document.querySelector('[data-action="new-game"]') as HTMLElement | null;
+    if (newGame !== null) { newGame.click(); return; }
     const toggle = document.getElementById('lobby-toggle') as HTMLButtonElement | null;
     toggle?.click();
   }
@@ -2126,7 +2217,10 @@ export class GameUi {
   private setupGameCompleteModal(): void {
     this.elements.gameCompleteNewGameBtn.onclick = () => {
       this.dismissGameCompleteModal();
-      this.startNewGameFromSettings();
+      // New Game UX P0 — route through the ONE authoritative #new-game path
+      // (fresh gameId + preserved config + seat handoff), not the settings
+      // reload which reused the finished gameId (stale). Works at GameComplete.
+      this.openNewGameSurface();
     };
     this.elements.gameCompleteLobbyBtn.onclick = () => {
       this.dismissGameCompleteModal();
@@ -2501,7 +2595,7 @@ export class GameUi {
     }
   }
 
-  private onThingsForSfx(entries: Array<[number, ThingInfo | null]>): void {
+  private onThingsForSfx(entries: Array<[string | number, ThingInfo | null]>): void {
     // Find at least one tile transition into hand.* — one SFX per batch.
     // The 200 ms throttle prevents back-to-back draw rounds from
     // sounding like a machine gun (1 clack per round is plenty).

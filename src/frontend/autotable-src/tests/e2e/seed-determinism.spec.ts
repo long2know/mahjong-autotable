@@ -12,11 +12,13 @@
 //     .Seed → wall shuffle + DiceService).
 //
 // All actions are real: a seeded table URL bootstraps the game, then an
-// ordinary Take Seat + Deal tap.  The assertion reads the authoritative
-// `things` collection (seat 0's dealt hand = the tile ids in `hand.*@0`) —
-// the same server-pushed state the renderer consumes.
+// ordinary Take Seat on seat 0.  dealMode=auto is server-driven, so the
+// runtime fills the bots and deals without a manual Deal tap.  The assertion
+// reads the authoritative `things` collection (seat 0's dealt hand = the tile
+// ids in `hand.*@0`) — the same server-pushed state the renderer consumes.
 
 import { test, expect, type Page } from '@playwright/test';
+import { dismissLobbyAndTour, readSeat, waitForSeatable } from './_playability';
 
 const SEED_A = 12345;
 const SEED_B = 99999;
@@ -39,22 +41,29 @@ async function playSeededHand(page: Page, seed: number): Promise<number[]> {
     { waitUntil: 'domcontentloaded' },
   );
 
-  await expect
-    .poll(async () => page.evaluate(() => Boolean((window as unknown as { game?: { client?: { connected?: () => boolean } } }).game?.client?.connected?.())), {
-      timeout: 25_000,
-      message: `seeded game (seed=${seed}) never connected`,
-    })
-    .toBe(true);
+  // CI-robust cold-start gate (shared with changsha-connect-flow so both specs
+  // wait on identical signals): the renderer has booted, the client is
+  // authoritatively connected, AND the real Take-Seat affordance for seat 0 is
+  // actually visible. Dismiss any lobby/tour overlay first so the seat row is
+  // reachable on a cold-start direct-query (?seed=) load. Up to 45 s tolerates
+  // heavily-loaded SwiftShader first-render instead of racing a fixed gate.
+  await dismissLobbyAndTour(page);
+  await waitForSeatable(page, 0);
 
-  await page.locator('.seat-button-0 .take-seat').click();
+  // Seat 0 via the REAL Take Seat button (now guaranteed visible + actionable).
+  const takeSeat0 = page.locator('.seat-button-0 .take-seat');
+  await takeSeat0.click();
   await expect
-    .poll(async () => page.evaluate(() => (window as unknown as { game?: { client?: { seat?: number | null } } }).game?.client?.seat ?? null), {
+    .poll(async () => readSeat(page), {
       timeout: 10_000,
       message: 'seat never became 0',
     })
     .toBe(0);
 
-  await page.locator('#deal').click();
+  // dealMode=auto is SERVER-DRIVEN: taking the seat fills the bot seats and the
+  // runtime auto-starts + auto-deals. The legacy #deal button is relay-only
+  // (hidden in Changsha) and is no longer a trigger — the authoritative hand
+  // below arrives without a Deal click.
 
   await expect
     .poll(async () => page.evaluate(() => {
@@ -79,7 +88,10 @@ async function playSeededHand(page: Page, seed: number): Promise<number[]> {
 test.describe('WP-E/#120 — seed determinism (real backend-consumed seed)', () => {
   test('same seed reproduces the deal; a different seed changes it', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium', 'Determinism is engine-level; one project is sufficient.');
-    test.setTimeout(120_000);
+    // Three sequential cold-start seeded games; each readiness gate tolerates up
+    // to ~45 s of heavily-loaded SwiftShader first-render, so give the whole test
+    // a CI-robust ceiling rather than letting the test timeout become the flake.
+    test.setTimeout(180_000);
 
     const a1 = await playSeededHand(page, SEED_A);
     const a2 = await playSeededHand(page, SEED_A); // fresh game, identical seed

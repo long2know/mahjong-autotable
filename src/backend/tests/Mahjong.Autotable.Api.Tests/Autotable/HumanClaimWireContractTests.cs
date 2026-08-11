@@ -325,7 +325,18 @@ public sealed class HumanClaimWireContractTests : IAsyncLifetime
 
         // Ensure the table is full then auto-deal to a quiescent AwaitingDiscard (seat 0 = human).
         await runtime.FillEmptySeatsWithBotsAsync(runtimeGameId);
-        await runtime.StartGameAsync(runtimeGameId);
+        // BE-3 — the seat-take already server-starts the auto game on seat-fill; a redundant
+        // explicit start is a harmless no-op. Guard on Seating AND swallow the benign
+        // "already started" InvalidOperationException so BE-3's async start can't race-flake.
+        try
+        {
+            if (runtime.TryGetSnapshot(runtimeGameId, out var preStart) && preStart is not null
+                && preStart.Phase == ChangshaPhase.Seating)
+            {
+                await runtime.StartGameAsync(runtimeGameId);
+            }
+        }
+        catch (InvalidOperationException) { /* BE-3 already started the game (seat-fill race) */ }
         var dealt = await WaitForAsync(() =>
             runtime.TryGetSnapshot(runtimeGameId, out var s) && s is not null
             && s.Phase == ChangshaPhase.AwaitingDiscard

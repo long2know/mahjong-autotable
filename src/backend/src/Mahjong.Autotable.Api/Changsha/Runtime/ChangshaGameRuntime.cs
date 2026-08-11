@@ -133,6 +133,16 @@ public interface IChangshaGameRuntime
     /// from a fresh newcomer when deciding whether to retire a stale default game.
     /// </summary>
     int? TryGetSeatForPlayer(string gameId, string playerId);
+
+    /// <summary>
+    /// BE-3 (Ripley §9.1) — true when every seat is occupied by a real participant: a bot
+    /// (<see cref="ChangshaSeatState.IsBot"/>) or a connected human (a live
+    /// <c>SeatConnections</c> entry). A seat still holding its creation placeholder
+    /// (<c>human-{i}</c>, no connection) counts as OPEN. Drives server-start-on-seat-fill;
+    /// distinct from the <c>PlayerId</c> field, which carries a non-empty placeholder for
+    /// every seat from game creation and therefore cannot signal occupancy.
+    /// </summary>
+    bool AreAllSeatsOccupied(string gameId);
     Task DiscardAsync(string gameId, int seatIndex, int tileId, CancellationToken ct = default, int? expectedVersion = null);
     Task ClaimAsync(string gameId, int seatIndex, string claimType, int[]? tileIds, CancellationToken ct = default, int? expectedVersion = null);
     Task PassAsync(string gameId, int seatIndex, CancellationToken ct = default, int? expectedVersion = null);
@@ -386,6 +396,27 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             }
         }
         return null;
+    }
+
+    public bool AreAllSeatsOccupied(string gameId)
+    {
+        if (string.IsNullOrEmpty(gameId)) return false;
+        if (!_games.TryGetValue(gameId, out var instance)) return false;
+        instance.Lock.Wait();
+        try
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                if (instance.SeatConnections.ContainsKey(i)) continue; // real connected human
+                if (i < instance.State.Seats.Count && instance.State.Seats[i].IsBot) continue; // bot
+                return false; // seat i is an unoccupied human placeholder
+            }
+            return true;
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
     }
 
     public int GameCount => _games.Count;
@@ -777,25 +808,41 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             if (instance.State.DealMode == DealMode.Manual)
             {
                 await PersistSnapshotAsync(instance, ct);
-                return;
             }
+            else
+            {
+                // Auto deal (default Phase D-backend): drive RollDice → Deal in one shot.
+                var diceService = new DiceService(instance.State.Seed);
+                ChangshaGameStateMachine.RollDice(instance.State, diceService);
+                await BroadcastDiceAsync(instance, ct);
 
-            // Auto deal (default Phase D-backend): drive RollDice → Deal in one shot.
-            var diceService = new DiceService(instance.State.Seed);
-            ChangshaGameStateMachine.RollDice(instance.State, diceService);
-            await BroadcastDiceAsync(instance, ct);
+                ChangshaGameStateMachine.Deal(instance.State);
+                await BroadcastDealAsync(instance, ct);
 
-            ChangshaGameStateMachine.Deal(instance.State);
-            await BroadcastDealAsync(instance, ct);
-
-            await PersistSnapshotAsync(instance, ct);
+                await PersistSnapshotAsync(instance, ct);
+            }
         }
         finally
         {
             instance.Lock.Release();
         }
 
-        if (instance.State.DealMode != DealMode.Manual)
+        if (instance.State.DealMode == DealMode.Manual)
+        {
+            // Vasquez rev2 (Blocker B root cause) — schedule a BOT DEALER's OPENING roll on
+            // hand 1. The manual branch previously stopped at RollingDice and never scheduled
+            // the dealer roll, so a manual game whose dealer is a bot parked in RollingDice
+            // indefinitely (no human to press "roll"): the deal ceremony never began and the
+            // pickup collection stayed an explicit `pickup.current=null` tombstone — the live
+            // "targetSlots length 0" observation (NOT a translator/slotmap defect; the emitter
+            // and 14/14/13/13 frame are independently confirmed correct). This mirrors the
+            // per-hand re-entry seam (RotateBanker → StartNextHandOrEnd → ScheduleBotIfNeeded):
+            // a bot dealer auto-rolls to drive wall-break + the pickup ceremony, while a HUMAN
+            // dealer still rolls via the WS client (ScheduleBotIfNeededAsync no-ops on a human
+            // dealer). Called OUTSIDE the lock, matching RollDiceAsync/TakeTilesFromWallAsync.
+            await ScheduleBotIfNeededAsync(instance, ct);
+        }
+        else
         {
             // After auto deal, await client AckDeal (if humans) or auto-ack and start the turn.
             await TryAdvanceAfterDealAsync(instance, ct);
@@ -1615,9 +1662,10 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     {
         // #116 (P1-3/P1-4) — manual deal per-hand ceremony. After RotateBanker parks a new
         // hand in RollingDice, a bot dealer must auto-roll to drive the wall-break + batch
-        // pickup ritual (a human dealer rolls via the WS client). This only fires for the
-        // per-hand re-entry path — StartGameAsync's manual branch never calls
-        // ScheduleBotIfNeededAsync, so hand 1 stays client/test-driven exactly as before.
+        // pickup ritual (a human dealer rolls via the WS client). Vasquez rev2 — this now also
+        // fires for hand 1: StartGameAsync's manual branch calls ScheduleBotIfNeededAsync after
+        // parking in RollingDice, so a bot dealer's OPENING roll is scheduled instead of the
+        // game stalling. Idempotent (TryBeginBotSchedule), and a no-op for a human dealer.
         if (instance.State.Phase == ChangshaPhase.RollingDice)
         {
             if (instance.State.DealMode != DealMode.Manual) return Task.CompletedTask;

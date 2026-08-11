@@ -247,6 +247,16 @@ export interface DiceEntry {
 // Phase F — server-pushed pickup affordance entry (singleton key=0).
 // Drives the manual-pickup HUD, dice click visibility and per-tile click gate
 // in world.ts. See Ripley Phase F design §2.4 for the protocol contract.
+export interface BreakPointWire {
+  // Hudson rev2 — the authoritative break address the backend emits for
+  // `pickup.breakPoint` (AutotableProtocol.BreakPointWire). It is an OBJECT, not a
+  // bare number: `wallIndex` is the physical wall/seat side (0..3), `stackIndex` is
+  // the stack (column) within that wall, `tileIndex` the flat wall index of the break.
+  wallIndex: number;
+  stackIndex: number;
+  tileIndex: number;
+}
+
 export interface PickupEntry {
   // 'rollDice' | 'breakPointMarked' | 'pickup-r1' | 'pickup-r2' | 'pickup-r3'
   //   | 'single' | 'dealer-extra' | 'inPlay'
@@ -259,8 +269,18 @@ export interface PickupEntry {
   seatIndex: number;            // whose turn to click next (0..3)
   count: number;                // tiles to take this click (1 or 4)
   dealMode: DealMode;
-  breakPoint?: number | null;   // wall column index of the break (for marker rendering)
-  wallIndex?: number | null;    // which side of the table the break landed on (0..3)
+  breakPoint?: BreakPointWire | null;   // authoritative break ADDRESS { wallIndex, stackIndex, tileIndex }
+  wallIndex?: number | null;    // draw offset into the remaining wall (front = 0), NOT the break wall
+  // Server-designated manual-pickup TRIGGER (SC-4, Ripley/Frost/Vasquez latest).
+  // `targetSlots` is EXACTLY length 1 — the co-derived `Wall[0]` trigger slot;
+  // `count` (above) carries the batch size and the server takes the whole batch
+  // `Wall[0..count-1]`. Client match: `targetSlots.length===1 &&
+  // targetSlots[0]===hovered.slot.name` (see world.ts wallTileInDesignatedSet /
+  // changsha-mode-policy tileInDesignatedTrigger). FAILS CLOSED on
+  // missing/empty/multiple — no any-wall/batch-set fallback (G17). No raw wall
+  // ids on the wire (G19); the take carries only {seatIndex,count}. Optional
+  // until Bishop co-emits the trigger.
+  targetSlots?: string[];
 }
 
 export enum TileVariant {

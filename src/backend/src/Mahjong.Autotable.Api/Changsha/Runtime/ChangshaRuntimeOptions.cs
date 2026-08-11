@@ -38,4 +38,23 @@ public sealed class ChangshaRuntimeOptions
     /// is discarded — bot strategies must remain pure / side-effect free.
     /// </summary>
     public int BotDecisionTimeoutMs { get; set; } = 2000;
+
+    /// <summary>
+    /// SC-2 / G19 (Ripley, BINDING) — when true, tiles HIDDEN from a viewer (foreign concealed hands,
+    /// ALL wall tiles, foreign concealed kongs) are emitted with opaque per-viewer <c>things</c> KEY
+    /// handles instead of the real tileId. <b>Default <c>true</c>: privacy is mandatory / default-on
+    /// for Changsha</b> (the reconciled Hicks client renders a string/handle key as a face-down back).
+    /// Relay variants are unaffected — they never run through the translator/projector.
+    /// </summary>
+    public bool OpaqueHiddenHandles { get; set; } = true;
+
+    /// <summary>
+    /// SC-2 server secret (base64) — the <b>dedicated</b> handle-derivation input key material, MUST
+    /// be server-only, never on the wire, and NOT client-derivable (the 108-tile space is
+    /// brute-forceable otherwise). Bound from <c>Privacy:HandleSecret</c>. When empty the wiring falls
+    /// back to the <b>stable configured JWT signing-key bytes</b> as HKDF IKM (never a per-process
+    /// random secret, and never used as a raw MAC key — the HKDF-based
+    /// <see cref="Mahjong.Autotable.Api.Autotable.OpaqueTileHandleProvider"/> does the key separation).
+    /// </summary>
+    public string? HandleSecretBase64 { get; set; }
 }

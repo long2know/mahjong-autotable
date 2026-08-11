@@ -32,8 +32,9 @@ public class DiceAndBreakPointTests
 
         // sum=2 → wallOffset (2-1)%4 = 1 → wall index = (0+1)%4 = 1 (right wall)
         Assert.Equal(1, bp.WallIndex);
-        // Counts 2 stacks from right end of right wall (13 stacks): stackIndex = 13 - 2 = 11
-        Assert.Equal(11, bp.StackIndex);
+        // F1 absolute frame [14,14,13,13]: seat 1 owns a 14-stack wall. Counts 2
+        // stacks from its right end → stackIndex = 14 - 2 = 12.
+        Assert.Equal(12, bp.StackIndex);
     }
 
     [Fact, Trait("Category", "Changsha")]

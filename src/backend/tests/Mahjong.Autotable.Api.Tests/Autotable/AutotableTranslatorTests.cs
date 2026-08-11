@@ -601,7 +601,9 @@ public class AutotableTranslatorTests
         var json = JsonSerializer.Serialize(match.Value, AutotableJson.Options);
         using var doc = JsonDocument.Parse(json);
         Assert.Equal("000", doc.RootElement.GetProperty("conditions").GetProperty("fives").GetString());
-        Assert.Equal("FOUR_PLAYER", doc.RootElement.GetProperty("conditions").GetProperty("gameType").GetString());
+        // BE-1 (Ripley §9.1): the surfaced variant is now the honest Changsha value,
+        // decoupled from the fives='000' catalog assertion above.
+        Assert.Equal("CHANGSHA", doc.RootElement.GetProperty("conditions").GetProperty("gameType").GetString());
     }
 
     // ── viewer-seat hand visibility ───────────────────────────────────
@@ -680,7 +682,7 @@ public class AutotableTranslatorTests
         var entries = ChangshaToAutotableTranslator.Translate(
             state, viewerSeat: 1, claimWindowTimeoutMs: 5000);
 
-        var claim = entries.Single(e => e.Kind == "claim");
+        var claim = entries.Single(e => e.Kind == "claim" && e.Value is not null);
         var json = JsonSerializer.Serialize(claim.Value, AutotableJson.Options);
         using var doc = JsonDocument.Parse(json);
         // deadline = 1_700_000_000_000 + 5000 = 1_700_000_005_000
@@ -718,7 +720,7 @@ public class AutotableTranslatorTests
         // (0 = "no client timer; server enforces").
         var entries = ChangshaToAutotableTranslator.Translate(state, viewerSeat: 1);
 
-        var claim = entries.Single(e => e.Kind == "claim");
+        var claim = entries.Single(e => e.Kind == "claim" && e.Value is not null);
         var json = JsonSerializer.Serialize(claim.Value, AutotableJson.Options);
         using var doc = JsonDocument.Parse(json);
         Assert.Equal(0L, doc.RootElement.GetProperty("deadline").GetInt64());
@@ -757,7 +759,7 @@ public class AutotableTranslatorTests
         var entries = ChangshaToAutotableTranslator.Translate(
             state, viewerSeat: 1, claimWindowTimeoutMs: 5000);
 
-        var claim = entries.Single(e => e.Kind == "claim");
+        var claim = entries.Single(e => e.Kind == "claim" && e.Value is not null);
         var json = JsonSerializer.Serialize(claim.Value, AutotableJson.Options);
         using var doc = JsonDocument.Parse(json);
         Assert.Equal(0L, doc.RootElement.GetProperty("deadline").GetInt64());
@@ -803,8 +805,11 @@ public class AutotableTranslatorTests
         var entries = ChangshaToAutotableTranslator.Translate(
             state, viewerSeat: 1, claimWindowTimeoutMs: 5000);
 
-        var claims = entries.Where(e => e.Kind == "claim").ToList();
+        var claims = entries.Where(e => e.Kind == "claim" && e.Value is not null).ToList();
         Assert.Equal(3, claims.Count);
+        // BE-4 (Ripley §9.1) — seat 0 has no opportunity, so it must receive an explicit
+        // null tombstone in the same snapshot (no stale claim can linger for that seat).
+        Assert.Contains(entries, e => e.Kind == "claim" && e.Key.Equals("0") && e.Value is null);
         // Frost 2026-05-29 — keys are stringified to match the frontend
         // Collection's Map<string, V> storage convention (game-ui.ts writes
         // `client.claim.set(String(selfSeat), …)` locally; the server must

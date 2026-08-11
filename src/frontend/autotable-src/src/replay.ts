@@ -30,6 +30,7 @@
 
 import { Client } from "./client";
 import { HandResultEntry, ThingInfo, MatchInfo } from "./types";
+import { parseRealTileId as changshaParseRealTileId } from "./changsha-mode-policy";
 import {
   parseTilesJson,
   readFinalsFlagFromUrl,
@@ -475,7 +476,13 @@ export class Replay {
 
   // ── Capture loop ───────────────────────────────────────────────────
 
-  private onThings(entries: Array<[number, ThingInfo | null]>): void {
+  private onThings(allEntries: Array<[string | number, ThingInfo | null]>): void {
+    // FE-7/SC-2 (G19) — keep only ENTITLED real tiles (numeric key 0..107,
+    // number OR numeric-string), normalized to a number; skip opaque hidden
+    // handles (`h_<base64url>`). Never does arithmetic on a handle.
+    const entries = allEntries
+      .map(([k, info]): [number | null, ThingInfo | null] => [changshaParseRealTileId(k), info])
+      .filter((e): e is [number, ThingInfo | null] => e[0] !== null);
     for (const [tileId, info] of entries) {
       if (!info) continue;
       const slot = info.slotName ?? '';

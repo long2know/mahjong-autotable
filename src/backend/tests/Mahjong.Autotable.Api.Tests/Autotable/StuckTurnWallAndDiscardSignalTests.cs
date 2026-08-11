@@ -58,7 +58,9 @@ public class StuckTurnWallAndDiscardSignalTests
     private static int WallSlotOrdinal(string slot)
     {
         var (seat, col, layer) = ParseWallSlot(slot);
-        return SeatWallStart(seat) + col * 2 + layer;
+        // F2 top-first: forward map is ordinal o -> layer 1-(o%2), so the inverse
+        // recovering the ordinal from a physical (col, layer) is col*2 + (1 - layer).
+        return SeatWallStart(seat) + col * 2 + (1 - layer);
     }
 
     private static string SlotOf(object? value)

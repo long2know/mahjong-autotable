@@ -183,6 +183,7 @@ export function buildFreshGameUrl(
   pathname: string,
   search: string,
   gameId: string = mintFreshGameId(),
+  seat?: number | null,
 ): string {
   const p = new URLSearchParams(search);
   p.set('gameId', gameId);
@@ -200,5 +201,32 @@ export function buildFreshGameUrl(
     p.set('botDifficulty', NEW_GAME_DEFAULTS.botDifficulty);
   }
   if (!p.has('handCount')) p.set('handCount', String(NEW_GAME_DEFAULTS.handCount));
+  // New Game UX P0 — SEAT HANDOFF. When the caller owns a real seat (0..3),
+  // stamp `?seat=` so the fresh empty game auto-takes THAT chair from one click
+  // (the WS handshake forwards it; the backend seats the human there, auto-seats
+  // bots, and — in Auto — auto-deals to a playable hand). `-1` (explicit
+  // spectator) is honoured; when `seat` is undefined/null the URL's existing
+  // `seat` (if any) is preserved verbatim.
+  if (seat !== undefined && seat !== null && (seat >= 0 || seat === -1)) {
+    p.set('seat', String(seat));
+  }
   return `${pathname}?${p.toString()}`;
+}
+
+// New Game UX P0 — resolve WHICH seat the one-click New Game hands off to the
+// fresh game, so the user keeps the SAME chair with no re-pick / extra clicks:
+//   • the caller's LIVE seat when currently seated (0..3, or -1 explicit
+//     spectator);
+//   • else the pre-disconnect seat (a New Game clicked while disconnected still
+//     re-takes the same chair);
+//   • else null ⇒ no owned seat, let the fresh game assign / spectate.
+// Pure ⇒ browser-free contract-tested; `newGame()` feeds the result to
+// `buildFreshGameUrl(..., seat)`.
+export function resolveHandoffSeat(
+  liveSeat: number | null | undefined,
+  reconnectSeat: number | null | undefined,
+): number | null {
+  if (liveSeat !== null && liveSeat !== undefined) return liveSeat;
+  if (reconnectSeat !== null && reconnectSeat !== undefined) return reconnectSeat;
+  return null;
 }

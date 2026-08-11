@@ -143,7 +143,7 @@ public class AutotableWsRelayTests : IAsyncLifetime
     {
         var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
 
-        await using var alice = await OpenAndJoinAsync("GAME-C", seat: 0);
+        await using var alice = await OpenAndJoinAsync("GAME-C", seat: 0, "four_player");
 
         // Alice uploads three things entries.
         var thingValue1 = JsonSerializer.SerializeToElement(new { slotName = "hand.0@0", rotationIndex = 1 });
@@ -167,7 +167,7 @@ public class AutotableWsRelayTests : IAsyncLifetime
             reason: "server never recorded all 3 things entries for GAME-C");
 
         // Now Bob joins late.
-        await using var bob = await OpenAndJoinAsync("GAME-C", seat: 1);
+        await using var bob = await OpenAndJoinAsync("GAME-C", seat: 1, "four_player");
 
         // Bob's full snapshot must contain all three things entries that Alice uploaded.
         var snapshot = bob.LastSnapshot!.Value;
@@ -206,7 +206,7 @@ public class AutotableWsRelayTests : IAsyncLifetime
         {
             var gameId = $"GAME-C-STAB-{iteration}";
 
-            await using var alice = await OpenAndJoinAsync(gameId, seat: 0);
+            await using var alice = await OpenAndJoinAsync(gameId, seat: 0, "four_player");
 
             var thingValue1 = JsonSerializer.SerializeToElement(new { slotName = "hand.0@0", rotationIndex = 1 });
             var thingValue2 = JsonSerializer.SerializeToElement(new { slotName = "hand.1@0", rotationIndex = 1 });
@@ -223,7 +223,7 @@ public class AutotableWsRelayTests : IAsyncLifetime
                 timeoutMs: 5000,
                 reason: $"iteration {iteration}: server never recorded all 3 things entries for {gameId}");
 
-            await using var bob = await OpenAndJoinAsync(gameId, seat: 1);
+            await using var bob = await OpenAndJoinAsync(gameId, seat: 1, "four_player");
 
             var snapshot = bob.LastSnapshot!.Value;
             Assert.Equal("UPDATE", snapshot.GetProperty("type").GetString());
@@ -305,7 +305,7 @@ public class AutotableWsRelayTests : IAsyncLifetime
         var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
         var initialGameCount = manager.GameCount;
 
-        var alice = await OpenAndJoinAsync("DROP-A", seat: 0);
+        var alice = await OpenAndJoinAsync("DROP-A", seat: 0, "four_player");
         var thingValue = JsonSerializer.SerializeToElement(new { slotName = "hand.0@0", rotationIndex = 1 });
         await alice.SendUpdateAsync(new[] { new object[] { "things", 5L, thingValue } });
         await WaitForAsync(() => manager.GetStoredEntryCount("DROP-A") >= 1, timeoutMs: 2000);
@@ -320,7 +320,7 @@ public class AutotableWsRelayTests : IAsyncLifetime
 
         // A fresh joiner to the same gameId should now see no things entries
         // (state was cleared).
-        await using var revisit = await OpenAndJoinAsync("DROP-A", seat: 0);
+        await using var revisit = await OpenAndJoinAsync("DROP-A", seat: 0, "four_player");
         var snapshot = revisit.LastSnapshot!.Value;
         var entries = snapshot.GetProperty("entries");
         for (var i = 0; i < entries.GetArrayLength(); i++)
@@ -339,8 +339,8 @@ public class AutotableWsRelayTests : IAsyncLifetime
     {
         var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
 
-        var alice = await OpenAndJoinAsync("KEEP-A", seat: 0);
-        await using var bob = await OpenAndJoinAsync("KEEP-A", seat: 1);
+        var alice = await OpenAndJoinAsync("KEEP-A", seat: 0, "four_player");
+        await using var bob = await OpenAndJoinAsync("KEEP-A", seat: 1, "four_player");
 
         var thingValue = JsonSerializer.SerializeToElement(new { slotName = "hand.0@0", rotationIndex = 1 });
         await alice.SendUpdateAsync(new[] { new object[] { "things", 7L, thingValue } });
@@ -356,7 +356,7 @@ public class AutotableWsRelayTests : IAsyncLifetime
         await Task.Delay(200);
 
         // A new joiner to the same game must still receive the prior thing.
-        await using var carol = await OpenAndJoinAsync("KEEP-A", seat: 2);
+        await using var carol = await OpenAndJoinAsync("KEEP-A", seat: 2, "four_player");
         var snapshot = carol.LastSnapshot!.Value;
         var entries = snapshot.GetProperty("entries");
         var seenTileId = false;
@@ -373,18 +373,18 @@ public class AutotableWsRelayTests : IAsyncLifetime
 
     // ── helpers ───────────────────────────────────────────────────────
 
-    private async Task<RelaySession> OpenAsync(int seat)
+    private async Task<RelaySession> OpenAsync(int seat, string variant = "changsha")
     {
         var server = _factory!.Server;
         var wsClient = server.CreateWebSocketClient();
-        var uri = new Uri(server.BaseAddress, $"autotable/ws?seat={seat}");
+        var uri = new Uri(server.BaseAddress, $"autotable/ws?variant={variant}&seat={seat}");
         var ws = await wsClient.ConnectAsync(uri, CancellationToken.None);
         return new RelaySession(ws);
     }
 
-    private async Task<RelaySession> OpenAndJoinAsync(string gameId, int seat)
+    private async Task<RelaySession> OpenAndJoinAsync(string gameId, int seat, string variant = "changsha")
     {
-        var session = await OpenAsync(seat);
+        var session = await OpenAsync(seat, variant);
         await session.SendJoinAsync(gameId);
 
         // JOIN reply is JOINED + the initial full UPDATE snapshot.

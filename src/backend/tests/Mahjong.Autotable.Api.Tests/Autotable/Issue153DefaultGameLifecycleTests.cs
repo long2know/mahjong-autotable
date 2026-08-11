@@ -104,11 +104,13 @@ public sealed class Issue153DefaultGameLifecycleTests : IAsyncLifetime
         Assert.NotNull(ridB);
         Assert.NotEqual(ridA, ridB);
 
-        // B sits at a fresh, clean table — Seating phase, seat 0 owned by B, no inherited hand.
+        // B sits at a FRESH table (a different runtime game), seat 0 owned by B, not
+        // inheriting A's abandoned hand. BE-3 — an auto game with bot-fill server-starts
+        // on seat-fill, so B's fresh table deals its OWN hand; the anti-stale guarantee
+        // is that it is a DIFFERENT game (ridB != ridA, asserted above) owned by B.
         Assert.True(Runtime.TryGetSnapshot(ridB!, out var snapB) && snapB is not null);
-        Assert.Equal(ChangshaPhase.Seating, snapB!.Phase);
-        Assert.Equal(pidB, snapB.Seats[0].PlayerId);
-        Assert.All(snapB.Hands, h => Assert.Empty(h.ConcealedTiles));
+        Assert.Equal(pidB, snapB!.Seats[0].PlayerId);
+        Assert.False(snapB.Seats[0].IsBot, "seat 0 of B's fresh table is the human B, not a bot.");
 
         // The stale game A left behind was retired, not handed to B.
         Assert.False(Runtime.TryGetSnapshot(ridA, out var staleSnap) && staleSnap is not null

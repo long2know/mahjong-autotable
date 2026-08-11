@@ -89,21 +89,21 @@
         </div>
 
         <div id="sidebar" class="collapsed container text-light">
-            <div class="d-flex">
+            <div class="d-flex relay-only">
                 <button class="btn btn-warning btn-sm w-100 btn-progress-main" id="deal">
                     <div class="btn-progress"></div>
                     <span class="btn-progress-text">Deal</span>
                 </button>
             </div>
 
-            <div class="mt-2 d-flex">
+            <div class="mt-2 d-flex relay-only">
                 <button disabled class="btn btn-sm btn-outline-secondary text-white w-100 mr-2" id="setup-desc">
                 </button>
                 <button class="btn btn-dark btn-sm dropdown-toggle collapsed" id="toggle-setup"
                     data-toggle="collapse" data-target="#setup-group">Setup</button>
             </div>
 
-            <div id="setup-group" class="collapse" data-toggle="true">
+            <div id="setup-group" class="collapse relay-only" data-toggle="true">
                 <select class="dark-select form-control form-control-sm mt-2" id="deal-type">
                     <option disabled value="">Deal:</option>
                     <option value="HANDS" selected>Hands</option>
@@ -164,7 +164,7 @@
                 <br>
             </div>
 
-            <div class="mt-2 d-flex">
+            <div class="mt-2 d-flex relay-only">
                 <button class="btn btn-secondary btn-sm w-100" id="toggle-dealer">Dealer</button>
                 <button class="btn btn-secondary btn-sm w-100 ml-2 riichi-only" id="toggle-honba">
                     Honba: 0
@@ -214,7 +214,7 @@
                  a separate game state pool.  Hidden once connected, replaced
                  by the small "Game: <id>" display below so the user always
                  knows which game they're in. -->
-            <div class="lobby-row mt-4" id="lobby-gameId-row">
+            <div class="lobby-row mt-4 relay-only" id="lobby-gameId-row">
                 <label for="lobby-gameId" class="server-disconnected">Game ID</label>
                 <input id="lobby-gameId" type="text" maxlength="64"
                        class="server-disconnected"
@@ -239,7 +239,7 @@
                 </small>
             </div>
 
-            <div class="mt-2 d-flex" id="server">
+            <div class="mt-2 d-flex relay-only" id="server">
                 <button class="btn btn-warning btn-sm w-100 server-disconnected mr-2" id="connect">
                     Connect
                 </button>
@@ -324,12 +324,11 @@
                             <input type="checkbox" id="tile-labels" checked>
                             Tile labels
                         </label>
-                        <button class="btn btn-secondary btn-sm btn-block mt-2" id="new-game" data-action="new-game">New game</button>
                     </div>
                 </div>
             </div>
 
-            <div class="mt-2">
+            <div class="mt-2 riichi-only">
                 <small>
                     <a class="text-light show-modal" target="_blank" href="https://pwmarcz.pl/mahjong/riichi-cheat-sheet/Teaching%20Sheet.pdf">Simplified scoring</a>
                     <br>
@@ -454,6 +453,18 @@
         <span class="lobby-toggle-icon">☰</span>
         <span class="lobby-toggle-label">Lobby</span>
     </button>
+
+    <!-- Ferro P0 (persistent one-click New Game) — a prominent, text-labeled
+         primary action in the authoritative top chrome, independent of the
+         setup/sidebar so it stays reachable in every Changsha phase (seating,
+         active hand, claim, disconnected/reconnecting, GameComplete). Keeps
+         id="new-game" + data-action="new-game" so client-ui.ts's newGame()
+         binding AND action-router's [data-action] deep-link stay wired
+         unchanged (navigation is Hicks's lane; not implemented here). Hicks may
+         toggle [disabled]/aria-busy during navigation to block double-fire. -->
+    <button id="new-game" data-action="new-game" type="button"
+            class="new-game-primary" data-testid="new-game-button"
+            aria-label="Start a new game">New Game</button>
 
     <!-- Phase J Wave 4 — Mobile move-log drawer toggle.  Hidden ≥ 1025 px
          via CSS; on tablet/phone widths the move-log slides off the right

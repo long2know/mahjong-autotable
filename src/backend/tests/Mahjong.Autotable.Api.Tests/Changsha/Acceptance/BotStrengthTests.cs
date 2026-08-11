@@ -43,10 +43,22 @@ public class BotStrengthTests(ITestOutputHelper output)
     /// control × 10% lift), but Bishop's Phase I Wave 4 ships only the shanten counter
     /// rewrite; HardStrategy continues to bias discards via
     /// <see cref="HandEvaluator.CountLooseTiles"/> rather than
-    /// <see cref="HandEvaluator.MinShantenToHu"/>, so the measured baseline (Hard wins
-    /// 4 / Medium avg 5/seat at probe time, ratio 0.80) shows no material strength
-    /// shift this wave. The 0.5 floor is intentionally generous — if a future edit
-    /// halves Hard's win rate this test will fire RED and surface the regression.
+    /// <see cref="HandEvaluator.MinShantenToHu"/>. Under the F1 seat-absolute deal
+    /// re-anchoring the measured baseline is Hard 6 / Medium avg 4.33 per seat (ratio
+    /// 1.39, 1 draw over N=20); the pre-F1 probe measured 4 / 5 (ratio 0.80). The deal
+    /// contents rotate with the break frame, so absolute win counts are seed-sensitive
+    /// — the assertion floor is deliberately the permissive 0.5× (not the raw ratio) so
+    /// it survives that variance and only fires if a real strength regression halves
+    /// Hard's win rate.
+    ///
+    /// <para><b>Harness note (F1 exposure).</b> F1's re-anchoring routed seed 111866
+    /// into a 2-kong hand, which surfaced a latent bug in <see cref="RunOneHand"/>: the
+    /// draw gate was kong-blind (<c>total == 13</c>), so a K-kong seat sitting at
+    /// physical <c>13 + K</c> never drew and instead discarded to zero concealed tiles,
+    /// then spun on a switch-only <c>break</c>. Fixed to a kong-aware gate — see
+    /// <see cref="RunOneHand"/>. F1 is NOT reverted (golden #4's single-frame proof
+    /// requires the seat-absolute collapse); this was a test-harness gap, not a
+    /// game-engine defect.</para>
     /// </summary>
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "Phase-I-4")]
     public void Hard_BeatsMedium_AcrossNHands()
@@ -185,13 +197,28 @@ public class BotStrengthTests(ITestOutputHelper output)
                     var seat = state.ActiveSeatIndex;
                     var hand = state.Hands[seat];
                     var totalTiles = hand.ConcealedTiles.Count + hand.Melds.Sum(m => m.TileIds.Count);
-                    if (totalTiles == 13)
+                    // A seat "owes a draw" when it sits at the 13-tile base plus one
+                    // EXTRA physical tile per kong: a kong is a 4-tile set that still
+                    // counts as a single 3-tile set toward the base, so each kong leaves
+                    // the physical count one above 13. The original `== 13` gate was
+                    // kong-blind — a seat with K kongs sits at 13+K and NEVER matched, so
+                    // the harness made it discard from its waiting count every turn until
+                    // it exhausted its concealed tiles and then spun forever on the
+                    // `concealed == 0` break below. (Exposed by F1's deal re-anchoring:
+                    // seed 111866 now routes a 2-kong hand through this path — a harness
+                    // gap, not a game-engine defect; the live runtime draws on advance.)
+                    if (totalTiles == _TestHarness.BotTurnHarness.PreDrawTileCount(hand))
                     {
                         ChangshaGameStateMachine.DrawTile(state);
                         if (state.Phase == ChangshaPhase.WallExhausted) break;
                         continue;
                     }
-                    if (hand.ConcealedTiles.Count == 0) break;
+                    // Defensive: a fully-melded hand with zero concealed tiles cannot
+                    // discard. Unreachable once the kong-aware draw gate above fires, but
+                    // this must terminate the hand (return) rather than `break` the switch
+                    // — a bare `break` only exits the switch and re-enters the while,
+                    // spinning to the MaxStepsPerHand guard.
+                    if (hand.ConcealedTiles.Count == 0) return -1;
 
                     var action = strategies[seat].DecideAction(state, seat);
                     switch (action.Type)

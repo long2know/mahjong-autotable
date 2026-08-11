@@ -821,6 +821,93 @@ export async function ensureConnected(page: Page, timeoutMs = 20_000): Promise<b
   return readConnected(page);
 }
 
+export interface SeatReadiness {
+  ready: boolean;
+  gameObject: boolean;
+  connected: boolean;
+  seatButtonVisible: boolean;
+  seatsRowDisplay: string | null;
+  seat: number | null;
+  polls: number;
+  elapsedMs: number;
+}
+
+/**
+ * ADVANCE/OBSERVE — CI-robust cold-start readiness gate shared by the Changsha
+ * connect-flow and seed-determinism specs so both wait on the SAME authoritative
+ * signals and cold-start behaviour is identical.  Polls (condition-based, using
+ * the same deadline+interval idiom as `ensureConnected` above — the 250 ms is the
+ * poll cadence, NOT a settle sleep) until ALL of the following hold:
+ *   • the renderer has published `window.game` (client + world booted), AND
+ *   • the client is authoritatively connected (`client.connected()`), AND
+ *   • the REAL `.seat-button-<seat> .take-seat` affordance is visible — i.e. the
+ *     client-ui refresh that reveals `.seat-buttons` (only after connect + the
+ *     first server state update) has actually run and rendered.
+ *
+ * Heavily-loaded SwiftShader can push first-render + the seat-row reveal well
+ * past the old fixed 10–15 s `toBeVisible` gates (observed: connect-flow AND seed
+ * both timing out under load).  This waits up to `timeoutMs` (default 45 s) and,
+ * on timeout, throws a full readiness snapshot so the failure is diagnosable
+ * instead of a bare "locator not visible".  No force-click, no behaviour
+ * relaxation — the seat is still taken by a real click by the caller.
+ */
+export async function waitForSeatable(
+  page: Page,
+  seat: number,
+  timeoutMs = 45_000,
+): Promise<SeatReadiness> {
+  const start = Date.now();
+  const deadline = start + timeoutMs;
+  const btn = page.locator(`.seat-button-${seat} .take-seat`).first();
+  let last: SeatReadiness = {
+    ready: false,
+    gameObject: false,
+    connected: false,
+    seatButtonVisible: false,
+    seatsRowDisplay: null,
+    seat: null,
+    polls: 0,
+    elapsedMs: 0,
+  };
+  while (Date.now() < deadline) {
+    const state = await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const g = (window as any).game;
+      const client = g?.client;
+      const world = g?.world;
+      let connected = false;
+      try {
+        connected = typeof client?.connected === 'function' ? Boolean(client.connected()) : false;
+      } catch {
+        connected = false;
+      }
+      const row = document.querySelector('.seat-buttons') as HTMLElement | null;
+      return {
+        gameObject: Boolean(client && world),
+        connected,
+        seat: typeof client?.seat === 'number' ? client.seat : null,
+        seatsRowDisplay: row ? getComputedStyle(row).display : null,
+      };
+    });
+    const seatButtonVisible = await btn.isVisible().catch(() => false);
+    last = {
+      gameObject: state.gameObject,
+      connected: state.connected,
+      seatButtonVisible,
+      seatsRowDisplay: state.seatsRowDisplay,
+      seat: state.seat,
+      ready: state.gameObject && state.connected && seatButtonVisible,
+      polls: last.polls + 1,
+      elapsedMs: Date.now() - start,
+    };
+    if (last.ready) return last;
+    await page.waitForTimeout(250);
+  }
+  throw new Error(
+    `[waitForSeatable] seat ${seat} not ready within ${timeoutMs}ms — ${JSON.stringify(last)}`,
+  );
+}
+
 /**
  * ADVANCE — take a seat by clicking the real .take-seat button for the chair
  * matching cfg.seat (falls back to the first visible one). Returns the seat the

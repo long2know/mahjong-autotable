@@ -32,10 +32,10 @@ internal static class BotMatchHarness
                     var seat = state.ActiveSeatIndex;
                     var hand = state.Hands[seat];
 
-                    // Total effective tiles = concealed + meld tile count.
-                    // 13 → must draw; ≥14 → ready to discard.
+                    // Kong-aware draw gate (BotTurnHarness.PreDrawTileCount): a seat owes a draw
+                    // at 13 + kongs (a K-kong seat sits at 13+K); ready to discard once above it.
                     var totalTiles = hand.ConcealedTiles.Count + hand.Melds.Sum(m => m.TileIds.Count);
-                    if (totalTiles == 13)
+                    if (totalTiles == BotTurnHarness.PreDrawTileCount(hand))
                     {
                         ChangshaGameStateMachine.DrawTile(state);
                         if (state.Phase == ChangshaPhase.WallExhausted) break;
@@ -43,9 +43,11 @@ internal static class BotMatchHarness
                     }
                     if (hand.ConcealedTiles.Count == 0)
                     {
-                        // Defensive: nothing to discard (shouldn't happen post-meld since at least pair remains).
-                        // Force pass via wall exhaustion check.
-                        break;
+                        // Defensive: a fully-melded, zero-concealed hand cannot discard. Unreachable
+                        // once the kong-aware gate above fires. Must RETURN a terminal outcome, not
+                        // `break` (which only exits the switch and re-enters the while, spinning to
+                        // the step guard). Treat as a no-winner force-end.
+                        return new MatchOutcome(state, steps, WinnerDeclared: state.CurrentWin is not null, WallExhausted: true);
                     }
 
                     var action = policy.DecideAction(state, seat);

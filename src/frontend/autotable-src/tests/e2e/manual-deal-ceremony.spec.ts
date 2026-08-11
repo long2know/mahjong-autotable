@@ -151,11 +151,37 @@ test.describe('#119 Changsha manual-deal ceremony — DealerExtra regression', (
       });
     });
 
-    // 6) Deal (real click).  The single-click #deal handler fires
-    //    world.deal('HANDS') → driveManualDealChain (the fix under test).
-    const deal = page.locator('#deal');
-    expect(await deal.first().isVisible().catch(() => false), '#deal must be visible after seating').toBe(true);
-    await deal.first().click({ timeout: 8000 });
+    // 6) Manual trigger via the REAL rendered control. The legacy #deal button is
+    //    relay-only (hidden in Changsha) and the local world.deal auto-drive
+    //    (driveManualDealChain) was dropped in the server-authoritative integration.
+    //    A seated human dealer ROLLS (real click on #roll-dice), then takes each batch
+    //    with the rendered "Take N" control; bots auto-pick their own batches.
+    const roll = page.locator('#roll-dice');
+    await roll.waitFor({ state: 'visible', timeout: 15_000 });
+    expect(await roll.isVisible().catch(() => false), '#roll-dice must be visible for the seated human dealer in RollingDice').toBe(true);
+    await roll.click({ timeout: 8000 });
+
+    // 6b) Drive the human dealer's OWN pickups with genuine "Take N" clicks until the
+    //     dealer holds 14. Between the human's turns the cursor rotates through the bots
+    //     (which auto-pick), then returns to the human and the Take control re-arms.
+    const takeBtn = page.locator('#pickup-take-btn');
+    for (let i = 0; i < 8; i++) {
+      const state = await page.waitForFunction(() => {
+        const cli: any = (window as any).game?.client;
+        if (!cli) return false;
+        const seat = cli.seat;
+        let n = 0;
+        for (const [, v] of cli.things.entries()) {
+          const sl = v?.slotName ?? v?.SlotName;
+          if (typeof sl === 'string' && sl.startsWith('hand.') && sl.endsWith('@' + seat)) n++;
+        }
+        if (n >= 14) return 'done';
+        const p = cli.pickup.get('current');
+        return (p && p.seatIndex === seat && p.count > 0) ? 'mine' : false;
+      }, undefined, { timeout: 40_000 }).then((h) => h.jsonValue()).catch(() => false);
+      if (state === 'done') break;
+      if (state === 'mine') await takeBtn.click({ timeout: 5000 }).catch(() => undefined);
+    }
 
     // 7) Wait for the ceremony to bring the dealer to 14 tiles.
     await page.waitForFunction(

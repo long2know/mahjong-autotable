@@ -157,6 +157,28 @@ const START: Record<string, Slot> = {
     rotations: [Rotation.FACE_DOWN, Rotation.FACE_UP],
   }),
 
+  // Apone 2026-08-10 — Changsha-only wall anchor.  The upstream `wall` start
+  // (origin 30,20) is tuned for a symmetric 19-stack-per-seat edge wall; the
+  // Changsha wall is the asymmetric 14/14/13/13 split (`AutotableSlotMap`),
+  // so a 14-stack side spans only 13*TILE.x = 78 world units and CANNOT reach
+  // the corners of a wall sitting at the table edge — the four sides render as
+  // four detached segments with ~50-unit open corners (rejected candidate
+  // :18084, Ferro's top-down analysis).  Re-anchoring the ring so each side is
+  // CENTRED on the table (`WORLD_SIZE - 78`)/2 = 48 for the 14-side) makes the
+  // colMax of every side meet the col-0 of the next within half a tile pitch
+  // (3 world units) at all four corners → one continuous joined CCW perimeter.
+  // Name stays 'wall' so the backend slot map (`wall.<col>.<layer>@<seat>`) is
+  // unchanged; only the physical origin moves.  Seats 0,1 get 14 stacks and
+  // seats 2,3 get 13, so the single centred origin leaves a symmetric 3-unit
+  // half-tile miter at each corner (the unavoidable 14-vs-13 tile of slack,
+  // distributed evenly instead of piling into two corners).
+  'wall.cs': new Slot({
+    name: 'wall',
+    group: 'wall',
+    origin: new Vector3(49.5, 49.5, 0),
+    rotations: [Rotation.FACE_DOWN, Rotation.FACE_UP],
+  }),
+
   'wall.demo': new Slot({
     name: 'wall',
     group: 'wall',
@@ -182,10 +204,41 @@ const START: Record<string, Slot> = {
     drawShadow: true,
   }),
 
+  // Apone 2026-08-10 — Changsha discard tray, moved INSIDE the re-centred wall
+  // ring.  The upstream discard origin (y=60) sits where the Changsha wall now
+  // is (the ring shrank from the table edge to the centred 49.5..127.5 square),
+  // so the upstream tray would render on top of / straddling the wall — a
+  // spurious inner segment.  Shifting the whole 3×6 tray inward by 17.25 world
+  // units (to y=77.25) drops it cleanly between the wall inner face (y≈58.5)
+  // and table centre (y=87), leaving a symmetric ~0.75-unit gap at both edges
+  // and no collision with the opposite seat's tray.  Slot name stays 'discard'
+  // so `discard.{row}.{col}@{seat}` (AutotableSlotMap) is unchanged.
+  'discard.cs': new Slot({
+    name: `discard`,
+    group: `discard`,
+    origin: new Vector3(69, 77.25, 0),
+    direction: new Vector2(1, 1),
+    rotations: [Rotation.FACE_UP, Rotation.FACE_UP_SIDEWAYS, Rotation.FACE_DOWN, Rotation.FACE_DOWN_SIDEWAYS],
+    drawShadow: true,
+  }),
+
   'discard.extra': new Slot({
     name: `discard.extra`,
     group: `discard`,
     origin: new Vector3(69 + 6 * Size.TILE.x, 60 - 2 * Size.TILE.y, 0),
+    direction: new Vector2(1, 1),
+    rotations: [Rotation.FACE_UP, Rotation.FACE_UP_SIDEWAYS, Rotation.FACE_DOWN, Rotation.FACE_DOWN_SIDEWAYS],
+  }),
+
+  // Apone 2026-08-10 — Changsha discard overflow row, shifted inward with the
+  // main tray (same +17.25 offset) so the rare >18-discard overflow also lands
+  // inside the ring.  Backend never assigns `discard.extra` for Changsha (the
+  // slot map tops out at discard.2.5@seat), so this only matters for parity /
+  // defensive rendering; it stays relatively positioned to `discard.cs`.
+  'discard.extra.cs': new Slot({
+    name: `discard.extra`,
+    group: `discard`,
+    origin: new Vector3(69 + 6 * Size.TILE.x, 77.25 - 2 * Size.TILE.y, 0),
     direction: new Vector2(1, 1),
     rotations: [Rotation.FACE_UP, Rotation.FACE_UP_SIDEWAYS, Rotation.FACE_DOWN, Rotation.FACE_DOWN_SIDEWAYS],
   }),
@@ -246,10 +299,10 @@ export const SLOT_GROUPS: Record<GameType, Array<SlotGroup>> = {
     [start('hand'), row(14, undefined, {shift: true}), seats()],
     [start('hand.extra'), seats()],
     [start('meld'), column(4), row(4, -Size.TILE.x, {push: true, shift: true}), seats()],
-    [start('wall'), row(14), stack(), seats([0, 1])],
-    [start('wall'), row(13), stack(), seats([2, 3])],
-    [start('discard'), column(3, -Size.TILE.y), row(6, undefined, {push: true}), seats()],
-    [start('discard.extra'), row(4, undefined, {push: true}), seats()],
+    [start('wall.cs'), row(14), stack(), seats([0, 1])],
+    [start('wall.cs'), row(13), stack(), seats([2, 3])],
+    [start('discard.cs'), column(3, -Size.TILE.y), row(6, undefined, {push: true}), seats()],
+    [start('discard.extra.cs'), row(4, undefined, {push: true}), seats()],
     [start('marker'), seats()],
   ],
 

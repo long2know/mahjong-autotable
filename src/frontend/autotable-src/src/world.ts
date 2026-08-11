@@ -1,4 +1,4 @@
-import { Vector3 } from "three";
+import { Vector3, Quaternion } from "three";
 import { Movement } from "./movement";
 import { Client } from "./client";
 import { readSpectatorFromUrl, readDealModeFromUrl, readVariantFromUrl } from "./client-ui";
@@ -19,6 +19,20 @@ import {
   resolveActiveSeat as cueResolveActiveSeat,
   TurnCueInput,
 } from "./turn-cue";
+import {
+  blocksLocalDeal as changshaBlocksLocalDeal,
+  bootstrapDealFromUrl as changshaBootstrapDealFromUrl,
+  changshaAllowsPointer,
+  partitionThingEntries as changshaPartitionThingEntries,
+  pickupTakeCommand as changshaPickupTakeCommand,
+  pickupTriggerActionable as changshaPickupTriggerActionable,
+  wallTileInteractive as changshaWallTileInteractive,
+  isServerAuthoritative as changshaIsServerAuthoritative,
+} from "./changsha-mode-policy";
+import {
+  reconcileHiddenBacks as sc2ReconcileHiddenBacks,
+  reconcileRealVisibility as sc2ReconcileRealVisibility,
+} from "./sc2-hidden-pool";
 // Hicks 2026-05-26 — first-play P1 unblock (B4 / Vasquez P0-H).  When
 // a click-to-discard is silently rejected we surface a one-line toast
 // so the user knows why the click didn't fire instead of assuming the
@@ -126,12 +140,24 @@ export class World {
   // to remount scenarios.
   private static _lastSlotConflictLogMs: number = 0;
 
-  // Bishop W23 — generation counter for the manual-deal pickup chain.  Each
-  // call to deal('HANDS') in manual mode bumps this; an in-flight chain
-  // bails out as soon as its generation is stale, so back-to-back deals (or
-  // re-entry from the playtest harness) don't fight each other for the
-  // pickup wire.
-  private manualDealChainGen: number = 0;
+  // FE-7 / SC-2 (G19) — dedicated ANONYMOUS hidden-back Thing pool. Capacity for
+  // 108 backs (worst case: the whole deck hidden pre-deal) IN ADDITION to the
+  // 108 pre-baked REAL Things. Backs carry a sentinel typeIndex (0), always
+  // render face-down, never infer a face/type from a handle, and are keyed by an
+  // opaque handle for stable reuse (render/animation continuity + reconnect
+  // stability). Built lazily on first SC-2 activation; re-built after a setup
+  // rebuild reassigns `this.things`.
+  private static readonly HIDDEN_BACK_BASE = 108;
+  private static readonly HIDDEN_BACK_COUNT = 108;
+  private hiddenBackPool: Array<Thing> | null = null;
+  private hiddenParkSlot: Slot | null = null;
+  private handleToBack: Map<string, Thing> = new Map();
+  // Blocker A (Bishop rev2) — the SC-2 back plan computed in the VACATE phase of
+  // `onThings`, applied (placed) AFTER the entitled-real numeric loop so a back never
+  // lands on a slot an entitled real is about to claim. Null off the SC-2 path.
+  private _pendingBackPlan:
+    | { place: Array<{ handle: string; slotName: string; rotationIndex?: number }>; release: Array<string> }
+    | null = null;
 
   constructor(objectView: ObjectView, soundPlayer: SoundPlayer, client: Client) {
     this.setup = new Setup();
@@ -146,14 +172,22 @@ export class World {
     // 14/15/13/13 tiles into the walls — that pre-WS state briefly shows
     // FACE-UP hands + asymmetric walls, which Stephen's 2026-05-27 directive
     // flagged as "scattered, not the canonical 4-simple-walls square".
-    // Read the URL's dealMode and use INITIAL when it's manual so the
-    // first paint already matches Bishop's post-WS RollingDice snapshot
-    // (all 108 in walls).  Spectator/auto paths keep the upstream HANDS
-    // default so the sandbox / standalone debug view stays intact.
-    const urlDealMode = readDealModeFromUrl();
-    if (urlDealMode === 'manual') {
-      this.conditions = { ...this.conditions, dealType: DealType.INITIAL };
-    }
+    //
+    // SC-1 / RC-13 (Ripley integration sub-contract) — bootstrap the deal
+    // MODE from the URL at first paint (BEFORE any WS field arrives), so an
+    // `?dealMode=auto` Changsha URL does NOT inherit the `defaultsFor('manual')`
+    // default. The pre-WS placeholder is ALWAYS the canonical all-in-walls
+    // square (INITIAL, 108 face-down) for BOTH auto and manual — the HANDS
+    // local deal is never used, because it pre-guesses a deal client-side and
+    // scatters `world.things` vs the server's contiguous `client.things` arc
+    // (the "four half-walls" Vasquez/Frost flagged). The authoritative server
+    // snapshot drives the REAL deal on JOIN (auto ⇒ dealt hands + arc atomically;
+    // manual ⇒ the ceremony); `dealMode` is tracked verbatim so the handshake is
+    // unchanged. Logic lives in the pure {@link bootstrapDealFromUrl} so it is
+    // regression-locked browser-free.
+    const { dealMode, dealType } = changshaBootstrapDealFromUrl(
+      readDealModeFromUrl(), this.conditions);
+    this.conditions = { ...this.conditions, dealMode, dealType };
     this.setup.setup(this.conditions);
 
     this.objectView = objectView;
@@ -176,6 +210,13 @@ export class World {
   // dealer cycler must collapse to display-only once the changsha.banker
   // collection arrives.
   toggleDealer(): void {
+    // FE-1 (UAT §9 mode boundary) — legacy relay control. `client.match.set`
+    // is a LOCAL match write that `sendUpdate`-broadcasts to peers; in
+    // server-authoritative Changsha the dealer is engine-owned, so this is
+    // inert even if the DOM still exposes `#toggle-dealer` (Ferro hides it).
+    if (changshaBlocksLocalDeal(this.conditions.gameType)) {
+      return;
+    }
     const match = this.client.match.get(0) ?? { dealer: 3, honba: 0, conditions: Conditions.initial()};
     match.dealer = (match.dealer + 1) % 4;
     this.client.match.set(0, match);
@@ -185,6 +226,11 @@ export class World {
   // rotates through 0..7.  Hidden in Changsha (the button is `display: none`
   // when conditions.gameType === CHANGSHA).
   toggleHonba(): void {
+    // FE-1 — same legacy relay local match write; inert in Changsha (honba is
+    // a Riichi concept and the button is CSS-hidden, but no-op defensively).
+    if (changshaBlocksLocalDeal(this.conditions.gameType)) {
+      return;
+    }
     const match = this.client.match.get(0) ?? { dealer: 0, honba: 0, conditions: Conditions.initial() };
     match.honba = (match.honba + 1) % 8;
     this.client.match.set(0, match);
@@ -194,8 +240,47 @@ export class World {
     this.seat = this.client.seat;
   }
 
-  private onThings(entries: Array<[number, ThingInfo | null]>): void {
+  private onThings(allEntries: Array<[string | number, ThingInfo | null]>, full: boolean = false): void {
     const now = new Date().getTime();
+
+    // FE-7 / SC-2 (G19) — opaque hidden-tile handles arrive as STRING keys
+    // (foreign concealed hands, ALL wall tiles, concealed kongs); real entitled
+    // tiles use numeric 0..107. Partition by key TYPE (pure, tested
+    // {@link partitionThingEntries}): the numeric `real` path below is UNCHANGED
+    // and never does tile-index arithmetic on a handle; string `hidden` handles
+    // render as ANONYMOUS BACKS from a dedicated pool.
+    const { real: entries, hidden } = changshaPartitionThingEntries(allEntries);
+
+    // SC-2 activates only once opaque handles are in play (this snapshot has a
+    // hidden handle, or we already have backs assigned). Until then the numeric
+    // path below is byte-for-byte the pre-SC-2 behaviour (no real-visibility
+    // hiding, no back pool) — so a purely-numeric relay/legacy snapshot is
+    // unaffected. Bishop's emission stays gated until this + dist integrate.
+    const sc2Active = hidden.length > 0 || this.handleToBack.size > 0;
+    if (sc2Active) {
+      // Blocker A (Bishop rev2) — single-owner slot reconciliation with an ATOMIC
+      // vacate-before-(re)bind discipline, so exactly ONE Thing owns each authoritative
+      // wall/hand slot and `thing.slot` / `slot.thing` stay symmetric on both sides.
+      //
+      // The pre-fix code hid a non-entitled REAL (real.hidden=true) without vacating its
+      // slot pointer, then placed a back into the SAME slot while only nulling `slot.thing`
+      // (never the displaced real's `real.slot`). That left asymmetric pointers
+      // (real.slot===S while S.thing===back), double-occupied slots, and stray face-up
+      // center tiles that flickered between full/incremental snapshots. Now:
+      //   1. VACATE first: conceal (hide + symmetric-park) every non-entitled real and
+      //      release (symmetric-park + recycle) every revealed/absent back, freeing slots.
+      this.ensureHiddenBackPool();
+      const backPlan = this.computeHiddenBackPlan(hidden, full);
+      this.reconcileRealThingVisibility(entries, full);
+      this.releaseHiddenBacks(backPlan);
+      // 2. BIND entitled reals via the numeric placement loop below (moveTo keeps both
+      //    pointers symmetric; a displaced back is recycled there, relay path untouched).
+      // 3. PLACE backs (this.placeHiddenBacks) runs AFTER that loop so a back never lands
+      //    on a slot an entitled real is about to claim — see below.
+      this._pendingBackPlan = backPlan;
+    } else {
+      this._pendingBackPlan = null;
+    }
 
     // Hicks 2026-05-29 — Two-pass slot merge (Vasquez integration-audit
     // memo `.squad/decisions/inbox/vasquez-integration-audit.md`).
@@ -265,6 +350,15 @@ export class World {
       const slot = this.slots.get(thingInfo.slotName);
       if (!slot || slot.thing === null) continue;
       if (slot.thing.index === thingIndex) continue;
+      // Blocker A (Bishop rev2) — when the displaced occupant is an anonymous SC-2
+      // BACK (identified by a non-null hiddenHandle — REAL tiles and every relay/legacy
+      // Thing always have hiddenHandle===null, so this branch is inert off the SC-2 path),
+      // an entitled real is REVEALING into its slot. Recycle the back atomically (park +
+      // drop its handle mapping) so it can never linger double-occupying the slot on an
+      // incremental reveal that carried no explicit release tombstone.
+      if (slot.thing.hiddenHandle !== null) {
+        this.recycleBack(slot.thing);
+      }
       slot.thing = null;
     }
 
@@ -302,22 +396,16 @@ export class World {
       // Trust the backend's authored rotation for everything except the
       // hand-slot belt-and-suspenders guard.
       //
-      // Hicks 2026-05-28 — local-seat exception (forced face-up).
-      // AutotableConnection.ViewerSeat is set ONCE at WS-upgrade time
-      // from the ?seat= query param and has no setter, so the take-seat
-      // click after WS connect never updates it. The privacy filter then
-      // treats the local seat's own hand as foreign (viewerSeat is null
-      // ⇒ slotSeat == viewerSeat.Value is false for every slot) and
-      // StripFace strips `face` to null AND coerces rotationIndex to 2
-      // (FACE_DOWN). Without this client-side override the dealer can't
-      // see their own concealed tiles after the pickup ceremony. Hand
-      // slots' rotations are authored [STANDING, FACE_UP, FACE_DOWN]
-      // (see setup-slots.ts §START['hand'] and 'hand.3p' / 'hand.extra')
-      // so index 1 is always FACE_UP for the hand group. Foreign-seat
-      // hands keep the backend's FACE_DOWN rotation via the original
-      // fallback below. Memo: .squad/decisions/inbox/hicks-localseat-
-      // faceup.md asks Bishop to fix ViewerSeat post-take-seat so this
-      // client-side override can later be removed.
+      // R-B / G6 (own-hand face-up) is a BACKEND concern, ALREADY FIXED
+      // server-side by BE-5 (Ripley verified in uat-backend): the endpoint
+      // rebinds `connection.ViewerSeat = seatIndex` on TakeSeat and re-projects a
+      // full snapshot, so the translator authors the owner's own hand FACE-UP
+      // per-viewer (RC-2 was ViewerSeat==null ⇒ every hand treated as foreign).
+      // This client override is therefore a REDUNDANT, consistent fallback — NOT
+      // the fix. Kept as belt-and-suspenders so a pre-BE-5 / relay backend that
+      // strips or forgets to flip own-hand rotation still shows the local seat's
+      // hand face-up (hand rotations [STANDING, FACE_UP, FACE_DOWN] ⇒ index 1),
+      // and a face-stripped foreign hand stays face-down.
       let rotationIndex = thingInfo.rotationIndex;
       const isLocalSeatHand =
         slot.group === 'hand' &&
@@ -346,6 +434,12 @@ export class World {
             `autotable: forcing stale moveTo ${thing.index} -> ${slot.name}`,
             `(occupant=${slot.thing.index})`,
           );
+        }
+        // Blocker A (Bishop rev2) — recycle a displaced SC-2 back (inert off the SC-2
+        // path: hiddenHandle is always null for real/relay Things) so a reveal can never
+        // leave the back double-occupying the slot.
+        if (slot.thing.hiddenHandle !== null) {
+          this.recycleBack(slot.thing);
         }
         slot.thing = null;
       }
@@ -379,8 +473,175 @@ export class World {
         thing.shiftSlot = shiftSlot;
       }
     }
+    // Blocker A (Bishop rev2) — PLACE the anonymous backs LAST, after every entitled
+    // real has claimed its slot via moveTo. By construction a physical tile is EITHER an
+    // entitled numeric real OR a hidden back for a viewer (never both), so a back never
+    // targets a slot an entitled real just claimed; placing backs last (with a symmetric
+    // vacate of any stale occupant) guarantees exactly one Thing per authoritative slot.
+    if (this._pendingBackPlan !== null) {
+      this.placeHiddenBacks(this._pendingBackPlan);
+      this._pendingBackPlan = null;
+    }
     this.checkPushes();
     this.sendUpdate();
+  }
+
+  /**
+   * FE-7 / SC-2 / G19 — lazily build the anonymous hidden-back pool: one
+   * off-screen "park" slot + {@link HIDDEN_BACK_COUNT} face-down back Things
+   * (sentinel typeIndex 0, `hidden=true`, reserved indices from
+   * {@link HIDDEN_BACK_BASE}). Adding them to `this.things` makes them part of
+   * the tile InstancedMesh (capacity grows to 216) and the raycast/render pass.
+   * Idempotent; re-adds after a setup rebuild swapped `this.things`.
+   */
+  private ensureHiddenBackPool(): void {
+    if (this.hiddenBackPool !== null && this.things.has(World.HIDDEN_BACK_BASE)) {
+      return;
+    }
+    if (this.hiddenParkSlot === null) {
+      this.hiddenParkSlot = new Slot({
+        name: 'hiddenpool@0',
+        group: 'hiddenpool',
+        origin: new Vector3(0, 0, -100000), // off-screen; free backs never render
+        rotations: [new Quaternion()],
+      });
+    }
+    this.slots.set(this.hiddenParkSlot.name, this.hiddenParkSlot);
+    const pool: Array<Thing> = [];
+    for (let i = 0; i < World.HIDDEN_BACK_COUNT; i++) {
+      const back = new Thing(World.HIDDEN_BACK_BASE + i, ThingType.TILE, 0, this.hiddenParkSlot);
+      back.hidden = true;
+      this.things.set(back.index, back);
+      pool.push(back);
+    }
+    this.hiddenBackPool = pool;
+    this.handleToBack.clear();
+    // Grow the tile InstancedMesh to include the 108 backs (contiguous indices
+    // 108..215 after the 108 reals ⇒ instance capacity 216). Idempotent rebuild;
+    // only runs on first activation (or after a setup rebuild dropped the pool).
+    this.objectView.replaceThings(this.things);
+  }
+
+  /**
+   * FE-7 / SC-2 / G19 — reconcile the anonymous back pool against a `things`
+   * snapshot's hidden (string-keyed) entries. Logic is the pure, tested
+   * {@link reconcileHiddenBacks}; the two apply phases ({@link releaseHiddenBacks},
+   * {@link placeHiddenBacks}) move the Thing objects. Blocker A (Bishop rev2) — split
+   * into a plan-compute + two ordered apply phases so `onThings` can VACATE (release)
+   * before the numeric entitled-real placement loop and BIND (place) after it, keeping
+   * exactly one Thing per authoritative slot with symmetric `thing.slot` / `slot.thing`.
+   * Stable reuse by handle ⇒ render continuity + reconnect stability; never derives a
+   * face from the handle.
+   */
+  private computeHiddenBackPlan(
+    hidden: Array<[string, ThingInfo | null]>,
+    full: boolean,
+  ): { place: Array<{ handle: string; slotName: string; rotationIndex?: number }>; release: Array<string> } {
+    const infos = hidden.map(([handle, info]): [string, { slotName: string; rotationIndex?: number } | null] =>
+      [handle, info === null ? null : { slotName: info.slotName, rotationIndex: info.rotationIndex }]);
+    return sc2ReconcileHiddenBacks(infos, this.handleToBack.keys(), full);
+  }
+
+  /**
+   * Blocker A (Bishop rev2) — symmetric-detach a Thing from its current slot and PARK
+   * it off-screen. Only clears `slot.thing` when this Thing actually owns it, so it can
+   * never steal a slot another Thing legitimately owns; leaves the caller to set
+   * `hidden`. Parked backs/reals share the single off-screen park slot (its `.thing`
+   * pointer is intentionally not authoritative for parked objects — they render nothing).
+   */
+  private parkThing(thing: Thing): void {
+    const park = this.hiddenParkSlot!;
+    if (thing.slot !== park && thing.slot.thing === thing) {
+      thing.slot.thing = null;
+    }
+    thing.slot = park;
+  }
+
+  /** Blocker A — release a back to the free pool: symmetric-park + drop its handle map. */
+  private recycleBack(back: Thing): void {
+    this.parkThing(back);
+    back.hidden = true;
+    if (back.hiddenHandle !== null) {
+      this.handleToBack.delete(back.hiddenHandle);
+      back.hiddenHandle = null;
+    }
+  }
+
+  /** Blocker A — VACATE phase: release every back the plan retired (revealed / absent). */
+  private releaseHiddenBacks(plan: { release: Array<string> }): void {
+    for (const handle of plan.release) {
+      const back = this.handleToBack.get(handle);
+      if (back) this.recycleBack(back);
+    }
+  }
+
+  /** Blocker A — BIND phase: place/reuse a back per handle at its authoritative slot. */
+  private placeHiddenBacks(
+    plan: { place: Array<{ handle: string; slotName: string; rotationIndex?: number }> },
+  ): void {
+    for (const { handle, slotName, rotationIndex } of plan.place) {
+      const slot = this.slots.get(slotName);
+      if (!slot) continue; // unknown slot ⇒ skip (defensive)
+      let back = this.handleToBack.get(handle);
+      if (!back) {
+        back = (this.hiddenBackPool ?? []).find(b => b.hiddenHandle === null && b.hidden);
+        if (!back) continue; // pool exhausted (>108 concurrent) ⇒ skip (defensive)
+        back.hiddenHandle = handle;
+        this.handleToBack.set(handle, back);
+      }
+      // Stable-reuse move: vacate the back's PREVIOUS slot symmetrically first.
+      if (back.slot !== slot && back.slot.thing === back) {
+        back.slot.thing = null;
+      }
+      // Vacate the TARGET slot's current occupant symmetrically. A displaced REAL is being
+      // concealed by this back ⇒ hide + park it so its real identity can never render off a
+      // stale slot pointer; a displaced BACK (hiddenHandle set) is recycled.
+      const occupant = slot.thing;
+      if (occupant !== null && occupant !== back) {
+        if (occupant.hiddenHandle !== null) {
+          this.recycleBack(occupant);
+        } else {
+          if (occupant.slot === slot) occupant.slot = this.hiddenParkSlot!;
+          occupant.hidden = true;
+        }
+        slot.thing = null;
+      }
+      // Bind the back to the authoritative slot, face-down. NEVER a real typeIndex.
+      back.slot = slot;
+      back.rotationIndex = rotationIndex ?? 0;
+      back.hidden = false;
+      slot.thing = back;
+    }
+  }
+
+  /**
+   * FE-7 / SC-2 / G19 — hide every pre-baked REAL Thing (0..107) NOT present in
+   * the entitled numeric snapshot, so a non-entitled real identity/face can
+   * never render or leak; show the ones that are present. Pure plan via
+   * {@link reconcileRealVisibility}. Only runs while SC-2 is active (opaque
+   * handles in play), so the numeric/relay path is otherwise unchanged.
+   */
+  private reconcileRealThingVisibility(
+    entries: Array<[number, ThingInfo | null]>,
+    full: boolean,
+  ): void {
+    const present = entries.filter(([, info]) => info !== null).map(([id]) => id);
+    const plan = sc2ReconcileRealVisibility(present, World.HIDDEN_BACK_COUNT, full);
+    for (const id of plan.show) {
+      const real = this.things.get(id);
+      // Show it; the numeric placement loop rebinds it to its authoritative slot.
+      if (real) real.hidden = false;
+    }
+    for (const id of plan.hide) {
+      const real = this.things.get(id);
+      if (!real) continue;
+      // Blocker A (Bishop rev2) — conceal AND symmetric-park: vacate the real's slot on
+      // BOTH sides so a back can own it cleanly and no stray face-up real lingers at a
+      // now-concealed slot (the pre-fix code set hidden=true but left real.slot pointing
+      // at the slot, producing double-occupancy + stray center tiles).
+      real.hidden = true;
+      this.parkThing(real);
+    }
   }
 
   private onMatch(): void {
@@ -470,6 +731,63 @@ export class World {
   }
 
   /**
+   * R-1 §D10 (Vasquez oracle) — is THIS wall tile interactive right now? Single
+   * source of truth for wall interactivity in Changsha: only during a
+   * manual-deal pickup phase this seat owes, and only for a tile in the
+   * server-designated batch (see {@link wallTileInDesignatedSet}). The phase is
+   * read from the AUTHORITATIVE `turn` signal (Bishop) — NOT the sticky `pickup`
+   * entry — so a lingering pickup can't keep the wall live after
+   * →AwaitingDiscard (R-1 §E3). AUTO ⇒ no pickup ⇒ always inert.
+   */
+  private wallTileInteractive(thing: Thing): boolean {
+    if (thing.slot.group !== 'wall') return false;
+    const signal = this.currentTurnSignal();
+    const pickup = this.pickup;
+    return changshaWallTileInteractive({
+      variantIsChangsha: this.isChangsha(),
+      dealModeIsManual: (pickup?.dealMode ?? readDealModeFromUrl()) === 'manual',
+      pickupIsMine: this.isMyPickupTurn(),
+      authoritativePhase: signal ? (signal.phase ?? null) : null,
+     inDesignatedSet: this.wallTileInDesignatedSet(thing),
+   });
+  }
+
+  /**
+   * PICKUP-MATCH ADAPTER — the single place that maps a hovered Thing → the
+   * pickup designation. Match key is PARENT-LOCKED / IMMUTABLE FINAL SC-4
+   * (`ripley-SC4-FINAL-single-trigger-slot`): `hovered.slotName ===
+   * pickup.targetSlots[0]` — the ONE exposed-end trigger (Wall[0]); the other
+   * batch tiles are NOT clickable. `targetSlots` is EXACTLY length 1 and `count`
+   * carries the batch (server takes `Wall[0..count-1]` atomically). It does NOT
+   * infer/compare raw tile ids or physical slot FRAMES (F1-unsound) — it compares
+   * the server-emitted public slot NAME; and it is NOT the SC-2 opaque handle
+   * (handles govern hidden-tile RENDERING only — orthogonal). `batchPreviewSlots`
+   * if present is display/animation-only — never gated on.
+   *
+   * The pure {@link tileInDesignatedTrigger} FAILS CLOSED on
+   * missing/empty/multiple (no any-wall/batch-set fallback — fails G17). F2
+   * (Ralph/Vasquez): the trigger must be the REACHABLE TOP-layer tile — a
+   * covered/bottom slot fails closed via {@link pickupTriggerActionable}
+   * (defense-in-depth beside canSelect coverage). Until Bishop co-emits the
+   * trigger slot this stays inert (manual pickup intentionally not-yet-actionable);
+   * Auto is always inert.
+   */
+  private wallTileInDesignatedSet(thing: Thing): boolean {
+    return changshaPickupTriggerActionable(
+      thing.slot.name, this.pickup?.targetSlots, this.wallTileCovered(thing));
+  }
+
+  /**
+   * F2 — is this wall tile COVERED (occluded by the tile in the stack above)?
+   * A 2-high wall stack's bottom (layer 0) tile has its `up` slot occupied and
+   * is unreachable; only the top (layer 1) tile is the reachable draw frontier.
+   */
+  private wallTileCovered(thing: Thing): boolean {
+    const up = thing.slot.links.up;
+    return up !== undefined && up.thing !== null;
+  }
+
+  /**
    * Phase F — dealer clicks the dice button.  Server-side this transitions
    * the RollingDice phase into BreakPointMarked + emits the dice roll.  The
    * bundle does NOT optimistically render dice; it waits for the server's
@@ -485,15 +803,20 @@ export class World {
   /**
    * Phase F — player takes their next N wall tiles.  Backend interprets the
    * `count` against `state.PickupSeatIndex` and the current phase's expected
-   * count; `wallTileIds` is informational (the runtime owns wall ordering).
-   * Returns true if the emit was attempted.
+   * count and takes the front batch `Wall[0..count-1]` itself.  The take carries
+   * NO client-provided target (SC-4/G19 — see below).  Returns true if the emit
+   * was attempted.
    */
   emitTakePickup(): boolean {
     if (!this.isMyPickupTurn()) return false;
     const seatIndex = this.seat!;
     const count = this.pickup!.count;
-    const wallTileIds = this.peekNextWallTileIds(count);
-    this.client.pickup.set('take', { seatIndex, count, wallTileIds } as any);
+    // SC-4 / G19 / P0 — the take carries NO trusted client-provided target: no
+    // raw wall ids, no slot, no handle. Only count-based `{seatIndex,count}` (see
+    // the pure {@link pickupTakeCommand}). The server validates by phase/seat and
+    // consumes the front `count` tiles; the tile moves solely via the server
+    // `things` snapshot (no optimistic client move).
+    this.client.pickup.set('take', changshaPickupTakeCommand(seatIndex, count) as any);
     return true;
   }
 
@@ -800,32 +1123,6 @@ export class World {
     };
   }
 
-  /**
-   * Best-effort snapshot of the next-N tile IDs in our local wall ordering.
-   * Walks the canonical wall slot order (`wall.<col>.<row>@<seat>`) and
-   * returns the first N occupied slots' `thing.index` values.  The backend
-   * is authoritative for what those tiles actually are — this is purely
-   * informational so test scripts and orchestration logs can confirm the
-   * client picked the expected tile group.
-   */
-  private peekNextWallTileIds(count: number): number[] {
-    if (count <= 0) return [];
-    // Sort wall slot names so we walk a deterministic order.  Slot names
-    // look like `wall.<col>.<row>@<seat>`; sorting lexicographically gets
-    // us close-enough to the original deal order.
-    const wallSlots = [...this.slots.values()]
-      .filter(s => s.group === 'wall' && s.thing !== null)
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-    const ids: number[] = [];
-    for (const slot of wallSlots) {
-      if (slot.thing) {
-        ids.push(slot.thing.index);
-        if (ids.length >= count) break;
-      }
-    }
-    return ids;
-  }
-
   updateConditions(conditions: Conditions): void {
     this.conditions = conditions;
     this.setup.replace(conditions);
@@ -844,7 +1141,10 @@ export class World {
         thing.sent = true;
       }
       for (const [index,] of this.client.things.entries()) {
-        if (!this.things.has(index)) {
+        // FE-7/SC-2 — only numeric (real, locally-authored) keys reconcile
+        // against `this.things` (Map<number>); opaque STRING handles are
+        // server-owned and never authored/deleted from this local push.
+        if (typeof index === 'number' && !this.things.has(index)) {
           entries.push([index, null]);
         }
       }
@@ -897,6 +1197,18 @@ export class World {
       return;
     }
 
+    // FE-1 (UAT §9 mode boundary) — in server-authoritative Changsha the client
+    // must NEVER run the upstream local deal: `setup.deal(seat)` scatters all
+    // 108 tiles client-side (the "four half-walls" HANDS-scatter) and the
+    // `match`/`dice`/`things` `sendUpdate(true)` broadcast relays that corrupt
+    // scene to peers.  Auto/manual start comes from the backend snapshot only.
+    // The legacy relay Deal/Setup controls are therefore inert here even if the
+    // DOM still exposes them.  (Non-Changsha relay variants keep the upstream
+    // local-deal behaviour unchanged.)
+    if (changshaBlocksLocalDeal((overrides.gameType ?? this.conditions.gameType))) {
+      return;
+    }
+
     for (const thing of this.things.values()) {
       thing.release();
     }
@@ -932,172 +1244,18 @@ export class World {
       this.sendUpdate(true);
     });
 
-    // Bishop W23 — manual-deal pickup chain.  In manual mode Bishop's runtime
-    // parks in RollingDice after the implicit Deal trigger and waits for
-    // per-round `pickup` emissions from the seated client(s).  Drive the
-    // dealer-side chain (1 × rollDice + 5 × take for the dealer: 3 rounds of
-    // 4 tiles + 1 single tile + 1 dealer-extra = 14 per Changsha v1.2 §6.3) so
-    // the human-led table actually reaches the play loop.  Auto-mode deals are
-    // unchanged.  Spectators (seat === null guard above) and non-HANDS deals
-    // skip the chain too.  The runtime auto-handles bot seats between our turns
-    // (ChangshaGameRuntime.ScheduleBotIfNeededAsync), so we only emit for
-    // our own seat.
-    //
-    // We accept either source-of-truth for dealMode: the local conditions
-    // object (if the picker / overrides set it) OR the URL `?dealMode=`
-    // param (which is what the WS connection forwards to the runtime).
-    // The round-tripped match snapshot from the server STRIPS dealMode
-    // (ChangshaToAutotableTranslator.BuildMatch only emits gameType/back/
-    // fives/points/dealType), so once the first server match push lands
-    // `this.conditions.dealMode` becomes undefined.  The URL fallback
-    // keeps the chain firing regardless.  The runtime will silently
-    // reject `rollDice` if the table is in auto mode, so blind-firing
-    // is safe.
-    const urlDealMode = readDealModeFromUrl();
-    const effectiveDealMode = conditions.dealMode ?? urlDealMode;
-    if (dealType === DealType.HANDS && effectiveDealMode === 'manual') {
-      const gen = ++this.manualDealChainGen;
-      void this.driveManualDealChain(gen);
-    }
-  }
-
-  /**
-   * Bishop W23 — drive the dealer-side pickup chain for the local seat in
-   * manual-deal mode.  After the implicit Deal trigger the runtime parks
-   * in RollingDice with NO pickup affordance broadcast (the translator
-   * gates pickup emissions on {@link IsPickupPhase} which excludes
-   * RollingDice — see ChangshaToAutotableTranslator.cs §pickup).  So we
-   * blind-emit `rollDice` first; the runtime rejects it server-side if
-   * we aren't the dealer (silent debug log).  Once it accepts, pickup
-   * state pushes through and we drive the dealer's five `take` rounds
-   * (3 × 4 tiles + 1 single tile + 1 dealer-extra = 14 per Changsha
-   * v1.2 §6.3).  Bots autoplay their own pickup rounds server-side via
-   * ScheduleBotIfNeededAsync between our turns, so this loop only handles
-   * the local seat.
-   *
-   * Cancels itself if a newer chain has bumped {@link manualDealChainGen}.
-   */
-  private async driveManualDealChain(gen: number): Promise<void> {
-    const seat = this.seat;
-    if (seat === null) return;
-
-    // 1) Give the server time to process the implicit Deal trigger
-    //    (match push → ApplyDealMode(manual) → StartGameAsync parks the
-    //    runtime in RollingDice).  Without this gap the rollDice emit
-    //    races the runtime's transition and is dropped as
-    //    "wrong-phase" on the server.
-    await new Promise<void>(r => setTimeout(r, 300));
-    if (this.manualDealChainGen !== gen) return;
-
-    // 2) Emit rollDice unconditionally.  On hand 1 the dealer is seat 0
-    //    (Changsha §6.2) and the human-led playtest takes the first
-    //    visible seat, so the local seat IS the dealer in the common
-    //    path.  If we aren't the dealer the runtime's RollDiceAsync
-    //    throws and TryHandlePickupActionAsync swallows it at debug
-    //    level — no client-visible side effect.
-    this.emitRollDice();
-
-    // 3) Drive every deal-ceremony pickup the runtime presents to our seat.
-    //    The dealer walks FIVE phases — PickupRound1..3 (4 tiles each) +
-    //    SingleTilePickup (1) + DealerExtra (1) = 14 tiles; a non-dealer
-    //    walks four (…through SingleTilePickup = 13).
-    //
-    //    #119 (Hicks / Hudson WP-F P0): this loop previously ran exactly 4
-    //    rounds on the false assumption the runtime "collapses" SingleTile-
-    //    Pickup and DealerExtra into one affordance.  It does NOT — they are
-    //    distinct ChangshaPhase states, both gated by IsPickupPhase (see
-    //    ChangshaStateMachine.IsPickupPhase / ChangshaDealingCeremony) — so
-    //    the runtime pushed the DealerExtra affordance AFTER our 4th take and
-    //    the client never consumed it, stranding the dealer at 13 tiles with
-    //    the real UI hung before the first discard.  We now keep taking while
-    //    our seat holds a ceremony pickup and stop the instant the terminal
-    //    DealerExtra tile is claimed.  Pickup affordances exist ONLY during
-    //    the deal (IsPickupPhase excludes the play phase, which tombstones the
-    //    pickup collection), so this can never grab a normal in-play draw.
-    //    MAX_DEAL_PICKUPS caps the dealer worst case so a wedged runtime can't
-    //    spin forever; a non-dealer seat simply times out after its 4th take.
-    //    The 12s per-round timeout accommodates the bot pickup delay
-    //    (BotPickupDelayMs default) × 3 bots + slack.
-    //
-    //    #137 (Bishop): the loop must NOT re-consume the affordance it just took.
-    //    After emitTakePickup the server needs a beat to advance the pickup cursor
-    //    off our seat (dealer's take → cursor rotates to seats 1..3 → back to us
-    //    for the next round). Until that authoritative advance lands, `this.pickup`
-    //    still shows the SAME seat-0 affordance we already took. A fixed sleep did
-    //    not close this race: if the stale seat-0 entry was still present when the
-    //    next iteration's predicate ran, the loop burned an iteration on a no-op
-    //    re-take (the server rejects the out-of-phase `take`), exhausting
-    //    MAX_DEAL_PICKUPS BEFORE reaching DealerExtra and stranding the dealer at
-    //    13 tiles (intermittent — timing dependent). The dealer walks a strictly
-    //    increasing sequence of DISTINCT ceremony phases, so we now wait for a
-    //    seat-0 affordance whose phase differs from the one we last took: the
-    //    stale entry can never satisfy it, and the next real round always does.
-    const MAX_DEAL_PICKUPS = 5;
-    let lastTakenPhase: string | null = null;
-    for (let round = 0; round < MAX_DEAL_PICKUPS; round++) {
-      const myTurn = await this.waitForPickup(
-        gen,
-        p => p !== null && p.seatIndex === seat && p.count > 0
-          && World.normalizePickupPhase(p.phase) !== lastTakenPhase,
-        12000,
-      );
-      if (!myTurn) return;
-      if (this.manualDealChainGen !== gen) return;
-      const phase = World.normalizePickupPhase(this.pickup?.phase);
-      const ok = this.emitTakePickup();
-      if (!ok) return;
-      lastTakenPhase = phase;
-      // DealerExtra is the dealer's terminal 14th-tile pickup — the runtime
-      // arms AwaitingDiscard next and never targets our seat with another
-      // ceremony pickup, so stop here rather than dead-waiting 12s for an
-      // affordance that will never arrive.
-      if (phase === 'dealerextra') return;
-    }
-  }
-
-  /**
-   * #119 (Hicks) — normalise a server pickup-phase label to a lowercase
-   * alphanumeric token so both the Pascal-case enum name ("DealerExtra")
-   * and the dashed wire form ("dealer-extra") compare equal.  Used by
-   * {@link driveManualDealChain} to detect the terminal DealerExtra pickup.
-   */
-  private static normalizePickupPhase(phase: string | null | undefined): string {
-    return (phase ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  }
-
-  /**
-   * Bishop W23 — poll-based wait for a pickup-state predicate.  Returns
-   * true when the predicate becomes truthy, false on timeout or if a
-   * newer chain has cancelled this one.  Collection doesn't expose an
-   * `off` for one-shot listeners so we poll the locally-cached
-   * `this.pickup` (refreshed by {@link onPickup}) at ~60ms cadence.
-   */
-  private waitForPickup(
-    gen: number,
-    pred: (p: PickupEntry | null) => boolean,
-    timeoutMs: number,
-  ): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      if (this.manualDealChainGen !== gen) return resolve(false);
-      if (pred(this.pickup)) return resolve(true);
-      const startMs = Date.now();
-      const timer = setInterval(() => {
-        if (this.manualDealChainGen !== gen) {
-          clearInterval(timer);
-          resolve(false);
-          return;
-        }
-        if (pred(this.pickup)) {
-          clearInterval(timer);
-          resolve(true);
-          return;
-        }
-        if (Date.now() - startMs > timeoutMs) {
-          clearInterval(timer);
-          resolve(false);
-        }
-      }, 60);
-    });
+    // P0 (Hudson/Vasquez 09:47) — NO client auto-drive of HUMAN-owned ceremony
+    // turns. The former `driveManualDealChain` auto-emitted rollDice AND auto-took
+    // every pickup, making the manual-deal pickup windows transient and defeating
+    // the requested INTERACTIVE manual deal. It is removed outright: the human
+    // clicks the roll-dice button (shown in the RollingDice phase by
+    // game-ui.renderRollDiceButton) then clicks the exact SC-4 `targetSlots[0]`
+    // once per batch (onDragStart manual-pickup intercept → emitTakePickup;
+    // count-based `{seatIndex,count}`, no optimistic move; window stays stable
+    // until the click). Only bots/server automation advances bot turns
+    // (ChangshaGameRuntime.ScheduleBotIfNeededAsync). (This local path is inert
+    // in Changsha anyway — deal() early-returns at the FE-1 gate — but the
+    // auto-drive is deleted so it can never run for a human seat.)
   }
 
   /**
@@ -1227,6 +1385,30 @@ export class World {
   }
 
   private canSelect(thing: Thing, otherSelected: Array<Thing>): boolean {
+    // FE-7 / SC-2 (G19) — a hidden pre-baked real or a free back pool object is
+    // never selectable/raycastable. A PLACED anonymous back (hidden===false) is
+    // raycastable via its slot so the SC-4 manual pickup can target it, but it is
+    // never discardable/flippable (its slot group + the wall gate below decide).
+    if (thing.hidden) {
+      return false;
+    }
+    // FE-2 (UAT §9 input allowlist) — in server-authoritative Changsha only the
+    // local seat's own hand tiles, and (during a manual pickup this seat owes,
+    // for the server-designated batch tile) wall tiles, may be hovered/selected.
+    // Wall tiles in Auto, wrong-phase/non-target wall tiles in Manual, other
+    // seats' hands, discards, exposed melds and other runtime-owned things are
+    // NON-interactive (no hover/select ⇒ no hold/drag/sendUpdate). Relay
+    // variants keep the upstream free-select behaviour.
+    if (changshaIsServerAuthoritative(this.conditions.gameType)) {
+      const allowed = thing.slot.group === 'wall'
+        ? this.wallTileInteractive(thing)                       // R-1 §D10
+        : changshaAllowsPointer(
+            { group: thing.slot.group, seat: thing.slot.seat },
+            this.seat);
+      if (!allowed) {
+        return false;
+      }
+    }
     const upSlot = thing.slot.links.up;
     if (upSlot && upSlot.thing !== null) {
       if (otherSelected.indexOf(upSlot.thing) !== -1) {
@@ -1294,13 +1476,14 @@ export class World {
     }
 
     // Phase F — manual-pickup intercept.  When the runtime expects this seat
-    // to pick the next N wall tiles, a drag-start on a wall tile becomes a
-    // pickup.take emit instead of a free-drag.  We do NOT optimistically
-    // move the tile — the backend will respond with a `things` UPDATE that
-    // places the tile into the hand.
+    // to pick the next N wall tiles, a drag-start on the server-designated batch
+    // tile becomes a pickup.take emit instead of a free-drag.  We do NOT
+    // optimistically move the tile — the backend will respond with a `things`
+    // UPDATE that places the tile into the hand.  The wall-interactivity gate
+    // (R-1 §D10) is the single source of truth: wrong-phase, non-target or
+    // Auto-mode wall presses fall through to the inert block below.
     if (this.hovered !== null
-        && this.hovered.slot.group === 'wall'
-        && this.isMyPickupTurn()) {
+        && this.wallTileInteractive(this.hovered)) {
       this.emitTakePickup();
       this.hovered = null;
       this.selected.splice(0);
@@ -1339,6 +1522,20 @@ export class World {
       // Inform — but don't intercept; the drag-fallthrough still runs so
       // existing re-ordering UX is unchanged.
       this.surfaceDiscardRejection(this.describeWhyCannotDiscard());
+    }
+
+    // FE-2 (UAT §9 input allowlist) — defense-in-depth beyond canSelect: in
+    // server-authoritative Changsha the ONLY sanctioned pointer actions are the
+    // discard intercept (own hand tile on your turn) and the manual-pickup
+    // intercept (wall tile while you owe a pickup), both handled above. Anything
+    // that reaches here (wall in Auto, off-turn hand tile, other-seat / discard
+    // / meld tiles) must NOT enter the upstream free-drag: no hold, no local
+    // `things` mutation, no `sendUpdate`, no visual movement. The server's next
+    // snapshot remains the sole author of tile positions.
+    if (changshaIsServerAuthoritative(this.conditions.gameType)) {
+      this.hovered = null;
+      this.selected.splice(0);
+      return false;
     }
 
     if (this.hovered !== null && !this.isHolding()) {
@@ -1545,6 +1742,12 @@ export class World {
     this.objectView.highlightIntensity = highlightIntensity;
 
     for (const thing of this.things.values()) {
+      // FE-7 / SC-2 (G19) — a hidden pre-baked real (viewer not entitled) or a
+      // free/unassigned back pool object is not rendered. Skipping keeps its real
+      // identity off-screen (no leak) and keeps the pool zero-cost until used.
+      if (thing.hidden) {
+        continue;
+      }
       let place = thing.place();
 
       if (thing.claimedBy !== null && thing.shiftSlot === null) {

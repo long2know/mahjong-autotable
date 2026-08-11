@@ -555,6 +555,14 @@ public sealed class ThingInfo
 /// Server-emitted snapshot of the pickup cursor while a Manual deal is in progress.
 /// Maps to the <see cref="ChangshaCollectionKinds.Pickup"/> collection value under
 /// key <c>"current"</c>.
+///
+/// <para><b>Pickup MATCH KEY = <c>targetSlots</c> (Ripley CANONICAL KEY LOCK 2026-08-07T11:23, "no more
+/// pivots").</b> The opaque <c>targetHandles</c> refinement is DEAD/superseded; SC-2 opaque handles are the
+/// hidden-<c>things</c> render key only (orthogonal). <c>targetSlots</c> is a SINGLE trigger slot (top-first
+/// <c>Wall[0]</c>) — Hicks's matcher fails closed on <c>length != 1</c>; the full batch is display-only
+/// <see cref="BatchPreviewSlots"/>. <b>No raw <c>targetTileIds</c></b> (parent 11:14) — intentionally absent
+/// (reveal-only when present, per-viewer PROJECTED, never raw ids). Populated in one seam:
+/// <c>ChangshaToAutotableTranslator.ApplyPickupTargetSlots</c>.</para>
 /// </summary>
 public sealed class PickupEntry
 {
@@ -589,6 +597,29 @@ public sealed class PickupEntry
     /// next without re-deriving from <c>BreakPoint</c>.</summary>
     [JsonPropertyName("wallIndex")]
     public int WallIndex { get; set; }
+
+    /// <summary>
+    /// SC-4 v4 FROZEN (parent-locked, IMMUTABLE — `decisions.md` 09:06, re-confirmed through 10:21):
+    /// the manual-pickup match key. <b>EXACTLY ONE co-derived trigger slot</b> = the reachable
+    /// top-first <c>state.Wall[0]</c>, captured in the SAME wall-`things` projection pass (never a
+    /// second ordinal computation). The client is interactive ⟺
+    /// <c>hovered.slot.name === targetSlots[0]</c> (single trigger; all other batch tiles inert;
+    /// missing/empty/<b>multiple ⇒ FAIL CLOSED</b>), and sends <c>pickup.take{seatIndex,count}</c>
+    /// with ZERO tile authority. Opacity-independent (a hovered wall tile carries its
+    /// <c>slotName</c> even under an opaque SC-2 handle). NO <c>targetTileIds</c>/<c>targetHandles</c>
+    /// live here — SC-2 opaque handles are a SEPARATE `things`-key field (privacy/G19 only).
+    /// </summary>
+    [JsonPropertyName("targetSlots")]
+    public IReadOnlyList<string> TargetSlots { get; set; } = System.Array.Empty<string>();
+
+    /// <summary>
+    /// SC-4 v4 — OPTIONAL, DISPLAY-ONLY highlight of the full designated batch
+    /// (<c>state.Wall[0..count-1]</c> render slots, co-derived from the same pass as
+    /// <see cref="TargetSlots"/>). NEVER actionable: the only interactive slot is
+    /// <c>TargetSlots[0]</c>. The server takes <c>Wall[0..count-1]</c> by count regardless.
+    /// </summary>
+    [JsonPropertyName("batchPreviewSlots")]
+    public IReadOnlyList<string> BatchPreviewSlots { get; set; } = System.Array.Empty<string>();
 }
 
 /// <summary>JSON-friendly mirror of <c>Changsha.BreakPointResult</c> (record struct).
