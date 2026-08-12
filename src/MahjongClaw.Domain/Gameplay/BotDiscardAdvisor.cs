@@ -1850,7 +1850,9 @@ public static class BotDiscardAdvisor
                 .ToList();
 
             if (deadHonorSingletonCandidates.Count == 0
-                && (filteredByDeadSuitedSingleton || honorCandidatePool.All(candidate => !candidate.Tile.IsHonor)))
+                && (filteredByDeadSuitedSingleton
+                    || filteredByDeadPair
+                    || honorCandidatePool.All(candidate => !candidate.Tile.IsHonor)))
             {
                 honorCandidatePool = allCandidates;
                 deadHonorSingletonCandidates = honorCandidatePool
