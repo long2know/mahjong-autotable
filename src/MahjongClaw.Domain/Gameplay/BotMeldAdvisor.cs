@@ -65,7 +65,7 @@ public static class BotMeldAdvisor
             return false;
         }
 
-        if (ShouldAvoidSevenPairsConcealedKong(handCounts, meldTiles))
+        if (ShouldAvoidSevenPairsConcealedKong(handCounts, meldTiles, ownedCounts, visibleCounts))
         {
             kongTile = null!;
             return false;
@@ -342,7 +342,9 @@ public static class BotMeldAdvisor
 
     private static bool ShouldAvoidSevenPairsConcealedKong(
         IReadOnlyDictionary<Tile, int> handCounts,
-        IReadOnlyList<Tile> meldTiles)
+        IReadOnlyList<Tile> meldTiles,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
     {
         if (meldTiles.Count > 0)
         {
@@ -350,7 +352,38 @@ public static class BotMeldAdvisor
         }
 
         var pairCount = handCounts.Values.Sum(static count => count / 2);
-        return pairCount >= 6;
+        if (pairCount < 6)
+        {
+            return false;
+        }
+
+        if (visibleCounts.Count == 0)
+        {
+            return true;
+        }
+
+        var singletonTiles = handCounts
+            .Where(entry => entry.Value == 1)
+            .Select(entry => entry.Key)
+            .ToList();
+
+        if (singletonTiles.Count == 0)
+        {
+            return true;
+        }
+
+        foreach (var tile in singletonTiles)
+        {
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+            var remainingCopies = 4 - ownedCount - visibleCount;
+            if (remainingCopies > 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static int CountBestWinningOutsWithoutKong(

@@ -215,6 +215,37 @@ public class BotMeldAdvisorTests
     }
 
     [Fact]
+    public void TrySelectConcealedKong_AllowsSevenPairsKong_WhenSingletonOutsAreDead()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        var result = BotMeldAdvisor.TrySelectConcealedKong(
+            tiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.ChineseOfficial,
+            out var kongTile);
+
+        result.Should().BeTrue();
+        kongTile.Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
     public void TrySelectPromotedKong_ThrowsForNullHand()
     {
         Action act = () => BotMeldAdvisor.TrySelectPromotedKong(null!, Array.Empty<Tile>(), MahjongRuleset.ChineseOfficial, out _);
