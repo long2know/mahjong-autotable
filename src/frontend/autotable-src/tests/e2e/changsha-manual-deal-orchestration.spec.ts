@@ -27,6 +27,7 @@
 // a non-dealer, never rolls).
 import { test, expect } from '@playwright/test';
 import { buildGameUrl, makeConfig, dismissLobbyAndTour, ensureConnected, takeSeatByClick, clickDeal, readIsMyPickupTurn, takePickup } from './_playability';
+import { pollWithStallGuard, readCeremonyKey } from './_ceremony-progress';
 import { recordEvidence, shot } from './_uat_red';
 
 test.describe('D2 manual deal orchestration — non-dealer human must not stall (backend)', () => {
@@ -71,19 +72,25 @@ test.describe('D2 manual deal orchestration — non-dealer human must not stall 
     // we NEVER click during a bot window. Nothing advances our hand absent a real press.
     let hand = 0; let phase: string | null = null; let dealer: number | null = null;
     let seat: number | null = null; let presses = 0;
-    const t0 = Date.now();
-    while (Date.now() - t0 < 90_000) {
+    // Progress-aware, stall-guarded drive (replaces the fixed 90s window that flaked under
+    // CI saturation, run 31576171218): keep driving as long as the authoritative ceremony
+    // fingerprint advances (turn phase/activeSeat, pickup cursor phase@seat:count, our hand
+    // — all server-pushed). We press ONLY when it is genuinely our pickup turn; bots take
+    // their own windows between ours. A GENUINE RollingDice stall (the cursor never reaches
+    // the human ⇒ no progress) is NOT hidden — it falls through to the acceptance asserts
+    // below (presses===0 / hand<13 fail with the RED@200cad4 diagnostic). stallMs 45s ≫ the
+    // worst measured inter-progress gap under saturation; capMs 120s < the 150s test timeout
+    // minus connect/seat/deal setup.
+    const guard = await pollWithStallGuard(page, async () => {
       const s = await readOrchestration();
       hand = s.hand; phase = s.phase; dealer = s.dealer; seat = s.seat;
-      if (hand >= 13) break;
-      if (await readIsMyPickupTurn(page)) {
+      if (s.hand < 13 && await readIsMyPickupTurn(page)) {
         const pu = await takePickup(page);
         if (pu.ok) presses++;
-      } else {
-        // BOT WINDOW — hands off; wait for the cursor to rotate back to us.
-        await page.waitForTimeout(500);
       }
-    }
+      return { done: s.hand >= 13, key: await readCeremonyKey(page) };
+    }, { stallMs: 45_000, capMs: 120_000, pollMs: 500 });
+    { const s = await readOrchestration(); hand = s.hand; phase = s.phase; dealer = s.dealer; seat = s.seat; }
 
     // Settle: once our 13 tiles are in, the only remaining ceremony batch is the
     // DEALER's DealerExtra (a bot), so our seat must no longer own a pickup — the
@@ -99,7 +106,8 @@ test.describe('D2 manual deal orchestration — non-dealer human must not stall 
     await shot(page, 'd2-nondealer-stall.png');
     recordEvidence('d2-nondealer-deal.json', {
       seat, dealer, phase, handReached: hand, presses, isMyPickupTurnAfter, pickupSeatAfter: post.pickupSeat,
-      note: 'GREEN on candidate :18088: the bot-dealer roll IS scheduled for hand-1 manual, so the seat-1 non-dealer human receives their pickup windows and — driving each owned batch with a real #pickup-take-btn press (never during a bot window) — reaches exactly 13 tiles (4 owned batches [4,4,4,1]; no DealerExtra). Hand is read on the LOCAL seat (world.seat), so the seat-0 bot dealer hand can never satisfy this vacuously. RED@200cad4 stalled in RollingDice (bot-dealer roll unscheduled) ⇒ 0 human presses possible.' });
+      stallGuard: { done: guard.done, stalled: guard.stalled, capped: guard.capped, elapsedMs: guard.elapsedMs, keyChanges: guard.keyChanges, maxIdleMs: guard.maxIdleMs },
+      note: 'GREEN on candidate :18088: the bot-dealer roll IS scheduled for hand-1 manual, so the seat-1 non-dealer human receives their pickup windows and — driving each owned batch with a real #pickup-take-btn press (never during a bot window) — reaches exactly 13 tiles (4 owned batches [4,4,4,1]; no DealerExtra). Hand is read on the LOCAL seat (world.seat), so the seat-0 bot dealer hand can never satisfy this vacuously. RED@200cad4 stalled in RollingDice (bot-dealer roll unscheduled) ⇒ 0 human presses possible. Drive is progress-aware/stall-guarded (stallGuard); a genuine RollingDice stall surfaces via presses/hand asserts, never hidden.' });
 
     // ACCEPTANCE — orchestration: the dealer is the seat-0 BOT (the stall condition),
     // the non-dealer human is dealt in through their OWN real presses, reaches exactly

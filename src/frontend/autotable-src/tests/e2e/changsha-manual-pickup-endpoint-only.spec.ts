@@ -40,6 +40,7 @@
 // AUTO reject is hudson-2's. F1-independent (Bishop co-derives targetSlots).
 import { test, expect, type Page } from '@playwright/test';
 import { buildGameUrl, makeConfig, dismissLobbyAndTour, ensureConnected, takeSeatByClick, clickDeal, waitForPlayableHand, hasExtraHandTile, readIsMyPickupTurn, takePickup, pressWallTargetByHover } from './_playability';
+import { pollWithStallGuard, readCeremonyKey } from './_ceremony-progress';
 import { realDragWallTile, recordEvidence, shot } from './_uat_red';
 
 // Real per-batch ceremony drive (Hicks's centralized clickDeal only ROLLS the
@@ -390,14 +391,21 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     await page.goto(buildGameUrl(base, cfg), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200); await dismissLobbyAndTour(page); await ensureConnected(page);
     await takeSeatByClick(page, 0); await clickDeal(page).catch(() => {});
-    const seen: any[] = []; const t0 = Date.now();
-    while (Date.now() - t0 < 22000) {
+    const seen: any[] = [];
+    // Progress-aware, stall-guarded observation (replaces the fixed 22s window that flaked
+    // under CI saturation, run 31576171218): wait for the dealer's pickup window to target
+    // our seat while the authoritative ceremony fingerprint keeps advancing (turn/pickup/
+    // hand — server-pushed). A GENUINE RollingDice stall (the window never targets our seat
+    // ⇒ no progress) is surfaced by `seen.length > 0` below — NOT hidden. stallMs 45s ≫ the
+    // worst measured inter-progress gap under saturation; capMs 90s < the 120s test timeout
+    // minus connect/seat/deal setup.
+    const guard = await pollWithStallGuard(page, async () => {
       const d = await readDesignation(page);
       if (d) { const key = d.phase + ':' + d.count; if (!seen.some((s) => s.phase + ':' + s.count === key)) seen.push({ phase: d.phase, count: d.count, gateLen: d.gateLen, kind: d.kind, exactlyOneFront: d.exactlyOneFront, isSlotNames: d.isSlotNames, mapsToRenderedWall: d.mapsToRenderedWall, rawIdOrHandleLeak: d.rawIdOrHandleLeak }); }
-      if (await page.evaluate(() => { const t = (window as any).game?.client?.turn; return !!(t && t.awaitingDiscard); })) break;
-      await page.waitForTimeout(300);
-    }
-    recordEvidence('g17-pickup-signal.json', { windowsSeen: seen.length, windows: seen });
+      const awaiting = await page.evaluate(() => { const t = (window as any).game?.client?.turn; return !!(t && t.awaitingDiscard); });
+      return { done: seen.length > 0 || awaiting, key: await readCeremonyKey(page) };
+    }, { stallMs: 45_000, capMs: 90_000, pollMs: 300 });
+    recordEvidence('g17-pickup-signal.json', { windowsSeen: seen.length, windows: seen, stallGuard: { done: guard.done, stalled: guard.stalled, capped: guard.capped, elapsedMs: guard.elapsedMs, keyChanges: guard.keyChanges, maxIdleMs: guard.maxIdleMs } });
     expect(seen.length, 'must observe a manual pickup window targeting my seat').toBeGreaterThan(0);
     for (const s of seen) {
       expect([1, 4], `pickup ${s.phase} server batch count must be 4 (BreakPointMarked/Round1-3) or 1 (SingleTile/DealerExtra); got ${s.count}`).toContain(s.count);

@@ -32,6 +32,7 @@
 
 import { test, expect, type Page } from '@playwright/test';
 import { buildGameUrl, makeConfig, dismissLobbyAndTour, ensureConnected, takeSeatByClick, clickDeal, hasExtraHandTile, readIsMyPickupTurn, takePickup, installWallTakeRecorder, pressWallTargetByHover, type WallTakeFrame } from './_playability';
+import { pollWithStallGuard, readCeremonyKey } from './_ceremony-progress';
 import { recordEvidence, shot } from './_uat_red';
 
 // Reads the viewer's current single-trigger pickup designation (SC-4 v4:
@@ -127,19 +128,29 @@ test.describe('NEW-2 human-driven pickup — real press per batch; no progress a
     let anyBetweenBatchAutoAdvance = false; // hand moved during a bot window w/o input
     let sawAnyDesignation = !!preDesignation;
     const batches: Array<{ phase: string; count: number; delta: number; emit: number; seatIndex: number | null; matched: boolean; hovered: string | null; betweenClimb: number }> = [];
-    const deadline = Date.now() + 90_000;
-    while (Date.now() < deadline && (await handCount(page)) < 14) {
+    // Progress-aware, stall-guarded per-batch drive (replaces the fixed 90s window that
+    // flaked under CI saturation, run 31576171218): keep driving while the authoritative
+    // ceremony fingerprint advances (turn/pickup cursor/our hand — server-pushed). Press
+    // ONLY when it is genuinely our turn; the anti-auto-advance hand-hold samples
+    // (handClimbOver) and every per-batch hard signal are preserved verbatim. A GENUINE
+    // stall (no designation ever / RollingDice park ⇒ no progress) is NOT hidden — it falls
+    // through to the killer asserts below (sawAnyDesignation / presses===5 / handFinal===14
+    // fail with the RED@200cad4 diagnostic). stallMs 45s ≫ the worst measured inter-progress
+    // gap under saturation; capMs 120s < the 150s test timeout minus setup. pollMs 0: each
+    // tick already blocks on a real hand-hold sample / press, which is the cadence.
+    const guard = await pollWithStallGuard(page, async () => {
+      if ((await handCount(page)) >= 14) return { done: true, key: await readCeremonyKey(page) };
       if (!(await readIsMyPickupTurn(page))) {
         // BOT WINDOW — our hand must hold completely while another seat picks up.
         const idle = await handClimbOver(page, 700);
         if (idle.climb > 0) anyBetweenBatchAutoAdvance = true;
-        continue;
+        return { done: false, key: await readCeremonyKey(page) };
       }
       const d = await readDesignation(page);
-      if (!d || !d.gate || !d.gate.length) { await page.waitForTimeout(200); continue; }
+      if (!d || !d.gate || !d.gate.length) { await page.waitForTimeout(200); return { done: false, key: await readCeremonyKey(page) }; }
       sawAnyDesignation = true;
       const res = await pressDesignationTop(page, d.gate, takes);
-      if (!res.clicked) { await page.waitForTimeout(200); continue; }
+      if (!res.clicked) { await page.waitForTimeout(200); return { done: false, key: await readCeremonyKey(page) }; }
       const delta = res.handAfter - res.handBefore;
       presses++;
       // Per-batch hard signals (actor-scoped). Aggregated so the failing batch is
@@ -152,8 +163,8 @@ test.describe('NEW-2 human-driven pickup — real press per batch; no progress a
       const between = await handClimbOver(page, 1200);
       if (between.climb > 0) anyBetweenBatchAutoAdvance = true;
       batches.push({ phase: d.phase, count: d.count, delta, emit: res.frames.length, seatIndex: res.frames[0]?.seatIndex ?? null, matched: res.matched, hovered: res.hovered, betweenClimb: between.climb });
-      if (res.handAfter >= 14) break;
-    }
+      return { done: res.handAfter >= 14, key: await readCeremonyKey(page) };
+    }, { stallMs: 45_000, capMs: 120_000, pollMs: 0 });
 
     const handFinal = await handCount(page);
     await shot(page, 'new2-human-driven-pickup.png');
@@ -161,7 +172,8 @@ test.describe('NEW-2 human-driven pickup — real press per batch; no progress a
       preDesignationPresent: !!preDesignation,
       noPressClimb: noPress, presses, allBatchesExact, allBatchesExactHover, allBatchesOneEmit, allBatchesMySeat, anyBetweenBatchAutoAdvance,
       sawAnyDesignation, batches, handFinal,
-      note: 'NEW-2 anti-happy-path (actor-scoped). Each batch is driven by a REAL grid-scanned pointer press on targetSlots[0] (pressWallTargetByHover: settle→scan footprint until world.hovered===target→real mouse down/up, defeating the intermittent ~16px angled-face projection offset Hudson proved). GREEN: designation present (noPressClimb=0), 5 discrete presses of counts [4,4,4,1,1] each hard-hovering the exact target and emitting EXACTLY ONE {seatIndex:0,count} pickup.take, own-hand delta === count, hand holds during bot windows, hand reaches 14.',
+      stallGuard: { done: guard.done, stalled: guard.stalled, capped: guard.capped, elapsedMs: guard.elapsedMs, keyChanges: guard.keyChanges, maxIdleMs: guard.maxIdleMs },
+      note: 'NEW-2 anti-happy-path (actor-scoped). Each batch is driven by a REAL grid-scanned pointer press on targetSlots[0] (pressWallTargetByHover: settle→scan footprint until world.hovered===target→real mouse down/up, defeating the intermittent ~16px angled-face projection offset Hudson proved). GREEN: designation present (noPressClimb=0), 5 discrete presses of counts [4,4,4,1,1] each hard-hovering the exact target and emitting EXACTLY ONE {seatIndex:0,count} pickup.take, own-hand delta === count, hand holds during bot windows, hand reaches 14. Drive is progress-aware/stall-guarded (stallGuard); a genuine RollingDice/no-designation stall surfaces via the asserts, never hidden.',
     });
 
     // (1) NO auto-advance without a press — the killer anti-happy-path assertion.

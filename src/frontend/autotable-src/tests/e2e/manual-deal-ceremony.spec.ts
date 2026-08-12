@@ -266,6 +266,22 @@ test.describe('#119 Changsha manual-deal ceremony — DealerExtra regression', (
     ).toBeGreaterThanOrEqual(4);
     expect(discardTarget, 'a hand tile must be reachable for a real pointer discard').not.toBeNull();
 
+    // Snapshot the SERVER-AUTHORITATIVE hand tile-ids at the instant of the discard, so we
+    // can prove the SPECIFIC discarded tile reached a played destination rather than
+    // assuming it lingers in the discard pile — a legal bot chow/pung claim runs
+    // RemoveLastDiscard and moves the just-discarded tile OUT of the pile into a meld, so a
+    // discard-pile count transiently returns 0 (the CI observation race, 23/23 accepted).
+    const handIdsBefore: number[] = await page.evaluate((s) => {
+      const cli = (window as any).game.client;
+      const ids: number[] = [];
+      for (const [id, v] of cli.things.entries()) {
+        const slot = v?.slotName ?? v?.SlotName;
+        if (typeof slot === 'string' && slot.startsWith('hand.') && slot.endsWith('@' + s)) ids.push(Number(id));
+      }
+      return ids;
+    }, seat);
+    expect(handIdsBefore.length, 'dealer must hold 14 tiles at the instant of the real-pointer discard').toBe(14);
+
     // Real pointer discard: hover the tile, then mouse-down (onMouseDown →
     // World.onDragStart → click-to-discard).  No emitDiscard call here.
     await page.mouse.move(discardTarget!.x, discardTarget!.y);
@@ -274,38 +290,55 @@ test.describe('#119 Changsha manual-deal ceremony — DealerExtra regression', (
     await page.waitForTimeout(30);
     await page.mouse.up();
 
-    // The discard must drop the hand below 14 (poll immediately — after a few
-    // seconds the bots play and the dealer draws again).
-    await page.waitForFunction(
-      (s) => {
-        const cli: any = (window as any).game?.client;
-        if (!cli) return false;
-        const suffix = '@' + s;
-        let n = 0;
-        for (const [, v] of cli.things.entries()) {
-          const slot = v?.slotName ?? v?.SlotName;
-          if (typeof slot === 'string' && slot.startsWith('hand.') && slot.endsWith(suffix)) n++;
-        }
-        return n < 14;
-      },
-      seat,
-      { timeout: 15_000 },
-    );
-    const totalDiscards: number = await page.evaluate(() => {
-      const cli = (window as any).game.client;
-      let d = 0;
-      for (const [, v] of cli.things.entries()) {
-        const slot = v?.slotName ?? v?.SlotName;
-        if (typeof slot === 'string' && slot.startsWith('discard')) d++;
-      }
-      return d;
-    });
-    expect(totalDiscards, 'the real-pointer discard must register on the table').toBeGreaterThan(0);
+    // Server-authoritative registration, robust to the bot-claim race. `things` is the
+    // server's view (a rejected discard would leave the hand at 14 and this would time out
+    // — so rejection FAILS here). We wait for BOTH: the dealer hand drops 14 → 13 (the
+    // hand-delta), AND the exact tile that departed the hand lands in a PLAYED slot — a
+    // `discard.*` slot, or a `meld.*` slot if a bot legally claimed it (targetSlots naming
+    // per AutotableSlotMap: `meld.{i}.{j}@{seat}`). We assert the DEPARTED tile's
+    // destination, never the discard-pile count, so a legal claim can never zero it.
+    const discardOutcome = (await page.waitForFunction(
+        (before) => {
+          const cli: any = (window as any).game?.client;
+          if (!cli) return false;
+          const handNow = new Set<number>();
+          const slotById = new Map<number, string>();
+          for (const [id, v] of cli.things.entries()) {
+            const slot = String(v?.slotName ?? v?.SlotName ?? '');
+            slotById.set(Number(id), slot);
+            if (slot.startsWith('hand.') && slot.endsWith('@' + before.seat)) handNow.add(Number(id));
+          }
+          if (handNow.size >= before.ids.length) return false; // hand has not dropped yet
+          const departed = before.ids.filter((id: number) => !handNow.has(id));
+          const played = departed.find((id: number) => {
+            const s = slotById.get(id) ?? '';
+            return s.startsWith('discard') || s.startsWith('meld.');
+          });
+          if (played === undefined) return false; // departed tile not yet in a played slot
+          return { handAfter: handNow.size, departed, landedSlot: slotById.get(played) ?? '' };
+        },
+        { seat, ids: handIdsBefore },
+        { timeout: 20_000 },
+      ).then((h) => h.jsonValue())) as { handAfter: number; departed: number[]; landedSlot: string };
+
+    // Hand delta (preserved): exactly the 14th tile left the dealer's hand (14 → 13).
+    expect(
+      discardOutcome.handAfter,
+      'the real-pointer discard must drop the dealer hand 14 → 13 (server-authoritative)',
+    ).toBe(13);
+    // Server-authoritative registration: the departed tile is accounted for in a played
+    // slot — the discard pile, OR a bot's meld after a legal claim — so a legal claim can
+    // never transiently zero the observation, and a rejected discard (tile still in hand)
+    // could never reach here.
+    expect(
+      discardOutcome.landedSlot,
+      `the real-pointer discard must register server-side: the departed tile must land in a discard or meld slot (robust to a legal bot claim); departed=${JSON.stringify(discardOutcome.departed)}`,
+    ).toMatch(/^(discard|meld\.)/);
 
     // eslint-disable-next-line no-console
     console.log(
       `[#119 ceremony] phases=${JSON.stringify(capturedPhases)} dealerHand=${dealerHand} ` +
-        `selectableHandTiles=${distinctHandTiles.size} discards=${totalDiscards}`,
+        `selectableHandTiles=${distinctHandTiles.size} discardLanded=${discardOutcome.landedSlot}`,
     );
   });
 });
