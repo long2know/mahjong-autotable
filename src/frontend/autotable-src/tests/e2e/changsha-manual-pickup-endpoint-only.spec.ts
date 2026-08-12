@@ -40,7 +40,7 @@
 // AUTO reject is hudson-2's. F1-independent (Bishop co-derives targetSlots).
 import { test, expect, type Page } from '@playwright/test';
 import { buildGameUrl, makeConfig, dismissLobbyAndTour, ensureConnected, takeSeatByClick, clickDeal, waitForPlayableHand, hasExtraHandTile, readIsMyPickupTurn, takePickup, pressWallTargetByHover } from './_playability';
-import { pollWithStallGuard, readCeremonyKey } from './_ceremony-progress';
+import { pollWithStallGuard, readCeremonyKey, type StallGuardOutcome } from './_ceremony-progress';
 import { realDragWallTile, recordEvidence, shot } from './_uat_red';
 
 // Real per-batch ceremony drive (Hicks's centralized clickDeal only ROLLS the
@@ -52,12 +52,25 @@ import { realDragWallTile, recordEvidence, shot } from './_uat_red';
 // AwaitingDiscard. Bots auto-pick their own turns between the human's; this
 // only presses when it is genuinely our turn (readIsMyPickupTurn), so it
 // never fabricates a press the human didn't need to make.
-async function driveHumanPickupsUntilPlayable(page: Page, timeoutMs = 45_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline && !(await hasExtraHandTile(page))) {
-    if (await readIsMyPickupTurn(page)) await takePickup(page);
-    else await page.waitForTimeout(400);
-  }
+async function driveHumanPickupsUntilPlayable(page: Page): Promise<StallGuardOutcome> {
+  // Progress-aware, stall-guarded drive of the human dealer's OWN pickup batches to
+  // ceremony completion (the hand holds its drawn tile ⇒ hasExtraHandTile). Replaces the
+  // fixed 45s window that, under CI mobile saturation (run 31594744369, job 94107472857),
+  // expired while the deal was still genuinely advancing — parked on a LIVE BreakPointMarked
+  // (pickup count 4) — leaving the callers' post-ceremony gates (POST-deal wall-inert @362,
+  // D1 tombstone @923) asserting against MID-CEREMONY state. We press ONLY when it is
+  // genuinely our turn; between our batches the bots auto-pick, so the authoritative ceremony
+  // fingerprint (readCeremonyKey) keeps changing and the stall timer resets. A GENUINE
+  // no-progress park (dice never roll / a handoff never reaches our seat) surfaces as
+  // hasExtraHandTile staying false and the returned outcome's stalled/capped flag — the
+  // CALLER's own post-ceremony assertion then fails with that diagnostic. This helper never
+  // asserts, sleeps-to-pass, retries, or skips. stallMs 45s ≫ the worst measured inter-batch
+  // gap; capMs 120s is bounded under the callers' 150s test timeouts (minus connect/seat/deal).
+  return pollWithStallGuard(page, async () => {
+    const done = await hasExtraHandTile(page);
+    if (!done && await readIsMyPickupTurn(page)) await takePickup(page);
+    return { done, key: await readCeremonyKey(page) };
+  }, { stallMs: 45_000, capMs: 120_000, pollMs: 400 });
 }
 
 // FINAL designation reader. GATE = pickup.targetSlots = EXACTLY ONE public
@@ -373,13 +386,26 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     // wall IS interactable — and assert the post-deal invariant against the
     // wrong phase. Drive every batch through the rendered #pickup-take-btn so
     // the assertions below genuinely observe AwaitingDiscard.
-    await driveHumanPickupsUntilPlayable(page);
-    await waitForPlayableHand(page, 60_000).catch(() => {});
-    await page.waitForTimeout(1500);
+    const drive = await driveHumanPickupsUntilPlayable(page);
+    // Ferro predicate 2: converge to the AwaitingDiscard epoch (hasExtraHandTile && !isMyPickupTurn)
+    // before probing the wall. The drive above only proves the dealer drew its extra tile; a LIVE
+    // same-hand opening batch (BreakPointMarked count4 seat0) can still read isMyPickupTurn true for
+    // a snapshot after hasExtraHandTile flips, and that is the exact wrong-epoch the RED cell hit —
+    // asserting the inert-wall contract mid-pickup-turn. Gating on BOTH authoritative signals means
+    // the wall is only probed once this seat has genuinely left its pickup turn. This replaces the
+    // redundant waitForPlayableHand (itself only a hasExtraHandTile wait) plus the fixed 1500ms
+    // settle. A genuine failure to leave the pickup turn surfaces as stalled/capped (done=false)
+    // with diagnostics; the assertion below then fails — never hidden, no sleep-to-pass.
+    const epoch = await pollWithStallGuard(page, async () => {
+      const done = (await hasExtraHandTile(page)) && !(await readIsMyPickupTurn(page));
+      return { done, key: await readCeremonyKey(page) };
+    }, { stallMs: 30_000, capMs: 45_000, pollMs: 300 });
     const drag = await realDragWallTile(page);
     await shot(page, 'g17-post-deal-drag.png');
-    recordEvidence('g17-manual-post-deal.json', { isMyPickupTurn: drag.isMyPickupTurn, held: drag.held });
-    expect(drag.isMyPickupTurn, 'post-deal is not a pickup turn').toBe(false);
+    recordEvidence('g17-manual-post-deal.json', { isMyPickupTurn: drag.isMyPickupTurn, held: drag.held,
+      stallGuard: { done: drive.done, stalled: drive.stalled, capped: drive.capped, elapsedMs: drive.elapsedMs, keyChanges: drive.keyChanges, maxIdleMs: drive.maxIdleMs },
+      epochGuard: { done: epoch.done, stalled: epoch.stalled, capped: epoch.capped, elapsedMs: epoch.elapsedMs, keyChanges: epoch.keyChanges, maxIdleMs: epoch.maxIdleMs } });
+    expect(drag.isMyPickupTurn, `post-deal is not a pickup turn (drive: done=${drive.done} stalled=${drive.stalled} capped=${drive.capped}; epoch hasExtra&&!myPickupTurn: done=${epoch.done} stalled=${epoch.stalled} capped=${epoch.capped} elapsedMs=${epoch.elapsedMs} maxIdleMs=${epoch.maxIdleMs})`).toBe(false);
     expect(drag.held?.isHolding ?? false, 'post-deal wall tile must NOT be held').toBe(false);
   });
 
@@ -587,15 +613,25 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     // post-ceremony tombstone. (a) is strictly stronger than the empty pre-ceremony /
     // post-deal states already covered above, because a pickup collection IS live:
     // it is precisely where an any-wall fallback would be most dangerous.
-    const noDesigDeadline = Date.now() + 45_000;
+    // Progress-aware, stall-guarded convergence (replaces the fixed 45s window that, under
+    // CI mobile saturation, run 31594744369, expired while the viewer's OWN dealer window
+    // was still genuinely open — parked on a LIVE BreakPointMarked, count 4, seat 0 — so the
+    // "no exact-1 designation" PRECONDITION below flipped false for a TIMING reason, not a
+    // real one). Advance ONLY our own batches until this viewer holds no single-trigger
+    // designation — either the pickup cursor moved to a bot seat (readDesignation() is null
+    // for a foreign seatIndex) or the ceremony tombstoned. The authoritative ceremony
+    // fingerprint gates progress; a GENUINE no-progress park surfaces as the guard's
+    // stalled/capped flag with the viewer still designated — the precondition assertion below
+    // then fails with that diagnostic (never hidden). stallMs 45s / capMs 90s bounded under
+    // the 120s test timeout.
     let d = await readDesignation(page);
-    let myTurn = await readIsMyPickupTurn(page);
-    while (Date.now() < noDesigDeadline && (myTurn || (d && d.gate && d.gateLen === 1))) {
-      if (myTurn) await takePickup(page);
-      else await page.waitForTimeout(250);
+    const conv = await pollWithStallGuard(page, async () => {
+      if (await readIsMyPickupTurn(page)) await takePickup(page);
       d = await readDesignation(page);
-      myTurn = await readIsMyPickupTurn(page);
-    }
+      const myTurn = await readIsMyPickupTurn(page);
+      const stillDesignated = myTurn || !!(d && d.gate && d.gateLen === 1);
+      return { done: !stillDesignated, key: await readCeremonyKey(page) };
+    }, { stallMs: 45_000, capMs: 90_000, pollMs: 250 });
     // Record WHICH reachable no-designation state we landed in, so the gate is provably
     // non-vacuous rather than silently degenerating to "nothing was happening".
     const reached = await page.evaluate(() => {
@@ -622,12 +658,13 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     const emitted = takes.slice(mark);
     const anyWallActed = (handAfter > handBefore) || emitted.length > 0 || !!(drag.held && drag.held.isHolding) || ((drag.held?.dragOffsetWorld ?? 0) > 5);
     recordEvidence('g17-fail-closed.json', { noValidDesignation, designationLen: d ? d.gateLen : null, reached, handBefore, handAfter, emittedTakes: emitted, held: drag.held, anyWallActed,
+      convGuard: { done: conv.done, stalled: conv.stalled, capped: conv.capped, elapsedMs: conv.elapsedMs, keyChanges: conv.keyChanges, maxIdleMs: conv.maxIdleMs },
       note: 'Fail-closed (actor-scoped, Hudson): inert ⟺ zero outbound pickup.take AND unchanged `hand.*@0` AND no local hold/drag. Shared-wall deltas are NOT used — bots take concurrently. `reached` names the real state exercised: pickupLive && pickupSeat !== mySeat = a live ceremony parked on another seat (display-only); pickupLive=false = the post-ceremony tombstone.' });
     // PRECONDITION (now reachable on a FIXED build, not pinned to the RED one): the
     // viewer holds no single-trigger designation — either the live pickup belongs to
     // another seat, or the ceremony has tombstoned. Either way the client must NOT let
     // any wall tile act.
-    expect(noValidDesignation, `precondition: this viewer holds no exact-1 targetSlots designation (converged state: ${JSON.stringify(reached)})`).toBe(true);
+    expect(noValidDesignation, `precondition: this viewer holds no exact-1 targetSlots designation (converged state: ${JSON.stringify(reached)}; drive: done=${conv.done} stalled=${conv.stalled} capped=${conv.capped} elapsedMs=${conv.elapsedMs} maxIdleMs=${conv.maxIdleMs})`).toBe(true);
     expect(anyWallActed, `FAIL-CLOSED: with no valid targetSlots, pressing ANY wall tile must be inert — zero pickup.take (emitted=${emitted.length}), unchanged hand (${handBefore}→${handAfter}), no hold/drag`).toBe(false);
   });
 
@@ -939,9 +976,25 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     // its own, so without this the pickup cursor is still parked on the
     // dealer's own (unpressed) first batch and this GREEN LOCK would be
     // observing mid-ceremony state, not the post-ceremony tombstone it names.
-    await driveHumanPickupsUntilPlayable(page);
+    const drive = await driveHumanPickupsUntilPlayable(page);
     await waitForPlayableHand(page, 60_000).catch(() => {});
-    await page.waitForTimeout(2000);
+    // Bounded, progress-aware wait for the POST-DEAL TOMBSTONE (pickup["current"] → null on
+    // the full-snapshot map.clear() path this D1 GREEN LOCK is about) — replaces a fixed 2s
+    // settle so we observe the real post-ceremony state, not a mid-clear race, under CI
+    // saturation. The drive above reaches ceremony completion (hasExtraHandTile); the pickup
+    // clear is a SEPARATE later snapshot, so it needs its own authoritative gate. A product
+    // that genuinely never tombstones (the D1 defect) fails the assertions below (rawPickup
+    // non-null) with this telemetry — never hidden, no sleep-to-pass.
+    const tomb = await pollWithStallGuard(page, async () => {
+      const cleared = await page.evaluate(() => {
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        const g = (window as any).game;
+        const pu = g?.client?.pickup?.get ? g.client.pickup.get('current') : null;
+        return pu === null;
+        /* eslint-enable @typescript-eslint/no-explicit-any */
+      });
+      return { done: cleared, key: await readCeremonyKey(page) };
+    }, { stallMs: 30_000, capMs: 45_000, pollMs: 300 });
     const post = await page.evaluate(() => {
       /* eslint-disable @typescript-eslint/no-explicit-any */
       const g = (window as any).game; const w = g?.world;
@@ -952,10 +1005,10 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
       /* eslint-enable @typescript-eslint/no-explicit-any */
     });
     await shot(page, 'g17-pickup-tombstone.png');
-    recordEvidence('g17-pickup-tombstone.json', { post, note: 'Vasquez D1 CONCEDED: full-snapshot map.clear() wipes pickup["current"] when the post-deal snapshot omits pickup ⇒ pickup null / isMyPickupTurn false is a GREEN LOCK (defensive). HUD button state is a recorded observation, not gated (D1 rules pickup-clear GREEN, not the HUD).' });
+    recordEvidence('g17-pickup-tombstone.json', { post, stallGuard: { done: drive.done, stalled: drive.stalled, capped: drive.capped, elapsedMs: drive.elapsedMs, keyChanges: drive.keyChanges, maxIdleMs: drive.maxIdleMs }, tombGuard: { done: tomb.done, stalled: tomb.stalled, capped: tomb.capped, elapsedMs: tomb.elapsedMs, keyChanges: tomb.keyChanges, maxIdleMs: tomb.maxIdleMs }, note: 'Vasquez D1 CONCEDED: full-snapshot map.clear() wipes pickup["current"] when the post-deal snapshot omits pickup ⇒ pickup null / isMyPickupTurn false is a GREEN LOCK (defensive). HUD button state is a recorded observation, not gated (D1 rules pickup-clear GREEN, not the HUD).' });
     // GREEN LOCK (Vasquez D1) — pickup state clears on the full-update path; assert
     // the defensive must-preserve, NOT a RED. (The takeBtn HUD is recorded only.)
-    expect(post.rawPickup, `D1: pickup["current"] must be null post-ceremony; got ${JSON.stringify(post.rawPickup)}`).toBeNull();
+    expect(post.rawPickup, `D1: pickup["current"] must be null post-ceremony; got ${JSON.stringify(post.rawPickup)} (drive: done=${drive.done} stalled=${drive.stalled} capped=${drive.capped}; tombstone wait: done=${tomb.done} stalled=${tomb.stalled} capped=${tomb.capped} elapsedMs=${tomb.elapsedMs} maxIdleMs=${tomb.maxIdleMs})`).toBeNull();
     expect(post.designationLen, 'D1: targetSlots designation must be empty post-ceremony').toBe(0);
     expect(post.isMyPickupTurn, 'D1: isMyPickupTurn() must be false post-ceremony').toBe(false);
   });

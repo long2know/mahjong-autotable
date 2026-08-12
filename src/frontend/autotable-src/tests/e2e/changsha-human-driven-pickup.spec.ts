@@ -260,25 +260,37 @@ test.describe('NEW-2b pickup HUD teardown — the Take-N banner must not orphan 
     // tick so the teardown assertion below stays provably non-vacuous (the
     // banner is expected to appear while the pickup affordance is live).
     let hudEverVisible = false;
-    const deadline = Date.now() + 90_000;
-    while (Date.now() < deadline && !(await hasExtraHandTile(page))) {
+    // Progress-aware, stall-guarded drive to the POST-CEREMONY tombstone: press our own
+    // batches until the hand holds its drawn tile (hasExtraHandTile) AND the authoritative
+    // pickup collection has cleared (pickup["current"] === null — the post-deal full-snapshot
+    // map.clear() path this gate is about). Replaces the fixed 90s window (+2.5s settle) that,
+    // under CI mobile saturation (run 31594744369, job 94107472857), expired mid-ceremony — a
+    // LIVE BreakPointMarked, count 4, seat 0 — so the teardown gate asserted against a live
+    // pickup, not the tombstone. Sample the banner every tick so hudEverVisible stays a real
+    // observation (non-vacuity). The pickup-clear transition IS an authoritative fingerprint
+    // change (readCeremonyKey folds pickup.phase/seatIndex/count), so it counts as progress,
+    // not a stall. A GENUINE no-progress park surfaces as the guard's stalled/capped flag with
+    // pickupCurrent still live — the assertions below then fail with that diagnostic; never
+    // hidden, no sleep-to-pass. stallMs 45s / capMs 120s bounded under the 150s test timeout.
+    const drive = await pollWithStallGuard(page, async () => {
       const h = await readHud();
       if (h.visible) hudEverVisible = true;
-      if (await readIsMyPickupTurn(page)) await takePickup(page);
-      else await page.waitForTimeout(300);
-    }
-    // Settle the final post-deal snapshot (the map.clear() clear path).
-    await page.waitForTimeout(2500);
+      const cleared = h.pickupCurrent === null;
+      const extra = await hasExtraHandTile(page);
+      if (!extra && await readIsMyPickupTurn(page)) await takePickup(page);
+      return { done: extra && cleared, key: await readCeremonyKey(page) };
+    }, { stallMs: 45_000, capMs: 120_000, pollMs: 300 });
     const finalState = await readHud();
     await shot(page, 'new2b-pickup-hud-teardown.png');
     recordEvidence('new2b-pickup-hud-teardown.json', {
       hudEverVisible, finalState,
+      stallGuard: { done: drive.done, stalled: drive.stalled, capped: drive.capped, elapsedMs: drive.elapsedMs, keyChanges: drive.keyChanges, maxIdleMs: drive.maxIdleMs },
       note: 'NEW-2b pickup HUD teardown (distinct from D1 collection clear). RED@200cad4: the post-deal full-snapshot map.clear() empties pickup["current"] WITHOUT firing a per-key update, so game-ui.ts renderPickupHud(null) never runs and the #pickup-hud "Take N" banner orphans on screen (finalState.pickupCurrent==null AND finalState.visible==true). GREEN when the HUD teardown is bound to the collection clear (Hicks) or the backend emits EncodePickupCleared that fires the update. A visible banner here is intrinsic proof it rendered — the gate cannot pass vacuously.',
     });
 
     // Precondition (D1 GREEN LOCK): the collection MUST have cleared post-ceremony, so
     // the ONLY thing under test is the rendered banner teardown.
-    expect(finalState.pickupCurrent, `precondition (D1): pickup["current"] must be null post-ceremony so this gate isolates the HUD teardown; got ${JSON.stringify(finalState.pickupCurrent)}`).toBeNull();
+    expect(finalState.pickupCurrent, `precondition (D1): pickup["current"] must be null post-ceremony so this gate isolates the HUD teardown; got ${JSON.stringify(finalState.pickupCurrent)} (ceremony drive: done=${drive.done} stalled=${drive.stalled} capped=${drive.capped} elapsedMs=${drive.elapsedMs} maxIdleMs=${drive.maxIdleMs})`).toBeNull();
     // NEW-2b RED gate: once the collection is empty, the banner must be torn down.
     expect(finalState.visible, `NEW-2b: the #pickup-hud "Take N" banner must be TORN DOWN once pickup["current"] clears — RED@200cad4 the banner orphans (collection null but banner still visible); hudEverVisible=${hudEverVisible}`).toBe(false);
   });
