@@ -83,6 +83,18 @@ Logical tile = `tileId / 4` (0–26). Suit = `logicalTile / 9` (0=Char, 1=Dot, 2
 3. **Determine the break point:** From the right end of the identified wall, count stacks equal to the dice sum. The break point is **after** that stack (tiles to the left of the break become the start of the draw wall).
 4. **Draw wall direction:** Drawing proceeds counterclockwise from the break point.
 
+#### 2.4.1 Canonical wall-index mapping (pinned)
+
+The steps above are made precise here to remove any intra-wall-direction ambiguity. All indices are **seat-absolute** — they do **not** rotate with the dealer (the E/S/W/N winds are dealer-relative labels only).
+
+- **Frame (fixed):** each seat owns a fixed wall of `StacksPerSeat = [14, 14, 13, 13]` stacks by **absolute seat index** (seats 0,1 → 14 stacks / 28 tiles; seats 2,3 → 13 stacks / 26 tiles). 54 stacks, 108 tiles. No dealer rotation.
+- **Break wall (step 2):** `B = (dealer + (sum − 1) mod 4) mod 4` — the absolute seat whose wall is broken.
+- **Break stack (step 3):** the **sum-th stack counted from wall B's RIGHT end**, where the "right end" is the end toward the next seat counterclockwise (**seat B+1**). In render columns (0-based from the wall's **left/origin** end) this is `col = StacksPerSeat[B] − sum` — for `sum ∈ [2,12]`, `col ∈ [1,12] ⊂ [0, StacksPerSeat[B]−1]`. The break stack itself is the first tile drawn (`Wall[0]`).
+- **Layer (F2 top-first):** the break frontier and every subsequent draw take the **TOP** tile of a stack first; the occluded bottom becomes reachable only after its top is drawn (the wall-perimeter reachability invariant — reachable ⇔ up-link empty, not merely `layer == 1`).
+- **Draw direction (step 4):** from the break, drawing proceeds by **increasing column** (from the left/origin end toward the right/col-max end) within wall B, then **wraps counterclockwise to seat B+1**, forming one contiguous perimeter arc `B → B+1 → B+2 → B+3`.
+
+> The physical render must realize this as a single counterclockwise perimeter run: wall B's col-max end abuts seat B+1's wall (handedness), and depletion is top-before-bottom. This mapping is the rules-owned reference for the F1 dice-anchor oracle and is mirrored in `docs/changsha-wall-perimeter-mapping-contract.md`.
+
 ### 2.5 Initial Deal
 
 Dealing proceeds from the break point of the draw wall:

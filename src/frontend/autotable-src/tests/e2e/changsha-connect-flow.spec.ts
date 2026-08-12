@@ -23,6 +23,7 @@
 // out of scope here).  See selectors.md and .squad/decisions.md.
 
 import { test, expect, type Page } from '@playwright/test';
+import { waitForSeatable } from './_playability';
 
 const HAND_MIN = 13;          // non-dealer hand size
 const DEALER_HAND = 14;       // dealer draws the 14th on the initial deal
@@ -47,26 +48,6 @@ async function landOnBareLobby(page: Page): Promise<void> {
   if (await skip.isVisible().catch(() => false)) {
     await skip.click().catch(() => { /* best effort */ });
   }
-}
-
-async function waitForConnected(page: Page): Promise<void> {
-  // window.game is published by three-renderer once the scene boots.
-  await expect
-    .poll(async () => page.evaluate(() => Boolean((window as unknown as { game?: unknown }).game)), {
-      timeout: 25_000,
-      message: 'renderer never published window.game after Apply & Start',
-    })
-    .toBe(true);
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(() => {
-          const g = (window as unknown as { game?: { client?: { connected?: () => boolean } } }).game;
-          return Boolean(g?.client?.connected?.());
-        }),
-      { timeout: 20_000, message: 'client never auto-connected after Apply & Start' },
-    )
-    .toBe(true);
 }
 
 interface DealSnapshot {
@@ -104,7 +85,9 @@ async function currentSeat(page: Page): Promise<number | null> {
 
 test.describe('Changsha — real-UI connect flow (WP-E / #120 P0)', () => {
   test('bare URL → Apply & Start → auto-connect → take seat → Deal → hands', async ({ page }) => {
-    test.setTimeout(90_000);
+    // CI-robust ceiling: the cold-start readiness gate tolerates up to ~45 s of
+    // heavily-loaded SwiftShader first-render before the seat + server-deal work.
+    test.setTimeout(120_000);
 
     const pageErrors: string[] = [];
     page.on('pageerror', (e) => pageErrors.push(String(e)));
@@ -133,17 +116,27 @@ test.describe('Changsha — real-UI connect flow (WP-E / #120 P0)', () => {
     expect(q.get('dealMode')).toBe('auto');
     expect(q.get('botCount')).toBe('3');
 
-    // ── 4. Auto-connect — the button label promises "Start". ─────────
-    await waitForConnected(page);
-    // DOM corroboration: the connected pill swaps #connect → #disconnect.
-    await expect(page.locator('#disconnect.server-connected')).toBeVisible({ timeout: 10_000 });
+    // ── 4. Auto-connect + seatable — the button label promises "Start". ──
+    //       CI-robust cold-start gate shared with seed-determinism.spec.ts:
+    //       waits (up to 45 s) for the renderer to publish window.game, the
+    //       client to authoritatively connect, AND the real Take-Seat affordance
+    //       to actually render — instead of racing a fixed 10 s visibility gate
+    //       that heavily-loaded SwiftShader was blowing through.
+    await waitForSeatable(page, 0);
+    // DOM corroboration of the connected STATE. In Changsha the legacy relay
+    // connect/disconnect pill (#server → #connect/#disconnect) is `.relay-only` and thus
+    // display:none, so its visibility is NOT the Changsha connection affordance. Assert the
+    // authoritative signal client-ui applies on connect — the `connected` class on #server —
+    // plus the take-seat buttons becoming reachable (above). No behavior weakened; this
+    // asserts the ACTUAL connection state instead of a hidden relay-toolbar element.
+    await expect(page.locator('#server')).toHaveClass(/(^|\s)connected(\s|$)/, { timeout: 10_000 });
 
     // ── 5. Take seat 0 with an ORDINARY tap on the Take Seat button —
     //       no forced flag, no positioned/uncovered-pixel routing.  The
     //       mobile HUD overlaps are fixed in production CSS so the button
-    //       is the genuine hit-target at its own centre on both viewports. ─
+    //       is the genuine hit-target at its own centre on both viewports.
+    //       waitForSeatable (above) already confirmed it is visible/actionable. ─
     const takeSeat0 = page.locator('.seat-button-0 .take-seat');
-    await expect(takeSeat0, 'Take Seat 0 must be reachable after connect').toBeVisible({ timeout: 10_000 });
     await takeSeat0.click();
     await expect
       .poll(async () => currentSeat(page), {
@@ -153,12 +146,10 @@ test.describe('Changsha — real-UI connect flow (WP-E / #120 P0)', () => {
       .toBe(0);
     const seat = 0;
 
-    // ── 6. Deal with an ORDINARY tap on #deal (a seated human triggers
-    //       the bare match[0] deal; server is authoritative). ──────────
-    const deal = page.locator('#deal');
-    await expect(deal, 'Deal button must be visible + enabled for a seated player').toBeVisible({ timeout: 10_000 });
-    await expect(deal).toBeEnabled();
-    await deal.click();
+    // ── 6. Deal is SERVER-DRIVEN in Changsha (dealMode=auto): taking the seat fills the
+    //       remaining bot seats, and the runtime auto-starts + auto-deals — no #deal click.
+    //       The legacy #deal button is `.relay-only` (hidden) and is no longer a Changsha
+    //       trigger; the authoritative `things` deal below arrives without any button press. ─
 
     // ── 7. Hands dealt — the authoritative `things` collection now holds
     //       a full 13/14-tile hand for every seat (server-dealt).  The
@@ -167,7 +158,7 @@ test.describe('Changsha — real-UI connect flow (WP-E / #120 P0)', () => {
     await expect
       .poll(async () => (await readDeal(page)).handBySeat[seatKey] ?? 0, {
         timeout: 25_000,
-        message: `seat ${seat} never received a dealt hand after clicking Deal`,
+        message: `seat ${seat} never received a server-dealt hand after taking the seat`,
       })
       .toBeGreaterThanOrEqual(HAND_MIN);
 

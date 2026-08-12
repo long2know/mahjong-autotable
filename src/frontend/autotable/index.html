@@ -29,9 +29,9 @@
     <link href="./icon-512.auto.3c9e4a61.png" rel="apple-touch-icon" sizes="512x512">
     <!-- Phase J Wave 5 — public matchmaking lobby, profile drawer,
          stats panel.  Layered after style.css so its overrides win. -->
-      <script type="module" crossorigin src="./autotable-src.272e68a2.js"></script>
+      <script type="module" crossorigin src="./autotable-src.09309beb.js"></script>
       <link rel="modulepreload" crossorigin href="./admin-panel-core.e1c43197.js">
-      <link rel="stylesheet" crossorigin href="./style.d88d4f87.css">
+      <link rel="stylesheet" crossorigin href="./style.c7af5fe8.css">
     </head>
 <body>
     <img id="dice-img" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAABACAMAAAAkhlCNAAAACXBIWXMAAA7DAAAOwwHHb6hkAAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAAO1QTFRF////////AAAA/////////////0lJ/////////////////1JS/////////05O/0xM/////09P/0lJ/01N/1BQ/01N/01N/0xM/05O/01N/////05O/01N/0xM/////////05O/01N/////////05O/01N/01N/01N/01N/01N/01N/01N/01N/01N/////////////01N/////01N/01N/05O/////////////////////////////////////01N/05O/01N/01N/////01N/////////01N/01N/////01N/01N/01N/01N/01Nh0HcNAAAAE50Uk5T/wEABgcIFRYXGBkZGhsaGxwdHB4gSUxNTlBkaWprbG1sbW5vb26RmJmbnJ6iqq6vsLW2tre4u7zGx8jJz9DR19nY2/Hx8vPy8/T0+/z9Kam0YgAAAxBJREFUeNrtm3tPU0EQxQ/bq/IQgeIDUAoU6/uFivZprdAX9O73/ziGSBthNpnmDpPsbvf8N9n8ZjozZElPujDm3nFrjAIaN6uZMYmX8TCbv1BYnU2TeBmPTMADnSzxMh7HEOkg8TIeLQCfHpgCWv4CoJF4GY8BACfPawVAP/EyHlcyBQUg8RI+lgZC54NvIHQ++AZC5+/sA2TV5njcPMh85afn2jwXay1gvfMvbK/7yZNzNZ6LdRaQdaZxO/OLp+faPBerLKCKmSp+8fRcm+dilQW0MFPDL56ea/NcrLKAAWYa+MXTc22ei7UXcOYXT8+1eS5OV1CMV9ABZqr4xdNzbZ6LVRaQtadxu+QXT8/1eT7mF7B9dNq7uOidHm7N+UWoLfgipcmTc3Wej/kFbLyZ2GvlHx/PZQWUKo3BoF4pGSoPeHKux/Mxv4Ddkf1Pwx2fzazQeRiql7m9obzmcQOh8zBEu7m9pXzH3wZC52mC8sgSDR9520DoPE3w3jr0VrcB3n+Ptj5JsD2xDk3KugPg/fdY65MENevUvu4AeP891vokwXfr1InuAHj/Pdb6JMEf61RPdwC8+RVrfZJgZJ0a6Q6A999jrT/vAs51B8D777HWJwl+W6e6sV4BfP2F/CdM/fNY65MEh9ap57oD4P33WOuTBFsT69Cl8hcx3n+PtT5N8M469Fp3ALz/Hm19mmBjaInO17w1s0LnYYiekEsof+ZvA6HzMFS1/Nb8jzxuIHTemWBneOP+eepzA6Hz7gT3X13aa+Uf1gQfgPrrUn5R3geU9791R6PuyYuy7C+A+utSPr0PYAbI+utSPr0PYAbI+etSPr0PYAbImVtSPv04lxkg569L+fQ+QDbAMymf3gekKyi8K4j46wI+vQ9gBsj561J+Md4HCBbA+OtSfiHeBwgWwPnrUn4h3geEZGaFzgffQOh88A2EzgffQNB8H8ByMf7hFZ54GY8mgM8rRfjVrwAaiZfxqEKkvcTLeGRtCPRjKfEyHmZTkOHnqkm8jIcxpUp9gALq1/eWjEm8jP8L5TvECx9xzpAAAAAASUVORK5CYII=" alt="" aria-hidden="true">
@@ -89,21 +89,21 @@
         </div>
 
         <div id="sidebar" class="collapsed container text-light">
-            <div class="d-flex">
+            <div class="d-flex relay-only">
                 <button class="btn btn-warning btn-sm w-100 btn-progress-main" id="deal">
                     <div class="btn-progress"></div>
                     <span class="btn-progress-text">Deal</span>
                 </button>
             </div>
 
-            <div class="mt-2 d-flex">
+            <div class="mt-2 d-flex relay-only">
                 <button disabled class="btn btn-sm btn-outline-secondary text-white w-100 mr-2" id="setup-desc">
                 </button>
                 <button class="btn btn-dark btn-sm dropdown-toggle collapsed" id="toggle-setup"
                     data-toggle="collapse" data-target="#setup-group">Setup</button>
             </div>
 
-            <div id="setup-group" class="collapse" data-toggle="true">
+            <div id="setup-group" class="collapse relay-only" data-toggle="true">
                 <select class="dark-select form-control form-control-sm mt-2" id="deal-type">
                     <option disabled value="">Deal:</option>
                     <option value="HANDS" selected>Hands</option>
@@ -164,7 +164,7 @@
                 <br>
             </div>
 
-            <div class="mt-2 d-flex">
+            <div class="mt-2 d-flex relay-only">
                 <button class="btn btn-secondary btn-sm w-100" id="toggle-dealer">Dealer</button>
                 <button class="btn btn-secondary btn-sm w-100 ml-2 riichi-only" id="toggle-honba">
                     Honba: 0
@@ -214,7 +214,7 @@
                  a separate game state pool.  Hidden once connected, replaced
                  by the small "Game: <id>" display below so the user always
                  knows which game they're in. -->
-            <div class="lobby-row mt-4" id="lobby-gameId-row">
+            <div class="lobby-row mt-4 relay-only" id="lobby-gameId-row">
                 <label for="lobby-gameId" class="server-disconnected">Game ID</label>
                 <input id="lobby-gameId" type="text" maxlength="64"
                        class="server-disconnected"
@@ -239,7 +239,7 @@
                 </small>
             </div>
 
-            <div class="mt-2 d-flex" id="server">
+            <div class="mt-2 d-flex relay-only" id="server">
                 <button class="btn btn-warning btn-sm w-100 server-disconnected mr-2" id="connect">
                     Connect
                 </button>
@@ -324,12 +324,11 @@
                             <input type="checkbox" id="tile-labels" checked>
                             Tile labels
                         </label>
-                        <button class="btn btn-secondary btn-sm btn-block mt-2" id="new-game" data-action="new-game">New game</button>
                     </div>
                 </div>
             </div>
 
-            <div class="mt-2">
+            <div class="mt-2 riichi-only">
                 <small>
                     <a class="text-light show-modal" target="_blank" href="https://pwmarcz.pl/mahjong/riichi-cheat-sheet/Teaching%20Sheet.pdf">Simplified scoring</a>
                     <br>
@@ -454,6 +453,18 @@
         <span class="lobby-toggle-icon">☰</span>
         <span class="lobby-toggle-label">Lobby</span>
     </button>
+
+    <!-- Ferro P0 (persistent one-click New Game) — a prominent, text-labeled
+         primary action in the authoritative top chrome, independent of the
+         setup/sidebar so it stays reachable in every Changsha phase (seating,
+         active hand, claim, disconnected/reconnecting, GameComplete). Keeps
+         id="new-game" + data-action="new-game" so client-ui.ts's newGame()
+         binding AND action-router's [data-action] deep-link stay wired
+         unchanged (navigation is Hicks's lane; not implemented here). Hicks may
+         toggle [disabled]/aria-busy during navigation to block double-fire. -->
+    <button id="new-game" data-action="new-game" type="button"
+            class="new-game-primary" data-testid="new-game-button"
+            aria-label="Start a new game">New Game</button>
 
     <!-- Phase J Wave 4 — Mobile move-log drawer toggle.  Hidden ≥ 1025 px
          via CSS; on tablet/phone widths the move-log slides off the right

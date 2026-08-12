@@ -102,6 +102,60 @@ export function resolveActiveSeat(input: {
   return input.activeSeatByGeometry;
 }
 
+/**
+ * R-1 §D9 — claim and discard/pickup are MUTUALLY EXCLUSIVE. Defends the
+ * stale-claim bug: the backend `EncodeClaimWindowClosed` tombstone may never be
+ * emitted (esp. in the server-timed `deadline<=0` mode), leaving a closed claim
+ * window's `activeClaim` — and its banner + buttons — live. A claim is only
+ * ACTIONABLE while it is NOT authoritatively this seat's turn to discard or pick
+ * up; once the turn advances to my discard, any lingering claim is stale and
+ * must be suppressed so claim controls never sit live during my discard turn.
+ */
+export function claimActionable(
+  hasClaim: boolean,
+  isMyDiscardTurn: boolean,
+  isMyPickupTurn: boolean,
+): boolean {
+  return hasClaim && !isMyDiscardTurn && !isMyPickupTurn;
+}
+
+/** Result of {@link selectSelfClaim}. */
+export interface SelfClaimSelection<V> {
+  /** True when THIS update batch carried an entry for the viewer's own seat. */
+  targeted: boolean;
+  /** The viewer's own claim window from this batch (`null` on a close tombstone). */
+  value: V | null;
+}
+
+/**
+ * D4 (Vasquez ruling) — deterministic claim-overlay teardown. Given a `claim`
+ * update batch and the viewer's own seat key, decide the viewer's claim window
+ * from THIS batch alone.
+ *
+ * The key property: when the batch explicitly targets the viewer's seat —
+ * INCLUDING the server's `EncodeClaimWindowClosed` tombstone (value `null`) —
+ * `targeted` is true and `value` is honored VERBATIM (null ⇒ tear the overlay
+ * down). The caller must NOT then re-read the collection, so a closed window can
+ * never be resurrected by a stale/racy collection read; the collection fallback
+ * is reserved for batches that did not mention the viewer (reconnect / full-sync
+ * / other-seat updates). Last write for the seat wins within the batch.
+ *
+ * Pure ⇒ browser-free contract-tested.
+ */
+export function selectSelfClaim<V>(
+  entries: ReadonlyArray<[string, V | null]>,
+  selfKey: string,
+): SelfClaimSelection<V> {
+  let targeted = false;
+  let value: V | null = null;
+  for (const [key, v] of entries) {
+    if (key !== selfKey) continue;
+    targeted = true;
+    value = v ?? null;
+  }
+  return { targeted, value };
+}
+
 export function computeTurnCue(input: TurnCueInput): TurnCue {
   const seated = input.mySeat !== null && input.mySeat >= 0;
 

@@ -36,6 +36,7 @@ import {
   ensureConnected,
   takeSeatByClick,
   clickDeal,
+  rollDiceIfDealer,
   discardByPointer,
   takePickup,
   readIsMyPickupTurn,
@@ -218,8 +219,32 @@ async function playRealGame(
   if (opts.humanPlays) {
     seat = await takeSeatByClick(page, cfg.seat);
     rec.log('seat.take', seat !== null, { assigned: seat });
+    // Changsha manual deal is SERVER-AUTHORITATIVE: the legacy `#deal` button is
+    // relay-only (hidden) and the client-side auto-chain (driveManualDealChain) was
+    // dropped, so hand 1 no longer "auto-drives" — the seated human DEALER (seat 0)
+    // must roll (#roll-dice) then take each batch (#pickup-take-btn), exactly as
+    // manual-deal-ceremony.spec.ts proves. `clickDeal` is the centralized trigger:
+    // it BOUNDED-waits for the authoritative `#roll-dice` HUD to render and clicks
+    // it (relay `#deal` when that variant is active), so a slow first snapshot can't
+    // lose the click to a visibility race. `dealt` reflects the REAL deal trigger;
+    // the .toBe(true) assertion below is unchanged (no relaxation).
     dealt = await clickDeal(page);
-    rec.log('deal.press', dealt, null);
+    rec.log('deal.trigger', dealt, null);
+    // Complete the six-phase pickup ceremony to the dealer's 14th tile with REAL UI
+    // actions only: take our own batches (#pickup-take-btn) when the cursor targets
+    // us, otherwise poll-safe re-roll (a no-op once past RollingDice). Retain any
+    // real roll into `dealt` so a raced first trigger can only flip false→true here,
+    // never the reverse — `dealt` therefore cannot remain false once the ceremony
+    // yields a playable hand. waitForPlayableHand below still adjudicates `playable`.
+    const dealBy = Date.now() + 60_000;
+    while (Date.now() < dealBy && !(await hasExtraHandTile(page))) {
+      if (await readIsMyPickupTurn(page)) {
+        await takePickup(page);
+      } else if (await rollDiceIfDealer(page)) {
+        dealt = true;
+      }
+      await page.waitForTimeout(POLL_INTERVAL_MS);
+    }
     const p = await waitForPlayableHand(page, 45_000);
     playable = p.playable;
     rec.log('deal.playable-hand', p.playable, { myHandCount: p.myHandCount, lastPickup: p.lastPickup.raw });
@@ -331,7 +356,17 @@ async function playRealGame(
         await page.waitForTimeout(POLL_INTERVAL_MS);
         continue;
       }
-      // Manual wall pickup for hands 2..N (hand 1 is auto-driven client-side).
+      // Changsha manual deal is human-driven PER HAND: when the dealer rotation lands
+      // on the seat-0 human (hands 2..N), the table parks in RollingDice until they
+      // roll. Click the real #roll-dice HUD so the ceremony proceeds instead of
+      // stalling. Returns false (no-op) when the human isn't the current dealer.
+      if (await rollDiceIfDealer(page)) {
+        rec.log('roll-dice.loop', true, null);
+        await page.waitForTimeout(POLL_INTERVAL_MS);
+        continue;
+      }
+      // Manual wall pickup: each seat takes its own batches (bots auto-take; the human
+      // takes via this real #pickup-take-btn press) across every hand.
       if (await readIsMyPickupTurn(page)) {
         const pu = await takePickup(page);
         rec.log('pickup.pointer', pu.ok, pu);
@@ -473,7 +508,7 @@ test.describe('@playability-gate P0 real-UI playability (autotable integration a
     // Preconditions.
     expect(run.bundleOk, `served bundle != fresh build: ${run.bundleReason}`).toBe(true);
     expect(run.connected && run.seat !== null, `connect/seat failed (connected=${run.connected} seat=${run.seat})`).toBe(true);
-    expect(run.dealt, 'real #deal press failed').toBe(true);
+    expect(run.dealt, 'real deal trigger (dealer #roll-dice) failed').toBe(true);
     expect(run.playable, 'manual deal ceremony never produced a playable hand (dealer 14th tile)').toBe(true);
 
     // Real gameplay actually happened through the canvas.

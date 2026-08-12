@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Mahjong.Autotable.Api.Data;
 using Mahjong.Autotable.Api.Data.Entities;
+using Mahjong.Autotable.Api.Players;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
@@ -92,7 +93,9 @@ public static class CspReportEndpoint
             var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
                 .CreateLogger("Mahjong.Autotable.Api.Observability.CspReport");
 
-            var playerId = context.Request.Cookies.TryGetValue("mahjong_pid", out var pid) ? pid : null;
+            // Verified identity only — the raw cookie is a bearer credential and must never be
+            // persisted into a violation row.
+            var playerId = context.GetPlayerIdOrNull();
             var ua = context.Request.Headers.UserAgent.ToString();
             if (ua.Length > 512) ua = ua[..512];
 

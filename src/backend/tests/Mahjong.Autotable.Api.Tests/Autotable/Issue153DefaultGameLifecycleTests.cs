@@ -104,11 +104,13 @@ public sealed class Issue153DefaultGameLifecycleTests : IAsyncLifetime
         Assert.NotNull(ridB);
         Assert.NotEqual(ridA, ridB);
 
-        // B sits at a fresh, clean table — Seating phase, seat 0 owned by B, no inherited hand.
+        // B sits at a FRESH table (a different runtime game), seat 0 owned by B, not
+        // inheriting A's abandoned hand. BE-3 — an auto game with bot-fill server-starts
+        // on seat-fill, so B's fresh table deals its OWN hand; the anti-stale guarantee
+        // is that it is a DIFFERENT game (ridB != ridA, asserted above) owned by B.
         Assert.True(Runtime.TryGetSnapshot(ridB!, out var snapB) && snapB is not null);
-        Assert.Equal(ChangshaPhase.Seating, snapB!.Phase);
-        Assert.Equal(pidB, snapB.Seats[0].PlayerId);
-        Assert.All(snapB.Hands, h => Assert.Empty(h.ConcealedTiles));
+        Assert.Equal(pidB, snapB!.Seats[0].PlayerId);
+        Assert.False(snapB.Seats[0].IsBot, "seat 0 of B's fresh table is the human B, not a bot.");
 
         // The stale game A left behind was retired, not handed to B.
         Assert.False(Runtime.TryGetSnapshot(ridA, out var staleSnap) && staleSnap is not null
@@ -205,6 +207,93 @@ public sealed class Issue153DefaultGameLifecycleTests : IAsyncLifetime
             "a default game with another connected player must not be retired by a newcomer.");
     }
 
+    // ── REGRESSION (#153 provider-timing flake): JOIN handshake is order-independent ─────────────
+    //
+    // The endpoint sends JOINED then a full UPDATE, but a newcomer joining a game whose bots are
+    // already playing races the connection send-lock against the runtime StateChanged broadcast
+    // drainer, so the initial UPDATE can arrive BEFORE the JOINED ack. Under SqlServer-cell timing
+    // (db-providers run 31594744445) the UPDATE won and the old helper threw KeyNotFoundException
+    // reading playerId off it. These pin BOTH orders deterministically at the frame-classification
+    // layer (no live socket / provider needed) so the flake cannot regress.
+
+    [Fact]
+    public async Task JoinHandshake_AckBeforeUpdate_ReturnsJoinedWithPlayerId()
+    {
+        var source = FrameSource(
+            Frame("""{"type":"JOINED","gameId":"g","playerId":"ack-first","isFirst":false}"""),
+            Frame("""{"type":"UPDATE","entries":[],"full":true}"""));
+
+        var (joined, initialUpdate) = await WsSession.ReadJoinHandshakeAsync(source);
+
+        Assert.Equal("JOINED", joined.GetProperty("type").GetString());
+        Assert.Equal("ack-first", joined.GetProperty("playerId").GetString());
+        Assert.Equal("UPDATE", initialUpdate.GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public async Task JoinHandshake_UpdateBeforeAck_PreservesUpdate_AndReturnsJoined()
+    {
+        // The exact failing interleaving: a bot-driven full UPDATE wins the send lock first.
+        var source = FrameSource(
+            Frame("""{"type":"UPDATE","entries":[["seats",0,{"seat":0}]],"full":true}"""),
+            Frame("""{"type":"JOINED","gameId":"g","playerId":"ack-second","isFirst":false}"""));
+
+        var (joined, initialUpdate) = await WsSession.ReadJoinHandshakeAsync(source);
+
+        Assert.Equal("ack-second", joined.GetProperty("playerId").GetString());
+        // The UPDATE that beat the ack is preserved, not discarded.
+        Assert.Equal("UPDATE", initialUpdate.GetProperty("type").GetString());
+        Assert.True(initialUpdate.GetProperty("full").GetBoolean());
+    }
+
+    [Fact]
+    public async Task JoinHandshake_MultipleBotUpdatesBeforeAck_KeepsFirstUpdate()
+    {
+        var source = FrameSource(
+            Frame("""{"type":"UPDATE","entries":[["turn","current",{"activeSeat":1}]],"full":true}"""),
+            Frame("""{"type":"UPDATE","entries":[["turn","current",{"activeSeat":2}]],"full":true}"""),
+            Frame("""{"type":"JOINED","gameId":"g","playerId":"p","isFirst":false}"""));
+
+        var (joined, initialUpdate) = await WsSession.ReadJoinHandshakeAsync(source);
+
+        Assert.Equal("p", joined.GetProperty("playerId").GetString());
+        // The FIRST UPDATE is the one preserved.
+        Assert.Equal(1, initialUpdate.GetProperty("entries")[0][2].GetProperty("activeSeat").GetInt32());
+    }
+
+    [Fact]
+    public async Task JoinHandshake_JoinedWithoutPlayerId_FailsExplicitly()
+    {
+        var source = FrameSource(
+            Frame("""{"type":"JOINED","gameId":"g","isFirst":false}"""),
+            Frame("""{"type":"UPDATE","entries":[],"full":true}"""));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => WsSession.ReadJoinHandshakeAsync(source));
+        Assert.Contains("playerId", ex.Message);
+    }
+
+    [Fact]
+    public async Task JoinHandshake_UnexpectedFrameType_FailsExplicitly()
+    {
+        var source = FrameSource(
+            Frame("""{"type":"ERROR","reason":"boom"}"""));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => WsSession.ReadJoinHandshakeAsync(source));
+        Assert.Contains("Unexpected frame", ex.Message);
+    }
+
+    private static JsonElement Frame(string json) => JsonDocument.Parse(json).RootElement.Clone();
+
+    private static Func<Task<JsonElement>> FrameSource(params JsonElement[] frames)
+    {
+        var queue = new Queue<JsonElement>(frames);
+        return () => queue.Count > 0
+            ? Task.FromResult(queue.Dequeue())
+            : throw new InvalidOperationException("frame source exhausted (handshake over-read).");
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────────────────────────
 
     private async Task<string?> WaitForBindingAsync(string relayGameId = DefaultGameId)
@@ -240,8 +329,13 @@ public sealed class Issue153DefaultGameLifecycleTests : IAsyncLifetime
         var wsClient = server.CreateWebSocketClient();
         if (cookiePlayerId is not null)
         {
+            // Burke — mahjong_pid carries a SIGNED credential; sign through the host's own
+            // service so the reconnect really presents the same durable identity.
+            var signed = _factory!.Services
+                .GetRequiredService<Mahjong.Autotable.Api.Players.PlayerIdentityService>()
+                .Protect(cookiePlayerId);
             wsClient.ConfigureRequest = req =>
-                req.Headers["Cookie"] = $"mahjong_pid={cookiePlayerId}";
+                req.Headers["Cookie"] = $"mahjong_pid={signed}";
         }
         var uri = new Uri(server.BaseAddress, $"autotable/ws{queryString}");
         var ws = await wsClient.ConnectAsync(uri, CancellationToken.None);
@@ -250,6 +344,13 @@ public sealed class Issue153DefaultGameLifecycleTests : IAsyncLifetime
 
     private sealed class WsSession : IAsyncDisposable
     {
+        // A newcomer that JOINs a game whose bots are already playing can receive a handful of
+        // bot-driven full UPDATE broadcasts before its own JOINED ack wins the connection send
+        // lock. Bound the handshake-classify loop so a genuine protocol breach fails explicitly
+        // instead of blocking forever. The per-frame timeout in ReadEnvelopeAsync guards a
+        // STALLED stream; this guards an unbounded non-ack stream.
+        private const int MaxJoinHandshakeFrames = 64;
+
         private readonly WebSocket _ws;
         public string PlayerId { get; private set; } = string.Empty;
         public WsSession(WebSocket ws) { _ws = ws; }
@@ -257,10 +358,73 @@ public sealed class Issue153DefaultGameLifecycleTests : IAsyncLifetime
         public async Task<JsonElement> JoinAndReadAsync(string gameId)
         {
             await SendRawAsync(JsonSerializer.Serialize(new { type = "JOIN", gameId }));
-            var joined = await ReadEnvelopeAsync();
+            var (joined, _) = await ReadJoinHandshakeAsync(() => ReadEnvelopeAsync());
             PlayerId = joined.GetProperty("playerId").GetString() ?? string.Empty;
-            _ = await ReadEnvelopeAsync(); // initial full UPDATE
             return joined;
+        }
+
+        /// <summary>
+        /// Reads the post-JOIN handshake frames and returns the authoritative <c>JOINED</c> ack
+        /// plus the initial full <c>UPDATE</c>, <b>independent of the order in which they arrive</b>.
+        ///
+        /// <para>#153 provider-timing flake — <see cref="AutotableWsEndpoint.HandleJoinAsync"/>
+        /// sends <c>JOINED</c> (carrying <c>playerId</c>) and then a full <c>UPDATE</c> snapshot in
+        /// that program order, but those two writes race the connection's send-lock
+        /// (<c>SemaphoreSlim</c>) against the runtime's <c>StateChanged</c> broadcast drainer. When
+        /// this newcomer joins a game whose bots are already playing (the explicit-<c>gameId</c>
+        /// join pinned by <see cref="ExplicitGameId_NewPlayer_JoinsExistingGame_NotReset"/>), a
+        /// bot-driven full <c>UPDATE</c> can win the send lock and reach this socket <b>before</b>
+        /// the <c>JOINED</c> ack. The previous helper assumed frame position (frame 0 = ack) and
+        /// threw <see cref="KeyNotFoundException"/> reading <c>playerId</c> off that UPDATE — the
+        /// SqlServer-cell failure this fixes. Classify by the protocol discriminator (<c>type</c>)
+        /// and keep the first UPDATE rather than discarding whichever arrives first.</para>
+        /// </summary>
+        internal static async Task<(JsonElement Joined, JsonElement InitialUpdate)> ReadJoinHandshakeAsync(
+            Func<Task<JsonElement>> readEnvelope)
+        {
+            JsonElement? joined = null;
+            JsonElement? initialUpdate = null;
+
+            for (var frame = 0; frame < MaxJoinHandshakeFrames; frame++)
+            {
+                var envelope = await readEnvelope();
+                var type = envelope.TryGetProperty("type", out var typeEl)
+                           && typeEl.ValueKind == JsonValueKind.String
+                    ? typeEl.GetString()
+                    : null;
+
+                switch (type)
+                {
+                    case "JOINED":
+                        // The join-ack is identified by its discriminator AND its required shape:
+                        // a JOINED without a string playerId is a protocol breach, not a retry.
+                        if (!envelope.TryGetProperty("playerId", out var pid)
+                            || pid.ValueKind != JsonValueKind.String)
+                        {
+                            throw new InvalidOperationException(
+                                "JOINED ack missing required string 'playerId'.");
+                        }
+                        joined = envelope;
+                        break;
+
+                    case "UPDATE":
+                        // Preserve the FIRST authoritative snapshot even if it beat the ack.
+                        initialUpdate ??= envelope;
+                        break;
+
+                    default:
+                        throw new InvalidOperationException(
+                            $"Unexpected frame during JOIN handshake (type='{type ?? "<missing>"}').");
+                }
+
+                if (joined is not null && initialUpdate is not null)
+                    return (joined.Value, initialUpdate.Value);
+            }
+
+            throw new InvalidOperationException(
+                "JOIN handshake did not deliver both a JOINED ack and an initial UPDATE within "
+                + $"{MaxJoinHandshakeFrames} frames (joined={joined is not null}, "
+                + $"initialUpdate={initialUpdate is not null}).");
         }
 
         public async Task TakeSeatAsync(int seatIndex) => await SendUpdateAsync(new object[]
@@ -288,6 +452,14 @@ public sealed class Issue153DefaultGameLifecycleTests : IAsyncLifetime
             do
             {
                 result = await _ws.ReceiveAsync(buffer, cts.Token);
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    // Explicit failure on an unexpected terminal frame — no silent empty-string
+                    // parse (which would surface as an opaque JsonException instead).
+                    throw new InvalidOperationException(
+                        $"WebSocket closed during read (status={result.CloseStatus}, "
+                        + $"description='{result.CloseStatusDescription}').");
+                }
                 sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
             } while (!result.EndOfMessage);
             return JsonDocument.Parse(sb.ToString()).RootElement.Clone();

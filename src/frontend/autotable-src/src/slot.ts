@@ -71,6 +71,12 @@ export class Slot {
   // dropped tiles (always). Used for hand.
   rotateHeld: boolean;
 
+  // FE-7 / SC-2 — off-table park slot (see Setup.hiddenParkSlot). Off-table
+  // slots hold Things that are NOT rendered, are multi-tenant (their `thing`
+  // back-pointer is not authoritative) and must never be offered as a
+  // drag-drop target.
+  offTable: boolean;
+
   constructor(params: {
     name: string;
     group: string;
@@ -83,6 +89,7 @@ export class Slot {
     drawShadow?: boolean;
     shadowRotation?: number;
     rotateHeld?: boolean;
+    offTable?: boolean;
   }) {
     this.name = params.name;
     this.group = params.group;
@@ -95,6 +102,7 @@ export class Slot {
     this.drawShadow = params.drawShadow ?? false;
     this.shadowRotation = params.shadowRotation ?? 0;
     this.rotateHeld = params.rotateHeld ?? false;
+    this.offTable = params.offTable ?? false;
 
     this.places = this.rotations.map(this.makePlace.bind(this));
     this.offset = new Vector2(0, 0);
@@ -160,6 +168,7 @@ export class Slot {
     slot.drawShadow = this.drawShadow;
     slot.shadowRotation = this.shadowRotation;
     slot.rotateHeld = this.rotateHeld;
+    slot.offTable = this.offTable;
     slot.indexes = this.indexes.slice();
     return slot;
   }

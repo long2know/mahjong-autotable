@@ -68,7 +68,8 @@ public static class ChangshaToAutotableTranslator
         ChangshaGameState? state,
         int? viewerSeat = null,
         string? viewerPlayerId = null,
-        int claimWindowTimeoutMs = 0)
+        int claimWindowTimeoutMs = 0,
+        ChangshaPrivacyProjector? privacy = null)
     {
         var entries = new List<CollectionEntry>();
 
@@ -117,14 +118,30 @@ public static class ChangshaToAutotableTranslator
             }));
         }
 
+        // R-1 FINAL (Vasquez/Ripley, BINDING) — compute the wall front→slot mapping EXACTLY ONCE,
+        // here, and share it with BOTH the wall `things` emission AND pickup.targetSlots. Capturing
+        // targetSlots from the SAME computation (never a second copy of the ordinal math) makes
+        // `hovered.slot ∈ targetSlots` self-consistent by construction and correct REGARDLESS of §F1
+        // (F1 only shifts the whole arc anchor — SC-3 — it never desyncs these two co-derived views).
+        var wallFrontSlots = ComputeWallFrontSlots(state);
+
         // things — 108 entries: one per Changsha tile placed at its current slot.
-        foreach (var entry in BuildThingEntries(state, viewerSeat))
+        foreach (var entry in BuildThingEntries(state, viewerSeat, privacy, wallFrontSlots))
         {
             entries.Add(entry);
         }
 
         // claim window — one entry per seat that currently has an opportunity.
         // The bundle's claim collection drives the 碰/吃/杠/胡 buttons (Phase B scene).
+        //
+        // BE-4 (Ripley §9.1 / RC-6) — claim-close tombstone. The bundle caches
+        // `activeClaim` and only clears it on an EXPLICIT self-seat null entry
+        // (game-ui.ts:onClaimUpdate); an omitted `claim` slice leaves a stale "Pung"
+        // window coexisting with the discard cue. So on EVERY snapshot we emit an
+        // explicit `claim[seat]=null` tombstone for every seat that does NOT currently
+        // hold an opportunity (all four when no window is open). Idempotent + harmless;
+        // the move-log skips null entries, the overlay clears.
+        var opportunitySeats = new HashSet<int>();
         if (state.ClaimWindow is { } window && state.Phase == ChangshaPhase.AwaitingClaim)
         {
             // Frost 2026-05-29 — emit a real deadline (epoch ms) so the autotable
@@ -144,6 +161,7 @@ public static class ChangshaToAutotableTranslator
                     .Select(o => ClaimTypeToWire(o.ClaimType))
                     .Distinct()
                     .ToList();
+                opportunitySeats.Add(seatGroup.Key);
                 entries.Add(ChangshaCollectionEncoder.EncodeClaimWindow(
                     seatGroup.Key,
                     available,
@@ -151,6 +169,11 @@ public static class ChangshaToAutotableTranslator
                     window.DiscardTileId,
                     deadlineUnixMs: deadlineUnixMs));
             }
+        }
+        for (var seat = 0; seat < state.Seats.Count; seat++)
+        {
+            if (!opportunitySeats.Contains(seat))
+                entries.Add(ChangshaCollectionEncoder.EncodeClaimWindowClosed(seat));
         }
 
         // result — populated while the completed hand is on screen (EndHand), and explicitly
@@ -185,13 +208,20 @@ public static class ChangshaToAutotableTranslator
 
         // ── Phase F: pickup collection ──
         // Emitted while the manual-deal state machine is parked in any pickup phase;
-        // drives the autotable scene's "Take Tiles" affordance. When the deal completes
-        // and the runtime hands off to AwaitingDiscard, the entry is tombstoned by the
-        // runtime-emitted snapshot via <see cref="ChangshaCollectionEncoder.EncodePickupCleared"/>
-        // so the scene clears its UI.
+        // drives the autotable scene's "Take Tiles" affordance.
+        //
+        // R-1 E3 (Vasquez, BINDING) — when NOT in a pickup phase (e.g. the deal completed
+        // and handed off to AwaitingDiscard, or an auto game), emit an EXPLICIT pickup
+        // tombstone (pickup['current']=null). Pre-E3 this was only described in a comment and
+        // never emitted, so the bundle's sticky `pickup` collection kept isMyPickupTurn()
+        // TRUE after the deal and left the wall wrongly interactive during the discard turn.
         if (ChangshaGameStateMachine.IsPickupPhase(state.Phase))
         {
-            entries.Add(ChangshaCollectionEncoder.EncodePickup(BuildPickupEntry(state)));
+            entries.Add(ChangshaCollectionEncoder.EncodePickup(BuildPickupEntry(state, wallFrontSlots)));
+        }
+        else
+        {
+            entries.Add(ChangshaCollectionEncoder.EncodePickupCleared());
         }
 
         // ── C-1/C-2: authoritative turn cue ──
@@ -214,7 +244,7 @@ public static class ChangshaToAutotableTranslator
         return entries;
     }
 
-    private static PickupEntry BuildPickupEntry(ChangshaGameState state)
+    private static PickupEntry BuildPickupEntry(ChangshaGameState state, List<string> wallFrontSlots)
     {
         BreakPointWire? bp = null;
         if (state.BreakPoint is { } b)
@@ -227,11 +257,13 @@ public static class ChangshaToAutotableTranslator
             };
         }
 
-        return new PickupEntry
+        var count = ChangshaGameStateMachine.ExpectedPickupCount(state.Phase);
+
+        var entry = new PickupEntry
         {
             Phase = state.Phase.ToString(),
             SeatIndex = state.PickupSeatIndex ?? state.DealerSeatIndex,
-            Count = ChangshaGameStateMachine.ExpectedPickupCount(state.Phase),
+            Count = count,
             DealMode = state.DealMode == DealMode.Manual ? "manual" : "auto",
             BreakPoint = bp,
             // Wall front is always index 0 after BreakPointToWall rotation, but expose
@@ -239,6 +271,38 @@ public static class ChangshaToAutotableTranslator
             // (e.g., "Wall: 55 tiles left").
             WallIndex = 0
         };
+
+        ApplyPickupTargetSlots(entry, wallFrontSlots, count);
+        return entry;
+    }
+
+    /// <summary>
+    /// Populates the manual-pickup match key. <b>Ripley CANONICAL KEY LOCK (2026-08-07T11:23, "no more
+    /// pivots"):</b> the pickup match key is <c>pickup.targetSlots</c> (public render slots) — the opaque
+    /// <c>targetHandles</c> refinement is DEAD/superseded. SC-2 opaque handles remain the render/identity
+    /// key for hidden wall/foreign-hand <c>things</c> (orthogonal — a separate field, NOT the pickup key).
+    /// All match-key population lives ONLY here (single seam), co-derived from the shared
+    /// <see cref="ComputeWallFrontSlots"/> pass (the same slots the wall <c>things</c> were placed at — one
+    /// pass, no second ordinal-math copy).
+    /// <para><b>Length = SINGLE trigger</b> (<c>targetSlots = [Wall[0]]</c>, reachable top-first). This
+    /// matches (a) Hicks's SHIPPED matcher <c>hovered.slot.name === targetSlots[0]</c>, which FAILS CLOSED
+    /// on <c>length != 1</c>, and (b) Vasquez's rules invariant "single actionable exposed-end tile takes
+    /// the whole batch." The full <c>Wall[0..count-1]</c> batch is exposed separately as display-only
+    /// <see cref="PickupEntry.BatchPreviewSlots"/>; the server takes <c>Wall[0..count-1]</c> by count.</para>
+    /// <para><b>No raw <c>targetTileIds</c></b> (parent 11:14): omitted here entirely. Ripley scopes
+    /// <c>targetTileIds</c> as per-viewer PROJECTED reveal/animation only (never the match key); if a
+    /// future reveal needs it, emit it PROJECTED (opaque handles when privacy is on) so no raw wall id
+    /// ever crosses the wire. The explicit <c>EncodePickupCleared</c> tombstone is already emitted
+    /// state-driven (R-1 E3) when leaving a pickup phase.</para>
+    /// </summary>
+    private static void ApplyPickupTargetSlots(PickupEntry entry, List<string> wallFrontSlots, int count)
+    {
+        entry.TargetSlots = wallFrontSlots.Count > 0
+            ? new List<string> { wallFrontSlots[0] }
+            : new List<string>();
+
+        var take = Math.Min(count, wallFrontSlots.Count);
+        entry.BatchPreviewSlots = wallFrontSlots.GetRange(0, Math.Max(0, take));
     }
 
     internal static HandResultEntry BuildHandResult(ChangshaGameState state)
@@ -403,15 +467,36 @@ public static class ChangshaToAutotableTranslator
 
     private static object BuildMatch(ChangshaGameState? state)
     {
-        // Conditions shape mirrors upstream src/types.ts. We force fives='000'
-        // so the bundle creates 4 regular copies of every 5-tile (red-5 disabled).
+        // BE-1 (Ripley §9.1 / RC-1/RC-10/RC-13) — authoritative match identity.
+        //
+        // The pre-BE-1 payload hardcoded gameType="FOUR_PLAYER" + dealType="INITIAL"
+        // (a Riichi-only legacy compat lie): the bundle's `updateVariantBadge` reads
+        // conditions.gameType and painted "🎴 Riichi 4p" over a Changsha game, and an
+        // Auto game booted MANUAL/INITIAL (all-in-walls, face-down) because no
+        // authoritative dealMode was surfaced. We now surface the TRUE variant and
+        // deal identity while keeping the tile-catalog decoupled:
+        //
+        //   • gameType   = "CHANGSHA"  — honest; the bundle already pins gameType to
+        //                  the URL variant (world.onMatch), so this is a no-op for the
+        //                  108-tile catalog/geometry yet stops the surfaced lie.
+        //   • variant    = "changsha" — dedicated trusted field FE-4 reads for every
+        //                  label/badge/body-class (decoupled from the catalog selector).
+        //   • fives      = "000"       — UNCHANGED: red-5 disabled ⇒ clean 1:1
+        //                  thing-index==tileId, typeIndex==tileId/4. Catalog stays 108.
+        //   • dealMode   = auto|manual — authoritative (RC-13); the chrome derives
+        //                  manual-pickup vs auto expectations from THIS, not a default.
+        //   • dealType   = HANDS (auto, hands already dealt) | INITIAL (manual, pre-deal
+        //                  all-in-walls) — authoritative, removes the INITIAL lie for Auto.
+        var mode = state?.DealMode ?? DealMode.Auto;
         var conditions = new
         {
-            gameType = "FOUR_PLAYER",
+            gameType = "CHANGSHA",
+            variant = "changsha",
             back = 0,
             fives = "000",
             points = "25",
-            dealType = "INITIAL"
+            dealMode = mode == DealMode.Manual ? "manual" : "auto",
+            dealType = mode == DealMode.Manual ? "INITIAL" : "HANDS"
         };
 
         var dealer = state?.DealerSeatIndex ?? 0;
@@ -421,9 +506,42 @@ public static class ChangshaToAutotableTranslator
 
     // ── things ───────────────────────────────────────────────────────
 
+    /// <summary>
+    /// R-1 FINAL (Vasquez/Ripley) — the SINGLE source of the wall front→slot mapping. Index i is the
+    /// render slot of the i-th tile from the exposed front (state.Wall[i]); the pre-deal synthesized
+    /// wall walks ordinal 0..107. Called ONCE per snapshot and shared by the wall `things` emission and
+    /// pickup.targetSlots so the two can never diverge (and stay consistent under any §F1 anchor).
+    /// </summary>
+    private static List<string> ComputeWallFrontSlots(ChangshaGameState state)
+    {
+        var slots = new List<string>();
+        if (ShouldSynthesizeWall(state))
+        {
+            for (var ordinal = 0; ordinal < AutotableSlotMap.TotalTiles; ordinal++)
+            {
+                var (seat, col, layer) = AutotableSlotMap.WallOrdinalToSlot(ordinal);
+                slots.Add(AutotableSlotMap.WallSlot(seat, col, layer));
+            }
+            return slots;
+        }
+
+        var dealerOrigin = AutotableSlotMap.WallDealerOriginOrdinal(state.DealerSeatIndex);
+        var breakOrdinal = state.BreakPoint is { } bp ? dealerOrigin + bp.TileIndex : dealerOrigin;
+        var frontDrawn = AutotableSlotMap.TotalTiles - state.Wall.Count - state.WallBackDrawn;
+        if (frontDrawn < 0) frontDrawn = 0;
+        for (var i = 0; i < state.Wall.Count; i++)
+        {
+            var (seat, col, layer) = AutotableSlotMap.WallOrdinalToSlot(breakOrdinal + frontDrawn + i);
+            slots.Add(AutotableSlotMap.WallSlot(seat, col, layer));
+        }
+        return slots;
+    }
+
     private static IEnumerable<CollectionEntry> BuildThingEntries(
         ChangshaGameState state,
-        int? viewerSeat)
+        int? viewerSeat,
+        ChangshaPrivacyProjector? privacy,
+        List<string> wallFrontSlots)
     {
         // Compute per-seat discard layout up front. Discards land row-major
         // into a 3×6 radial tray per seat (upstream supports up to 18 + 4
@@ -445,7 +563,8 @@ public static class ChangshaToAutotableTranslator
                 var tileId = hand.ConcealedTiles[i];
                 var slot = AutotableSlotMap.HandSlot(seat, i);
                 placedTiles.Add(tileId);
-                yield return BuildThingEntry(tileId, slot, concealedRotation);
+                // SC-2/G19 entitlement: own concealed hand is visible; a foreign concealed hand is hidden.
+                yield return BuildThingEntry(tileId, slot, concealedRotation, seat != viewerSeat, privacy);
             }
 
             for (var m = 0; m < hand.Melds.Count; m++)
@@ -455,13 +574,16 @@ public static class ChangshaToAutotableTranslator
                 // hidden; all other melds are exposed.
                 var isConcealedKong = meld.Kind == MeldKind.ConcealedKong;
                 var rotation = isConcealedKong ? MeldRotFaceDown : MeldRotFaceUp;
+                // SC-2/G19 entitlement: exposed melds (chow/pung/exposed+added kong) are public;
+                // a concealed kong is visible only to its OWNER, hidden from everyone else.
+                var meldHidden = isConcealedKong && seat != viewerSeat;
 
                 for (var t = 0; t < meld.TileIds.Count; t++)
                 {
                     var tileId = meld.TileIds[t];
                     var slot = AutotableSlotMap.MeldSlot(seat, m, t);
                     placedTiles.Add(tileId);
-                    yield return BuildThingEntry(tileId, slot, rotation);
+                    yield return BuildThingEntry(tileId, slot, rotation, meldHidden, privacy);
                 }
             }
         }
@@ -476,10 +598,11 @@ public static class ChangshaToAutotableTranslator
             var row = Math.Min(2, index / 6);
             var col = Math.Min(5, index % 6);
             placedTiles.Add(discard.TileId);
+            // SC-2/G19 entitlement: ALL discards are public → real tileId (never a handle).
             yield return BuildThingEntry(
                 discard.TileId,
                 AutotableSlotMap.DiscardSlot(seat, row, col),
-                DiscardRotFaceUp);
+                DiscardRotFaceUp, hidden: false, privacy);
         }
 
         // Wall — remaining tiles. Place them into wall slots in canonical
@@ -528,26 +651,14 @@ public static class ChangshaToAutotableTranslator
         {
             for (var ordinal = 0; ordinal < AutotableSlotMap.TotalTiles; ordinal++)
             {
-                var (seat, col, layer) = AutotableSlotMap.WallOrdinalToSlot(ordinal);
                 placedTiles.Add(ordinal);
-                yield return BuildThingEntry(ordinal, AutotableSlotMap.WallSlot(seat, col, layer), WallRotFaceDown);
+                // SC-2/G19: ALL wall tiles are hidden from every viewer (pre-take) → opaque handle.
+                // Slot comes from the shared ComputeWallFrontSlots pass (no second ordinal math).
+                yield return BuildThingEntry(ordinal, wallFrontSlots[ordinal], WallRotFaceDown, hidden: true, privacy);
             }
         }
         else
         {
-            // Authoritative break anchor: the render-ring origin of the dealer's
-            // physical wall plus the engine's flat break TileIndex. This replaces the
-            // superseded dealer-relative/absolute WallBreakOrdinal clamp, which drifted
-            // one stack off the true break for most dealer-2 rolls (and some rolls at
-            // every dealer). When there is no break point yet the wall is full, so the
-            // origin alone is a harmless identity anchor.
-            var dealerOrigin = AutotableSlotMap.WallDealerOriginOrdinal(state.DealerSeatIndex);
-            var breakOrdinal = state.BreakPoint is { } bp
-                ? dealerOrigin + bp.TileIndex
-                : dealerOrigin;
-            var frontDrawn = AutotableSlotMap.TotalTiles - state.Wall.Count - state.WallBackDrawn;
-            if (frontDrawn < 0) frontDrawn = 0;
-
             if (state.Wall.Count > AutotableSlotMap.TotalTiles)
             {
                 throw new InvalidOperationException(
@@ -557,10 +668,10 @@ public static class ChangshaToAutotableTranslator
 
             for (var i = 0; i < state.Wall.Count; i++)
             {
-                var ordinal = breakOrdinal + frontDrawn + i;
-                var (seat, col, layer) = AutotableSlotMap.WallOrdinalToSlot(ordinal);
                 placedTiles.Add(state.Wall[i]);
-                yield return BuildThingEntry(state.Wall[i], AutotableSlotMap.WallSlot(seat, col, layer), WallRotFaceDown);
+                // SC-2/G19: ALL wall tiles hidden from every viewer (incl. the pre-take pickup target) →
+                // opaque handle. Slot is the co-derived wallFrontSlots[i] (same pass as pickup.targetSlots).
+                yield return BuildThingEntry(state.Wall[i], wallFrontSlots[i], WallRotFaceDown, hidden: true, privacy);
             }
         }
     }
@@ -588,16 +699,21 @@ public static class ChangshaToAutotableTranslator
         return true;
     }
 
-    private static CollectionEntry BuildThingEntry(int changshaTileId, string slotName, int rotationIndex)
+    private static CollectionEntry BuildThingEntry(int changshaTileId, string slotName, int rotationIndex,
+        bool hidden = false, ChangshaPrivacyProjector? privacy = null)
     {
-        // thing-index intentionally equals the Changsha tile id (locked at
-        // fives='000'). See class-level remarks.
-        //
+        // Wire KEY: real Changsha tileId when the tile is visible to the viewer (client resolves
+        // face via tileId/4). SC-2/G19 — when the tile is HIDDEN from the viewer and a per-viewer
+        // privacy projector is supplied, the key becomes an opaque server-secret handle that reveals
+        // no rank/suit. With no projector (pre-SC-2 / privacy disabled) the key stays the real tileId,
+        // preserving the current bundle's key==tileId contract.
+        object key = privacy is not null ? privacy.Key(changshaTileId, hidden) : changshaTileId;
+
         // Typed ThingInfo (not an anonymous object) so claimedBy / shiftSlotName carry an EXPLICIT
         // null on the wire — the C-1 contract types them number|null / string|null (present), and
         // the relay path already emits explicit null. An anonymous object's nulls are dropped by the
         // shared WhenWritingNull serializer; ThingInfo's [JsonIgnore(Never)] overrides that.
-        return new CollectionEntry("things", changshaTileId, new ThingInfo
+        return new CollectionEntry("things", key, new ThingInfo
         {
             SlotName = slotName,
             RotationIndex = rotationIndex,

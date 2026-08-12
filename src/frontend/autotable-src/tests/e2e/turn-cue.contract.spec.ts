@@ -12,6 +12,8 @@ import {
   computeTurnCue,
   isMyDiscardTurn,
   resolveActiveSeat,
+  claimActionable,
+  selectSelfClaim,
   newGameBannerA11y,
   TurnCueInput,
 } from '../../src/turn-cue';
@@ -169,5 +171,60 @@ test.describe('turn-cue — newGameBannerA11y (actionable New Game banner)', () 
 
   test('non-actionable ⇒ null (game-ui resets to the click-through status pill)', () => {
     expect(newGameBannerA11y(false)).toBeNull();
+  });
+});
+
+test.describe('turn-cue — claimActionable (R-1 §D9 claim/discard exclusivity)', () => {
+  test('a genuine claim (not my discard/pickup turn) is actionable', () => {
+    expect(claimActionable(true, false, false)).toBe(true);
+  });
+
+  test('no claim ⇒ never actionable', () => {
+    expect(claimActionable(false, false, false)).toBe(false);
+  });
+
+  test('STALE claim during my discard turn ⇒ suppressed (the D9 stale-window bug)', () => {
+    expect(claimActionable(true, true, false)).toBe(false);
+  });
+
+  test('claim during my pickup turn ⇒ suppressed (mutually exclusive)', () => {
+    expect(claimActionable(true, false, true)).toBe(false);
+  });
+});
+
+test.describe('turn-cue — D4 deterministic claim teardown (selectSelfClaim)', () => {
+  type Claim = { available: string[] };
+  const open: Claim = { available: ['Pung'] };
+
+  test('a close tombstone for my seat is honored VERBATIM (targeted + null ⇒ tear down)', () => {
+    // EncodeClaimWindowClosed ⇒ ["claim", selfKey, null]. Must NOT fall back to
+    // the collection — the overlay tears down deterministically.
+    const r = selectSelfClaim<Claim>([['0', null]], '0');
+    expect(r.targeted).toBe(true);
+    expect(r.value).toBeNull();
+  });
+
+  test('an open window for my seat is surfaced', () => {
+    const r = selectSelfClaim<Claim>([['0', open]], '0');
+    expect(r.targeted).toBe(true);
+    expect(r.value).toBe(open);
+  });
+
+  test('a batch that only touches OTHER seats does not target me (⇒ caller keeps/reads collection)', () => {
+    const r = selectSelfClaim<Claim>([['1', open], ['2', null]], '0');
+    expect(r.targeted).toBe(false);
+    expect(r.value).toBeNull();
+  });
+
+  test('last write for my seat wins within a batch (open then close ⇒ closed)', () => {
+    const r = selectSelfClaim<Claim>([['0', open], ['0', null]], '0');
+    expect(r.targeted).toBe(true);
+    expect(r.value).toBeNull();   // the trailing close tombstone wins ⇒ tear down
+  });
+
+  test('empty batch ⇒ not targeted (reconnect/full-sync handled by the collection fallback)', () => {
+    const r = selectSelfClaim<Claim>([], '0');
+    expect(r.targeted).toBe(false);
+    expect(r.value).toBeNull();
   });
 });

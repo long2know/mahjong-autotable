@@ -77,7 +77,12 @@ export interface DiscardCommand {
 export class Client extends BaseClient {
   match: Collection<number, MatchInfo>;
   seats: Collection<string, SeatInfo>;
-  things: Collection<number, ThingInfo>;
+  // FE-7/SC-2 (G19) — the `things` key is `string|number`: numeric 0..107 for
+  // real/entitled tiles, an OPAQUE per-viewer STRING handle for hidden tiles
+  // (foreign concealed hands, ALL wall tiles, concealed kongs). Consumers MUST
+  // branch on `typeof key === 'string'` (see changsha-mode-policy.isOpaqueHandle)
+  // and never do tile-index arithmetic on a string handle.
+  things: Collection<string | number, ThingInfo>;
   nicks: Collection<string, string>;
   mouse: Collection<string, MouseInfo>;
   sound: Collection<number, SoundInfo>;
@@ -90,9 +95,9 @@ export class Client extends BaseClient {
   result: Collection<string, HandResultEntry>;
   // Phase F — manual-pickup state machine.  Singleton (key=0) carrying the
   // currently-expected pickup affordance pushed by ChangshaToAutotableTranslator.
-  //   • Inbound  : ["pickup", 0, { phase, seatIndex, count, dealMode, breakPoint, wallIndex }]
+  //   • Inbound  : ["pickup", 0, { phase, seatIndex, count, dealMode, breakPoint, wallIndex, targetSlots }]
   //   • Outbound : ["pickup", "rollDice", { seatIndex }]  (dealer clicks dice)
-  //                ["pickup", "take",     { seatIndex, wallTileIds: number[] }]  (player picks N tiles)
+  //                ["pickup", "take",     { seatIndex, count }]  (player takes the batch; SC-4/G19 — no wall ids/slot/handle on the wire, server validates by phase/seat/count)
   // The collection is ephemeral — it never participates in connect-time
   // replay (the backend pushes the live phase on JOIN/NEW).  Keys widened to
   // string|number so the singleton snapshot and the command-shaped outbound

@@ -89,7 +89,20 @@ jobs:
   matrix-test:
     name: Test (${{ matrix.provider }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Per-cell wall-clock budget. The Postgres cell is the long pole: the
+    # W23 isolation harness drops+recreates the `public` schema and re-runs
+    # the full migration history once per DB-touching test class
+    # (MAT_TEST_RESET_DB=1), and xunit.runner.json serializes every
+    # collection — so the ~5.9k-test suite is fsync-bound and highly
+    # sensitive to runner disk I/O. Observed Postgres-cell job wall-clock for
+    # an identical (0-failure) test count has ranged 13m53s → 30m07s; the
+    # slow tail correlates with runner I/O saturation (a single Postgres
+    # checkpoint stalled 274s / 36k sync files in run 31576171279, which then
+    # tripped the old 30-minute cap 0.05s AFTER the suite printed "Passed!").
+    # 45 = 1.5x the worst observed completion (~30m) — headroom for an
+    # I/O-starved runner while still killing a genuine hang/deadlock. Sqlite
+    # (~9m) and SqlServer (~17m) finish well inside this and exit early.
+    timeout-minutes: 45
 
     strategy:
       fail-fast: false

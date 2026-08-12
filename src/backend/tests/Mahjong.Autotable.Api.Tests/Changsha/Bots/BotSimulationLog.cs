@@ -80,13 +80,17 @@ public class BotSimulationLog
                     var seat = state.ActiveSeatIndex;
                     var hand = state.Hands[seat];
                     var total = hand.ConcealedTiles.Count + hand.Melds.Sum(m => m.TileIds.Count);
-                    if (total == 13)
+                    // Kong-aware draw gate (BotTurnHarness.PreDrawTileCount): a K-kong seat sits
+                    // at 13+K; the old flat `== 13` spun the harness to its step guard.
+                    if (total == _TestHarness.BotTurnHarness.PreDrawTileCount(hand))
                     {
                         ChangshaGameStateMachine.DrawTile(state);
                         if (state.Phase == ChangshaPhase.WallExhausted) break;
                         continue;
                     }
-                    if (hand.ConcealedTiles.Count == 0) break;
+                    // Terminate the hand (not `break`: a bare break only exits the switch and
+                    // re-enters the while, spinning to the step guard). Unreachable post-gate.
+                    if (hand.ConcealedTiles.Count == 0) return -2;
                     var action = strategies[seat].DecideAction(state, seat);
                     switch (action.Type)
                     {

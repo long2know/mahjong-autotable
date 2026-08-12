@@ -39,13 +39,23 @@ headers. The session token is a deterministic hex string derived
 from `playerId` — no DB row is inserted. Use when the controller
 under test does NOT validate the session against the DB.
 
+> **`mahjong_pid` is UNSIGNED in this overload.** It has no
+> `IServiceProvider`, so it cannot mint the signed identity credential.
+> The server rejects unsigned identity cookies and issues a fresh
+> identity instead, so it will NOT resolve as `playerId`. Use overload 2
+> or 3 (or `TestHttpClientExtensions.SignedPlayerIdCookie(services, playerId)`)
+> whenever the endpoint under test must resolve THIS player id.
+
 ### Overload 2 — DB-aware (`HttpClient` + `IServiceProvider` + `Guid`)
 
 ```csharp
 client.WithDirectSession(factory.Services, playerId);
 ```
 
-Same cookie wiring as overload 1, plus inserts a matching
+Same cookie wiring as overload 1 — except `mahjong_pid` carries a
+properly **signed** identity credential (minted through the host's own
+`PlayerIdentityService`), so the server resolves it as `playerId` —
+plus inserts a matching
 `PlayerProfile` + `PlayerAuthIdentity` + `PlayerAuthSession` row
 into the test DB (resolved via `IServiceProvider.GetRequiredService<AppDbContext>()`).
 Use when the controller validates the cookie via the DB lookup path

@@ -142,11 +142,19 @@ public static class AutotableSlotMap
     /// <summary>
     /// Maps a <b>perimeter ordinal</b> in [0, 108) to a stable physical wall
     /// slot, walking <b>seat-major</b> (seat 0's whole wall, then seat 1, 2, 3),
-    /// columns ascending, layer 0 (bottom) then layer 1 (top). Consecutive
-    /// ordinals are physically adjacent, so a contiguous draw-order run occupies
-    /// a contiguous physical arc — the invariant that makes the live wall
-    /// deplete from the break point around the perimeter instead of scattering
-    /// evenly across all four seats (issue #152).
+    /// columns ascending. Consecutive ordinals are physically adjacent, so a
+    /// contiguous draw-order run occupies a contiguous physical arc — the
+    /// invariant that makes the live wall deplete from the break point around
+    /// the perimeter instead of scattering evenly across all four seats
+    /// (issue #152).
+    ///
+    /// <para><b>F2 top-first intra-stack layering:</b> within a stack the
+    /// <b>front (even) ordinal</b> — the tile drawn/broken first — maps to
+    /// <b>layer 1 (top)</b> and the odd ordinal to <b>layer 0 (bottom)</b>.
+    /// Physical Changsha play breaks the top tile of a stack before the one
+    /// beneath it, so ordinal <c>2n → layer 1</c> and <c>2n+1 → layer 0</c>
+    /// keeps the render's depletion order matching the physical draw order.
+    /// Seat and column mapping are unchanged.</para>
     ///
     /// <para>Per-seat capacity is <c>WallStackCount(seat) * 2</c>
     /// (28/28/26/26), so the returned <c>col</c> is always within
@@ -158,7 +166,7 @@ public static class AutotableSlotMap
         for (var seat = 0; seat < 4; seat++)
         {
             var capacity = WallTileCapacity(seat);
-            if (o < capacity) return (seat, o / 2, o % 2);
+            if (o < capacity) return (seat, o / 2, 1 - (o % 2));
             o -= capacity;
         }
         // Unreachable: o is reduced modulo TotalTiles and the seat capacities sum to TotalTiles.

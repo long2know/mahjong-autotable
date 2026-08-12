@@ -700,6 +700,36 @@ The W10 service is registered in `Program.cs` via the `JwksCacheService.CreateWi
 
 The `JwksCacheService.SizeLimit` constant is pinned at 16 (contract test in `Phase_K_W10/Bishop/JwksCacheHygieneTests.cs`). The 16-entry ceiling is comfortably larger than the single payload the service stores today but small enough that any future misuse (e.g. a per-tenant key) trips the cap immediately rather than growing without bound.
 
+## 8b. Player-identity cookie (`mahjong_pid`) — same keys, same rotation
+
+The durable player-identity cookie is **signed with the same HS256 key set** documented above,
+so it inherits this runbook rather than adding a second key surface.
+
+* **Format (v1):** `mpid1.<base64url(playerId)>.<kid>.<base64url(HMAC-SHA256)>` — a versioned,
+  tamper-evident envelope. The `playerId` inside it is a PUBLIC identifier (broadcast in the
+  autotable `seats`/`nicks` wire keys); the signature is what makes the cookie a credential.
+* **Key derivation:** each `Authentication:JwtSigningKeys[i]` is treated as HKDF **input key
+  material** and expanded with `HKDF(SHA-256, info = "mahjong-autotable/player-identity-cookie/v1")`.
+  The raw signing key is never used as the identity MAC key, so this subsystem shares no
+  effective key with JWT issuance (same key-separation rule as the SC-2 tile-handle provider).
+* **Rotation semantics:** index 0 signs; **every** loaded key verifies (kid fast-path, then
+  try-all). A cookie minted under a previous key keeps the player signed in and is transparently
+  re-signed with the new primary on the next request — so the annual procedure in §4 is
+  zero-downtime for player identity too. A key removed from the list stops verifying: those
+  browsers are silently rotated onto a brand-new identity (they lose profile continuity, not
+  access), which is why the previous key must stay in the list for the overlap window.
+* **Fail-closed at boot:** `PlayerIdentityStartupValidator` throws in Production when the
+  provider fell back to a per-process random key. §7's HS256 `requireOperatorKeys` guard does not
+  fire for an RS256 host, so this closes that gap — an RS256 deployment must still set
+  `Authentication__JwtSigningKeys__0` for identity signing.
+* **Development/Test:** the per-process random key is used and logged explicitly. Identities are
+  unforgeable but **reset on every restart**; configure a stable key to keep them.
+* **Cookie attributes:** `HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000`, plus `Secure`
+  whenever the request is HTTPS. Set `Identity:RequireSecureCookie=true` when TLS terminates at a
+  proxy that does not forward the scheme. Do **not** set it for a plain-HTTP deployment (the
+  default container serves `http://+:8080`) — browsers would drop the cookie and every request
+  would mint a new identity.
+
 ## 9. Cross-references
 
 * [`docs/jwt-ssm-runbook.md`](jwt-ssm-runbook.md) — SSM-Parameter-Store-focused operator runbook (RS256 keypair custody, §8 above is the canonical procedure).

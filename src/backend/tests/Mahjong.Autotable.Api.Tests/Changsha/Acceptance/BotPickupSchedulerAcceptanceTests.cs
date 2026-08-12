@@ -456,4 +456,97 @@ public sealed class BotPickupSchedulerAcceptanceTests
         }
         return false;
     }
+
+    // ── Vasquez rev2 — bot DEALER opening roll on hand 1 (StartGame scheduling seam) ──
+
+    [Fact, Trait("Category", "Acceptance"), Trait("Contract", "bot-dealer-startgame")]
+    public async Task ManualBotDealer_HandOne_AutoRolls_And_DrivesPickupChain_ToAwaitingDiscard()
+    {
+        // Vasquez rev2 ROOT CAUSE of the live "pickup.targetSlots length 0": StartGameAsync's
+        // manual branch never scheduled a BOT dealer's opening roll, so a manual game whose
+        // dealer is a bot parked in RollingDice on hand 1 — the deal ceremony never began and
+        // pickup stayed a null tombstone. With the seam fixed (StartGameAsync manual branch now
+        // calls ScheduleBotIfNeededAsync), a bot dealer auto-rolls and the whole pickup chain
+        // runs to AwaitingDiscard with no human input. RED (pre-fix): times out in RollingDice.
+        // Fixed seam + a HIGH bot TURN delay so the dealer does NOT discard the instant the
+        // deal completes: this gives a deterministic window to assert the EXACT post-deal
+        // 14/13/13/13 at the AwaitingDiscard transition before any autonomous bot turn mutates
+        // the dealer's hand (14 -> 13). Pickup delay stays low so the ceremony runs quickly.
+        await using var harness = new RuntimeHarness(o => { o.BotPickupDelayMs = 20; o.BotTurnDelayMs = 3000; });
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+        var gameId = await CreateManualGameAsync(runtime, botSeats: new[] { 0, 1, 2, 3 },
+            dealerSeat: 0, seed: 2027, ct: cts.Token);
+        Assert.True(Snapshot(runtime, gameId).Seats[0].IsBot, "dealer seat 0 must be a bot for this regression.");
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+
+        // No human presses "roll" — the fixed StartGame seam must schedule the bot dealer's roll.
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase != ChangshaPhase.RollingDice,
+            TimeSpan.FromSeconds(6),
+            "bot dealer never auto-rolled on hand 1 (StartGame manual branch did not schedule the opening roll)");
+
+        // The full pickup ceremony drives all four seats to the AwaitingDiscard transition.
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase == ChangshaPhase.AwaitingDiscard,
+            TimeSpan.FromSeconds(10),
+            "bot-dealer manual pickup chain never reached AwaitingDiscard");
+
+        // Assert the EXACT canonical deal AT the transition. The 3s bot-turn delay guarantees the
+        // dealer has NOT yet discarded, so this proves the bot-dealer ceremony dealt 14/13/13/13
+        // and consumed the 53 pickup tiles (wall 108 -> 55) — captured before later bot turns
+        // mutate it (de-flaked; no broad eventual condition).
+        var s = Snapshot(runtime, gameId);
+        Assert.Equal(ChangshaPhase.AwaitingDiscard, s.Phase);
+        Assert.Equal(14, HandCount(s, 0)); // dealer drew its 14th (DealerExtra)
+        Assert.Equal(13, HandCount(s, 1));
+        Assert.Equal(13, HandCount(s, 2));
+        Assert.Equal(13, HandCount(s, 3));
+        Assert.Equal(55, s.Wall.Count); // 108 - 53 dealt
+    }
+
+    [Fact, Trait("Category", "Acceptance"), Trait("Contract", "bot-dealer-startgame")]
+    public async Task ManualBotDealer_HumanNonDealer_ProgressesPastRollingDice_IntoPickupChain()
+    {
+        // Human at seat 1 (non-dealer); bot dealer at seat 0. The fixed StartGame seam auto-rolls
+        // the bot dealer through RollDice into the pickup ceremony; the bot dealer takes its own
+        // batch, then the chain marches and STALLS at the human's pickup seat (which requires a
+        // manual `take`). Proof of progression THROUGH RollDice and the pickup chain: the game
+        // left RollingDice (was stuck forever pre-fix) and is parked in a pickup phase whose
+        // cursor is the human seat, with the human's hand still empty.
+        await using var harness = new RuntimeHarness(o => o.BotPickupDelayMs = 20);
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+        var gameId = await CreateManualGameAsync(runtime, botSeats: new[] { 0, 2, 3 },
+            dealerSeat: 0, seed: 3031, ct: cts.Token);
+        var pre = Snapshot(runtime, gameId);
+        Assert.True(pre.Seats[0].IsBot, "dealer seat 0 must be a bot.");
+        Assert.False(pre.Seats[1].IsBot, "seat 1 must be the human non-dealer.");
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+
+        // Bot dealer auto-rolls: phase leaves RollingDice.
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase != ChangshaPhase.RollingDice,
+            TimeSpan.FromSeconds(6),
+            "bot dealer (human at seat 1) never auto-rolled on hand 1");
+
+        // The pickup chain advances the bot seats, then stalls at the human non-dealer seat 1.
+        await WaitForAsync(
+            () =>
+            {
+                var s = Snapshot(runtime, gameId);
+                return s.PickupSeatIndex == 1 && ChangshaGameStateMachine.IsPickupPhase(s.Phase);
+            },
+            TimeSpan.FromSeconds(6),
+            "pickup chain never reached the human non-dealer seat 1");
+
+        var st = Snapshot(runtime, gameId);
+        Assert.True(ChangshaGameStateMachine.IsPickupPhase(st.Phase));
+        Assert.True(HandCount(st, 0) >= 4, "bot dealer should have taken at least its round-1 batch");
+        Assert.Equal(0, HandCount(st, 1)); // human hasn't picked — chain correctly stalled on the human
+    }
 }

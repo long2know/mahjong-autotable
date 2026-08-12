@@ -20,6 +20,18 @@ export class Thing {
 
   sent: boolean;
 
+  // FE-7 / SC-2 (G19) — when true this Thing is NOT rendered and NOT
+  // raycast/selectable. Used to (a) HIDE a pre-baked REAL tile the viewer is not
+  // entitled to (so its real identity/face can never render or leak), and (b)
+  // park an unassigned anonymous hidden-BACK pool object. Default false keeps the
+  // numeric/relay render path unchanged.
+  hidden: boolean;
+
+  // FE-7 / SC-2 — the opaque per-viewer handle this object currently renders as
+  // an anonymous face-down BACK, or null when it is a normal real tile / a free
+  // pool object. A back NEVER infers a face/type from this handle.
+  hiddenHandle: string | null;
+
   constructor(index: number, type: ThingType, typeIndex: number, slot: Slot) {
     this.index = index;
     this.type = type;
@@ -34,6 +46,8 @@ export class Thing {
     this.lastShiftSlotTime = 0;
 
     this.sent = false;
+    this.hidden = false;
+    this.hiddenHandle = null;
 
     this.slot.thing = this;
   }

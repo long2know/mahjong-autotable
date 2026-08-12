@@ -129,15 +129,56 @@ public sealed class AutotableConnectionManager : IDisposable
     // autotable client can render a real countdown.  Snapshot at construction time
     // (singleton) — runtime options are read-only at startup.
     private readonly int _claimWindowTimeoutMs;
+    // SC-2 / G19 (Ripley, BINDING) — per-viewer opaque handle projection. Mandatory / default-on for
+    // Changsha; the shared HKDF provider is built once from stable server-secret IKM and reused across
+    // every connection (it holds only the HKDF-derived key, no per-game/per-connection state).
+    private readonly bool _opaqueHiddenHandles;
+    private readonly OpaqueTileHandleProvider? _handleProvider;
 
     public AutotableConnectionManager(
         IChangshaGameRuntime runtime,
         ILogger<AutotableConnectionManager> logger,
-        IOptions<ChangshaRuntimeOptions> runtimeOptions)
+        IOptions<ChangshaRuntimeOptions> runtimeOptions,
+        Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider jwtSigningKeys)
     {
         _runtime = runtime;
         _logger = logger;
         _claimWindowTimeoutMs = runtimeOptions?.Value?.ClaimWindowTimeoutMs ?? 0;
+        _opaqueHiddenHandles = runtimeOptions?.Value?.OpaqueHiddenHandles ?? true;
+        if (_opaqueHiddenHandles)
+        {
+            // IKM priority: a DEDICATED decoded `Privacy:HandleSecret` (base64) when configured,
+            // else the STABLE configured JWT signing-key bytes. Never a per-process random secret,
+            // and never used as a raw MAC key — OpaqueTileHandleProvider runs HKDF over this IKM.
+            byte[]? ikm = null;
+            var b64 = runtimeOptions?.Value?.HandleSecretBase64;
+            if (!string.IsNullOrWhiteSpace(b64))
+            {
+                try { ikm = Convert.FromBase64String(b64); } catch { ikm = null; }
+            }
+            ikm ??= jwtSigningKeys?.ActiveKey?.Material;
+            if (ikm is { Length: > 0 })
+            {
+                try
+                {
+                    _handleProvider = new OpaqueTileHandleProvider(ikm);
+                }
+                catch (ArgumentException ex)
+                {
+                    // Sub-minimum IKM ⇒ cannot derive opaque handles; disable rather than weaken.
+                    _logger.LogWarning(ex,
+                        "SC-2 opaque tile handles disabled: server-secret IKM is below the provider minimum. " +
+                        "Configure Privacy:HandleSecret (base64, >=32 bytes) or a sufficiently long JWT signing key.");
+                    _handleProvider = null;
+                }
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "SC-2 opaque tile handles requested but no server-secret IKM is available " +
+                    "(neither Privacy:HandleSecret nor a configured JWT signing key). Hidden tiles will emit real ids.");
+            }
+        }
         _stateChangedHandler = OnStateChanged;
         _runtime.StateChanged += _stateChangedHandler;
     }
@@ -209,6 +250,7 @@ public sealed class AutotableConnectionManager : IDisposable
         int? viewerSeat = null;
         var isSpectator = false;
         var seatExplicitlyProvided = false;
+        int? requestedSeat = null;
         if (query.TryGetValue("seat", out var s) && int.TryParse(s.ToString(), out var parsedSeat) && parsedSeat is >= -1 and <= 3)
         {
             seatExplicitlyProvided = true;
@@ -223,7 +265,18 @@ public sealed class AutotableConnectionManager : IDisposable
             }
             else
             {
-                viewerSeat = parsedSeat;
+                // SECURITY — seat-ownership hardening (Bishop rev2, Blocker D). The raw
+                // `?seat=N` query param is a NON-AUTHORITATIVE preference/hint ONLY; it MUST
+                // NOT seed ViewerSeat, which drives per-viewer real-tile-id projection. Before
+                // this fix a client could connect with `?seat=2` (never taking the seat) and
+                // receive seat 2's real concealed hand — a confirmed leak of the foreign
+                // seat's real tile ids. ViewerSeat is now bound EXCLUSIVELY from
+                // runtime-confirmed ownership: TryGetSeatForPlayer on (re)connect
+                // (TryInferViewerSeatOnConnectAsync) or a successful TakeSeat. An unowned
+                // requester stays a spectator/opaque (foreign hands render as anonymous
+                // face-down handles). The requested seat is retained only as a hint (never
+                // consulted for projection) for telemetry / possible future auto-seat UX.
+                requestedSeat = parsedSeat;
             }
         }
         var autoBotFill = !query.TryGetValue("bots", out var b) || !string.Equals(b.ToString(), "false", StringComparison.OrdinalIgnoreCase);
@@ -305,6 +358,10 @@ public sealed class AutotableConnectionManager : IDisposable
             MaxHands = maxHands,
             IsSpectator = isSpectator,
             Seed = seed,
+            // Blocker D (Bishop rev2) — non-authoritative `?seat=` hint. Retained for
+            // telemetry only; NEVER consulted for per-viewer projection (ViewerSeat is
+            // bound solely from confirmed ownership / TakeSeat).
+            RequestedSeat = requestedSeat,
             // Phase J Wave 6 — persistent cookie-derived player id (resolved
             // by AutotableWsEndpoint.MapAutotableWs before the WS upgrade).
             // Replaces the previous random per-connection token so career
@@ -408,6 +465,7 @@ public sealed class AutotableConnectionManager : IDisposable
             && state.Snapshot().Count == 0;
         await SendJoinedAsync(connection, gameId, isFirst, ct);
         await SendFullSnapshotAsync(connection, gameId, ct);
+        await TryInferViewerSeatOnConnectAsync(connection, ct);
         await TryAutoDealForSpectatorAsync(connection, ct);
     }
 
@@ -448,7 +506,35 @@ public sealed class AutotableConnectionManager : IDisposable
         var isFirst = !existedBefore || (others == 0 && state.Snapshot().Count == 0);
         await SendJoinedAsync(connection, resolved, isFirst, ct);
         await SendFullSnapshotAsync(connection, resolved, ct);
+        await TryInferViewerSeatOnConnectAsync(connection, ct);
         await TryAutoDealForSpectatorAsync(connection, ct);
+    }
+
+    /// <summary>
+    /// BE-5 (Ripley §9.1/§11.1) — reconnect owner inference. When a connection joins a
+    /// game its durable player already owns a seat in (a reconnect / a fresh tab), bind
+    /// <see cref="AutotableConnection.ViewerSeat"/> to that seat and re-project so the
+    /// owner's own hand renders FACE-UP immediately. Blocker D (Bishop rev2) — this
+    /// runtime-ownership lookup (TryGetSeatForPlayer) is now the ONLY connect-time source of
+    /// ViewerSeat: the raw <c>?seat=</c> query is a non-authoritative hint that no longer
+    /// seeds ViewerSeat, so a requester who owns no seat is a clean no-op (stays a
+    /// spectator/opaque viewer) instead of projecting a foreign hand.
+    /// </summary>
+    private async Task TryInferViewerSeatOnConnectAsync(AutotableConnection connection, CancellationToken ct)
+    {
+        try
+        {
+            if (connection.GameId is null || connection.ViewerSeat is not null) return;
+            if (!_runtimeBinding.TryGetValue(connection.GameId, out var runtimeGameId)) return;
+            var seat = _runtime.TryGetSeatForPlayer(runtimeGameId, connection.PlayerId);
+            if (seat is null) return;
+            connection.ViewerSeat = seat;
+            await SendFullSnapshotAsync(connection, connection.GameId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Reconnect viewer-seat inference failed for {ConnectionId}", connection.Id);
+        }
     }
 
     /// <summary>
@@ -522,8 +608,18 @@ public sealed class AutotableConnectionManager : IDisposable
         // Phase D-backend §4 — branch by collection name. Game-affecting kinds
         // route to the Changsha runtime (their authoritative effect comes back
         // through the StateChanged → translator → ApplyUpdate(Runtime) loop).
-        // Cosmetic kinds (mouse, sound, dice, things) pass through as Client.
+        //
+        // BE-2 / G18 (Ripley §9.1/§11.3 / RC-2/RC-11) — in ChangshaRuntime mode the
+        // runtime is authoritative over the SCENE: inbound client `things`, `match`,
+        // and `dice` are DROPPED (no store, no relay, no peer broadcast). This closes
+        // the board-spoofing / local-scatter relay (a client drag or local `world.deal`
+        // could otherwise mutate peers' boards). When any such push is dropped we send
+        // the offender a corrective full authoritative snapshot so its optimistic local
+        // scatter is immediately overwritten (BE-3 already owns the deal, so `match` no
+        // longer needs to double as a Deal trigger). Legitimate seat/claim/pickup/discard
+        // commands are preserved.
         var passthroughEntries = new List<CollectionEntry>(entries.Count);
+        var droppedRuntimeOwnedScenePush = false;
         foreach (var entry in entries)
         {
             switch (entry.Kind)
@@ -570,10 +666,20 @@ public sealed class AutotableConnectionManager : IDisposable
                     break;
 
                 case "match":
-                    // Match update from bundle. If the game hasn't started yet,
-                    // treat any client-driven match push as a "Deal" command.
+                    // BE-2 — `match` is runtime-owned. Still invoke the (now-redundant,
+                    // phase-guarded) Deal handler so a pre-BE-3 client that races the
+                    // seat-fill start can't wedge, but NEVER relay/store the client's
+                    // match to peers, and correct the offender's scene below.
                     await TryHandleMatchActionAsync(connection, entry, ct);
-                    passthroughEntries.Add(entry);
+                    droppedRuntimeOwnedScenePush = true;
+                    break;
+
+                case "things":
+                case "dice":
+                    // BE-2 — runtime-owned scene collections. The engine owns every tile
+                    // position and the dice roll; drop inbound client pushes (no store,
+                    // no relay, no peer broadcast) and correct the offender below.
+                    droppedRuntimeOwnedScenePush = true;
                     break;
 
                 case ChangshaCollectionKinds.Result:
@@ -592,11 +698,30 @@ public sealed class AutotableConnectionManager : IDisposable
                     // the authoritative turn on every AwaitingDiscard snapshot.
                     break;
 
+                case ActionRejectedKind:
+                    // Server-emitted only; never let a client forge a rejection for a peer.
+                    break;
+
                 default:
-                    // mouse, sound, dice, things, nicks, ephemeral, unique, perPlayer
-                    // — pure cosmetic / meta. Pass through to the relay store.
+                    // mouse, sound, nicks, ephemeral, unique, perPlayer — pure cosmetic /
+                    // meta (peer cursors, nicknames, collection declarations). Pass through
+                    // to the relay store. (things/dice/match are handled above as
+                    // runtime-owned per BE-2.)
                     passthroughEntries.Add(entry);
                     break;
+            }
+        }
+
+        // BE-2 / G18 — a dropped runtime-owned scene push means the offender may have
+        // optimistically mutated its local scene (drag / local deal). Re-project the
+        // authoritative snapshot to it (UpdateSource.Runtime) so any local scatter is
+        // overwritten. Peers are never told about the client's push.
+        if (droppedRuntimeOwnedScenePush)
+        {
+            try { await SendFullSnapshotAsync(connection, connection.GameId, ct); }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Corrective snapshot after dropped scene push failed for {ConnectionId}", connection.Id);
             }
         }
 
@@ -709,12 +834,31 @@ public sealed class AutotableConnectionManager : IDisposable
             // Phase J Wave 6 — pass the persistent player id alongside the
             // per-connection transport id (the AutotableConnection.Id GUID
             // serves as the connection-level routing key inside the runtime).
-            await _runtime.TakeSeatAsync(runtimeGameId, connection.PlayerId, connection.Id.ToString("N"), seatIndex, ct);
+            var grantedSeat = await _runtime.TakeSeatAsync(runtimeGameId, connection.PlayerId, connection.Id.ToString("N"), seatIndex, ct);
+
+            // BE-5 (Ripley §9.1/§11.1 / RC-3) + Blocker D hardening (Bishop rev2) — bind the
+            // per-viewer projection to the seat the runtime AUTHORITATIVELY granted, never the
+            // raw requested index. TakeSeatAsync throws HubException when the seat is owned by a
+            // different connection, so reaching this line means this player now owns
+            // `grantedSeat`; on the take path with an explicit index the two are equal, but
+            // using the return value keeps ViewerSeat provably tied to confirmed ownership
+            // (defense-in-depth alongside the removed `?seat=` projection grant). Setting it
+            // BEFORE the deal means every subsequent StateChanged broadcast is already correctly
+            // faced; the explicit re-projection below covers the transition.
+            connection.ViewerSeat = grantedSeat;
 
             if (connection.AutoBotFill)
             {
                 await _runtime.FillEmptySeatsWithBotsAsync(runtimeGameId, ct);
             }
+
+            // BE-3 (Ripley §9.1 / RC-5) — server-driven start. Once the human's seat
+            // take plus configured bot-fill leaves every seat occupied, the SERVER
+            // starts the game: Auto deals atomically, Manual arms the pickup ceremony
+            // (RollingDice). The legacy client `#deal` / `match` Deal trigger is no
+            // longer required. Idempotent + phase-guarded (only from Seating with all
+            // seats filled; the runtime's StartGame throws past Seating and is caught).
+            await TryServerStartOnSeatFillAsync(connection, runtimeGameId, ct);
 
             // W23 follow-up (Gap 2) — if the seat-take lands on an already-dealt
             // game (e.g. a fresh tab opened against a hand that's already in
@@ -722,6 +866,11 @@ public sealed class AutotableConnectionManager : IDisposable
             // waiting for a SignalR-style AckDeal that this transport will
             // never send. No-op when the state is still pre-deal.
             await TryAutoAckSeatedConnectionAsync(connection, runtimeGameId, ct);
+
+            // BE-5 — immediately re-project a full per-viewer snapshot so the owner's own
+            // hand flips FACE-UP (and foreign hands stay face-down) on the take-seat
+            // transition, without waiting for the next mutation or a client reload.
+            await SendFullSnapshotAsync(connection, connection.GameId, ct);
         }
         catch (Exception ex)
         {
@@ -797,6 +946,84 @@ public sealed class AutotableConnectionManager : IDisposable
         _ => false
     };
 
+    internal const string ActionRejectedKind = "actionRejected";
+
+    private readonly record struct SeatAuthorization(int? Seat, string? Failure)
+    {
+        public bool IsAuthorized => Seat.HasValue && Failure is null;
+    }
+
+    private SeatAuthorization AuthorizeSeatAction(
+        AutotableConnection connection,
+        string? runtimeGameId,
+        int? requestedSeat)
+    {
+        if (string.IsNullOrEmpty(runtimeGameId))
+            return new(null, "no-game");
+
+        var ownedSeat = ResolveOwnedSeat(connection, runtimeGameId);
+        if (ownedSeat is null)
+        {
+            return new(null, connection.IsSpectator
+                ? "spectator-owns-no-seat"
+                : "connection-owns-no-seat");
+        }
+
+        return requestedSeat.HasValue && requestedSeat.Value != ownedSeat.Value
+            ? new(ownedSeat, "seat-not-owned-by-connection")
+            : new(ownedSeat, null);
+    }
+
+    private int? ResolveOwnedSeat(AutotableConnection connection, string runtimeGameId)
+    {
+        var seat = _runtime.TryGetSeatForConnection(runtimeGameId, connection.Id.ToString("N"));
+        if (seat is not null)
+            return seat;
+
+        // A transport reconnect loses its connection binding but retains the runtime-owned
+        // persistent player binding. Creation placeholders are not durable identities.
+        if (string.IsNullOrEmpty(connection.PlayerId)
+            || connection.PlayerId.StartsWith("human-", StringComparison.OrdinalIgnoreCase)
+            || connection.PlayerId.StartsWith("bot-", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return _runtime.TryGetSeatForPlayer(runtimeGameId, connection.PlayerId);
+    }
+
+    private async Task RejectSeatActionAsync(
+        AutotableConnection connection,
+        string action,
+        int? requestedSeat,
+        SeatAuthorization authorization,
+        CancellationToken ct)
+    {
+        _logger.LogWarning(
+            "Rejected WS action {Action} from connection {ConnectionId} in game {GameId}: "
+            + "requestedSeat={RequestedSeat}, ownedSeat={OwnedSeat}, reason={Reason}",
+            action, connection.Id, connection.GameId, requestedSeat,
+            authorization.Seat, authorization.Failure);
+
+        await SendJsonAsync(connection, new UpdateMessage
+        {
+            Entries =
+            [
+                new CollectionEntry(ActionRejectedKind, "current", new Dictionary<string, object?>
+                {
+                    ["action"] = action,
+                    ["reason"] = authorization.Failure,
+                    ["requestedSeat"] = requestedSeat,
+                    ["ownedSeat"] = authorization.Seat
+                })
+            ],
+            Full = false
+        }, ct);
+
+        if (authorization.Failure != "no-game")
+            await SendFullSnapshotAsync(connection, connection.GameId, ct);
+    }
+
     private async Task TryHandleClaimActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
     {
         if (entry.Value is null) return;
@@ -869,22 +1096,29 @@ public sealed class AutotableConnectionManager : IDisposable
             return;
         }
 
-        if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
+        _runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId);
+        var authorization = AuthorizeSeatAction(connection, runtimeGameId, seatIndex);
+        if (!authorization.IsAuthorized)
+        {
+            await RejectSeatActionAsync(connection, isPass ? "pass" : "claim", seatIndex, authorization, ct);
+            return;
+        }
+
         try
         {
             if (isPass)
             {
-                await _runtime.PassAsync(runtimeGameId, seatIndex, ct);
+                await _runtime.PassAsync(runtimeGameId!, authorization.Seat!.Value, ct);
             }
             else
             {
-                await _runtime.ClaimAsync(runtimeGameId, seatIndex, claimType!, tileIds, ct);
+                await _runtime.ClaimAsync(runtimeGameId!, authorization.Seat!.Value, claimType!, tileIds, ct);
             }
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Claim {Action}/{Type} for seat {Seat} was rejected by the runtime",
-                action, claimType ?? "pass", seatIndex);
+                action, claimType ?? "pass", authorization.Seat);
         }
     }
 
@@ -907,14 +1141,14 @@ public sealed class AutotableConnectionManager : IDisposable
     ///   <c>N</c> tiles from the wall front. <c>count</c> may also be supplied
     ///   as <c>wallTileIds: int[]</c> (server picks the first N from the wall).</item>
     /// </list>
-    /// The seat is taken from the entry key (the bundle keys pickup by seat) or
-    /// inferred from <see cref="ChangshaGameState.PickupSeatIndex"/> when absent.
+    /// The requested seat comes from the entry key or value; the acting seat is resolved
+    /// from the sending connection's server-side runtime ownership.
     /// </summary>
     private async Task TryHandlePickupActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
     {
         if (entry.Value is null) return;
         if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
-        if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
+        _runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId);
 
         // Action wire-format (per autotable-src/src/client.ts:90-95):
         //   outbound "rollDice" : ["pickup", "rollDice", { seatIndex }]
@@ -933,9 +1167,11 @@ public sealed class AutotableConnectionManager : IDisposable
             action = actionEl.GetString() ?? string.Empty;
         }
 
-        // Seat: when the key is numeric (legacy bundle), prefer that as a seat.
-        // Otherwise read "seatIndex" from the value; else fall back to the
-        // runtime's current pickup cursor (or dealer for rollDice).
+        var isRollDice = string.Equals(action, "rollDice", StringComparison.OrdinalIgnoreCase);
+        var isTake = string.Equals(action, "take", StringComparison.OrdinalIgnoreCase);
+        if (!isRollDice && !isTake) return;
+
+        // The wire seat is only a requested seat. It never selects the runtime actor.
         var seatFromKey = entry.Key switch
         {
             long l => (int)l,
@@ -944,47 +1180,47 @@ public sealed class AutotableConnectionManager : IDisposable
             string s when int.TryParse(s, out var p) => p,
             _ => -1
         };
-        int seatIndex = seatFromKey;
-        if (seatIndex is < 0 or > 3)
+        var requestedSeatValue = seatFromKey;
+        if (requestedSeatValue is < 0 or > 3)
         {
             if (je.TryGetProperty("seatIndex", out var seatEl)
                 && seatEl.ValueKind == JsonValueKind.Number
                 && (seatEl.TryGetInt32(out var s)
                     || (seatEl.TryGetDouble(out var sd) && sd >= 0 && sd <= 3 && (s = (int)sd) >= 0)))
             {
-                seatIndex = s;
+                requestedSeatValue = s;
             }
         }
+        int? requestedSeat = requestedSeatValue is >= 0 and <= 3 ? requestedSeatValue : null;
+
+        var authorization = AuthorizeSeatAction(connection, runtimeGameId, requestedSeat);
+        if (!authorization.IsAuthorized)
+        {
+            await RejectSeatActionAsync(
+                connection,
+                isRollDice ? "pickup.rollDice" : "pickup.take",
+                requestedSeat,
+                authorization,
+                ct);
+            return;
+        }
+        var seatIndex = authorization.Seat!.Value;
 
         try
         {
-            if (string.Equals(action, "rollDice", StringComparison.OrdinalIgnoreCase))
+            if (isRollDice)
             {
-                if (seatIndex is < 0 or > 3)
-                {
-                    if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
-                    seatIndex = snap.DealerSeatIndex;
-                }
-                await _runtime.RollDiceAsync(runtimeGameId, seatIndex, ct);
+                await _runtime.RollDiceAsync(runtimeGameId!, seatIndex, ct);
                 return;
             }
 
-            if (string.Equals(action, "take", StringComparison.OrdinalIgnoreCase))
-            {
-                if (seatIndex is < 0 or > 3)
-                {
-                    if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null || snap.PickupSeatIndex is null) return;
-                    seatIndex = snap.PickupSeatIndex.Value;
-                }
-                int count = 0;
-                if (je.TryGetProperty("count", out var countEl) && countEl.ValueKind == JsonValueKind.Number && countEl.TryGetInt32(out var c))
-                    count = c;
-                else if (je.TryGetProperty("wallTileIds", out var idsEl) && idsEl.ValueKind == JsonValueKind.Array)
-                    count = idsEl.GetArrayLength();
-                if (count <= 0) return;
-                await _runtime.TakeTilesFromWallAsync(runtimeGameId, seatIndex, count, ct);
-                return;
-            }
+            int count = 0;
+            if (je.TryGetProperty("count", out var countEl) && countEl.ValueKind == JsonValueKind.Number && countEl.TryGetInt32(out var c))
+                count = c;
+            else if (je.TryGetProperty("wallTileIds", out var idsEl) && idsEl.ValueKind == JsonValueKind.Array)
+                count = idsEl.GetArrayLength();
+            if (count <= 0) return;
+            await _runtime.TakeTilesFromWallAsync(runtimeGameId!, seatIndex, count, ct);
         }
         catch (Exception ex)
         {
@@ -998,15 +1234,13 @@ public sealed class AutotableConnectionManager : IDisposable
     /// value <c>{ tileId: int }</c>. We route to
     /// <see cref="IChangshaGameRuntime.DiscardAsync"/> which validates phase
     /// (must be <c>AwaitingDiscard</c>), active seat, and tile ownership.
-    /// Invalid clicks are silently swallowed — the bundle's hand state is
-    /// already authoritative on the server side so the next <c>things</c>
-    /// push will re-snap any optimistic UI to the truth.
+    /// The endpoint first verifies that the sending connection owns the requested seat.
     /// </summary>
     private async Task TryHandleDiscardActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
     {
         if (entry.Value is null) return;
         if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
-        if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
+        _runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId);
 
         // Seat: prefer explicit key (an int seat), fall back to "seatIndex" prop.
         // Vasquez tile-interaction G4 root-cause defence — accept `double` keys
@@ -1034,13 +1268,55 @@ public sealed class AutotableConnectionManager : IDisposable
         if (!je.TryGetProperty("tileId", out var tileEl) || tileEl.ValueKind != JsonValueKind.Number) return;
         if (!tileEl.TryGetInt32(out var tileId)) return;
 
+        var authorization = AuthorizeSeatAction(connection, runtimeGameId, seatIndex);
+        if (!authorization.IsAuthorized)
+        {
+            await RejectSeatActionAsync(connection, "discard", seatIndex, authorization, ct);
+            return;
+        }
+
         try
         {
-            await _runtime.DiscardAsync(runtimeGameId, seatIndex, tileId, ct);
+            await _runtime.DiscardAsync(runtimeGameId!, authorization.Seat!.Value, tileId, ct);
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Discard failed for seat {Seat} tile {Tile}", seatIndex, tileId);
+            _logger.LogDebug(ex, "Discard failed for seat {Seat} tile {Tile}", authorization.Seat, tileId);
+        }
+    }
+
+    /// <summary>
+    /// BE-3 (Ripley §9.1 / RC-5) — server-driven start on seat-fill. Fires only from
+    /// <see cref="ChangshaPhase.Seating"/> with every seat occupied; Auto deals in one
+    /// shot, Manual arms the pickup ceremony (RollingDice). Idempotent: a duplicate
+    /// seat-take / re-entry is a no-op (phase guard here + <c>RequirePhase(Seating)</c>
+    /// inside the runtime's <c>StartGame</c>, which throws-and-is-caught past Seating).
+    /// Replaces the legacy client <c>#deal</c> / <c>match</c> Deal trigger so the
+    /// authoritative deal never depends on a client scene push (BE-2 can then drop
+    /// inbound <c>match</c>).
+    /// </summary>
+    private async Task TryServerStartOnSeatFillAsync(
+        AutotableConnection connection, string runtimeGameId, CancellationToken ct)
+    {
+        try
+        {
+            if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
+            if (snap.Phase != ChangshaPhase.Seating) return;                       // already started
+            if (!_runtime.AreAllSeatsOccupied(runtimeGameId)) return;              // wait for all seats
+
+            var requestedMode = string.Equals(connection.DealMode, "manual", StringComparison.OrdinalIgnoreCase)
+                ? DealMode.Manual
+                : DealMode.Auto;
+            await _runtime.ApplyDealModeAsync(runtimeGameId, requestedMode, ct);
+            await _runtime.StartGameAsync(runtimeGameId, ct);
+            // Auto: after-deal the runtime awaits an ack the WS transport never sends —
+            // ack the caller's bound seat so the turn loop advances. No-op for Manual /
+            // pre-AwaitingDiscard and for an already-acked seat.
+            await TryAutoAckSeatedConnectionAsync(connection, runtimeGameId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Server start-on-seat-fill failed for connection {ConnectionId}", connection.Id);
         }
     }
 
@@ -1387,7 +1663,9 @@ public sealed class AutotableConnectionManager : IDisposable
             runtimeState,
             viewerSeat: connection.ViewerSeat,
             viewerPlayerId: connection.PlayerId,
-            claimWindowTimeoutMs: _claimWindowTimeoutMs);
+            claimWindowTimeoutMs: _claimWindowTimeoutMs,
+            privacy: ChangshaPrivacyProjector.Create(
+                _opaqueHiddenHandles ? _handleProvider : null, gameId, connection.PlayerId));
 
         var gameState = _games.GetOrAdd(gameId, id => new AutotableGameState(id));
 
@@ -1398,14 +1676,52 @@ public sealed class AutotableConnectionManager : IDisposable
         IReadOnlyList<CollectionEntry> snapshot;
         if (runtimeState is not null)
         {
-            gameState.ApplyUpdate(translatorEntries, UpdateSource.Runtime);
+            // ── Multi-viewer shared-store privacy (SC-2 endpoint leak fix) ─────────
+            // Apone 2026-08-10, independently confirmed (Ripley/Vasquez drafts
+            // unverified): `translatorEntries` is a PER-VIEWER projection — this
+            // viewer's own concealed hand keeps real numeric tileIds, while every
+            // tile HIDDEN from this viewer (foreign concealed hands, ALL wall tiles,
+            // foreign concealed kongs) is keyed by an opaque per-viewer `h_` handle.
+            // `AutotableGameState` is SHARED across every connection on this gameId
+            // and `ApplyUpdate` merges `things` key-by-key (numeric tileId OR opaque
+            // handle). Because different viewers key the SAME concealed slot
+            // differently, persisting each viewer's projection makes the store
+            // accumulate the UNION of everyone's keys (numeric + opaque duplicates),
+            // and stale numeric keys never get tombstoned by another viewer. A later
+            // viewer's snapshot is built from that store and only FACE-stripped by
+            // FilterEntriesForViewer (which preserves the KEY) — so a spectator/foreign
+            // seat receives the seated owner's real tileId KEYS, and the key alone
+            // reconstructs identity (typeIndex = key/4). That is the :18084 leak.
+            //
+            // Fix: NEVER persist the per-viewer `things` into the shared store. Store
+            // only the viewer-NEUTRAL runtime kinds (match/seats/nicks/dice/claim/
+            // pickup/result/turn/gameComplete — none privacy-projected). Inbound client
+            // `things` are already dropped in ChangshaRuntime mode (BE-2), so the store
+            // legitimately holds no runtime `things`. This viewer's `things` are then
+            // sourced straight from its own fresh translation for the outbound snapshot
+            // only — so one viewer's keys can never enter another viewer's snapshot, and
+            // no stale numeric/opaque key can accumulate across updates or reconnects.
+            var neutralForStore = new List<CollectionEntry>(translatorEntries.Count);
+            foreach (var entry in translatorEntries)
+            {
+                if (!string.Equals(entry.Kind, ThingsKind, StringComparison.Ordinal))
+                    neutralForStore.Add(entry);
+            }
+            gameState.ApplyUpdate(neutralForStore, UpdateSource.Runtime);
+
             var stored = gameState.Snapshot();
             // Ephemeral kinds (claim, pickup, dice, sound, …) are deliberately
             // NOT stored by ApplyUpdate, so they would be missing from the
             // gameState snapshot even though the runtime just produced them.
             // Re-attach the latest translator output for any ephemeral kind so
-            // the full snapshot we ship is actually full.
-            snapshot = MergeRuntimeEphemerals(stored, translatorEntries, gameState);
+            // the full snapshot we ship is actually full. `stored` carries the
+            // viewer-neutral runtime kinds plus any client-owned relay entries and
+            // — by construction — no runtime `things`.
+            var withEphemerals = MergeRuntimeEphemerals(stored, translatorEntries, gameState);
+            // Re-attach ONLY this viewer's own `things` projection. Because these
+            // never touch the shared store, one viewer's keys can never leak into
+            // another viewer's snapshot.
+            snapshot = AttachViewerThings(withEphemerals, translatorEntries);
         }
         else
         {
@@ -1486,7 +1802,13 @@ public sealed class AutotableConnectionManager : IDisposable
             if (gameState.IsEphemeral(entry.Kind))
             {
                 // Ephemeral kinds were never stored; re-attach the live (non-null) value only.
+                // BE-4 (Ripley §9.1 / RC-6) + R-1 E3 (Vasquez) exceptions: forward an explicit
+                // `claim` OR `pickup` tombstone (null) so the bundle clears the cached claim
+                // overlay / the sticky pickup cursor — an omitted slice leaves a stale 碰/吃/杠/胡
+                // window or keeps isMyPickupTurn() TRUE (wall wrongly interactive) after the deal.
                 if (!isNull) merged.Add(entry);
+                else if (entry.Kind == ChangshaCollectionKinds.Claim
+                         || entry.Kind == ChangshaCollectionKinds.Pickup) merged.Add(entry);
             }
             else if (isNull && entry.Kind == ChangshaCollectionKinds.Result)
             {
@@ -1495,6 +1817,41 @@ public sealed class AutotableConnectionManager : IDisposable
                 // and already present via `stored`, so this never double-emits the populated result.
                 merged.Add(entry);
             }
+        }
+        return merged;
+    }
+
+    /// <summary>Upstream collection name for scene tiles. The only translator collection
+    /// whose KEYS are per-viewer projected (real tileId when visible to the viewer, opaque
+    /// <c>h_</c> handle when hidden) — hence the only one that must never enter the shared
+    /// cross-connection store (see <see cref="SendFullSnapshotAsync"/>).</summary>
+    private const string ThingsKind = "things";
+
+    /// <summary>
+    /// Multi-viewer privacy (SC-2 endpoint leak fix) — builds the outbound snapshot's
+    /// <c>things</c> from THIS connection's own per-viewer projection only.
+    /// <paramref name="baseEntries"/> (the shared-store snapshot + re-attached runtime
+    /// ephemerals) is stripped of any <c>things</c> so a foreign viewer's / the seated
+    /// owner's real tileId keys can never ride along; <paramref name="viewerEntries"/>
+    /// then contributes exactly this viewer's <c>things</c>. The canonical store never
+    /// holds a per-viewer <c>things</c> projection, so no numeric real-id key is ever
+    /// shipped to a viewer not entitled to it, and no stale numeric/opaque key can
+    /// accumulate across updates or reconnects.
+    /// </summary>
+    private static IReadOnlyList<CollectionEntry> AttachViewerThings(
+        IReadOnlyList<CollectionEntry> baseEntries,
+        IReadOnlyList<CollectionEntry> viewerEntries)
+    {
+        var merged = new List<CollectionEntry>(baseEntries.Count + viewerEntries.Count);
+        foreach (var e in baseEntries)
+        {
+            if (!string.Equals(e.Kind, ThingsKind, StringComparison.Ordinal))
+                merged.Add(e);
+        }
+        foreach (var e in viewerEntries)
+        {
+            if (string.Equals(e.Kind, ThingsKind, StringComparison.Ordinal))
+                merged.Add(e);
         }
         return merged;
     }
@@ -1849,7 +2206,22 @@ public sealed class AutotableConnection
     public Guid Id { get; } = Guid.NewGuid();
     public WebSocket Socket { get; }
     public string? GameId { get; set; }
-    public int? ViewerSeat { get; }
+    /// <summary>
+    /// The seat this connection renders as (own hand face-up, others face-down / opaque).
+    /// MUTABLE and bound EXCLUSIVELY from runtime-confirmed ownership — BE-5 (Ripley
+    /// §9.1/§11.1) rebinds it on a successful <c>TakeSeat</c> and on reconnect owner
+    /// inference. Blocker D (Bishop rev2) — the raw <c>?seat=</c> query no longer seeds this
+    /// (that let an unowned requester project a foreign concealed hand); an unseated
+    /// connection stays null (spectator/opaque) until it actually owns a seat.
+    /// </summary>
+    public int? ViewerSeat { get; set; }
+    /// <summary>
+    /// Blocker D (Bishop rev2) — the raw <c>?seat=N</c> query value captured as a
+    /// NON-AUTHORITATIVE hint. Never consulted for per-viewer projection (see
+    /// <see cref="ViewerSeat"/>); retained only for telemetry / potential future auto-seat
+    /// UX. Null when the connection supplied no numeric seat (or the spectator sentinel).
+    /// </summary>
+    public int? RequestedSeat { get; init; }
     /// <summary>
     /// Phase J Wave 6 — persistent player identity (cookie-derived) for stats
     /// and host-promotion keying. <see cref="AutotableConnectionManager"/>

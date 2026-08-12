@@ -31,14 +31,55 @@ async function readMeldCount(page: Page): Promise<number> {
   });
 }
 
+// Drake (Lane C, 2026-08-11) — click the GENUINELY VISIBLE claim control.
+//
+// On the mobile (Pixel-5) layout the legacy side-panel `#claim-{type}` button is
+// present and `isEnabled()` returns true, but the collapsed `#sidebar` pill
+// renders it with a ZERO-AREA box ({0,0,0,0}) so Playwright reports it not
+// visible and `.click()` times out ("element is not visible").  The shipped
+// CSS's own comment names the Ferro claim overlay "the primary surface during
+// claim windows" (the side panel is a desktop-only fallback), and the overlay
+// badge `.ferro-claim-badge-{type}` is a real 70×44 on-screen control the player
+// taps.  Measured on :18089: clicking that overlay badge commits the Pung
+// (concealed 13→11, meld exposed, seat owes discard, window closed) exactly like
+// the desktop side-panel click.  So try the visible overlay first, side panel as
+// a bounded fallback — a real pointer click either way, no force / synthetic
+// dispatch / backdoor.
+async function clickFirstActionable(
+  page: Page,
+  selectors: string[],
+  timeoutMs: number,
+): Promise<boolean> {
+  for (const sel of selectors) {
+    const loc = page.locator(sel).first();
+    // Genuinely actionable = visible AND enabled right now (the overlay mounts
+    // when the authoritative window opens; the zero-area side panel never is).
+    const visible = await loc.isVisible().catch(() => false);
+    const enabled = visible && (await loc.isEnabled().catch(() => false));
+    if (visible && enabled) {
+      try {
+        await loc.click({ timeout: timeoutMs });
+        return true;
+      } catch {
+        /* fall through to the next candidate control */
+      }
+    }
+  }
+  return false;
+}
+
 // ADVANCE — take a specific meld claim with a real actionable button click
 // (no force, no synthetic dispatch).  Returns the type taken, or null.
 async function claimMeldByClick(page: Page, type: 'Pung' | 'Chow' | 'Kong'): Promise<string | null> {
   const claim = await H.readClaimWindow(page);
   if (!claim.open || !claim.available.includes(type)) return null;
-  const btn = page.locator(`#claim-${type.toLowerCase()}`);
-  if (!(await btn.first().isEnabled().catch(() => false))) return null;
-  await btn.first().click({ timeout: 3000 });
+  const lower = type.toLowerCase();
+  const clicked = await clickFirstActionable(
+    page,
+    [`.ferro-claim-badge-${lower}`, `#claim-${lower}`],
+    4000,
+  );
+  if (!clicked) return null;
   await page.waitForTimeout(500);
   return type;
 }
@@ -46,9 +87,7 @@ async function claimMeldByClick(page: Page, type: 'Pung' | 'Chow' | 'Kong'): Pro
 // ADVANCE — decline a claim we don't want with a real Pass click, so play
 // continues toward the target meld.
 async function passClaimByClick(page: Page): Promise<void> {
-  const pass = page.locator('#claim-pass');
-  if (await pass.first().isEnabled().catch(() => false)) {
-    await pass.first().click({ timeout: 2000 }).catch(() => undefined);
+  if (await clickFirstActionable(page, ['.ferro-claim-pass', '#claim-pass'], 2000)) {
     await page.waitForTimeout(300);
   }
 }

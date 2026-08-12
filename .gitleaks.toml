@@ -61,6 +61,12 @@ paths = [
     #   Phase_K_W19/Bishop/JwtServiceDurationIntegrationTests.cs
     #   Phase_K_W21/Bishop/JwtValidatorAnomalyMetricsTests.cs
     '''(^|/)src/backend/tests/Mahjong\.Autotable\.Api\.Tests/Phase_K_W\d+/Bishop/[A-Za-z0-9_]+\.cs$''',
+    # Burke identity fail-closed test fixture — declares
+    # `private const string OperatorKey = "<base64>"` (decodes to the literal
+    # "OperatorKey" repeated) as a throwaway 32-byte HMAC key proving a durable
+    # identity credential survives a process restart. Same class as the Phase K
+    # Bishop fixtures above: never leaves the test binary. (generic-api-key FP)
+    '''(^|/)src/backend/tests/Mahjong\.Autotable\.Api\.Tests/Players/PlayerIdentityStartupValidatorTests\.cs$''',
 ]
 
 

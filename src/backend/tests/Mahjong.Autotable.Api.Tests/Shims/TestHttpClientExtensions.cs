@@ -53,11 +53,14 @@ public static class TestHttpClientExtensions
     /// <summary>
     /// Sets the <see cref="PlayerIdentityService.CookieName"/>
     /// (<c>mahjong_pid</c>) cookie on the client's default request
-    /// headers so subsequent calls are recognised as
-    /// <paramref name="playerId"/>. Does NOT touch the database —
-    /// use the overload accepting an <see cref="IServiceProvider"/>
-    /// when the endpoint under test requires a real
-    /// <see cref="PlayerAuthSession"/> row.
+    /// headers using the RAW player id.
+    ///
+    /// <para><b>Unsigned</b> — this overload has no <see cref="IServiceProvider"/> and so
+    /// cannot sign the credential. Since Burke's identity hardening the server rejects
+    /// unsigned cookies and mints a fresh identity instead, so the server will NOT resolve
+    /// <paramref name="playerId"/> from it. Use an overload that takes an
+    /// <see cref="IServiceProvider"/> when the endpoint under test must resolve THIS
+    /// player id.</para>
     /// </summary>
     public static HttpClient WithDirectSession(this HttpClient client, Guid playerId)
     {
@@ -68,7 +71,7 @@ public static class TestHttpClientExtensions
     }
 
     /// <summary>
-    /// Sets the <c>mahjong_pid</c> cookie AND mints a matching
+    /// Sets a <b>signed</b> <c>mahjong_pid</c> cookie AND mints a matching
     /// <see cref="PlayerAuthSession"/> row + <c>mahjong_auth</c>
     /// cookie. Use when the endpoint under test resolves the
     /// session via <see cref="AuthCookieService.ResolveAsync"/>.
@@ -80,7 +83,7 @@ public static class TestHttpClientExtensions
         => WithDirectSession(client, services, playerId, role: null);
 
     /// <summary>
-    /// Sets the <c>mahjong_pid</c> cookie, mints a matching
+    /// Sets a <b>signed</b> <c>mahjong_pid</c> cookie, mints a matching
     /// <see cref="PlayerAuthSession"/> row + <c>mahjong_auth</c>
     /// cookie, and stamps the supplied <paramref name="role"/>
     /// (e.g. <c>"admin"</c>) on the session.
@@ -95,12 +98,33 @@ public static class TestHttpClientExtensions
         if (services is null) throw new ArgumentNullException(nameof(services));
 
         var pidHex = playerId.ToString("N");
-        AddCookieHeader(client, PlayerIdentityService.CookieName, pidHex);
+        AddCookieHeader(client, PlayerIdentityService.CookieName, SignedPlayerIdCookie(services, pidHex));
 
         var sessionToken = MintSessionRow(services, pidHex, role);
         AddCookieHeader(client, AuthCookieService.CookieName, sessionToken);
         return client;
     }
+
+    /// <summary>
+    /// Produces the signed <c>mahjong_pid</c> cookie VALUE for
+    /// <paramref name="playerId"/> using the host's own
+    /// <see cref="PlayerIdentityService"/>. Tests that hand-craft a
+    /// <c>Cookie</c> header (raw WebSocket handshakes) use this so the server
+    /// resolves the intended durable identity instead of rotating them onto a
+    /// fresh one.
+    /// </summary>
+    public static string SignedPlayerIdCookie(IServiceProvider services, string playerId)
+    {
+        if (services is null) throw new ArgumentNullException(nameof(services));
+        return services.GetRequiredService<PlayerIdentityService>().Protect(playerId);
+    }
+
+    /// <summary>
+    /// Convenience form of <see cref="SignedPlayerIdCookie(IServiceProvider, string)"/>
+    /// that emits the whole header value (<c>mahjong_pid=&lt;signed&gt;</c>).
+    /// </summary>
+    public static string SignedPlayerIdCookieHeader(IServiceProvider services, string playerId) =>
+        $"{PlayerIdentityService.CookieName}={SignedPlayerIdCookie(services, playerId)}";
 
     private static void AddCookieHeader(HttpClient client, string name, string value)
     {

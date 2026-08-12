@@ -469,24 +469,24 @@
     {
       "wave": "K22",
       "bundler": "vite",
-      "recordedAt": "2026-08-07T01:12:27.581Z",
+      "recordedAt": "2026-08-11T20:39:42.666Z",
       "chunks": {
-        "autotable-src-eager": 110826,
-        "game-bootstrap": 174696,
-        "scene-shell": 2577,
-        "scene-effects": 64555,
+        "autotable-src-eager": 110960,
+        "game-bootstrap": 174708,
+        "scene-shell": 2589,
+        "scene-effects": 65502,
         "three-renderer-big": 406736,
-        "three-renderer-small": 82345,
+        "three-renderer-small": 86136,
         "gltf-loader": 44223,
         "stats-module": 3227,
         "commentary-panel": 8269,
         "spectator-livestream": 5332,
         "hls": 286514,
-        "tournaments": 41526,
-        "chat": 12346,
+        "tournaments": 41527,
+        "chat": 12347,
         "voice": 9032,
-        "audit": 7563,
-        "history": 12441,
+        "audit": 7564,
+        "history": 12442,
         "tour": 10454,
         "bracket-listing": 6544,
         "replays-listing": 4723,
@@ -507,8 +507,8 @@
         "matchmaking": 2681,
         "rule-presets": 10010,
         "auth": 21799,
-        "identity-onboarding": 3289,
-        "identity-avatar-migration": 2335
+        "identity-onboarding": 3290,
+        "identity-avatar-migration": 2336
       }
     }
   ]
