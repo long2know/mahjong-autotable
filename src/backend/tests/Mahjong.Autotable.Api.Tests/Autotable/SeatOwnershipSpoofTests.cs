@@ -4,6 +4,7 @@ using System.Text.Json;
 using Mahjong.Autotable.Api.Autotable;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Runtime;
+using Mahjong.Autotable.Api.Players;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -228,7 +229,12 @@ public sealed class SeatOwnershipSpoofTests : IAsyncLifetime
         var wsClient = server.CreateWebSocketClient();
         if (cookiePlayerId is not null)
         {
-            wsClient.ConfigureRequest = req => req.Headers["Cookie"] = $"mahjong_pid={cookiePlayerId}";
+            // Burke — the mahjong_pid cookie carries a SIGNED credential; a raw player id is
+            // rejected and rotated onto a fresh identity. Sign through the host's own service so
+            // this connection really is `cookiePlayerId`.
+            var signed = _factory!.Services.GetRequiredService<PlayerIdentityService>()
+                .Protect(cookiePlayerId);
+            wsClient.ConfigureRequest = req => req.Headers["Cookie"] = $"mahjong_pid={signed}";
         }
         var sep = queryString.Contains('?') ? "&" : "?";
         var uri = new Uri(server.BaseAddress, $"autotable/ws{queryString}{sep}gameId={Uri.EscapeDataString(gameId)}");

@@ -39,8 +39,25 @@
 // unreachable/occluded bottom tile.
 // AUTO reject is hudson-2's. F1-independent (Bishop co-derives targetSlots).
 import { test, expect, type Page } from '@playwright/test';
-import { buildGameUrl, makeConfig, dismissLobbyAndTour, ensureConnected, takeSeatByClick, clickDeal, waitForPlayableHand } from './_playability';
+import { buildGameUrl, makeConfig, dismissLobbyAndTour, ensureConnected, takeSeatByClick, clickDeal, waitForPlayableHand, hasExtraHandTile, readIsMyPickupTurn, takePickup, pressWallTargetByHover } from './_playability';
 import { realDragWallTile, recordEvidence, shot } from './_uat_red';
+
+// Real per-batch ceremony drive (Hicks's centralized clickDeal only ROLLS the
+// dealer's dice to START the manual ceremony now — the client auto-drive that
+// used to self-complete every batch was removed; see S13 below). The seated
+// human dealer must press the rendered #pickup-take-btn (the shared
+// takePickup helper, same control manual-deal-ceremony.spec.ts drives) for
+// every one of the five ceremony batches before the table reaches
+// AwaitingDiscard. Bots auto-pick their own turns between the human's; this
+// only presses when it is genuinely our turn (readIsMyPickupTurn), so it
+// never fabricates a press the human didn't need to make.
+async function driveHumanPickupsUntilPlayable(page: Page, timeoutMs = 45_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && !(await hasExtraHandTile(page))) {
+    if (await readIsMyPickupTurn(page)) await takePickup(page);
+    else await page.waitForTimeout(400);
+  }
+}
 
 // FINAL designation reader. GATE = pickup.targetSlots = EXACTLY ONE public
 // exposed-front render-slot name (state.Wall[0]); count is the server batch size.
@@ -76,8 +93,88 @@ async function readDesignation(page: Page): Promise<any> {
 // Real-click the single designated exposed-front slot vs a non-designated wall
 // tile (matches by PUBLIC slot name). Right (the one front slot) ⇒ whole batch of
 // `count` to hand; wrong (a non-front wall tile, incl. the other batch tiles) ⇒ inert.
-async function clickWallByDesignationAndCount(page: Page, values: string[], count: number): Promise<{ batchTaken: boolean; wrongRejected: boolean }> {
-  const pick = async (wantTarget: boolean) => page.evaluate(({ values, wantTarget }) => {
+// ── ACTOR-SCOPED MEASUREMENT (Hudson adjudication 2026-08-11) ────────────────────
+// The wall is SHARED state: three bots take their own batches concurrently inside
+// any settle window, so a `wallBefore - wallAfter === count` equality gate reports
+// a false NEGATIVE on a correct take (the wall drops by more than my batch) and a
+// false POSITIVE on an inert press (the wall drops although I did nothing). Hudson
+// adjudicated the client/backend correct — no pacing or batchPreview defect — so
+// these gates now assert only signals scoped to THIS viewer:
+//   • handDelta  — tiles entering MY hand (`hand.*@0`); no bot can change it;
+//   • frames     — outbound `pickup.take` frames THIS client emitted: the direct
+//                  causal record of what our pointer actually requested.
+// A correct take = handDelta === count AND exactly one emitted frame.
+// An inert press = handDelta === 0 AND zero emitted frames.
+interface TakeFrame { seatIndex: number | null; count: number | null; keys: string[] }
+interface PressOutcome { ok: boolean; handBefore: number; handAfter: number; handDelta: number; frames: TakeFrame[] }
+
+// Install BEFORE page.goto — records every outbound pickup.take this client emits.
+function installTakeRecorder(page: Page): TakeFrame[] {
+  const out: TakeFrame[] = [];
+  page.on('websocket', (ws) => ws.on('framesent', (ev: any) => {
+    let raw = '';
+    try { raw = typeof ev.payload === 'string' ? ev.payload : Buffer.from(ev.payload).toString('utf8'); } catch { return; }
+    if (!/pickup/.test(raw) || !/take/.test(raw)) return;
+    try {
+      const msg = JSON.parse(raw);
+      for (const e of (msg?.entries ?? [])) {
+        if (!Array.isArray(e) || String(e[0]) !== 'pickup' || String(e[1]) !== 'take') continue;
+        const p = (e[2] ?? {}) as Record<string, unknown>;
+        out.push({
+          seatIndex: typeof p.seatIndex === 'number' ? p.seatIndex : null,
+          count: typeof p.count === 'number' ? p.count : null,
+          keys: Object.keys(p),
+        });
+      }
+    } catch { /* non-JSON frame — ignore */ }
+  }));
+  return out;
+}
+
+/** OBSERVE — tiles in THIS viewer's own hand. Bot-immune (`hand.*@0` is seat-local). */
+async function myHandCount(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const w = (window as any).game?.world;
+    let hand = 0;
+    if (w?.things) for (const t of w.things.values()) if (/^hand\.\d+@0$/.test(String(t?.slot?.name ?? ''))) hand++;
+    return hand;
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  });
+}
+
+/** ADVANCE — one real pointer press at (cx,cy); returns the actor-scoped outcome. */
+async function pressAt(page: Page, cx: number, cy: number, takes: TakeFrame[], settleMs = 1200): Promise<PressOutcome> {
+  const handBefore = await myHandCount(page);
+  const mark = takes.length;
+  await page.mouse.move(cx, cy); await page.waitForTimeout(120);
+  await page.mouse.down(); await page.waitForTimeout(80); await page.mouse.up();
+  await page.waitForTimeout(settleMs);
+  const handAfter = await myHandCount(page);
+  return { ok: true, handBefore, handAfter, handDelta: handAfter - handBefore, frames: takes.slice(mark) };
+}
+
+// TARGET press (Hudson 2026-08-11 projection-offset fix) — the reachable-top
+// designated trigger's world CENTER can project ~16 px BELOW its angled clickable
+// face after a wall shift, so a bare center press raycasts to nothing and emits no
+// take. `pressWallTargetByHover` (shared, _playability.ts) settles then grid-scans a
+// REAL pointer across the tile footprint until world.hovered === the exact trigger,
+// hard-records that hover, and only then issues a genuine mouse down/up. Returns the
+// same actor-scoped PressOutcome as pressAt plus the hover-match proof; `matched`
+// MUST be asserted by callers so a real miss is a loud diagnostic, never a swallowed
+// no-op. INERT probes keep pressAt/pressSlotByName (projected center) on purpose.
+interface TargetPressOutcome extends PressOutcome { matched: boolean; hovered: string | null }
+async function pressTargetByHover(page: Page, name: string, takes: TakeFrame[], settleMs = 1200): Promise<TargetPressOutcome> {
+  const r = await pressWallTargetByHover(page, name, takes, { settleMs });
+  return { ok: r.found, handBefore: r.handBefore, handAfter: r.handAfter, handDelta: r.handDelta, frames: r.frames, matched: r.matched, hovered: r.hovered };
+}
+
+// Real-click the single designated exposed-front slot, then a NON-designated wall
+// tile, reporting each press's actor-scoped outcome.
+async function clickWallByDesignationAndCount(page: Page, values: string[], takes: TakeFrame[]): Promise<{ target: TargetPressOutcome; nonTarget: PressOutcome }> {
+  // NON-TARGET picker (projected center is fine for an INERT probe — the tile is
+  // non-selectable, so a center press that hits it OR misses is inert either way).
+  const pickNonTarget = async () => page.evaluate((values) => {
     /* eslint-disable @typescript-eslint/no-explicit-any */
     const g = (window as any).game; const w = g?.world; const camera = g?.mainView?.camera; const main = document.getElementById('main');
     const rect = main?.getBoundingClientRect();
@@ -85,25 +182,24 @@ async function clickWallByDesignationAndCount(page: Page, values: string[], coun
     const set = new Set(values.map(String));
     const proj = (p: any) => { const mw = camera.matrixWorldInverse.elements, pm = camera.projectionMatrix.elements; const vx = mw[0]*p.x+mw[4]*p.y+mw[8]*p.z+mw[12], vy = mw[1]*p.x+mw[5]*p.y+mw[9]*p.z+mw[13], vz = mw[2]*p.x+mw[6]*p.y+mw[10]*p.z+mw[14], vw = mw[3]*p.x+mw[7]*p.y+mw[11]*p.z+mw[15]; const cx = pm[0]*vx+pm[4]*vy+pm[8]*vz+pm[12]*vw, cy = pm[1]*vx+pm[5]*vy+pm[9]*vz+pm[13]*vw, cw = pm[3]*vx+pm[7]*vy+pm[11]*vz+pm[15]*vw; return { sx: (rect?.left??0)+(cx/cw+1)*0.5*(rect?.width??0), sy: (rect?.top??0)+(1-cy/cw)*0.5*(rect?.height??0) }; };
     let hand = 0; for (const t of w.things.values()) if (/^hand\.\d+@0$/.test(String(t?.slot?.name ?? ''))) hand++;
-    let wall = 0; for (const t of w.things.values()) if (t?.slot?.group === 'wall') wall++;
     for (const t of w.things.values()) {
-      if (t?.slot?.group !== 'wall' || t.claimedBy != null) continue;
+      if (t?.slot?.group !== 'wall' || (t.claimedBy !== null && t.claimedBy !== undefined)) continue;
       const up = t.slot?.links?.up; if (up && up.thing) continue;
-      const isTarget = set.has(String(t.slot?.name));
-      if (isTarget !== wantTarget) continue;
+      if (set.has(String(t.slot?.name))) continue;   // skip the designated trigger(s)
       const s = proj(t.place().position);
-      return { ok: true, cx: Math.round(s.sx), cy: Math.round(s.sy), handBefore: hand, wallBefore: wall };
+      return { ok: true, cx: Math.round(s.sx), cy: Math.round(s.sy), handBefore: hand };
     }
-    return { ok: false, handBefore: hand, wallBefore: wall };
+    return { ok: false, handBefore: hand };
     /* eslint-enable @typescript-eslint/no-explicit-any */
-  }, { values, wantTarget });
-  const counts = async () => page.evaluate(() => { const w = (window as any).game?.world; let hand = 0, wall = 0; if (w?.things) for (const t of w.things.values()) { const nm = String(t?.slot?.name ?? ''); if (/^hand\.\d+@0$/.test(nm)) hand++; if (t?.slot?.group === 'wall') wall++; } return { hand, wall }; });
-
-  const tp = await pick(true); let batchTaken = false;
-  if (tp.ok) { await page.mouse.move(tp.cx, tp.cy); await page.waitForTimeout(120); await page.mouse.down(); await page.waitForTimeout(80); await page.mouse.up(); await page.waitForTimeout(1200); const after = await counts(); batchTaken = (after.hand - tp.handBefore) === count && (tp.wallBefore - after.wall) === count; }
-  const wp = await pick(false); let wrongRejected = false;
-  if (wp.ok) { await page.mouse.move(wp.cx, wp.cy); await page.waitForTimeout(120); await page.mouse.down(); await page.waitForTimeout(80); await page.mouse.up(); await page.waitForTimeout(1000); const after = await counts(); wrongRejected = after.hand === wp.handBefore && after.wall === wp.wallBefore; }
-  return { batchTaken, wrongRejected };
+  }, values);
+  // TARGET — grid-scan to the exact designated trigger's face, then real press.
+  const target = await pressTargetByHover(page, String(values[0]), takes);
+  // NON-TARGET — a non-designated reachable wall top; press its projected center; must be inert.
+  const wp = await pickNonTarget();
+  const nonTarget = wp.ok && typeof wp.cx === 'number' && typeof wp.cy === 'number'
+    ? await pressAt(page, wp.cx, wp.cy, takes)
+    : { ok: false, handBefore: wp.handBefore, handAfter: wp.handBefore, handDelta: 0, frames: [] as TakeFrame[] };
+  return { target, nonTarget };
 }
 
 // PHYSICAL-STACK extension (F1-independent — uses render occlusion + world
@@ -156,7 +252,29 @@ async function wallStacks(page: Page): Promise<Array<{ x: number; y: number; lay
   });
 }
 
-async function clickSlotByName(page: Page, name: string): Promise<{ ok: boolean }> {
+/** OBSERVE — of the given wall slots, those that are genuinely REACHABLE tops
+ *  (no tile occupying their `up` link). Only a reachable top is a valid physical
+ *  click probe: pressing an occluded lower layer's projected coords raycasts to
+ *  the tile above it, which makes the probe meaningless. */
+async function reachableTops(page: Page, slots: string[]): Promise<string[]> {
+  return page.evaluate((slots: string[]) => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const w = (window as any).game?.world; const set = new Set(slots.map(String)); const out: string[] = [];
+    if (w?.things) for (const t of w.things.values()) {
+      if (t?.slot?.group !== 'wall' || !set.has(String(t.slot?.name))) continue;
+      const up = t.slot?.links?.up; if (up && up.thing) continue;
+      if (t.claimedBy !== null && t.claimedBy !== undefined) continue;
+      out.push(String(t.slot.name));
+    }
+    return out;
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  }, slots);
+}
+
+/** OBSERVE — hover the given slot's projected coords and report what the renderer
+ *  actually picked. Proves the raycast resolves to the reachable TOP, never the
+ *  occluded tile beneath it. */
+async function hoverAndReadPick(page: Page, name: string): Promise<{ ok: boolean; hovered: string | null }> {
   const s = await page.evaluate((name) => {
     /* eslint-disable @typescript-eslint/no-explicit-any */
     const g = (window as any).game; const w = g?.world; const camera = g?.mainView?.camera; const main = document.getElementById('main');
@@ -172,9 +290,37 @@ async function clickSlotByName(page: Page, name: string): Promise<{ ok: boolean 
     return { ok: false, cx: 0, cy: 0 };
     /* eslint-enable @typescript-eslint/no-explicit-any */
   }, name);
-  if (!s.ok) return { ok: false };
-  await page.mouse.move(s.cx, s.cy); await page.waitForTimeout(120); await page.mouse.down(); await page.waitForTimeout(80); await page.mouse.up(); await page.waitForTimeout(1200);
-  return { ok: true };
+  if (!s.ok) return { ok: false, hovered: null };
+  await page.mouse.move(s.cx, s.cy);
+  await page.waitForTimeout(250);
+  const hovered = await page.evaluate(() => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const w = (window as any).game?.world; const h = w?.hovered;
+    return h ? String(h?.slot?.name ?? '') : null;
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  });
+  return { ok: true, hovered };
+}
+
+/** ADVANCE — press ONE named wall slot and return the actor-scoped outcome. */
+async function pressSlotByName(page: Page, name: string, takes: TakeFrame[], settleMs = 1200): Promise<PressOutcome | null> {
+  const s = await page.evaluate((name) => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const g = (window as any).game; const w = g?.world; const camera = g?.mainView?.camera; const main = document.getElementById('main');
+    const rect = main?.getBoundingClientRect();
+    if (camera) { try { camera.parent?.updateMatrixWorld(true); camera.updateMatrixWorld(true); camera.matrixWorldInverse?.copy(camera.matrixWorld).invert(); } catch { /* */ } }
+    for (const t of w.things.values()) {
+      if (t?.slot?.group !== 'wall' || String(t.slot?.name) !== name) continue;
+      const p = t.place().position; const mw = camera.matrixWorldInverse.elements, pm = camera.projectionMatrix.elements;
+      const vx = mw[0]*p.x+mw[4]*p.y+mw[8]*p.z+mw[12], vy = mw[1]*p.x+mw[5]*p.y+mw[9]*p.z+mw[13], vz = mw[2]*p.x+mw[6]*p.y+mw[10]*p.z+mw[14], vw = mw[3]*p.x+mw[7]*p.y+mw[11]*p.z+mw[15];
+      const cx = pm[0]*vx+pm[4]*vy+pm[8]*vz+pm[12]*vw, cy = pm[1]*vx+pm[5]*vy+pm[9]*vz+pm[13]*vw, cw = pm[3]*vx+pm[7]*vy+pm[11]*vz+pm[15]*vw;
+      return { ok: true, cx: Math.round((rect?.left??0)+(cx/cw+1)*0.5*(rect?.width??0)), cy: Math.round((rect?.top??0)+(1-cy/cw)*0.5*(rect?.height??0)) };
+    }
+    return { ok: false, cx: 0, cy: 0 };
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  }, name);
+  if (!s.ok) return null;
+  return pressAt(page, s.cx, s.cy, takes, settleMs);
 }
 
 // Scan RAW received WS frames for the most-recent pickup entry and return its
@@ -196,10 +342,6 @@ function extractRawPickup(recv: string[]): any {
   return null;
 }
 
-// Count own hand + wall tiles (for the fail-closed no-any-wall-fallback probe).
-async function handWallCounts(page: Page): Promise<{ hand: number; wall: number }> {
-  return page.evaluate(() => { const w = (window as any).game?.world; let hand = 0, wall = 0; if (w?.things) for (const t of w.things.values()) { const nm = String(t?.slot?.name ?? ''); if (/^hand\.\d+@0$/.test(nm)) hand++; if (t?.slot?.group === 'wall') wall++; } return { hand, wall }; });
-}
 
 test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
   test('manual PRE-ceremony: wall press is inert', async ({ page }, testInfo) => {
@@ -223,7 +365,15 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     const cfg = makeConfig({ gameId: `g17-post-${Date.now()}`, dealMode: 'manual', botCount: 3, botDifficulty: 'Medium', handCount: 4 });
     await page.goto(buildGameUrl(base, cfg), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200); await dismissLobbyAndTour(page); await ensureConnected(page);
-    await takeSeatByClick(page, 0); await clickDeal(page); await waitForPlayableHand(page, 60_000).catch(() => {});
+    await takeSeatByClick(page, 0); await clickDeal(page);
+    // The table no longer self-completes the ceremony (D5 removed the client
+    // auto-drive), so without a real press per batch this test would sample a
+    // MID-CEREMONY table — where `isMyPickupTurn` is legitimately true and the
+    // wall IS interactable — and assert the post-deal invariant against the
+    // wrong phase. Drive every batch through the rendered #pickup-take-btn so
+    // the assertions below genuinely observe AwaitingDiscard.
+    await driveHumanPickupsUntilPlayable(page);
+    await waitForPlayableHand(page, 60_000).catch(() => {});
     await page.waitForTimeout(1500);
     const drag = await realDragWallTile(page);
     await shot(page, 'g17-post-deal-drag.png');
@@ -263,6 +413,7 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     const base = testInfo.project.use.baseURL as string;
     const cfg = makeConfig({ gameId: `g17-int-${Date.now()}`, seat: 0, dealMode: 'manual', botCount: 3, botDifficulty: 'Medium', handCount: 4 });
+    const takes = installTakeRecorder(page);
     await page.goto(buildGameUrl(base, cfg), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200); await dismissLobbyAndTour(page); await ensureConnected(page);
     await takeSeatByClick(page, 0); await clickDeal(page).catch(() => {});
@@ -279,9 +430,16 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     expect(d && d.gate && d.exactlyOneFront,
       `endpoint-only interaction requires pickup.targetSlots == exactly one exposed-front slot; got ${JSON.stringify(d)}`).toBe(true);
     if (d && d.gate && d.gateLen) {
-      const outcome = await clickWallByDesignationAndCount(page, d.gate, d.count);
-      expect(outcome.batchTaken, `S4: pressing the ONE exposed-front slot must take the whole batch of ${d.count} (server-confirmed)`).toBe(true);
-      expect(outcome.wrongRejected, 'S3: a non-front wall tile (incl. the other batch tiles) must be inert (no move/take)').toBe(true);
+      const out = await clickWallByDesignationAndCount(page, d.gate, takes);
+      recordEvidence('g17-endpoint-actor-scoped.json', { count: d.count, target: out.target, nonTarget: out.nonTarget,
+        note: 'Actor-scoped: handDelta is `hand.*@0` (bot-immune) and frames are THIS client\'s outbound pickup.take. Shared-wall deltas are NOT used — three bots take concurrently.' });
+      // S4 — the designated press is the causal actor: exactly one command, whole batch.
+      expect(out.target.matched, `S4: the real pointer must resolve world.hovered to the EXACT designated front slot ${d.gate[0]} before pressing (grid-scan defeats the ~16px angled-face projection offset); hovered=${out.target.hovered}`).toBe(true);
+      expect(out.target.frames.length, `S4: the ONE exposed-front press must emit EXACTLY ONE pickup.take; emitted=${out.target.frames.length}`).toBe(1);
+      expect(out.target.handDelta, `S4: pressing the ONE exposed-front slot must move the whole batch of ${d.count} into MY hand; handDelta=${out.target.handDelta}`).toBe(d.count);
+      // S3 — a non-designated wall tile is inert: zero command, zero hand movement.
+      expect(out.nonTarget.frames.length, `S3: a non-front wall tile (incl. the other batch tiles) must emit ZERO pickup.take; emitted=${out.nonTarget.frames.length}`).toBe(0);
+      expect(out.nonTarget.handDelta, `S3: a non-front wall press must not change MY hand; handDelta=${out.nonTarget.handDelta}`).toBe(0);
     }
   });
 
@@ -289,8 +447,7 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     testInfo.setTimeout(120_000);
     await page.setViewportSize({ width: 1600, height: 900 });
     // OUTBOUND ws capture (observation only — no injection/emit).
-    const sent: string[] = [];
-    page.on('websocket', (ws) => ws.on('framesent', (ev: any) => { try { sent.push(typeof ev.payload === 'string' ? ev.payload : Buffer.from(ev.payload).toString('utf8')); } catch { /* */ } }));
+    const takes = installTakeRecorder(page);
     const base = testInfo.project.use.baseURL as string;
     const cfg = makeConfig({ gameId: `g17-take-${Date.now()}`, seat: 0, dealMode: 'manual', botCount: 3, botDifficulty: 'Medium', handCount: 4 });
     await page.goto(buildGameUrl(base, cfg), { waitUntil: 'domcontentloaded' });
@@ -303,27 +460,58 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
       if (await page.evaluate(() => { const t = (window as any).game?.client?.turn; return !!(t && t.awaitingDiscard); })) break;
       await page.waitForTimeout(250);
     }
-    let previewInert = true; let batchTaken = false; let payloadKeys: string[] | null = null;
+    // SC-4 preview probe — batchPreviewSlots MINUS targetSlots[0]. The trigger is
+    // itself a member of its own batch preview, so probing the raw preview set would
+    // click the LEGITIMATE trigger and correctly take: that is a spec artefact, not a
+    // product defect (Hudson adjudication). Only the NON-trigger preview slots are
+    // display-only and must be inert.
+    //
+    // RAYCAST CORRECTNESS (Hudson final): a preview slot on the LOWER layer must NOT be
+    // probed by a physical click. Projecting an occluded tile's world position to screen
+    // coords and pressing there is an INVALID probe — the ray at those coords correctly
+    // hits the TOP tile that occludes it, so the resulting take is right behaviour, not a
+    // fail-closed breach. Occlusion is asserted non-physically in S12 (canSelect / hovered).
+    // Here the real non-trigger press uses a genuinely REACHABLE adjacent-stack TOP.
+    const trigger: string | null = d && d.gate && d.gateLen ? String(d.gate[0]) : null;
+    const previewOnly: string[] = (d?.preview ?? []).map(String).filter((s: string) => s !== trigger);
+    const previewTops: string[] = previewOnly.length ? await reachableTops(page, previewOnly) : [];
+    const previewProbes: Array<{ slot: string; handDelta: number; frames: number }> = [];
+    const previewSkipped: string[] = [];
+    let targetPress: TargetPressOutcome | null = null;
+    let payloadKeys: string[] | null = null;
     if (d && d.gate && d.gateLen) {
-      // batchPreviewSlots (display-only) must NOT be actionable
-      if (d.preview && d.preview.length) { const out = await clickWallByDesignationAndCount(page, d.preview, d.count); previewInert = out.wrongRejected && !out.batchTaken; }
-      // the single trigger press → server takes the whole batch; capture the take frame
-      sent.length = 0;
-      const outcome = await clickWallByDesignationAndCount(page, d.gate, d.count); batchTaken = outcome.batchTaken;
-      await page.waitForTimeout(400);
-      const frames = sent.map((s) => { try { return JSON.parse(s); } catch { return null; } }).filter((m) => m && /take|pickup/i.test(JSON.stringify(m)));
-      for (const m of frames) {
-        const scan = (o: any): string[] | null => { if (o && typeof o === 'object') { if ('count' in o || 'seatIndex' in o) return Object.keys(o); for (const v of Object.values(o)) { const r = scan(v); if (r) return r; } } return null; };
-        const k = scan(m); if (k) { payloadKeys = k; break; }
+      for (const slot of previewTops) {
+        // Re-read the LIVE designation immediately before each press: the ceremony can
+        // advance between the snapshot above and this press, and a slot that has since
+        // become the current trigger would legitimately take. Skipping those removes
+        // the last non-defect explanation for a preview slot emitting a command.
+        const live = await readDesignation(page);
+        const liveTrigger = live && live.gate && live.gateLen === 1 ? String(live.gate[0]) : null;
+        if (liveTrigger !== null && liveTrigger === slot) { previewSkipped.push(slot); continue; }
+        const p = await pressSlotByName(page, slot, takes);
+        if (p) previewProbes.push({ slot, handDelta: p.handDelta, frames: p.frames.length });
       }
+      // the single trigger press → grid-scan to its exact face, then real press;
+      // the server takes the whole batch and we capture the outbound take frame.
+      targetPress = await pressTargetByHover(page, trigger!, takes);
+      await page.waitForTimeout(400);
+      const last = targetPress && targetPress.frames.length ? targetPress.frames[targetPress.frames.length - 1] : null;
+      payloadKeys = last ? last.keys : null;
     }
-    recordEvidence('g17-take-payload.json', { designation: d ? { gateLen: d.gateLen, previewLen: d.previewLen, count: d.count } : null, previewInert, batchTaken, takePayloadKeys: payloadKeys, sentFrames: sent.length,
-      note: 'RED@200cad4: no targetSlots ⇒ no single-trigger designation ⇒ take path unreachable. GREEN needs targetSlots len-1 + a {seatIndex,count}-only take.' });
+    recordEvidence('g17-take-payload.json', { designation: d ? { gateLen: d.gateLen, previewLen: d.previewLen, count: d.count } : null,
+      trigger, previewOnly, previewProbes, previewSkipped, targetPress, takePayloadKeys: payloadKeys, totalTakeFrames: takes.length,
+      note: 'Actor-scoped (Hudson): inert ⟺ zero outbound pickup.take AND unchanged `hand.*@0`. Preview probe excludes targetSlots[0], which is a legitimate trigger.' });
 
     // FINAL SC-4: single-trigger-slot; take carries ZERO tile authority.
     expect(d && d.exactlyOneFront, `SC-4: pickup.targetSlots must be EXACTLY length 1 (single trigger); got ${JSON.stringify(d && { gateLen: d.gateLen })}`).toBe(true);
-    expect(previewInert, 'SC-4: batchPreviewSlots (display-only) must NOT be actionable (no take)').toBe(true);
-    expect(batchTaken, `SC-4: the single trigger press must take the whole batch of ${d?.count} (server count-based)`).toBe(true);
+    for (const p of previewProbes) {
+      expect(p.frames, `SC-4: non-trigger batchPreviewSlot ${p.slot} (display-only) must emit ZERO pickup.take; emitted=${p.frames}`).toBe(0);
+      expect(p.handDelta, `SC-4: non-trigger batchPreviewSlot ${p.slot} must not change MY hand; handDelta=${p.handDelta}`).toBe(0);
+    }
+    expect(targetPress, 'SC-4: the single trigger slot must be pressable').not.toBeNull();
+    expect(targetPress!.matched, `SC-4: the real pointer must resolve world.hovered to the EXACT trigger ${trigger} before pressing; hovered=${targetPress!.hovered}`).toBe(true);
+    expect(targetPress!.frames.length, `SC-4: the single trigger press must emit EXACTLY ONE pickup.take; emitted=${targetPress!.frames.length}`).toBe(1);
+    expect(targetPress!.handDelta, `SC-4: the single trigger press must move the whole batch of ${d?.count} into MY hand; handDelta=${targetPress!.handDelta}`).toBe(d.count);
     expect(payloadKeys, 'SC-4: an outbound pickup.take frame must be observed').not.toBeNull();
     if (payloadKeys) {
       const extra = payloadKeys.filter((k) => k !== 'seatIndex' && k !== 'count');
@@ -370,32 +558,75 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     const base = testInfo.project.use.baseURL as string;
     const cfg = makeConfig({ gameId: `g17-failclosed-${Date.now()}`, seat: 0, dealMode: 'manual', botCount: 3, botDifficulty: 'Medium', handCount: 4 });
+    const takes = installTakeRecorder(page);
     await page.goto(buildGameUrl(base, cfg), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200); await dismissLobbyAndTour(page); await ensureConnected(page);
     await takeSeatByClick(page, 0); await clickDeal(page).catch(() => {});
-    await page.waitForTimeout(1500);
+    // ── S11 STALE-PRECONDITION ADJUDICATION (Ripley, independent revision owner) ──
+    // The ORIGINAL setup sampled the designation 1.5 s after the deal trigger and
+    // required "no exact-1 targetSlots". That only held because the RED build shipped
+    // NO designation at all: on a build where Bishop's targetSlots is present, the
+    // dealer's own batch window is open at exactly that instant, so the PRECONDITION
+    // (not the invariant) flips false and S11 goes red for the wrong reason. The setup
+    // was pinned to the very defect the gate is meant to outlive.
+    //
+    // The INVARIANT below is unchanged and is NOT weakened. Only the state we exercise
+    // it in moves to one that is reachable on a CORRECT build. We advance ONLY our own
+    // batches (never fabricating a press we don't own) until the viewer holds no
+    // single-trigger designation — which converges on one of two real, display-only
+    // states: (a) a LIVE ceremony whose pickup cursor is parked on another (bot) seat
+    // — readDesignation() returns null for a foreign seatIndex — or (b) the
+    // post-ceremony tombstone. (a) is strictly stronger than the empty pre-ceremony /
+    // post-deal states already covered above, because a pickup collection IS live:
+    // it is precisely where an any-wall fallback would be most dangerous.
+    const noDesigDeadline = Date.now() + 45_000;
+    let d = await readDesignation(page);
+    let myTurn = await readIsMyPickupTurn(page);
+    while (Date.now() < noDesigDeadline && (myTurn || (d && d.gate && d.gateLen === 1))) {
+      if (myTurn) await takePickup(page);
+      else await page.waitForTimeout(250);
+      d = await readDesignation(page);
+      myTurn = await readIsMyPickupTurn(page);
+    }
+    // Record WHICH reachable no-designation state we landed in, so the gate is provably
+    // non-vacuous rather than silently degenerating to "nothing was happening".
+    const reached = await page.evaluate(() => {
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      const g = (window as any).game;
+      const pu = g?.client?.pickup?.get ? g.client.pickup.get('current') : null;
+      return { pickupLive: !!pu, pickupSeat: pu ? (pu.seatIndex ?? null) : null, mySeat: g?.client?.seat ?? null, phase: pu ? pu.phase : null };
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+    });
     // the client-parsed designation: missing/empty/multiple ⇒ NO exact-1 trigger
-    const d = await readDesignation(page);
+    // (re-read after the convergence loop above; `d` is declared there)
+    d = await readDesignation(page);
     const noValidDesignation = !d || !d.gate || d.gateLen !== 1;
-    // press an ARBITRARY wall tile (real pointer) and assert nothing moves/takes
-    const before = await handWallCounts(page);
+    // press an ARBITRARY wall tile (real pointer) and assert nothing moves/takes.
+    // ACTOR-SCOPED: the shared-wall term `after.wall < before.wall` was a FALSE
+    // POSITIVE generator — any of the three bots taking its own batch inside this
+    // window flipped it true. Fail-closed is now proven by MY hand (`hand.*@0`)
+    // plus MY outbound pickup.take frames, and the local drag/hold state.
+    const handBefore = await myHandCount(page);
+    const mark = takes.length;
     const drag = await realDragWallTile(page);
     await page.waitForTimeout(600);
-    const after = await handWallCounts(page);
-    const anyWallActed = (after.hand > before.hand) || (after.wall < before.wall) || !!(drag.held && drag.held.isHolding) || ((drag.held?.dragOffsetWorld ?? 0) > 5);
-    recordEvidence('g17-fail-closed.json', { noValidDesignation, designationLen: d ? d.gateLen : null, before, after, held: drag.held, anyWallActed,
-      note: 'Fail-closed: with missing/empty/multiple targetSlots the client must NOT fall back to any-wall interaction. RED@200cad4 if a wall press still hovers/holds/takes.' });
-    // @200cad4 the served build ships no valid single-trigger targetSlots ⇒ this IS
-    // the missing fail-closed case; the client must NOT let any wall tile act.
-    expect(noValidDesignation, 'precondition: no exact-1 targetSlots designation (missing/empty/multiple)').toBe(true);
-    expect(anyWallActed, 'FAIL-CLOSED: with no valid targetSlots, pressing ANY wall tile must be inert (no hold/move/take — no any-wall fallback)').toBe(false);
+    const handAfter = await myHandCount(page);
+    const emitted = takes.slice(mark);
+    const anyWallActed = (handAfter > handBefore) || emitted.length > 0 || !!(drag.held && drag.held.isHolding) || ((drag.held?.dragOffsetWorld ?? 0) > 5);
+    recordEvidence('g17-fail-closed.json', { noValidDesignation, designationLen: d ? d.gateLen : null, reached, handBefore, handAfter, emittedTakes: emitted, held: drag.held, anyWallActed,
+      note: 'Fail-closed (actor-scoped, Hudson): inert ⟺ zero outbound pickup.take AND unchanged `hand.*@0` AND no local hold/drag. Shared-wall deltas are NOT used — bots take concurrently. `reached` names the real state exercised: pickupLive && pickupSeat !== mySeat = a live ceremony parked on another seat (display-only); pickupLive=false = the post-ceremony tombstone.' });
+    // PRECONDITION (now reachable on a FIXED build, not pinned to the RED one): the
+    // viewer holds no single-trigger designation — either the live pickup belongs to
+    // another seat, or the ceremony has tombstoned. Either way the client must NOT let
+    // any wall tile act.
+    expect(noValidDesignation, `precondition: this viewer holds no exact-1 targetSlots designation (converged state: ${JSON.stringify(reached)})`).toBe(true);
+    expect(anyWallActed, `FAIL-CLOSED: with no valid targetSlots, pressing ANY wall tile must be inert — zero pickup.take (emitted=${emitted.length}), unchanged hand (${handBefore}→${handAfter}), no hold/drag`).toBe(false);
   });
 
   test('S12 (F2 reachability): reachable TOP frontier tile actionable; OCCLUDED bottom inert (canSelect blocks)', async ({ page }, testInfo) => {
     testInfo.setTimeout(120_000);
     await page.setViewportSize({ width: 1600, height: 900 });
-    const sent: string[] = [];
-    page.on('websocket', (ws) => ws.on('framesent', (ev: any) => { try { sent.push(typeof ev.payload === 'string' ? ev.payload : Buffer.from(ev.payload).toString('utf8')); } catch { /* */ } }));
+    const sent = installTakeRecorder(page);
     const base = testInfo.project.use.baseURL as string;
     const cfg = makeConfig({ gameId: `g17-f2-${Date.now()}`, seat: 0, dealMode: 'manual', botCount: 3, botDifficulty: 'Medium', handCount: 4 });
     await page.goto(buildGameUrl(base, cfg), { waitUntil: 'domcontentloaded' });
@@ -429,16 +660,24 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
       /* eslint-enable @typescript-eslint/no-explicit-any */
     }, d.gate[0]) : null;
 
-    let batchTaken = false; let payloadKeys: string[] | null = null;
+    let topPress: TargetPressOutcome | null = null; let bottomHover: { ok: boolean; hovered: string | null } | null = null; let payloadKeys: string[] | null = null;
     if (d && d.gate && d.gateLen) {
-      sent.length = 0;
-      const outcome = await clickWallByDesignationAndCount(page, d.gate, d.count); batchTaken = outcome.batchTaken;
+      // (a) real press on the designated reachable TOP → one command + my batch.
+      // F2(b) OCCLUSION — asserted NON-PHYSICALLY (Hudson final adjudication). A click at
+      // the occluded bottom's projected coords is an INVALID probe: the raycast correctly
+      // resolves to the reachable TOP that occludes it, so the resulting take is right
+      // behaviour, not a fail-closed breach. Occlusion is instead proven by the renderer's
+      // own pick: canSelect(bottom) === false AND a real hover at those coords resolves to
+      // something other than the bottom tile.
+      if (react && react.bottomName) bottomHover = await hoverAndReadPick(page, String(react.bottomName));
+      // (a) grid-scan to the designated reachable TOP's exact face → one command + my batch.
+      topPress = await pressTargetByHover(page, String(d.gate[0]), sent);
       await page.waitForTimeout(400);
-      const frames = sent.map((s) => { try { return JSON.parse(s); } catch { return null; } }).filter((m) => m && /take|pickup/i.test(JSON.stringify(m)));
-      for (const m of frames) { const scan = (o: any): string[] | null => { if (o && typeof o === 'object') { if ('count' in o || 'seatIndex' in o) return Object.keys(o); for (const v of Object.values(o)) { const r = scan(v); if (r) return r; } } return null; }; const k = scan(m); if (k) { payloadKeys = k; break; } }
+      const last = topPress && topPress.frames.length ? topPress.frames[topPress.frames.length - 1] : null;
+      payloadKeys = last ? last.keys : null;
     }
-    recordEvidence('g17-f2-reachability.json', { designation: d ? { gateLen: d.gateLen, count: d.count, top: d.gate?.[0] } : null, react, batchTaken, payloadKeys,
-      note: 'F2: the actionable tile is the reachable TOP of the frontier stack; the occluded bottom must be inert. RED@200cad4: no targetSlots designation.' });
+    recordEvidence('g17-f2-reachability.json', { designation: d ? { gateLen: d.gateLen, count: d.count, top: d.gate?.[0] } : null, react, topPress, bottomHover, payloadKeys,
+      note: 'F2 (actor-scoped, Hudson): take ⟺ exactly one outbound pickup.take AND `hand.*@0` +count; inert ⟺ zero command AND unchanged hand. Shared-wall deltas are NOT used.' });
 
     expect(d && d.exactlyOneFront, `F2: requires a single-trigger pickup.targetSlots designation; got ${JSON.stringify(d && { gateLen: d.gateLen })}`).toBe(true);
     // (top) reachable + selectable
@@ -449,9 +688,17 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
       expect(react.bottomOccluded, `F2(b): the same-stack bottom tile ${react.bottomName} must be OCCLUDED (a tile on top)`).toBe(true);
       const bottomInert = react.bottomCanSelect === false || (react.bottomCanSelect === null && react.bottomOccluded === true);
       expect(bottomInert, `F2(b): the OCCLUDED bottom tile must be INERT (canSelect blocks it); bottomCanSelect=${react.bottomCanSelect}`).toBe(true);
+      // (b) the renderer's own pick must never resolve to the occluded bottom: a real
+      // hover at its projected coords lands on the tile above it (or nothing).
+      if (bottomHover && bottomHover.ok) {
+        expect(bottomHover.hovered, `F2(b): a real hover at the OCCLUDED bottom ${react.bottomName} must NOT pick that tile (raycast resolves to the reachable top); hovered=${bottomHover.hovered}`).not.toBe(String(react.bottomName));
+      }
     }
     // (a) real click on the top → take; (d) payload seat+count only
-    expect(batchTaken, 'F2(a): a real-pointer click on the reachable TOP tile must trigger the take').toBe(true);
+    expect(topPress, 'F2(a): the designated TOP tile must be pressable').not.toBeNull();
+    expect(topPress!.matched, `F2(a): the real pointer must resolve world.hovered to the EXACT reachable TOP ${d.gate?.[0]} before pressing; hovered=${topPress!.hovered}`).toBe(true);
+    expect(topPress!.frames.length, `F2(a): a real-pointer click on the reachable TOP tile must emit EXACTLY ONE pickup.take; emitted=${topPress!.frames.length}`).toBe(1);
+    expect(topPress!.handDelta, `F2(a): the TOP-tile press must move the whole batch of ${d.count} into MY hand; handDelta=${topPress!.handDelta}`).toBe(d.count);
     expect(payloadKeys, 'F2(d): an outbound pickup.take frame must be observed').not.toBeNull();
     if (payloadKeys) expect(payloadKeys.filter((k) => k !== 'seatIndex' && k !== 'count'), `F2(d): take payload = {seatIndex,count} only; extra=${JSON.stringify(payloadKeys)}`).toEqual([]);
   });
@@ -487,30 +734,79 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     const base = testInfo.project.use.baseURL as string;
     const cfg = makeConfig({ gameId: `g17-lower-${Date.now()}`, seat: 0, dealMode: 'manual', botCount: 3, botDifficulty: 'Medium', handCount: 4 });
+    const takes = installTakeRecorder(page);
     await page.goto(buildGameUrl(base, cfg), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200); await dismissLobbyAndTour(page); await ensureConnected(page);
     await takeSeatByClick(page, 0); await clickDeal(page).catch(() => {});
-    // Timeline of the GLOBAL pickup trigger across the whole ceremony (any seat) —
-    // the single-tile phases pick top then bottom of the same stack, so a count=1
-    // trigger must be immediately followed by the SAME-footprint lower layer.
-    const timeline: any[] = []; const t0 = Date.now();
-    while (Date.now() - t0 < 30000) {
-      const d = await readStackDesignation(page, false);
-      if (d && d.targetName) {
-        const last = timeline[timeline.length - 1];
-        if (!last || last.targetName !== d.targetName) timeline.push({ phase: d.phase, count: d.count, seatIndex: d.seatIndex, targetName: d.targetName, reachable: d.targetReachable, fx: d.footprint?.x ?? null, fy: d.footprint?.y ?? null });
+    // Timeline of the GLOBAL pickup trigger across the whole ceremony (any seat).
+    // ── OBSERVATION ROBUSTNESS (Hicks 2026-08-11) ────────────────────────────────
+    // The former Playwright-side 180 ms sample MISSED same-stack top→lower
+    // transitions: each bot single-tile pickup is held only ~400 ms and, worse, no
+    // sampling happens at all while THIS test is blocked inside a real wall press —
+    // so on the slower mobile-chrome the count=1 lower-layer trigger appeared and was
+    // consumed inside a gap and the transition was never recorded (RED there only).
+    // Replace the lossy external sample with an IN-PAGE recorder hooked to the client's
+    // own `pickup` 'update' event (the same event game-ui.onPickupUpdate renders from):
+    // it captures EVERY distinct designation the client sees — including those that
+    // fire during a press's waits — with the tile's live footprint. Observation only,
+    // no emit/mutation; the ceremony is still driven by REAL wall presses below.
+    await page.evaluate(() => {
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      const g = (window as any).game; const cli = g?.client; const w = g?.world;
+      if (!cli?.pickup || (window as any).__pickupTimeline) return;
+      const tl: any[] = []; (window as any).__pickupTimeline = tl;
+      const record = () => {
+        const pu = cli.pickup.get ? cli.pickup.get('current') : null;
+        if (!pu) return;
+        const gate = Array.isArray(pu.targetSlots) ? pu.targetSlots.map(String) : null;
+        if (!gate || !gate.length) return;
+        const name = String(gate[0]);
+        const last = tl[tl.length - 1];
+        if (last && last.targetName === name) return;   // dedupe consecutive
+        let fx: number | null = null, fy: number | null = null, reachable: boolean | null = null;
+        if (w?.things) for (const t of w.things.values()) {
+          if (t?.slot?.group !== 'wall' || String(t.slot?.name) !== name) continue;
+          try { const p = t.place().position; fx = Math.round(p.x); fy = Math.round(p.y); } catch { /* */ }
+          const up = t.slot?.links?.up; reachable = !(up && up.thing);
+        }
+        tl.push({ phase: pu.phase, count: pu.count, seatIndex: pu.seatIndex, targetName: name, reachable, fx, fy });
+      };
+      cli.pickup.on('update', record);
+      record();   // seed with whatever designation is already live
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+    });
+    // Drive the ceremony with REAL wall presses so it PROGRESSES to the count=1
+    // SingleTilePickup phase: the human owns its own batches, so press ONLY when it is
+    // genuinely our turn (readIsMyPickupTurn) — bots drive their own. The in-page
+    // recorder above captures every transition, including those that land while a press
+    // is in flight, so no explicit per-iteration sample is needed.
+    //
+    // NOTE (Hudson final): a count=4 batch consumes two FULL stacks (top+bottom together),
+    // so no lower layer is exposed after it — the top→same-stack-lower advance is a
+    // property of the count=1 SingleTilePickup phase only, and is asserted there.
+    const t0 = Date.now();
+    while (Date.now() - t0 < 60000) {
+      if (await readIsMyPickupTurn(page)) {
+        const mine = await readStackDesignation(page, true);
+        if (mine && mine.targetName) await pressTargetByHover(page, String(mine.targetName), takes, 300);
+      } else {
+        await page.waitForTimeout(120);
       }
+      if (await hasExtraHandTile(page)) break;
       if (await page.evaluate(() => { const t = (window as any).game?.client?.turn; return !!(t && t.awaitingDiscard); })) break;
-      await page.waitForTimeout(180);
     }
+    // Read the in-page timeline (every distinct global designation the client saw).
+    const timeline: any[] = await page.evaluate(() => (window as any).__pickupTimeline ?? []);
     // find a count=1 → same-footprint, different-slot, reachable transition
     let lowerLayerNext = false; let evidencePair: any = null;
     for (let i = 0; i + 1 < timeline.length; i++) {
       const a = timeline[i], b = timeline[i + 1];
-      if (a.count === 1 && a.fx != null && b.fx != null && Math.abs(a.fx - b.fx) < 3 && Math.abs(a.fy - b.fy) < 3 && a.targetName !== b.targetName && a.reachable === true && b.reachable === true) { lowerLayerNext = true; evidencePair = { a, b }; break; }
+      if (a.count === 1 && a.fx !== null && b.fx !== null && Math.abs(a.fx - b.fx) < 3 && Math.abs(a.fy - b.fy) < 3 && a.targetName !== b.targetName && a.reachable === true && b.reachable === true) { lowerLayerNext = true; evidencePair = { a, b }; break; }
     }
-    recordEvidence('g17-lower-layer-next.json', { timelineLen: timeline.length, timeline: timeline.slice(0, 12), lowerLayerNext, evidencePair,
-      note: 'RED@200cad4: no targetSlots ⇒ empty timeline ⇒ cannot observe the top→bottom same-stack single-pickup advance.' });
+    const singleTileSeen = timeline.filter((t) => t.count === 1).length;
+    recordEvidence('g17-lower-layer-next.json', { timelineLen: timeline.length, singleTileSeen, timeline: timeline.slice(0, 24), lowerLayerNext, evidencePair,
+      note: 'S7 is a SingleTilePickup property, observed via an in-page pickup.on(update) recorder (no sampling gaps): a count=1 trigger must be followed by the SAME-footprint lower layer as the next reachable trigger (across seat transitions). count=4 batches consume both layers of two stacks, so they expose no lower layer.' });
+    expect(singleTileSeen, `S7 precondition: the ceremony must reach the count=1 SingleTilePickup phase; timelineLen=${timeline.length}, counts=${JSON.stringify(timeline.map((t) => t.count))}`).toBeGreaterThan(0);
     expect(lowerLayerNext, 'S7: a count=1 pickup must expose the SAME stack\u2019s lower layer as the next reachable trigger').toBe(true);
   });
 
@@ -519,6 +815,7 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     const base = testInfo.project.use.baseURL as string;
     const cfg = makeConfig({ gameId: `g17-2stacks-${Date.now()}`, seat: 0, dealMode: 'manual', botCount: 3, botDifficulty: 'Medium', handCount: 4 });
+    const takes = installTakeRecorder(page);
     await page.goto(buildGameUrl(base, cfg), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200); await dismissLobbyAndTour(page); await ensureConnected(page);
     await takeSeatByClick(page, 0); await clickDeal(page).catch(() => {});
@@ -531,15 +828,60 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     }
     expect(d && d.count === 4 && d.targetLen === 1 && d.targetFound,
       `S8 needs a count=4 pickup with a single found front trigger; got ${JSON.stringify(d && { phase: d.phase, count: d.count, targetLen: d.targetLen, targetFound: d.targetFound })}`).toBe(true);
+    // ACTOR-SCOPED (Hudson): the causal truth is MY hand delta + exactly one
+    // {seatIndex:0,count:4} frame. The stack FOOTPRINT is still checked (that is the
+    // physical two-adjacent-stacks claim S8 exists for), but it is measured against MY
+    // batchPreviewSlots footprint rather than a time-boxed shared-wall diff. An early
+    // (220 ms) diff was still contaminated on the slower mobile-chrome — it read
+    // `fullStacksRemoved=4` (my 2 + another seat's 2) — so the diff is now INTERSECTED
+    // with the footprint the server designated for MY batch, which no bot can enter.
     const before = await wallStacks(page);
-    await clickSlotByName(page, d.targetName);
-    const after = await wallStacks(page);
-    // stacks fully removed = footprints present-before, absent-after
-    const removed = before.filter((s) => !after.some((q) => Math.abs(q.x - s.x) < 3 && Math.abs(q.y - s.y) < 3));
-    const tilesRemoved = before.reduce((n, s) => n + s.layers, 0) - after.reduce((n, s) => n + s.layers, 0);
+    const handBefore = await myHandCount(page);
+    // Footprints (world x,y) of the slots the server designated as MY batch preview.
+    const mineFootprint: Array<{ x: number; y: number }> = await page.evaluate(() => {
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      const g = (window as any).game; const w = g?.world;
+      const pu = g?.client?.pickup?.get ? g.client.pickup.get('current') : null;
+      const names = new Set<string>();
+      if (pu && pu.seatIndex === g?.client?.seat) {
+        for (const s of (pu.batchPreviewSlots ?? [])) names.add(String(s));
+        for (const s of (pu.targetSlots ?? [])) names.add(String(s));
+      }
+      const out: Array<{ x: number; y: number }> = [];
+      if (w?.things) for (const t of w.things.values()) {
+        if (t?.slot?.group !== 'wall' || !names.has(String(t.slot?.name))) continue;
+        try { const p = t.place().position; out.push({ x: p.x, y: p.y }); } catch { /* */ }
+      }
+      return out;
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+    });
+    // EARLY settle (220 ms) so the footprint below is sampled close to the press; the
+    // hand delta is bot-immune so it is polled separately. Grid-scan to the exact
+    // designated face first so the count-4 press reliably actuates post-shift.
+    const press = await pressTargetByHover(page, d.targetName, takes, 220);
+    const afterEarly = await wallStacks(page);
+    let handAfter = await myHandCount(page);
+    const hDeadline = Date.now() + 4000;
+    while (handAfter - handBefore < 4 && Date.now() < hDeadline) { await page.waitForTimeout(100); handAfter = await myHandCount(page); }
+    const emitted = press ? press.frames : [];
+    // stacks fully removed = footprints present-before, absent-after …
+    const removedRaw = before.filter((s) => !afterEarly.some((q) => Math.abs(q.x - s.x) < 3 && Math.abs(q.y - s.y) < 3));
+    // … INTERSECTED with MY designated batch footprint, so a concurrent bot pickup
+    // elsewhere on the wall can never be counted against this gate.
+    const removed = mineFootprint.length
+      ? removedRaw.filter((s) => mineFootprint.some((m) => Math.abs(m.x - s.x) < 3 && Math.abs(m.y - s.y) < 3))
+      : removedRaw;
     const adjacent = removed.length === 2 && Math.hypot(removed[0].x - removed[1].x, removed[0].y - removed[1].y) < 20;
-    recordEvidence('g17-two-stacks.json', { count: d.count, tilesRemoved, fullStacksRemoved: removed.length, removed, adjacent });
-    expect(tilesRemoved, `S8: a count=4 batch must remove exactly 4 wall tiles; removed=${tilesRemoved}`).toBe(4);
+    recordEvidence('g17-two-stacks.json', { count: d.count, handBefore, handAfter, handDelta: handAfter - handBefore, emittedTakes: emitted, mineFootprintLen: mineFootprint.length, removedRawLen: removedRaw.length, fullStacksRemoved: removed.length, removed, adjacent,
+      note: 'Actor-scoped: hand delta + exactly one {seatIndex,count} frame are the causal gates; the footprint is sampled early (pre-bot-pickup) and is the physical two-adjacent-stacks claim only.' });
+    // (1) exactly one outbound command, carrying exactly {seatIndex:0,count:4}
+    expect(press.matched, `S8: the real pointer must resolve world.hovered to the EXACT designated trigger ${d.targetName} before pressing; hovered=${press.hovered}`).toBe(true);
+    expect(emitted.length, `S8: one designated press must emit EXACTLY ONE pickup.take; emitted=${emitted.length}`).toBe(1);
+    expect(emitted[0].seatIndex, `S8: the take must be scoped to MY seat 0; got ${emitted[0]?.seatIndex}`).toBe(0);
+    expect(emitted[0].count, `S8: the take must carry count=4; got ${emitted[0]?.count}`).toBe(4);
+    // (2) my hand grew by exactly the batch — bot-immune
+    expect(handAfter - handBefore, `S8: a count=4 batch must move exactly 4 tiles into MY hand; handDelta=${handAfter - handBefore}`).toBe(4);
+    // (3) the physical footprint: exactly two adjacent full stacks
     expect(removed.length, `S8: those 4 tiles must be EXACTLY two full stacks (both layers each); fullStacksRemoved=${removed.length}`).toBe(2);
     expect(adjacent, 'S8: the two consumed stacks must be adjacent at the front (one-pitch apart)').toBe(true);
   });
@@ -571,13 +913,26 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
   });
 
   test('pickup tombstone GREEN LOCK (Vasquez D1): pickup["current"]==null + isMyPickupTurn()==false post-ceremony', async ({ page }, testInfo) => {
+    // BOTH projects. Hudson's Pixel 5 probe proved `#pickup-take-btn` is
+    // rendered, hit-testable and 5/5 pressable under touch emulation, and the
+    // full chromium-vs-mobile-chrome matrix (Ripley, 2026-08-11, 30/30 cases,
+    // 0 skipped) came back BIT-IDENTICAL on both projects. There is no
+    // mobile-specific defect here — a chromium-only skip would have masked a
+    // real product defect as a "mobile viewport" issue.
     testInfo.setTimeout(150_000);
     await page.setViewportSize({ width: 1600, height: 900 });
     const base = testInfo.project.use.baseURL as string;
     const cfg = makeConfig({ gameId: `g17-tomb-${Date.now()}`, dealMode: 'manual', botCount: 3, botDifficulty: 'Medium', handCount: 4 });
     await page.goto(buildGameUrl(base, cfg), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200); await dismissLobbyAndTour(page); await ensureConnected(page);
-    await takeSeatByClick(page, 0); await clickDeal(page); await waitForPlayableHand(page, 60_000).catch(() => {});
+    await takeSeatByClick(page, 0); await clickDeal(page);
+    // Drive every real ceremony batch through the visible #pickup-take-btn
+    // (shared takePickup) — the table no longer reaches AwaitingDiscard on
+    // its own, so without this the pickup cursor is still parked on the
+    // dealer's own (unpressed) first batch and this GREEN LOCK would be
+    // observing mid-ceremony state, not the post-ceremony tombstone it names.
+    await driveHumanPickupsUntilPlayable(page);
+    await waitForPlayableHand(page, 60_000).catch(() => {});
     await page.waitForTimeout(2000);
     const post = await page.evaluate(() => {
       /* eslint-disable @typescript-eslint/no-explicit-any */

@@ -40,14 +40,84 @@ export function attachRawWsCapture(page: Page, sink: RawWsSink): void {
 
 export function slotOf(v: any): string { return String(v?.slotName ?? v?.slot?.name ?? v?.slot ?? ''); }
 
-// --- client-state readers (reflect the raw-WS handle=thing.index & face) -----
-export async function handleMap(page: Page, slotRe: string): Promise<Record<string, string>> {
+// --- client-state readers (AUTHORITATIVE per-viewer identity) ----------------
+// IMPORTANT (Frost adjudication 2026-08-11): a Thing's numeric `index` is NOT an
+// identity. For an anonymous face-down BACK (a tile the viewer is not entitled to)
+// `index` is a local InstancedMesh/back-pool ALLOCATION id (>=108, numeric BY
+// DESIGN, disjoint from the real tile ids 0-107) and `typeIndex` is 0 (a sentinel
+// — the back carries no face). The authoritative per-viewer identity of a back is
+// the opaque `hiddenHandle` ("h_…"); an entitled/real tile has `hiddenHandle===null`
+// and its real numeric tile id in `index`. Privacy (P-1/P-5) MUST be asserted on
+// `hiddenHandle`, never on `index` (asserting `String(index)` was the prior bug
+// that produced 94 false "numeric handle" failures against a correct backend).
+export interface ThingIdentity {
+  slot: string;
+  index: number;               // 0-107 = real tile id; >=108 = anonymous back allocation id
+  typeIndex: number;           // real face for an entitled tile; 0 (sentinel) for a back
+  hidden: boolean;
+  hiddenHandle: string | null; // opaque "h_…" for a back; null for a real/entitled tile
+  rotationIndex: number;
+}
+
+// Read the reconciled world.things for every slot matching slotRe, exposing the
+// full identity shape (not the allocation id alone) so P-1..P-5 can assert on the
+// authoritative fields.
+export async function thingIdentityMap(page: Page, slotRe: string): Promise<Record<string, ThingIdentity>> {
   return page.evaluate((re) => {
     /* eslint-disable @typescript-eslint/no-explicit-any */
-    const w = (window as any).game?.world; const out: Record<string, string> = {};
+    const w = (window as any).game?.world; const out: Record<string, any> = {};
     const rx = new RegExp(re);
-    if (w?.things) for (const t of w.things.values()) { const nm = String(t?.slot?.name ?? ''); if (rx.test(nm) && t.index !== undefined && t.index !== null) out[nm] = String(t.index); }
+    if (w?.things) for (const t of w.things.values()) {
+      const nm = String(t?.slot?.name ?? '');
+      if (!rx.test(nm) || t.index === undefined || t.index === null) continue;
+      out[nm] = {
+        slot: nm,
+        index: Number(t.index),
+        typeIndex: Number(t.typeIndex),
+        hidden: t.hidden === true,
+        hiddenHandle: (t.hiddenHandle === undefined ? null : t.hiddenHandle),
+        rotationIndex: Number(t.rotationIndex),
+      };
+    }
     return out;
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  }, slotRe);
+}
+
+// A BACK (anonymous face-down, viewer not entitled) ⟺ it carries an opaque handle.
+export function isBack(t: ThingIdentity): boolean { return t.hiddenHandle !== null; }
+
+// The authoritative per-viewer identity STRING compared across viewers/reconnects:
+// the opaque handle for a back, else the real numeric tile id. Never the mesh id.
+export function authoritativeHandle(t: ThingIdentity): string {
+  return t.hiddenHandle !== null ? t.hiddenHandle : String(t.index);
+}
+
+// slot → opaque handle, restricted to the BACKS in the map (entitled reals dropped).
+export function backHandleMap(m: Record<string, ThingIdentity>): Record<string, string> {
+  const o: Record<string, string> = {};
+  for (const [k, t] of Object.entries(m)) if (t.hiddenHandle !== null) o[k] = t.hiddenHandle;
+  return o;
+}
+
+// slot → real numeric tile id (as string), restricted to the ENTITLED reals.
+export function realIndexMap(m: Record<string, ThingIdentity>): Record<string, string> {
+  const o: Record<string, string> = {};
+  for (const [k, t] of Object.entries(m)) if (t.hiddenHandle === null) o[k] = String(t.index);
+  return o;
+}
+
+// Opaque ⟺ starts "h_" AND is not a bare integer (defeats the index-as-identity bug).
+export function isOpaqueHandle(h: string): boolean { return /^h_/.test(h) && !/^-?\d+$/.test(h); }
+
+// Slots (matching slotRe) rendered by more than one Thing — a double-occupancy /
+// ghost / over-reveal detector.
+export async function duplicateSlots(page: Page, slotRe: string): Promise<string[]> {
+  return page.evaluate((re) => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const w = (window as any).game?.world; const rx = new RegExp(re); const seen: Record<string, number> = {};
+    if (w?.things) for (const t of w.things.values()) { const nm = String(t?.slot?.name ?? ''); if (rx.test(nm)) seen[nm] = (seen[nm] ?? 0) + 1; }
+    return Object.keys(seen).filter((k) => seen[k] > 1);
     /* eslint-enable @typescript-eslint/no-explicit-any */
   }, slotRe);
 }

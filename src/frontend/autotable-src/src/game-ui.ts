@@ -667,6 +667,9 @@ export class GameUi {
     const spectating = readSpectatorFromUrl();
     if (spectating) {
       (document.querySelector('.seat-buttons')! as HTMLElement).style.display = 'none';
+      // Seat/start deadlock fix (Ferro) — #leave-seat visibility tracks CONFIRMED
+      // ownership, never the URL hint: a spectator owns no chair, so it is hidden.
+      hideEl(this.elements.leaveSeat);
       for (const button of toDisable) {
         button.disabled = true;
       }
@@ -677,6 +680,11 @@ export class GameUi {
     }
     if (this.client.seat === null) {
       (document.querySelector('.seat-buttons')! as HTMLElement).style.display = 'block';
+      // Seat/start deadlock fix (Ferro) — no CONFIRMED seat ⇒ hide #leave-seat and
+      // show the honest Take-Seat controls. This is driven by client.seat (server
+      // ack), NOT the URL `?seat=` hint, so a fresh/occupied/rejected handoff can
+      // never leave a "Leave Seat" button up over an unseated, undealt table.
+      hideEl(this.elements.leaveSeat);
       for (let i = 0; i < 4; i++) {
         const playerId = this.client.seatPlayers[i];
         if (playerId !== null) {
@@ -697,6 +705,9 @@ export class GameUi {
       updateDealTitle(true);
     } else {
       (document.querySelector('.seat-buttons')! as HTMLElement).style.display = 'none';
+      // Seat/start deadlock fix (Ferro) — a CONFIRMED seat (server-acked
+      // client.seat) is the only state that reveals #leave-seat.
+      showEl(this.elements.leaveSeat);
       for (const button of toDisable) {
         button.disabled = false;
       }

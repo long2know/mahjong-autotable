@@ -1,6 +1,7 @@
 using Mahjong.Autotable.Api.Auth;
 using Mahjong.Autotable.Api.Data;
 using Mahjong.Autotable.Api.Data.Entities;
+using Mahjong.Autotable.Api.Players;
 using Mahjong.Autotable.Api.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -310,7 +311,7 @@ public sealed class CommentaryController : ControllerBase
         if (_tableContext is not null)
         {
             var session = await _cookies.ResolveAsync(HttpContext, ct);
-            var anonId = HttpContext.Request.Cookies["mahjong_pid"];
+            var anonId = HttpContext.GetPlayerIdOrNull();
             var assoc = await _tableContext.ResolveAsync(gameId, session, anonId, ct);
             if (assoc.Role == Mahjong.Autotable.Api.Tables.PlayerTableRole.Anonymous)
             {

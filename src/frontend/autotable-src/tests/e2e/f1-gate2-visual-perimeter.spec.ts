@@ -203,6 +203,71 @@ async function readWallPhysical(page: Page): Promise<WallTilePhysical[]> {
   });
 }
 
+// Self-contained LOCAL Changsha mount for the DEAL-INDEPENDENT camera gates
+// ((m2) / (m2-sweep)).  Those gates only read a live camera, the FIXED wall-slot
+// geometry (world.slots — depletion-invariant, = Part A's makeSlots read) and a
+// viewer seat the camera orients to; they NEVER need tiles dealt.  The former
+// bring-up ran the full server connect + auto-deal + 3-bot LIVE game, which
+// churned the SwiftShader software renderer for 60-90 s and leaked WebGL /
+// serialisation resources until the page TARGET CLOSED at the 90 s timeout — the
+// exact old red ("Target page, context or browser has been closed").
+//
+// This enters the product's real Changsha table LOCALLY instead: `?variant=
+// changsha` makes the ObjectView ctor set the Changsha statics and the World ctor
+// lay the canonical 108-tile Changsha wall (Conditions.initial() === CHANGSHA);
+// omitting `?gameId=` keeps us fully local (ClientUi.start() only opens a WS when
+// a gameId is present), so there is NO WS, NO bots and NO live-deal churn.  The
+// camera pipeline (main-view.ts makeCamera / updateCamera — viewGroup.rotation.z
+// = seat·90°) is byte-identical to the live path, so the chirality assertion is
+// unchanged; only the irrelevant, resource-hungry live game is removed.
+//
+// Readiness is BOUNDED (renderer sentinel → camera + wall slots) and a WebGL
+// context-loss tripwire fails fast with a diagnosable reason rather than hanging
+// to the test timeout.
+async function mountLocalChangsha(page: Page): Promise<void> {
+  // Context-loss tripwire: flag a lost WebGL context so we can fail fast (bounded)
+  // instead of silently rendering a dead canvas up to the timeout.
+  await page.addInitScript(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__wglContextLost = false;
+    document.addEventListener(
+      'webglcontextlost',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      () => { (window as any).__wglContextLost = true; },
+      true,
+    );
+  });
+  await page.goto('./?variant=changsha&seat=0', { waitUntil: 'domcontentloaded' });
+  await dismissLobbyAndTour(page);
+  // The heavy three-renderer chunk mints this sentinel right after it publishes
+  // window.game + game.start().
+  await page
+    .locator('[data-testid="three-renderer-ready"]')
+    .waitFor({ state: 'attached', timeout: 60_000 });
+  // BOUNDED readiness: camera + the FIXED wall-slot geometry present, and the
+  // viewer seat set (the seat the camera is oriented to).  No deal, no WS.
+  await page.waitForFunction(
+    () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const g = (window as any).game;
+      if (!g || !g.world || !g.mainView || !g.mainView.camera || !g.world.slots) return false;
+      if (typeof g.world.seat !== 'number') g.world.seat = 0;
+      let wallSlots = 0;
+      for (const slot of g.world.slots.values()) {
+        if (slot && slot.group === 'wall') { wallSlots++; if (wallSlots > 8) break; }
+      }
+      return wallSlots > 8;
+    },
+    undefined,
+    { timeout: 30_000 },
+  );
+  // Fail fast on a genuine context loss (bounded, diagnosable) — never a 90 s hang.
+  const lost = await page.evaluate(() => (window as unknown as { __wglContextLost?: boolean }).__wglContextLost === true);
+  if (lost) {
+    throw new Error('mountLocalChangsha: WebGL context lost during local Changsha mount (SwiftShader) — cannot evaluate camera chirality');
+  }
+}
+
 test.describe('F1 Gate-2 — PART B: live CCW observation (dealer0/dice2), then codified', () => {
   test('surface the first-removed corner + stack for the human read (then hard-code CONFIRMED)', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium', 'WebGL render geometry is validated on chromium.');
@@ -306,13 +371,12 @@ test.describe('F1 Gate-2 — PART B: live CCW observation (dealer0/dice2), then 
       'live backend (built bundle) not reachable at baseURL — (m2) camera check pends the integrator bring-up (deal-independent, no S1). Skip (never false-RED).');
     test.setTimeout(90_000);
     await defangOverlays(page);
-    await page.goto('?variant=changsha&dealMode=auto&botCount=3', { waitUntil: 'domcontentloaded' });
-    await dismissLobbyAndTour(page);
-    await ensureConnected(page);
-    await takeSeatByClick(page, 0);
-    await clickDeal(page);
-    await waitForPlayableHand(page, 60_000).catch(() => undefined);
-    await page.waitForTimeout(1200);
+    // Self-contained LOCAL Changsha mount (deal-independent) — replaces the old
+    // connect + auto-deal + 3-bot live-game bring-up that churned SwiftShader for
+    // 60-90 s and closed the page target at the 90 s timeout (the old red). The
+    // camera pipeline + FIXED wall-slot geometry this gate reads are identical
+    // either way; only the irrelevant live game is removed.
+    await mountLocalChangsha(page);
 
     const r = await page.evaluate(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -436,13 +500,13 @@ test.describe('F1 Gate-2 — PART B: live CCW observation (dealer0/dice2), then 
       'live backend (built bundle) not reachable at baseURL — (m2) seat sweep pends the integrator bring-up (deal-independent, no S1). Skip (never false-RED).');
     test.setTimeout(90_000);
     await defangOverlays(page);
-    await page.goto('?variant=changsha&dealMode=auto&botCount=3', { waitUntil: 'domcontentloaded' });
-    await dismissLobbyAndTour(page);
-    await ensureConnected(page);
-    await takeSeatByClick(page, 0);
-    await clickDeal(page);
-    await waitForPlayableHand(page, 60_000).catch(() => undefined);
-    await page.waitForTimeout(1200);
+    // Self-contained LOCAL Changsha mount (deal-independent) — replaces the old
+    // connect + auto-deal + 3-bot live-game bring-up that churned SwiftShader for
+    // 60-90 s and closed the page target at the 90 s timeout (the old red). The
+    // real production camera path (updateCamera → viewGroup.rotation.z = S·90°)
+    // this sweep drives + the FIXED wall-slot geometry are identical either way;
+    // only the irrelevant live game is removed.
+    await mountLocalChangsha(page);
 
     const sweep = await page.evaluate(() => {
       interface SweepRow {

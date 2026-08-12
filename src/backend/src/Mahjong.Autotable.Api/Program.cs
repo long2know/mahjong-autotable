@@ -166,6 +166,13 @@ builder.Services.AddSingleton<MatchmakingService>();
 // LeaderboardService backs GET /api/leaderboard. Both are thin stateless
 // wrappers around HttpContext + EF Core scopes, so singleton lifetime is
 // fine.
+//
+// Burke — the cookie now carries a SIGNED, versioned credential rather than the
+// bare (public) playerId. PlayerIdentityTokenProtector HKDF-derives its MAC keys
+// from the existing JwtSigningKeyProvider key set, so signing/rotation reuse the
+// JWT key surface and runbook; `Identity:*` only carries cookie-attribute policy.
+builder.Services.Configure<PlayerIdentityOptions>(builder.Configuration.GetSection("Identity"));
+builder.Services.AddSingleton<PlayerIdentityTokenProtector>();
 builder.Services.AddSingleton<PlayerIdentityService>();
 builder.Services.AddSingleton<LeaderboardService>();
 
@@ -382,6 +389,17 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
         opaqueHandlesEnabled: builder.Configuration.GetValue<bool?>("ChangshaRuntime:OpaqueHiddenHandles") ?? true,
         handleSecretBase64: builder.Configuration.GetValue<string>("Privacy:HandleSecret"),
         jwtKeyMaterial: jwtSigningProvider.ActiveKey?.Material);
+
+    // Burke — the durable player-identity cookie is HMAC-signed with a key HKDF-derived
+    // from the active JWT signing key. The HS256 `requireOperatorKeys` guard above does
+    // NOT cover an RS256 Production host (it falls through to a per-process random HMAC
+    // key), which would silently invalidate every identity on restart. Fail the boot
+    // closed instead, mirroring the privacy validator. Dev / Test keep the ephemeral
+    // shape and log it explicitly.
+    Mahjong.Autotable.Api.Players.PlayerIdentityStartupValidator.Validate(
+        isProduction: builder.Environment.IsProduction(),
+        usingEphemeralSigningKey: jwtSigningProvider.UsingEphemeralFallbackKey,
+        logger: jwtSigningLogger);
 }
 // Phase K Wave 17 — Bishop. JWT-issue blocked-path metrics. The
 // JwtIssuingService takes this as an optional dep so the

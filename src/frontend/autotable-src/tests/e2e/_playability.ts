@@ -932,17 +932,77 @@ export async function takeSeatByClick(page: Page, seat: number): Promise<number 
 }
 
 /**
- * ADVANCE — press the real #deal button. The current bundle binds a plain
- * `click` handler (game-ui.ts setupDealButton → world.deal), which then
- * client-drives the manual pickup ceremony. A single real click is the whole
- * gesture; we do NOT synthesise anything further.
+ * OBSERVE — has a server-authoritative Changsha deal already put a full hand on
+ * our seat? True for DealMode.Auto (the server deals atomically on start, so the
+ * dealer holds 14 and non-dealers 13 with no client gesture) and for a bot
+ * dealer whose dice roll fires server-side. clickDeal uses this to recognize a
+ * deal that legitimately needs no `#roll-dice` click — never to fake one.
+ */
+async function changshaDealHasBegun(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = (window as any).game?.world;
+    if (!w || !w.things) return false;
+    const seat = w.seat;
+    if (seat === null || seat === undefined) return false;
+    let hand = 0;
+    for (const t of w.things.values()) {
+      if (t?.slot?.group === 'hand' && t.slot?.seat === seat && t.slot?.thing === t) hand++;
+    }
+    return hand >= 13;
+  });
+}
+
+/**
+ * ADVANCE — trigger the deal, centralized across every mode so all legacy
+ * callers stay correct without a per-spec edit. Polls a BOUNDED window and, on
+ * each tick, takes the first authoritative trigger this mode exposes (priority
+ * order below) — so a slow first snapshot can never lose the gesture to a
+ * visibility race, and no branch fabricates a success shape:
+ *
+ *   1. RELAY variants (four_player / riichi / …): the real `#deal` button IS the
+ *      whole gesture (game-ui.ts setupDealButton → world.deal). Preserved verbatim.
+ *   2. CHANGSHA MANUAL (dealMode=manual): `#deal` is `.relay-only`/hidden and the
+ *      old client auto-chain (driveManualDealChain) was dropped, so the seated
+ *      human DEALER STARTS the deal by rolling the dice. game-ui.ts renders the
+ *      `#roll-dice` HUD iff (phase === RollingDice && match.dealer === self); the
+ *      initial dealer is seat 0 (ChangshaStateMachine sets DealerSeatIndex = 0),
+ *      the seat the playability human takes. We click that real control.
+ *   3. CHANGSHA AUTO (dealMode=auto): there is NO control — the server deals
+ *      atomically on start (and a bot dealer rolls server-side). We recognize the
+ *      completed, server-authoritative deal ({@link changshaDealHasBegun}) as
+ *      success rather than waiting forever for a `#roll-dice` that never appears.
+ *
+ * A human NON-dealer whose manual table never gets dealt (bot-dealer stall) and a
+ * spectator both fall through to an honest `false`; downstream readiness
+ * (waitForPlayableHand / hasExtraHandTile) preserves the diagnostic. No
+ * force-click, no synthetic events, no sleep-only masking.
  */
 export async function clickDeal(page: Page): Promise<boolean> {
-  const deal = page.locator('#deal');
-  if (!(await deal.first().isVisible().catch(() => false))) return false;
-  await deal.first().click({ timeout: 5000 }).catch(() => undefined);
-  await page.waitForTimeout(500);
-  return true;
+  const deal = page.locator('#deal').first();
+  const roll = page.locator('#roll-dice').first();
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    // 1) RELAY — a visible #deal button is the whole gesture.
+    if (await deal.isVisible().catch(() => false)) {
+      await deal.click({ timeout: 5000 }).catch(() => undefined);
+      await page.waitForTimeout(500);
+      return true;
+    }
+    // 2) CHANGSHA MANUAL — the seated human dealer's real #roll-dice HUD click.
+    if (
+      (await roll.isVisible().catch(() => false)) &&
+      (await roll.isEnabled().catch(() => false))
+    ) {
+      await roll.click({ timeout: 5000 }).catch(() => undefined);
+      await page.waitForTimeout(500);
+      return true;
+    }
+    // 3) CHANGSHA AUTO — the server already dealt us in; no client control exists.
+    if (await changshaDealHasBegun(page)) return true;
+    await page.waitForTimeout(250);
+  }
+  return false; // no dealer control appeared and no deal progressed — honest false.
 }
 
 export interface PickupView {
@@ -988,7 +1048,8 @@ export interface PlayableHandResult {
  * (hasExtraHandTile), i.e. the manual deal ceremony delivered a hand and it's
  * our turn to discard. Returns the outcome plus the last pickup cursor so a
  * stall can be reported precisely (e.g. stuck in DealerExtra). Performs NO
- * game interaction — the ceremony is client-auto-driven after clickDeal.
+ * game interaction — the caller drives the real manual ceremony (dealer roll +
+ * per-seat pickups); this only OBSERVES until the local 14th tile lands.
  */
 export async function waitForPlayableHand(
   page: Page,
@@ -1177,6 +1238,25 @@ export async function readIsMyPickupTurn(page: Page): Promise<boolean> {
   });
 }
 
+/**
+ * ADVANCE (poll-safe) — click the dealer's `#roll-dice` HUD IFF it is showing
+ * for our seat right now, else a fast no-op. Unlike {@link clickDeal} (the
+ * bounded initial deal trigger), this NEVER waits, so a game-loop can call it
+ * every tick to advance a manual hand whose dealer rotation has just landed on
+ * the seat-0 human (hands 2..N) without blocking when it hasn't. game-ui.ts
+ * renders `#roll-dice` only while (phase === RollingDice && dealer === self), so
+ * a non-dealer/spectator tick simply returns false. Returns true iff a real roll
+ * was clicked. No force-click, no synthetic events.
+ */
+export async function rollDiceIfDealer(page: Page): Promise<boolean> {
+  const roll = page.locator('#roll-dice').first();
+  if (!(await roll.isVisible().catch(() => false))) return false;
+  if (!(await roll.isEnabled().catch(() => false))) return false;
+  await roll.click({ timeout: 3000 }).catch(() => undefined);
+  await page.waitForTimeout(400);
+  return true;
+}
+
 /** OBSERVE — count of the local seat's backend-authoritative concealed hand tiles. */
 export async function countMyHandTiles(page: Page): Promise<number> {
   return page.evaluate(() => {
@@ -1210,8 +1290,9 @@ export interface PickupOutcome {
  * ADVANCE — the human's manual pickup: when the runtime expects our seat to
  * draw, the pickup HUD shows "Your turn — pick N tiles" with a real Take-N
  * button (#pickup-take-btn, game-ui.ts). Click it — that is the human
- * affordance (its onclick calls world.emitTakePickup). driveManualDealChain
- * auto-drives hand 1; this real click drives hands 2..N.
+ * affordance (its onclick calls world.emitTakePickup). The former
+ * driveManualDealChain auto-chain was dropped in the server-authoritative
+ * integration, so this real click drives EVERY hand's pickups (including hand 1).
  */
 export async function takePickup(page: Page): Promise<PickupOutcome> {
   const handBefore = await countMyHandTiles(page);
@@ -1281,4 +1362,210 @@ export async function isGameCompleteModalVisible(page: Page): Promise<boolean> {
     const shown = el.classList.contains('show') || style.display === 'block';
     return shown && style.visibility !== 'hidden' && style.display !== 'none';
   });
+}
+
+// =============================================================================
+//  Manual-pickup wall-target press — grid-scan to the exact rendered face
+// =============================================================================
+//
+//  Hudson's adjudication (2026-08-11, proven on both chromium & mobile-chrome):
+//  a Changsha wall tile's clickable FACE is drawn on the angled front of the
+//  stack, ABOVE the tile's world-position CENTER. After a wall shift the screen
+//  projection of `thing.place().position` can land ~16 px BELOW that face, so a
+//  bare center press raycasts to empty space (`world.hovered === null`), the
+//  real `onMouseDown → onDragStart` no-ops, and NO `pickup.take` is emitted —
+//  the batch silently fails to actuate. It is intermittent: batch 1 usually hits
+//  the center, later batches (post-shift) miss.
+//
+//  These primitives defeat that WITHOUT any force-click, synthetic event, or API
+//  backdoor: they move a REAL pointer over a small grid across the tile footprint
+//  (biased upward toward the face) until the renderer's own raycast reports
+//  `world.hovered` === the exact target slot, hard-record that match, and only
+//  then issue a real mouse down/up. The take is produced entirely by the
+//  browser routing the genuine press through MouseUi → World.onDragStart, exactly
+//  as a human's click would. Measurement is actor-scoped: the outbound wire
+//  `pickup.take` frames THIS client emitted, plus the bot-immune own-hand delta.
+
+/** One outbound `pickup.take` command this client emitted on the wire. */
+export interface WallTakeFrame { seatIndex: number | null; count: number | null; keys: string[] }
+
+/**
+ * OBSERVE (install BEFORE page.goto) — records every outbound `pickup.take`
+ * frame this client sends on the WebSocket. The frame is the authoritative
+ * causal record of what our pointer actually requested ({seatIndex,count}); no
+ * bot can add to it, so it is bot-immune on the shared wall.
+ */
+export function installWallTakeRecorder(page: Page): WallTakeFrame[] {
+  const out: WallTakeFrame[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  page.on('websocket', (ws) => ws.on('framesent', (ev: any) => {
+    let raw = '';
+    try { raw = typeof ev.payload === 'string' ? ev.payload : Buffer.from(ev.payload).toString('utf8'); } catch { return; }
+    if (!/pickup/.test(raw) || !/take/.test(raw)) return;
+    try {
+      const msg = JSON.parse(raw);
+      for (const e of (msg?.entries ?? [])) {
+        if (!Array.isArray(e) || String(e[0]) !== 'pickup' || String(e[1]) !== 'take') continue;
+        const p = (e[2] ?? {}) as Record<string, unknown>;
+        out.push({
+          seatIndex: typeof p.seatIndex === 'number' ? p.seatIndex : null,
+          count: typeof p.count === 'number' ? p.count : null,
+          keys: Object.keys(p),
+        });
+      }
+    } catch { /* non-JSON frame — ignore */ }
+  }));
+  return out;
+}
+
+/** Outcome of a single grid-scanned wall-target press. */
+export interface WallHoverPress {
+  /** the target tile was present as a reachable top to probe */
+  found: boolean;
+  /** the renderer's own raycast reported world.hovered === the EXACT target before the press */
+  matched: boolean;
+  /** what world.hovered actually resolved to at the pressed point (diagnostic) */
+  hovered: string | null;
+  /** winning offset from the projected center (diagnostic; {0,0} = center hit) */
+  offset: { dx: number; dy: number } | null;
+  handBefore: number;
+  handAfter: number;
+  handDelta: number;
+  /** outbound pickup.take frames emitted during THIS press (bot-immune) */
+  frames: WallTakeFrame[];
+  cx: number;
+  cy: number;
+}
+
+async function readHoveredSlot(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const h = (window as any).game?.world?.hovered;
+    return h ? String(h?.slot?.name ?? '') : null;
+  });
+}
+
+async function readLocalHandCount(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const w = (window as any).game?.world;
+    const seat = typeof w?.seat === 'number' ? w.seat : 0;
+    const re = new RegExp('^hand\\.\\d+@' + seat + '$');
+    let n = 0;
+    if (w?.things) for (const t of w.things.values()) if (re.test(String(t?.slot?.name ?? ''))) n++;
+    return n;
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  });
+}
+
+// Project a reachable-top wall tile's world CENTER to screen coords. ok=false
+// when the tile is absent or occluded (a covered lower layer must not be probed —
+// its center raycasts to the tile above it).
+async function projectReachableWallTop(page: Page, name: string): Promise<{ ok: boolean; cx: number; cy: number }> {
+  return page.evaluate((name) => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const g = (window as any).game; const w = g?.world; const camera = g?.mainView?.camera; const main = document.getElementById('main');
+    const rect = main?.getBoundingClientRect();
+    if (camera) { try { camera.parent?.updateMatrixWorld(true); camera.updateMatrixWorld(true); camera.matrixWorldInverse?.copy(camera.matrixWorld).invert(); } catch { /* */ } }
+    if (!w?.things || !camera) return { ok: false, cx: 0, cy: 0 };
+    for (const t of w.things.values()) {
+      if (t?.slot?.group !== 'wall' || String(t.slot?.name) !== name) continue;
+      const up = t.slot?.links?.up; if (up && up.thing) return { ok: false, cx: 0, cy: 0 }; // occluded
+      const p = t.place().position; const mw = camera.matrixWorldInverse.elements, pm = camera.projectionMatrix.elements;
+      const vx = mw[0]*p.x+mw[4]*p.y+mw[8]*p.z+mw[12], vy = mw[1]*p.x+mw[5]*p.y+mw[9]*p.z+mw[13], vz = mw[2]*p.x+mw[6]*p.y+mw[10]*p.z+mw[14], vw = mw[3]*p.x+mw[7]*p.y+mw[11]*p.z+mw[15];
+      const cx = pm[0]*vx+pm[4]*vy+pm[8]*vz+pm[12]*vw, cy = pm[1]*vx+pm[5]*vy+pm[9]*vz+pm[13]*vw, cw = pm[3]*vx+pm[7]*vy+pm[11]*vz+pm[15]*vw;
+      return { ok: true, cx: Math.round((rect?.left??0)+(cx/cw+1)*0.5*(rect?.width??0)), cy: Math.round((rect?.top??0)+(1-cy/cw)*0.5*(rect?.height??0)) };
+    }
+    return { ok: false, cx: 0, cy: 0 };
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  }, name);
+}
+
+// Footprint offsets (px) from the projected center, ordered center-first then
+// expanding UPWARD (the angled face sits above the world-center) and sideways.
+// Early-exit on first hover match keeps the common center-hit at one probe.
+const WALL_FACE_OFFSETS: Array<{ dx: number; dy: number }> = (() => {
+  const dys = [0, -4, -8, -12, -16, -20, -24, -28, -32, 4, 8, 12];
+  const dxs = [0, -5, 5, -10, 10, -15, 15];
+  const out: Array<{ dx: number; dy: number }> = [];
+  for (const dy of dys) for (const dx of dxs) out.push({ dx, dy });
+  return out;
+})();
+
+/**
+ * ADVANCE — real-press the designated wall trigger by grid-scanning a genuine
+ * pointer across the tile footprint until the renderer's raycast reports
+ * `world.hovered === targetSlot`, hard-recording that exact hover, then issuing a
+ * real mouse down/up. Defeats the intermittent ~16 px angled-face projection
+ * offset with NO force-click / synthetic event / API backdoor.
+ *
+ * When no footprint point hovers the target it still issues ONE real press at the
+ * projected center (matched=false) so an INERT probe is exercised non-vacuously —
+ * the caller hard-asserts `matched` for a TARGET press, so a genuine miss surfaces
+ * as a loud diagnostic failure and is never masked as success.
+ *
+ * @param takes the array from {@link installWallTakeRecorder}; `frames` is the
+ *   slice of outbound `pickup.take` frames emitted during THIS press.
+ */
+export async function pressWallTargetByHover(
+  page: Page,
+  targetSlot: string,
+  takes: WallTakeFrame[],
+  opts: { settleMs?: number } = {},
+): Promise<WallHoverPress> {
+  const settleMs = opts.settleMs ?? 900;
+  // Settle after any wall shift: bound-wait for the target to be a reachable top
+  // to probe. No fixed sleep — we poll the real render state and stop as soon as
+  // it is present (or give up honestly).
+  let center = await projectReachableWallTop(page, targetSlot);
+  const presenceDeadline = Date.now() + 2500;
+  while (!center.ok && Date.now() < presenceDeadline) {
+    await page.waitForTimeout(120);
+    center = await projectReachableWallTop(page, targetSlot);
+  }
+  if (!center.ok) {
+    const hand = await readLocalHandCount(page);
+    return { found: false, matched: false, hovered: null, offset: null, handBefore: hand, handAfter: hand, handDelta: 0, frames: [], cx: 0, cy: 0 };
+  }
+
+  // Grid-scan the footprint until the renderer's own raycast picks the target.
+  let matchedOffset: { dx: number; dy: number } | null = null;
+  let lastHover: string | null = null;
+  for (const off of WALL_FACE_OFFSETS) {
+    await page.mouse.move(center.cx + off.dx, center.cy + off.dy);
+    await page.waitForTimeout(24);
+    lastHover = await readHoveredSlot(page);
+    if (lastHover === targetSlot) { matchedOffset = off; break; }
+  }
+
+  // Press at the matched face point (or, if nothing matched, at the center so an
+  // inert probe still lands a genuine press on the tile's location).
+  const pressX = center.cx + (matchedOffset ? matchedOffset.dx : 0);
+  const pressY = center.cy + (matchedOffset ? matchedOffset.dy : 0);
+  const handBefore = await readLocalHandCount(page);
+  const mark = takes.length;
+  await page.mouse.move(pressX, pressY);
+  await page.waitForTimeout(60);
+  const hoveredAtPress = await readHoveredSlot(page);
+  await page.mouse.down();
+  await page.waitForTimeout(80);
+  await page.mouse.up();
+  await page.waitForTimeout(settleMs);
+
+  let handAfter = await readLocalHandCount(page);
+  const frames = takes.slice(mark);
+  // If a take was emitted, wait (bot-immune) for MY hand to reflect the batch.
+  if (frames.length) {
+    const want = frames.reduce((a, f) => a + (f.count ?? 0), 0);
+    const dl = Date.now() + 3500;
+    while (handAfter - handBefore < want && Date.now() < dl) { await page.waitForTimeout(120); handAfter = await readLocalHandCount(page); }
+  }
+  return {
+    found: true,
+    matched: matchedOffset !== null && hoveredAtPress === targetSlot,
+    hovered: hoveredAtPress,
+    offset: matchedOffset,
+    handBefore, handAfter, handDelta: handAfter - handBefore,
+    frames, cx: pressX, cy: pressY,
+  };
 }

@@ -698,6 +698,10 @@ public sealed class AutotableConnectionManager : IDisposable
                     // the authoritative turn on every AwaitingDiscard snapshot.
                     break;
 
+                case ActionRejectedKind:
+                    // Server-emitted only; never let a client forge a rejection for a peer.
+                    break;
+
                 default:
                     // mouse, sound, nicks, ephemeral, unique, perPlayer — pure cosmetic /
                     // meta (peer cursors, nicknames, collection declarations). Pass through
@@ -942,6 +946,84 @@ public sealed class AutotableConnectionManager : IDisposable
         _ => false
     };
 
+    internal const string ActionRejectedKind = "actionRejected";
+
+    private readonly record struct SeatAuthorization(int? Seat, string? Failure)
+    {
+        public bool IsAuthorized => Seat.HasValue && Failure is null;
+    }
+
+    private SeatAuthorization AuthorizeSeatAction(
+        AutotableConnection connection,
+        string? runtimeGameId,
+        int? requestedSeat)
+    {
+        if (string.IsNullOrEmpty(runtimeGameId))
+            return new(null, "no-game");
+
+        var ownedSeat = ResolveOwnedSeat(connection, runtimeGameId);
+        if (ownedSeat is null)
+        {
+            return new(null, connection.IsSpectator
+                ? "spectator-owns-no-seat"
+                : "connection-owns-no-seat");
+        }
+
+        return requestedSeat.HasValue && requestedSeat.Value != ownedSeat.Value
+            ? new(ownedSeat, "seat-not-owned-by-connection")
+            : new(ownedSeat, null);
+    }
+
+    private int? ResolveOwnedSeat(AutotableConnection connection, string runtimeGameId)
+    {
+        var seat = _runtime.TryGetSeatForConnection(runtimeGameId, connection.Id.ToString("N"));
+        if (seat is not null)
+            return seat;
+
+        // A transport reconnect loses its connection binding but retains the runtime-owned
+        // persistent player binding. Creation placeholders are not durable identities.
+        if (string.IsNullOrEmpty(connection.PlayerId)
+            || connection.PlayerId.StartsWith("human-", StringComparison.OrdinalIgnoreCase)
+            || connection.PlayerId.StartsWith("bot-", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return _runtime.TryGetSeatForPlayer(runtimeGameId, connection.PlayerId);
+    }
+
+    private async Task RejectSeatActionAsync(
+        AutotableConnection connection,
+        string action,
+        int? requestedSeat,
+        SeatAuthorization authorization,
+        CancellationToken ct)
+    {
+        _logger.LogWarning(
+            "Rejected WS action {Action} from connection {ConnectionId} in game {GameId}: "
+            + "requestedSeat={RequestedSeat}, ownedSeat={OwnedSeat}, reason={Reason}",
+            action, connection.Id, connection.GameId, requestedSeat,
+            authorization.Seat, authorization.Failure);
+
+        await SendJsonAsync(connection, new UpdateMessage
+        {
+            Entries =
+            [
+                new CollectionEntry(ActionRejectedKind, "current", new Dictionary<string, object?>
+                {
+                    ["action"] = action,
+                    ["reason"] = authorization.Failure,
+                    ["requestedSeat"] = requestedSeat,
+                    ["ownedSeat"] = authorization.Seat
+                })
+            ],
+            Full = false
+        }, ct);
+
+        if (authorization.Failure != "no-game")
+            await SendFullSnapshotAsync(connection, connection.GameId, ct);
+    }
+
     private async Task TryHandleClaimActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
     {
         if (entry.Value is null) return;
@@ -1014,22 +1096,29 @@ public sealed class AutotableConnectionManager : IDisposable
             return;
         }
 
-        if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
+        _runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId);
+        var authorization = AuthorizeSeatAction(connection, runtimeGameId, seatIndex);
+        if (!authorization.IsAuthorized)
+        {
+            await RejectSeatActionAsync(connection, isPass ? "pass" : "claim", seatIndex, authorization, ct);
+            return;
+        }
+
         try
         {
             if (isPass)
             {
-                await _runtime.PassAsync(runtimeGameId, seatIndex, ct);
+                await _runtime.PassAsync(runtimeGameId!, authorization.Seat!.Value, ct);
             }
             else
             {
-                await _runtime.ClaimAsync(runtimeGameId, seatIndex, claimType!, tileIds, ct);
+                await _runtime.ClaimAsync(runtimeGameId!, authorization.Seat!.Value, claimType!, tileIds, ct);
             }
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Claim {Action}/{Type} for seat {Seat} was rejected by the runtime",
-                action, claimType ?? "pass", seatIndex);
+                action, claimType ?? "pass", authorization.Seat);
         }
     }
 
@@ -1052,14 +1141,14 @@ public sealed class AutotableConnectionManager : IDisposable
     ///   <c>N</c> tiles from the wall front. <c>count</c> may also be supplied
     ///   as <c>wallTileIds: int[]</c> (server picks the first N from the wall).</item>
     /// </list>
-    /// The seat is taken from the entry key (the bundle keys pickup by seat) or
-    /// inferred from <see cref="ChangshaGameState.PickupSeatIndex"/> when absent.
+    /// The requested seat comes from the entry key or value; the acting seat is resolved
+    /// from the sending connection's server-side runtime ownership.
     /// </summary>
     private async Task TryHandlePickupActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
     {
         if (entry.Value is null) return;
         if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
-        if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
+        _runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId);
 
         // Action wire-format (per autotable-src/src/client.ts:90-95):
         //   outbound "rollDice" : ["pickup", "rollDice", { seatIndex }]
@@ -1078,9 +1167,11 @@ public sealed class AutotableConnectionManager : IDisposable
             action = actionEl.GetString() ?? string.Empty;
         }
 
-        // Seat: when the key is numeric (legacy bundle), prefer that as a seat.
-        // Otherwise read "seatIndex" from the value; else fall back to the
-        // runtime's current pickup cursor (or dealer for rollDice).
+        var isRollDice = string.Equals(action, "rollDice", StringComparison.OrdinalIgnoreCase);
+        var isTake = string.Equals(action, "take", StringComparison.OrdinalIgnoreCase);
+        if (!isRollDice && !isTake) return;
+
+        // The wire seat is only a requested seat. It never selects the runtime actor.
         var seatFromKey = entry.Key switch
         {
             long l => (int)l,
@@ -1089,47 +1180,47 @@ public sealed class AutotableConnectionManager : IDisposable
             string s when int.TryParse(s, out var p) => p,
             _ => -1
         };
-        int seatIndex = seatFromKey;
-        if (seatIndex is < 0 or > 3)
+        var requestedSeatValue = seatFromKey;
+        if (requestedSeatValue is < 0 or > 3)
         {
             if (je.TryGetProperty("seatIndex", out var seatEl)
                 && seatEl.ValueKind == JsonValueKind.Number
                 && (seatEl.TryGetInt32(out var s)
                     || (seatEl.TryGetDouble(out var sd) && sd >= 0 && sd <= 3 && (s = (int)sd) >= 0)))
             {
-                seatIndex = s;
+                requestedSeatValue = s;
             }
         }
+        int? requestedSeat = requestedSeatValue is >= 0 and <= 3 ? requestedSeatValue : null;
+
+        var authorization = AuthorizeSeatAction(connection, runtimeGameId, requestedSeat);
+        if (!authorization.IsAuthorized)
+        {
+            await RejectSeatActionAsync(
+                connection,
+                isRollDice ? "pickup.rollDice" : "pickup.take",
+                requestedSeat,
+                authorization,
+                ct);
+            return;
+        }
+        var seatIndex = authorization.Seat!.Value;
 
         try
         {
-            if (string.Equals(action, "rollDice", StringComparison.OrdinalIgnoreCase))
+            if (isRollDice)
             {
-                if (seatIndex is < 0 or > 3)
-                {
-                    if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
-                    seatIndex = snap.DealerSeatIndex;
-                }
-                await _runtime.RollDiceAsync(runtimeGameId, seatIndex, ct);
+                await _runtime.RollDiceAsync(runtimeGameId!, seatIndex, ct);
                 return;
             }
 
-            if (string.Equals(action, "take", StringComparison.OrdinalIgnoreCase))
-            {
-                if (seatIndex is < 0 or > 3)
-                {
-                    if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null || snap.PickupSeatIndex is null) return;
-                    seatIndex = snap.PickupSeatIndex.Value;
-                }
-                int count = 0;
-                if (je.TryGetProperty("count", out var countEl) && countEl.ValueKind == JsonValueKind.Number && countEl.TryGetInt32(out var c))
-                    count = c;
-                else if (je.TryGetProperty("wallTileIds", out var idsEl) && idsEl.ValueKind == JsonValueKind.Array)
-                    count = idsEl.GetArrayLength();
-                if (count <= 0) return;
-                await _runtime.TakeTilesFromWallAsync(runtimeGameId, seatIndex, count, ct);
-                return;
-            }
+            int count = 0;
+            if (je.TryGetProperty("count", out var countEl) && countEl.ValueKind == JsonValueKind.Number && countEl.TryGetInt32(out var c))
+                count = c;
+            else if (je.TryGetProperty("wallTileIds", out var idsEl) && idsEl.ValueKind == JsonValueKind.Array)
+                count = idsEl.GetArrayLength();
+            if (count <= 0) return;
+            await _runtime.TakeTilesFromWallAsync(runtimeGameId!, seatIndex, count, ct);
         }
         catch (Exception ex)
         {
@@ -1143,15 +1234,13 @@ public sealed class AutotableConnectionManager : IDisposable
     /// value <c>{ tileId: int }</c>. We route to
     /// <see cref="IChangshaGameRuntime.DiscardAsync"/> which validates phase
     /// (must be <c>AwaitingDiscard</c>), active seat, and tile ownership.
-    /// Invalid clicks are silently swallowed — the bundle's hand state is
-    /// already authoritative on the server side so the next <c>things</c>
-    /// push will re-snap any optimistic UI to the truth.
+    /// The endpoint first verifies that the sending connection owns the requested seat.
     /// </summary>
     private async Task TryHandleDiscardActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
     {
         if (entry.Value is null) return;
         if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
-        if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
+        _runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId);
 
         // Seat: prefer explicit key (an int seat), fall back to "seatIndex" prop.
         // Vasquez tile-interaction G4 root-cause defence — accept `double` keys
@@ -1179,13 +1268,20 @@ public sealed class AutotableConnectionManager : IDisposable
         if (!je.TryGetProperty("tileId", out var tileEl) || tileEl.ValueKind != JsonValueKind.Number) return;
         if (!tileEl.TryGetInt32(out var tileId)) return;
 
+        var authorization = AuthorizeSeatAction(connection, runtimeGameId, seatIndex);
+        if (!authorization.IsAuthorized)
+        {
+            await RejectSeatActionAsync(connection, "discard", seatIndex, authorization, ct);
+            return;
+        }
+
         try
         {
-            await _runtime.DiscardAsync(runtimeGameId, seatIndex, tileId, ct);
+            await _runtime.DiscardAsync(runtimeGameId!, authorization.Seat!.Value, tileId, ct);
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Discard failed for seat {Seat} tile {Tile}", seatIndex, tileId);
+            _logger.LogDebug(ex, "Discard failed for seat {Seat} tile {Tile}", authorization.Seat, tileId);
         }
     }
 

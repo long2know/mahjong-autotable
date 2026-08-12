@@ -242,8 +242,13 @@ public sealed class Issue153DefaultGameLifecycleTests : IAsyncLifetime
         var wsClient = server.CreateWebSocketClient();
         if (cookiePlayerId is not null)
         {
+            // Burke — mahjong_pid carries a SIGNED credential; sign through the host's own
+            // service so the reconnect really presents the same durable identity.
+            var signed = _factory!.Services
+                .GetRequiredService<Mahjong.Autotable.Api.Players.PlayerIdentityService>()
+                .Protect(cookiePlayerId);
             wsClient.ConfigureRequest = req =>
-                req.Headers["Cookie"] = $"mahjong_pid={cookiePlayerId}";
+                req.Headers["Cookie"] = $"mahjong_pid={signed}";
         }
         var uri = new Uri(server.BaseAddress, $"autotable/ws{queryString}");
         var ws = await wsClient.ConnectAsync(uri, CancellationToken.None);

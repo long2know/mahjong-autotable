@@ -825,9 +825,22 @@ export function initLobby(client?: Client): void {
   });
 
   // Phase J Wave 4 — Quick Match handler.  Bypasses the per-picker
-  // review and snaps to "3 Medium bots, Auto seat, current variant +
+  // review and snaps to "3 Medium bots, seat 0, current variant +
   // dealMode + handCount".  Same exit path as Apply & Start so the
   // existing boot flow + backend validation pick the URL up unchanged.
+  //
+  // Seat/start deadlock fix (Hicks, 2026-08-11 — Hudson Quick-Match rejection):
+  // Quick Match ALWAYS mints a fresh gameId (forceFreshGame), so the room is
+  // brand-new and seat 0 is guaranteed OPEN.  We therefore carry a CONCRETE
+  // `seat: 0` (not the `null` "Auto") so `buildUrl` emits `?seat=0` and the
+  // authoritative URL-seat handoff (ClientUi.onConnect → armUrlSeatHandoff →
+  // maybeClaimUrlSeat, which claims only an OPEN chair on the first `seats`
+  // snapshot) actually requests the chair.  With `seat: null` the param was
+  // omitted, no seat command was ever sent, the server (correctly) never
+  // auto-seats a no-seat connection, and the table deadlocked with no bots /
+  // no deal.  The URL remains a HINT, not authority: occupied/reconnect/
+  // spectator handling is unchanged (maybeClaimUrlSeat leaves a taken chair
+  // untouched — but a fresh Quick-Match room can never be occupied).
   const quickMatchBtn = document.getElementById(
     'lobby-quick-match') as HTMLButtonElement | null;
   if (quickMatchBtn !== null) {
@@ -840,7 +853,12 @@ export function initLobby(client?: Client): void {
         botDifficulty: 'Medium',
         seed: null,
         handCount: current.handCount,
-        seat: null,
+        // CONCRETE seat 0 for Changsha (not null "Auto"): the fresh room
+        // guarantees seat 0 is open, so the authoritative URL-seat handoff can
+        // claim it and start bot-fill + deal. Relay variants have NO server seat
+        // authority (the handoff is Changsha-gated in ClientUi.onConnect), so we
+        // leave their seat null — keeping relay Quick Match URLs unchanged.
+        seat: current.variant === 'changsha' ? 0 : null,
       };
       const url = buildUrl(quick, /* forceFreshGame */ true);
       // Hicks playability iter2 — close the panel locally AND mark the

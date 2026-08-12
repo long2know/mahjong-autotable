@@ -1,3 +1,4 @@
+import { Quaternion, Vector3 } from "three";
 import { shuffle } from "./utils";
 import { Conditions, DealType, ThingType, GameType, Points, GAME_TYPES } from "./types";
 import { DEALS, DealPart, POINTS } from "./setup-deal";
@@ -18,6 +19,47 @@ export class Setup {
   };
   pushes: Array<[Slot, Slot]> = [];
   conditions!: Conditions;
+
+  /** Name of the off-table park slot (see {@link hiddenParkSlot}). */
+  static readonly HIDDEN_PARK = 'hiddenpool@0';
+
+  // FE-7 / SC-2 — the single off-table park slot every non-rendered Thing lives
+  // in (World's anonymous hidden-back pool plus every REAL tile the viewer is not
+  // entitled to see). It is OWNED by Setup — not lazily created by World — for
+  // two invariants:
+  //
+  //   1. Ordering: the park slot exists from construction, so a snapshot can
+  //      never reslot a Thing into a slot that doesn't exist yet.
+  //   2. Lifetime: `addSlots()` rebuilds `this.slots` from `makeSlots()` on every
+  //      variant/conditions change, which used to DESTROY a World-registered park
+  //      slot while 108 Things still pointed at it — `replace()` then threw
+  //      "trying to move thing to slot hiddenpool@0, but it doesn't exist",
+  //      abandoning the scene mid-rebuild (things pointing at a dead slot
+  //      generation, asymmetric slot.thing pointers, dropped WS collection
+  //      updates). Re-registering this SAME instance on every rebuild keeps
+  //      `thing.slot` identity stable across rebuilds.
+  //
+  // It is off-table (`offTable`) so it is never a drop target, is excluded from
+  // `slotNames` so no deal range can walk into it, and is intentionally
+  // MULTI-TENANT: many parked Things share it and its `.thing` back-pointer is
+  // not authoritative (parked Things render nothing).
+  private readonly hiddenPark: Slot = new Slot({
+    name: Setup.HIDDEN_PARK,
+    group: 'hiddenpool',
+    origin: new Vector3(0, 0, -100000),
+    rotations: [new Quaternion()],
+    offTable: true,
+  });
+
+  /** The stable off-table park slot; always present in {@link slots}. */
+  get hiddenParkSlot(): Slot {
+    return this.hiddenPark;
+  }
+
+  /** True when `slot` is the multi-tenant off-table park slot. */
+  isHiddenPark(slot: Slot | undefined | null): boolean {
+    return slot === this.hiddenPark;
+  }
 
   setup(conditions: Conditions): void {
     this.conditions = conditions;
@@ -121,6 +163,13 @@ export class Setup {
         const slot = this.slots.get(slotName);
         if (slot === undefined) {
           throw `trying to move thing to slot ${slotName}, but it doesn't exist`;
+        }
+        // The park slot is multi-tenant and off-table: every parked Thing keeps
+        // it as its home across the rebuild. `moveTo`'s single-occupant contract
+        // (and its "slot not empty" throw) does not apply here.
+        if (this.isHiddenPark(slot)) {
+          thing.slot = slot;
+          continue;
         }
         thing.moveTo(slot, thing.rotationIndex);
       }
@@ -328,6 +377,11 @@ export class Setup {
         slotNames.add(shortName);
       }
     }
+    // Re-register the SAME off-table park slot instance after every rebuild so
+    // parked Things (SC-2 hidden backs + concealed reals) always resolve to a
+    // live slot. Deliberately kept out of `slotNames`: it is not a deal target
+    // and must never be walked by a `dealPart` range.
+    this.slots.set(this.hiddenPark.name, this.hiddenPark);
     this.slotNames.push(...slotNames.values());
     Slot.setLinks(this.slots);
 

@@ -158,11 +158,16 @@ public class PersistentPlayerIdTests : IAsyncLifetime
         Assert.True(PlayerIdentityService.IsValidPlayerId(playerId),
             $"playerId '{playerId}' must satisfy IsValidPlayerId (URL-safe token, 1..128 chars).");
 
-        // The Set-Cookie value must match the body's playerId — otherwise
-        // the next request would resume a *different* identity than the
-        // one this response advertised.
+        // Burke — the cookie no longer restates the (PUBLIC) playerId: it carries a SIGNED
+        // credential that VERIFIES BACK to the body's playerId. Equality would mean anyone who
+        // read the id off the wire could replay it as their own cookie.
         var cookieValue = ExtractCookieValue(setCookie!, PlayerIdentityService.CookieName);
-        Assert.Equal(playerId, cookieValue);
+        Assert.NotEqual(playerId, cookieValue);
+        Assert.StartsWith(PlayerIdentityTokenProtector.SchemePrefix + ".", cookieValue);
+        var verdict = _factory!.Services
+            .GetRequiredService<PlayerIdentityTokenProtector>().Unprotect(cookieValue);
+        Assert.True(verdict.IsValid, "The issued cookie must verify against an active key.");
+        Assert.Equal(playerId, verdict.PlayerId);
 
         // displayName/avatarColor sanity — the service defaults to the
         // PlayerProfileService.DefaultDisplayName / DefaultAvatarColor
@@ -213,9 +218,16 @@ public class PersistentPlayerIdTests : IAsyncLifetime
             .GetProperty("playerId").GetString();
         Assert.False(string.IsNullOrEmpty(firstId));
 
+        // Burke — echo back the CREDENTIAL the server issued (not the public playerId, which
+        // is no longer a valid cookie value).
+        Assert.True(first.Headers.TryGetValues("Set-Cookie", out var firstSetCookie));
+        var firstCookieValue = firstSetCookie!
+            .Select(v => ExtractCookieValueOrNull(v, PlayerIdentityService.CookieName))
+            .First(v => v is not null)!;
+
         // Same client, second POST with the Cookie header echoed.
         using var secondReq = new HttpRequestMessage(HttpMethod.Post, "/api/identity");
-        secondReq.Headers.Add("Cookie", $"{PlayerIdentityService.CookieName}={firstId}");
+        secondReq.Headers.Add("Cookie", $"{PlayerIdentityService.CookieName}={firstCookieValue}");
         using var second = await client.SendAsync(secondReq);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
 
@@ -234,7 +246,11 @@ public class PersistentPlayerIdTests : IAsyncLifetime
         var secondCookieValue = secondSetCookie!
             .Select(v => ExtractCookieValueOrNull(v, PlayerIdentityService.CookieName))
             .FirstOrDefault(v => v is not null);
-        Assert.Equal(firstId, secondCookieValue);
+        // Deterministic under one key, so the refreshed credential is byte-identical AND still
+        // verifies to the same identity.
+        Assert.Equal(firstCookieValue, secondCookieValue);
+        Assert.Equal(firstId, _factory!.Services
+            .GetRequiredService<PlayerIdentityTokenProtector>().Unprotect(secondCookieValue).PlayerId);
 
         // The displayName + avatarColor are deterministic functions of
         // playerId (FNV-1a hashed), so cookie-stable id ⇒ stable name/colour.
@@ -282,7 +298,9 @@ public class PersistentPlayerIdTests : IAsyncLifetime
                 opts.WebSocketFactory = (_, _) => throw new InvalidOperationException(
                     "TestServer does not support WS upgrade in this assembly; use LongPolling.");
                 opts.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.LongPolling;
-                opts.Headers.Add("Cookie", $"{PlayerIdentityService.CookieName}={expectedPlayerId}");
+                // Burke — the handshake must carry the SIGNED credential; a bare player id is
+                // rejected (it is public) and the hub would mint a fresh identity instead.
+                opts.Headers.Add("Cookie", SignedIdentityCookieHeader(expectedPlayerId));
             })
             .Build();
 
@@ -374,7 +392,7 @@ public class PersistentPlayerIdTests : IAsyncLifetime
             {
                 opts.HttpMessageHandlerFactory = _ => _factory!.Server.CreateHandler();
                 opts.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.LongPolling;
-                opts.Headers.Add("Cookie", $"{PlayerIdentityService.CookieName}={playerId}");
+                opts.Headers.Add("Cookie", SignedIdentityCookieHeader(playerId));
             })
             .Build();
 
@@ -387,6 +405,14 @@ public class PersistentPlayerIdTests : IAsyncLifetime
         await connection.StopAsync();
         return dto;
     }
+
+    /// <summary>
+    /// Builds the <c>Cookie</c> header carrying a legitimately SIGNED identity credential for
+    /// <paramref name="playerId"/>, minted through the host's own service.
+    /// </summary>
+    private string SignedIdentityCookieHeader(string playerId) =>
+        $"{PlayerIdentityService.CookieName}="
+        + _factory!.Services.GetRequiredService<PlayerIdentityService>().Protect(playerId);
 
     /// <summary>
     /// Extracts the <paramref name="cookieName"/> value from a raw

@@ -1,4 +1,4 @@
-import { Vector3, Quaternion } from "three";
+import { Vector3 } from "three";
 import { Movement } from "./movement";
 import { Client } from "./client";
 import { readSpectatorFromUrl, readDealModeFromUrl, readVariantFromUrl } from "./client-ui";
@@ -150,7 +150,6 @@ export class World {
   private static readonly HIDDEN_BACK_BASE = 108;
   private static readonly HIDDEN_BACK_COUNT = 108;
   private hiddenBackPool: Array<Thing> | null = null;
-  private hiddenParkSlot: Slot | null = null;
   private handleToBack: Map<string, Thing> = new Map();
   // Blocker A (Bishop rev2) — the SC-2 back plan computed in the VACATE phase of
   // `onThings`, applied (placed) AFTER the entitled-real numeric loop so a back never
@@ -487,39 +486,43 @@ export class World {
   }
 
   /**
-   * FE-7 / SC-2 / G19 — lazily build the anonymous hidden-back pool: one
-   * off-screen "park" slot + {@link HIDDEN_BACK_COUNT} face-down back Things
-   * (sentinel typeIndex 0, `hidden=true`, reserved indices from
-   * {@link HIDDEN_BACK_BASE}). Adding them to `this.things` makes them part of
-   * the tile InstancedMesh (capacity grows to 216) and the raycast/render pass.
-   * Idempotent; re-adds after a setup rebuild swapped `this.things`.
+   * FE-7 / SC-2 / G19 — lazily build the anonymous hidden-back pool: {@link
+   * HIDDEN_BACK_COUNT} face-down back Things (sentinel typeIndex 0, `hidden=true`,
+   * reserved indices from {@link HIDDEN_BACK_BASE}) parked in the Setup-owned
+   * off-table slot. Adding them to `this.things` makes them part of the tile
+   * InstancedMesh (capacity grows to 216) and the render pass. Idempotent;
+   * re-adds after a setup rebuild swapped `this.things`.
+   *
+   * The park slot itself is NOT created here: it is owned by {@link Setup} and
+   * re-registered by every `addSlots()` rebuild, so it exists before any Thing
+   * can target it and survives a `Setup.replace()` (see Setup.hiddenParkSlot).
    */
   private ensureHiddenBackPool(): void {
     if (this.hiddenBackPool !== null && this.things.has(World.HIDDEN_BACK_BASE)) {
       return;
     }
-    if (this.hiddenParkSlot === null) {
-      this.hiddenParkSlot = new Slot({
-        name: 'hiddenpool@0',
-        group: 'hiddenpool',
-        origin: new Vector3(0, 0, -100000), // off-screen; free backs never render
-        rotations: [new Quaternion()],
-      });
-    }
-    this.slots.set(this.hiddenParkSlot.name, this.hiddenParkSlot);
+    const park = this.hiddenParkSlot;
     const pool: Array<Thing> = [];
     for (let i = 0; i < World.HIDDEN_BACK_COUNT; i++) {
-      const back = new Thing(World.HIDDEN_BACK_BASE + i, ThingType.TILE, 0, this.hiddenParkSlot);
+      const back = new Thing(World.HIDDEN_BACK_BASE + i, ThingType.TILE, 0, park);
       back.hidden = true;
       this.things.set(back.index, back);
       pool.push(back);
     }
+    // The park slot is multi-tenant; `new Thing(...)` wrote its own back-pointer
+    // into it. Clear it so no parked object is mistaken for the slot's occupant.
+    park.thing = null;
     this.hiddenBackPool = pool;
     this.handleToBack.clear();
     // Grow the tile InstancedMesh to include the 108 backs (contiguous indices
     // 108..215 after the 108 reals ⇒ instance capacity 216). Idempotent rebuild;
     // only runs on first activation (or after a setup rebuild dropped the pool).
     this.objectView.replaceThings(this.things);
+  }
+
+  /** The Setup-owned off-table park slot that holds every non-rendered Thing. */
+  private get hiddenParkSlot(): Slot {
+    return this.setup.hiddenParkSlot;
   }
 
   /**
@@ -548,13 +551,20 @@ export class World {
    * never steal a slot another Thing legitimately owns; leaves the caller to set
    * `hidden`. Parked backs/reals share the single off-screen park slot (its `.thing`
    * pointer is intentionally not authoritative for parked objects — they render nothing).
+   *
+   * The rotation is reset to 0 because the park slot has exactly one rotation:
+   * a Thing parked while carrying a slot-specific rotation (a sideways discard,
+   * a face-down hand tile) would otherwise index past `Slot.places` and make
+   * `Thing.place()` undefined — which is what fed the per-frame
+   * `Cannot read properties of undefined (reading 'x')` raycast cascade.
    */
   private parkThing(thing: Thing): void {
-    const park = this.hiddenParkSlot!;
+    const park = this.hiddenParkSlot;
     if (thing.slot !== park && thing.slot.thing === thing) {
       thing.slot.thing = null;
     }
     thing.slot = park;
+    thing.rotationIndex = 0;
   }
 
   /** Blocker A — release a back to the free pool: symmetric-park + drop its handle map. */
@@ -601,7 +611,7 @@ export class World {
         if (occupant.hiddenHandle !== null) {
           this.recycleBack(occupant);
         } else {
-          if (occupant.slot === slot) occupant.slot = this.hiddenParkSlot!;
+          this.parkThing(occupant);
           occupant.hidden = true;
         }
         slot.thing = null;
@@ -1435,6 +1445,13 @@ export class World {
         continue;
       }
 
+      // Off-table park slots hold non-rendered Things and are never a drop
+      // target (their origin is off-scene, so an overlap test against them is
+      // meaningless). Keeps relay drag-and-drop behaviour identical.
+      if (slot.offTable) {
+        continue;
+      }
+
       if (slot.thing !== null && slot.thing.claimedBy !== this.seat) {
         // Occupied. But can it be potentially shifted?
         if (!slot.links.shiftLeft && !slot.links.shiftRight) {
@@ -1827,6 +1844,15 @@ export class World {
     const result = [];
     if (this.seat !== null && !this.isHolding()) {
       for (const thing of this.things.values()) {
+        // FE-7 / SC-2 — a hidden Thing (non-entitled REAL, or a free/parked
+        // back-pool object) is not rendered by `updateViewThings`, so it must
+        // not be a raycast target either: an invisible mesh can never be
+        // hovered, selected or dragged, and a parked Thing has no on-table
+        // place to raycast against (`Thing.place()` is undefined for it, which
+        // made MouseUi.prepareObjects call Vector3.copy(undefined) every frame).
+        if (thing.hidden) {
+          continue;
+        }
         if (thing.claimedBy === null) {
           const place = thing.place();
           result.push({...place, id: thing.index});

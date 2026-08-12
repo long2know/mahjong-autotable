@@ -9,9 +9,10 @@
 // (deliberate reload / reconnect / shared-room join) is preserved verbatim.
 //
 // Discipline (no backdoors):
-//   • Every transition is a real DOM interaction — `#lobby-apply` / `#connect`
-//     ordinary clicks.  No `client.update`, no direct collection mutation, no
-//     synthetic DOM dispatch, no forced clicks, no hidden test hooks.
+//   • Every transition is a real DOM interaction — `#lobby-apply` and the
+//     persistent `[data-testid=new-game-button]` ordinary clicks.  No
+//     `client.update`, no direct collection mutation, no synthetic DOM
+//     dispatch, no forced clicks, no hidden test hooks.
 //   • Assertions observe the URL, the DOM, and the live WebSocket HANDSHAKE
 //     query (read-only frame/URL capture) — the exact bytes the server binds
 //     the game on.  Reading `window.game.client.*` collections is observation,
@@ -184,10 +185,14 @@ test.describe('#153 — default-game UX (honest URLs, no stale default)', () => 
     expect(h.gameId).not.toBe('changsha-default');
   });
 
-  test('a seat deep-link Connect funnels to a fresh gameId and forwards botCount (never changsha-default)', async ({ page }) => {
-    // `?seat=0` connects directly (no lobby); this is the exact bare-Connect
-    // path that previously bound the shared changsha-default room with no
-    // botCount / dealMode on the wire.
+  test('a seat deep-link New Game funnels to a fresh gameId and forwards botCount (never changsha-default)', async ({ page }) => {
+    // `?seat=0` is a deliberate deep-link that keeps the game shell (not the
+    // lobby). Per the #153 guard it does NOT auto-mint / auto-connect on its
+    // own, and `#connect` is a relay-only control (hidden for Changsha). The
+    // persistent New Game button (`[data-testid=new-game-button]`) is the
+    // intended Changsha actuator: a single real click mints a fresh, isolated
+    // gameId and opens the honest handshake, forwarding the deep-linked seat and
+    // the default botCount / dealMode on the wire.
     const handshakes = trackHandshakes(page);
     await landClean(page, '?seat=0');
 
@@ -196,10 +201,16 @@ test.describe('#153 — default-game UX (honest URLs, no stale default)', () => 
     const lobbyOpen = await page.locator('#lobby-panel.lobby-open').isVisible().catch(() => false);
     expect(lobbyOpen, 'a ?seat= deep-link should keep the game shell, not the lobby').toBe(false);
 
-    const connect = page.locator('#connect');
-    if (await connect.first().isVisible().catch(() => false)) {
-      await connect.first().click().catch(() => undefined);
-    }
+    // Real click on the persistent Changsha actuator — no force, no catch: a
+    // missing / hidden New Game button fails the test here rather than silently
+    // passing. The navigation wait mirrors the Apply & Start precedent above
+    // (newGame() location.replace re-bootstraps into the fresh isolated game).
+    const newGame = page.getByTestId('new-game-button');
+    await expect(newGame).toBeVisible();
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20_000 }).catch(() => null),
+      newGame.click(),
+    ]);
 
     await waitForHandshake(handshakes);
     const h = handshakes[handshakes.length - 1];

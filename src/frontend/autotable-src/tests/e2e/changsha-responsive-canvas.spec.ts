@@ -18,8 +18,11 @@ const VIEWPORTS = [
   { name: 'tablet-landscape-1180x820', w: 1180, h: 820 },
 ];
 
-// Primary controls a player must be able to reach (Ferro DOM/CSS lane).
-const CONTROL_IDS = ['deal', 'variant-badge', 'turn-banner'];
+// Primary controls a player must be able to reach (Ferro DOM/CSS lane). Under
+// Changsha the authoritative primary control is the persistent New Game button
+// (`#new-game` / `[data-testid=new-game-button]`); `#deal` is a relay-only
+// control the backend hides for Changsha, so it is NOT the reachability target.
+const CONTROL_IDS = ['new-game', 'variant-badge', 'turn-banner'];
 
 // Measure the ACTUAL WebGL drawing surface vs the viewport. The real render is the
 // <canvas> the Three.js renderer draws into (renderer.domElement) — its CSS box (and
@@ -82,10 +85,11 @@ test.describe('G20 responsive: DOM/CSS reachability (Ferro) + WebGL canvas fills
       await shot(page, `g20-${vp.name}.png`);
       recordEvidence(`g20-responsive-${vp.name}.json`, { report, fill });
 
-      // (A) FERRO DOM/CSS lane (expected GREEN): #deal within viewport + hit-testable.
-      const deal = report.rects['deal'];
-      expect(deal && !deal.offViewport, `#deal must be within the ${vp.name} viewport`).toBe(true);
-      expect(deal && deal.visible && deal.hitOk, `#deal must be visible + hit-testable @ ${vp.name}; got ${JSON.stringify(deal)}`).toBe(true);
+      // (A) FERRO DOM/CSS lane (expected GREEN): the primary control (#new-game,
+      // the persistent Changsha actuator) is within the viewport + hit-testable.
+      const newGame = report.rects['new-game'];
+      expect(newGame && !newGame.offViewport, `#new-game must be within the ${vp.name} viewport`).toBe(true);
+      expect(newGame && newGame.visible && newGame.hitOk, `#new-game must be visible + hit-testable @ ${vp.name}; got ${JSON.stringify(newGame)}`).toBe(true);
 
       // (B) HICKS canvas-fill seam: the WebGL <canvas> must FILL the viewport in BOTH
       // axes — no letterbox dead-space. RED@200cad4 if the renderer letterboxes.

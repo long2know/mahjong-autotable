@@ -217,11 +217,26 @@ async function setPerspective(page: Page, on: boolean): Promise<void> {
 // Mount the standalone local-deal renderer (upstream autotable's local
 // table path — NOT a WS backdoor) and lay a full wall for `variant`.
 // A non-empty query string flips index.ts into bootstrapGame(); omitting
-// ?gameId= keeps us in local-deal mode where World.deal is authoritative
-// and no server snapshot reconciles the tiles away.  The bundle + assets
-// are still served by the Production-CSP backend under test.
+// ?gameId= keeps us in local-deal mode (ClientUi.start() only opens a WS
+// when a gameId is present), so no server snapshot reconciles the tiles
+// away.  The bundle + assets are still served by the Production-CSP backend
+// under test.
+//
+// Variant plumbing differs by design:
+//   • FOUR_PLAYER — the upstream relay local deal is live, so `world.deal`
+//     authors the wall AND flips ObjectView via updateConditions→setVariant
+//     (centre HUD stays visible for Riichi).
+//   • CHANGSHA — server-authoritative: `world.deal` is INERT (it early-returns
+//     at the FE-1 `blocksLocalDeal` gate), so it can neither author the scene
+//     NOR flip ObjectView into Changsha.  The centre-HUD hide therefore has to
+//     come from the product's real Changsha entry: declaring `?variant=changsha`
+//     makes the ObjectView ctor (readVariantFromUrl → setVariant) hide the
+//     Riichi centre HUD + skip the stick-tray at first paint, while the World
+//     ctor lays the canonical 108-tile Changsha wall (Conditions.initial() ===
+//     CHANGSHA).  No local deal is emitted (it would be a no-op).
 async function mountAndDeal(page: Page, variant: 'FOUR_PLAYER' | 'CHANGSHA'): Promise<void> {
-  await page.goto('./?seat=0', { waitUntil: 'domcontentloaded' });
+  const url = variant === 'CHANGSHA' ? './?variant=changsha&seat=0' : './?seat=0';
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
 
   for (const sel of ['#tour-skip', '#onboarding-skip', '#lobby-close']) {
     const el = page.locator(sel);
@@ -244,13 +259,42 @@ async function mountAndDeal(page: Page, variant: 'FOUR_PLAYER' | 'CHANGSHA'): Pr
     { timeout: 30_000 },
   );
 
-  await page.evaluate((v) => {
-    const g: any = (window as any).game;
-    g.world.seat = 0;
-    g.world.deal('HANDS', { gameType: v });
-  }, variant);
-  // Let the deal's own 1 s dice-reset timer fire before we take control.
-  await page.waitForTimeout(1300);
+  if (variant === 'FOUR_PLAYER') {
+    await page.evaluate(() => {
+      const g: any = (window as any).game;
+      g.world.seat = 0;
+      g.world.deal('HANDS', { gameType: 'FOUR_PLAYER' });
+    });
+    // Let the deal's own 1 s dice-reset timer fire before we take control.
+    await page.waitForTimeout(1300);
+  } else {
+    // Changsha: the canonical 108-tile wall is already laid by the World ctor
+    // and the Riichi centre HUD is already hidden by the ctor's
+    // setVariant(CHANGSHA).  Seat the local viewer (parity with FOUR_PLAYER;
+    // no deal is emitted — it is inert here) and wait for the wall + hidden
+    // centre to settle before probing.
+    await page.evaluate(() => {
+      const g: any = (window as any).game;
+      g.world.seat = 0;
+    });
+    await page.waitForFunction(
+      () => {
+        const g: any = (window as any).game;
+        const center =
+          g?.objectView?.center ?? g?.world?.objectView?.center ?? null;
+        return !!(
+          g &&
+          g.world &&
+          g.world.things &&
+          g.world.things.size > 100 &&
+          center &&
+          center.mesh.visible === false
+        );
+      },
+      undefined,
+      { timeout: 30_000 },
+    );
+  }
 }
 
 // Attach a render-error sink.  Any `Computed radius is NaN` (or generic

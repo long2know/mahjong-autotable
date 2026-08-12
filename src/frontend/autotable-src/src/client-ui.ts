@@ -85,6 +85,23 @@ export function readSpectatorFromUrl(): boolean {
   return !isNaN(n) && n === SPECTATOR_SEAT;
 }
 
+// Seat/start deadlock fix (Ferro live-UX rejection) — read a concrete PLAYER
+// seat (0..3) from the page URL's `?seat=` handoff, or null for absent /
+// invalid / spectator(-1). The connect path turns this HINT into a standard
+// seat REQUEST once WS is ready; it is never treated as confirmed ownership
+// (the server acks via the seats snapshot). Kept separate from
+// readSpectatorFromUrl so a `-1` spectator never reads as a real chair.
+export function readPlayerSeatFromUrl(): number | null {
+  try {
+    const raw = new URLSearchParams(window.location.search).get('seat');
+    if (raw === null) return null;
+    const n = parseInt(raw, 10);
+    return !isNaN(n) && n >= 0 && n <= 3 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 // Bishop W23 — exported so world.ts can detect human-led manual deal
 // mode without the round-tripped match snapshot (which strips the
 // dealMode field — see ChangshaToAutotableTranslator.BuildMatch).  The
@@ -167,6 +184,13 @@ export class ClientUi {
   disconnecting = false;
   reconnectAttempts: number = 0;
   reconnectSeat: number | null = null;
+  // Seat/start deadlock fix (Ferro) — one-shot URL `?seat=` handoff state. The
+  // claim is deferred to the first authoritative `seats` snapshot (which arrives
+  // just after JOINED) and only fires for an OPEN chair, so it never grabs an
+  // occupied seat. `Bound` guards a single listener across the connection's life.
+  private urlSeatHandoff: number | null = null;
+  private urlSeatHandoffDecided: boolean = false;
+  private urlSeatHandoffBound: boolean = false;
   // New Game UX P0 — debounce guard: one activation ⇒ exactly one navigation.
   private newGameInFlight: boolean = false;
   // Phase I Wave 4 — true while the active page URL declares ?seat=-1.
@@ -603,6 +627,27 @@ export class ClientUi {
       this.reconnectSeat = null;
     } else if (this.reconnectSeat !== null) {
       this.client.seats.set(this.client.playerId(), { seat: this.reconnectSeat });
+    } else {
+      // Seat/start deadlock fix (Ferro live-UX rejection) — a FRESH concrete
+      // Changsha connection carrying a `?seat=N` handoff (New Game / Quick Match
+      // / Apply & Start / seat preview / shared link) must turn that hint into a
+      // real chair via the STANDARD seat command, now that WS is ready. The old
+      // code only auto-seated on RECONNECT (reconnectSeat !== null), so a fresh
+      // URL seat was never acted on: the runtime waited for a seat command that
+      // never came, so seats stayed EMPTY (no bots, no auto-deal) and the table
+      // deadlocked. We DEFER the claim to the first authoritative `seats`
+      // snapshot and only take the chair when it is genuinely OPEN — so a URL
+      // `?seat=` pointed at an OCCUPIED chair never grabs a stranger's seat or
+      // projects their concealed hand; the viewer keeps honest Take-Seat controls
+      // instead. Relay variants keep their manual Take-Seat flow (gated to
+      // authoritative Changsha; absent variant defaults to Changsha).
+      const variant = readVariantFromUrl();
+      if (variant === null || variant === 'CHANGSHA') {
+        const urlSeat = readPlayerSeatFromUrl();
+        if (urlSeat !== null) {
+          this.armUrlSeatHandoff(urlSeat);
+        }
+      }
     }
 
     // Phase J Wave 2 — flash the green "Reconnected" banner only when
@@ -616,6 +661,49 @@ export class ClientUi {
     this.wasDisconnected = false;
     this.reconnectAttempts = 0;
     this.clearReconnectTimer();
+  }
+
+  // Seat/start deadlock fix (Ferro) — arm the URL `?seat=` handoff. The
+  // authoritative `seats` snapshot lands just AFTER the JOINED/`connect` event
+  // (see base-client.ts onMessage), so we cannot read occupancy synchronously
+  // here; instead we react to the first `seats` update and claim the chair ONLY
+  // when it is confirmed OPEN (or already ours). Bound once per connection life;
+  // the decision is made a single time so it never fights a later manual seat.
+  private armUrlSeatHandoff(urlSeat: number): void {
+    this.urlSeatHandoff = urlSeat;
+    this.urlSeatHandoffDecided = false;
+    if (!this.urlSeatHandoffBound) {
+      this.urlSeatHandoffBound = true;
+      this.client.seats.on('update', () => this.maybeClaimUrlSeat());
+    }
+    // NOTE: we deliberately do NOT claim synchronously here — at `connect` time
+    // the seats snapshot has not arrived yet (seatPlayers is empty), so an
+    // immediate claim could not tell an OPEN chair from an occupied one. The
+    // handler above fires on the first authoritative `seats` update (the server
+    // sends one on connect, empty or not) and decides then.
+  }
+
+  private maybeClaimUrlSeat(): void {
+    if (this.urlSeatHandoffDecided) return;
+    const urlSeat = this.urlSeatHandoff;
+    if (urlSeat === null) return;
+    // A spectator (or a seat we've already confirmed via reconnect/manual/earlier
+    // claim) needs no handoff — settle without claiming.
+    if (this.spectating || this.client.seat !== null) {
+      this.urlSeatHandoffDecided = true;
+      return;
+    }
+    const me = this.client.playerId();
+    const owner = this.client.seatPlayers[urlSeat] ?? null;
+    // Decide once on this authoritative snapshot. Claim ONLY an OPEN chair (or
+    // one already ours). An occupied chair is left untouched so a URL `?seat=`
+    // spoof can neither seize a stranger's seat nor project their concealed hand
+    // — the viewer keeps the honest Take-Seat controls (updateSeats renders them
+    // off the confirmed client.seat).
+    this.urlSeatHandoffDecided = true;
+    if (owner === null || owner === me) {
+      this.client.seats.set(me, { seat: urlSeat });
+    }
   }
 
   onDisconnect(game: Game | null): void {

@@ -31,7 +31,7 @@
 // click if rendered; @200cad4 the auto-drive rolls, so it is best-effort).
 
 import { test, expect, type Page } from '@playwright/test';
-import { buildGameUrl, makeConfig, dismissLobbyAndTour, ensureConnected, takeSeatByClick, clickDeal } from './_playability';
+import { buildGameUrl, makeConfig, dismissLobbyAndTour, ensureConnected, takeSeatByClick, clickDeal, hasExtraHandTile, readIsMyPickupTurn, takePickup, installWallTakeRecorder, pressWallTargetByHover, type WallTakeFrame } from './_playability';
 import { recordEvidence, shot } from './_uat_red';
 
 // Reads the viewer's current single-trigger pickup designation (SC-4 v4:
@@ -69,34 +69,18 @@ async function handClimbOver(page: Page, ms: number): Promise<{ start: number; e
   return { start, end, climb: end - start };
 }
 
-// Real-pointer press on the REACHABLE top wall tile whose public slot name is
-// gate[0] (up-link empty ⇒ not occluded). Projects the tile's world position to
-// screen and issues a genuine mouse down/up. Returns the hand delta.
-async function pressDesignationTop(page: Page, gate: string[]): Promise<{ clicked: boolean; handBefore: number; handAfter: number }> {
-  const target = await page.evaluate((values) => {
-    /* eslint-disable @typescript-eslint/no-explicit-any */
-    const g = (window as any).game; const w = g?.world; const camera = g?.mainView?.camera; const main = document.getElementById('main');
-    const rect = main?.getBoundingClientRect();
-    if (camera) { try { camera.parent?.updateMatrixWorld(true); camera.updateMatrixWorld(true); camera.matrixWorldInverse?.copy(camera.matrixWorld).invert(); } catch { /* */ } }
-    const set = new Set(values.map(String));
-    const proj = (p: any) => { const mw = camera.matrixWorldInverse.elements, pm = camera.projectionMatrix.elements; const vx = mw[0]*p.x+mw[4]*p.y+mw[8]*p.z+mw[12], vy = mw[1]*p.x+mw[5]*p.y+mw[9]*p.z+mw[13], vz = mw[2]*p.x+mw[6]*p.y+mw[10]*p.z+mw[14], vw = mw[3]*p.x+mw[7]*p.y+mw[11]*p.z+mw[15]; const cx = pm[0]*vx+pm[4]*vy+pm[8]*vz+pm[12]*vw, cy = pm[1]*vx+pm[5]*vy+pm[9]*vz+pm[13]*vw, cw = pm[3]*vx+pm[7]*vy+pm[11]*vz+pm[15]*vw; return { sx: (rect?.left??0)+(cx/cw+1)*0.5*(rect?.width??0), sy: (rect?.top??0)+(1-cy/cw)*0.5*(rect?.height??0) }; };
-    let hand = 0; for (const t of w.things.values()) if (/^hand\.\d+@0$/.test(String(t?.slot?.name ?? ''))) hand++;
-    for (const t of w.things.values()) {
-      if (t?.slot?.group !== 'wall' || t.claimedBy != null) continue;
-      const up = t.slot?.links?.up; if (up && up.thing) continue;   // occluded bottoms are inert
-      if (!set.has(String(t.slot?.name))) continue;
-      const s = proj(t.place().position);
-      return { ok: true, cx: Math.round(s.sx), cy: Math.round(s.sy), handBefore: hand };
-    }
-    return { ok: false, handBefore: hand };
-    /* eslint-enable @typescript-eslint/no-explicit-any */
-  }, gate);
-  if (!target.ok) return { clicked: false, handBefore: target.handBefore, handAfter: target.handBefore };
-  await page.mouse.move(target.cx, target.cy); await page.waitForTimeout(120);
-  await page.mouse.down(); await page.waitForTimeout(80); await page.mouse.up();
-  await page.waitForTimeout(1200);
-  const handAfter = await handCount(page);
-  return { clicked: true, handBefore: target.handBefore, handAfter };
+// Real-pointer press on the REACHABLE top wall tile named gate[0] (up-link empty
+// ⇒ not occluded). Uses the shared grid-scan primitive (pressWallTargetByHover),
+// which moves a genuine pointer across the tile footprint until the renderer's own
+// raycast reports world.hovered === gate[0] — defeating the intermittent ~16 px
+// angled-face projection offset — then issues a real mouse down/up. Returns the
+// hard-recorded hover match, the outbound pickup.take frames this press emitted,
+// and the bot-immune own-hand delta.
+async function pressDesignationTop(page: Page, gate: string[], takes: WallTakeFrame[]): Promise<{
+  clicked: boolean; matched: boolean; hovered: string | null; handBefore: number; handAfter: number; frames: WallTakeFrame[];
+}> {
+  const r = await pressWallTargetByHover(page, gate[0], takes);
+  return { clicked: r.found, matched: r.matched, hovered: r.hovered, handBefore: r.handBefore, handAfter: r.handAfter, frames: r.frames };
 }
 
 // Best-effort real-pointer roll for the dealer, if a roll control is rendered.
@@ -115,6 +99,9 @@ test.describe('NEW-2 human-driven pickup — real press per batch; no progress a
     await page.setViewportSize({ width: 1600, height: 900 });
     const base = testInfo.project.use.baseURL as string;
     const cfg = makeConfig({ gameId: `new2-humandrive-${Date.now()}`, seat: 0, dealMode: 'manual', botCount: 3, botDifficulty: 'Medium', handCount: 4 });
+    // OUTBOUND wire capture (observation only — no injection/emit). Every batch
+    // press must emit EXACTLY ONE {seatIndex:0,count} pickup.take frame; 0 emit fails.
+    const takes = installWallTakeRecorder(page);
     await page.goto(buildGameUrl(base, cfg), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200); await dismissLobbyAndTour(page); await ensureConnected(page);
     await takeSeatByClick(page, 0); await clickDeal(page).catch(() => {});
@@ -127,28 +114,44 @@ test.describe('NEW-2 human-driven pickup — real press per batch; no progress a
     const preDesignation = await readDesignation(page);
     const noPress = await handClimbOver(page, 6000);
 
-    // PHASE 2 — per-batch human drive: press targetSlots[0] for each batch; each
-    // press must take EXACTLY that batch's `count`, then STOP until the next press.
+    // PHASE 2 — per-batch human drive: the dealer owns EXACTLY 5 batches
+    // (PickupRound1..3 = 4 each, SingleTilePickup = 1, DealerExtra = 1 ⇒ 14), interleaved
+    // with the three bots' own windows. Press ONLY when it is genuinely our turn
+    // (readIsMyPickupTurn) — the previous fixed 8-iteration loop pressed blind during bot
+    // windows, which produced 7 no-op presses and a false `allBatchesExact=false`.
     let presses = 0;
-    let allBatchesExact = true;             // every press moved exactly `count`
-    let anyBetweenBatchAutoAdvance = false; // hand moved between presses w/o input
+    let allBatchesExact = true;             // every OWNED press moved exactly `count`
+    let allBatchesExactHover = true;        // world.hovered === targetSlots[0] before every press
+    let allBatchesOneEmit = true;           // exactly one outbound {seatIndex,count} pickup.take per press
+    let allBatchesMySeat = true;            // every emitted take was scoped to seat 0
+    let anyBetweenBatchAutoAdvance = false; // hand moved during a bot window w/o input
     let sawAnyDesignation = !!preDesignation;
-    const batches: Array<{ phase: string; count: number; delta: number; betweenClimb: number }> = [];
-    for (let i = 0; i < 8; i++) {
+    const batches: Array<{ phase: string; count: number; delta: number; emit: number; seatIndex: number | null; matched: boolean; hovered: string | null; betweenClimb: number }> = [];
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline && (await handCount(page)) < 14) {
+      if (!(await readIsMyPickupTurn(page))) {
+        // BOT WINDOW — our hand must hold completely while another seat picks up.
+        const idle = await handClimbOver(page, 700);
+        if (idle.climb > 0) anyBetweenBatchAutoAdvance = true;
+        continue;
+      }
       const d = await readDesignation(page);
-      if (!d) break;
+      if (!d || !d.gate || !d.gate.length) { await page.waitForTimeout(200); continue; }
       sawAnyDesignation = true;
-      const before = await handCount(page);
-      if (before >= 14) break;
-      const res = await pressDesignationTop(page, d.gate);
-      if (!res.clicked) break;
+      const res = await pressDesignationTop(page, d.gate, takes);
+      if (!res.clicked) { await page.waitForTimeout(200); continue; }
       const delta = res.handAfter - res.handBefore;
       presses++;
+      // Per-batch hard signals (actor-scoped). Aggregated so the failing batch is
+      // named in `batches`; the killer asserts fire after the loop.
+      if (!res.matched || res.hovered !== d.gate[0]) allBatchesExactHover = false;
+      if (res.frames.length !== 1) allBatchesOneEmit = false;
+      if (!(res.frames.length === 1 && res.frames[0].seatIndex === 0)) allBatchesMySeat = false;
       if (delta !== d.count) allBatchesExact = false;
       // after the press, the hand must hold until the NEXT deliberate press
-      const between = await handClimbOver(page, 1500);
+      const between = await handClimbOver(page, 1200);
       if (between.climb > 0) anyBetweenBatchAutoAdvance = true;
-      batches.push({ phase: d.phase, count: d.count, delta, betweenClimb: between.climb });
+      batches.push({ phase: d.phase, count: d.count, delta, emit: res.frames.length, seatIndex: res.frames[0]?.seatIndex ?? null, matched: res.matched, hovered: res.hovered, betweenClimb: between.climb });
       if (res.handAfter >= 14) break;
     }
 
@@ -156,9 +159,9 @@ test.describe('NEW-2 human-driven pickup — real press per batch; no progress a
     await shot(page, 'new2-human-driven-pickup.png');
     recordEvidence('new2-human-driven-pickup.json', {
       preDesignationPresent: !!preDesignation,
-      noPressClimb: noPress, presses, allBatchesExact, anyBetweenBatchAutoAdvance,
+      noPressClimb: noPress, presses, allBatchesExact, allBatchesExactHover, allBatchesOneEmit, allBatchesMySeat, anyBetweenBatchAutoAdvance,
       sawAnyDesignation, batches, handFinal,
-      note: 'NEW-2 anti-happy-path. RED@200cad4: no pickup.targetSlots is ever shipped (sawAnyDesignation=false ⇒ 0 human presses possible) AND the client auto-drive self-fills the hand to 14 without any press (noPressClimb>0). GREEN when Bishop ships targetSlots len-1 and world.ts drops driveManualDealChain: the window opens (designation present, noPressClimb=0), each real press on targetSlots[0] takes exactly count and stops, and the dealer reaches 14 via >=1 discrete presses.',
+      note: 'NEW-2 anti-happy-path (actor-scoped). Each batch is driven by a REAL grid-scanned pointer press on targetSlots[0] (pressWallTargetByHover: settle→scan footprint until world.hovered===target→real mouse down/up, defeating the intermittent ~16px angled-face projection offset Hudson proved). GREEN: designation present (noPressClimb=0), 5 discrete presses of counts [4,4,4,1,1] each hard-hovering the exact target and emitting EXACTLY ONE {seatIndex:0,count} pickup.take, own-hand delta === count, hand holds during bot windows, hand reaches 14.',
     });
 
     // (1) NO auto-advance without a press — the killer anti-happy-path assertion.
@@ -166,9 +169,19 @@ test.describe('NEW-2 human-driven pickup — real press per batch; no progress a
     // (2) a real single-trigger designation must exist for the human to press.
     expect(sawAnyDesignation, 'NEW-2(2): a single-trigger pickup.targetSlots must be shipped for the human to press each batch — RED@200cad4 = no targetSlots designation ever appears').toBe(true);
     // (3) the ceremony was driven by discrete human presses, each taking exactly one batch.
-    expect(presses, `NEW-2(3): the dealer ceremony must be driven by >=1 real presses on targetSlots[0]; performed ${presses} — RED@200cad4 = 0 (no clickable designation)`).toBeGreaterThanOrEqual(1);
+    // The dealer owns EXACTLY 5 batches: 3 × count-4 (PickupRound1..3) + 2 × count-1
+    // (SingleTilePickup + DealerExtra) ⇒ 14 tiles.
+    expect(presses, `NEW-2(3): the dealer must drive its OWN 5 batches by real presses on targetSlots[0]; performed ${presses}, batches=${JSON.stringify(batches)}`).toBe(5);
+    expect(batches.map((b) => b.count), `NEW-2(3): the dealer's owned batch sizes must be [4,4,4,1,1]; got ${JSON.stringify(batches.map((b) => b.count))}`).toEqual([4, 4, 4, 1, 1]);
+    // (3a) EXACT HOVER — every press hard-hovered the exact designated trigger (no
+    // trust in the projected slot center). A miss surfaces here, never as a swallowed no-op.
+    expect(allBatchesExactHover, `NEW-2(3): every press must first resolve world.hovered to the EXACT targetSlots[0] before pressing; batches=${JSON.stringify(batches)}`).toBe(true);
+    // (3b) EXACTLY ONE outbound take per press (fail on any 0-emit), scoped to my seat.
+    expect(allBatchesOneEmit, `NEW-2(3): every press must emit EXACTLY ONE outbound pickup.take frame (0 emit is a failed actuation); batches=${JSON.stringify(batches)}`).toBe(true);
+    expect(allBatchesMySeat, `NEW-2(3): every outbound take must carry {seatIndex:0}; batches=${JSON.stringify(batches)}`).toBe(true);
     expect(allBatchesExact, 'NEW-2(3): every press must take EXACTLY the designated batch count (one interaction per batch)').toBe(true);
-    expect(anyBetweenBatchAutoAdvance, 'NEW-2(2): the hand must NOT advance to the next batch between presses (no auto-drive)').toBe(false);
+    expect(handFinal, `NEW-2(3): the dealer's five owned batches must total 14 tiles; handFinal=${handFinal}`).toBe(14);
+    expect(anyBetweenBatchAutoAdvance, 'NEW-2(2): the hand must NOT advance between presses or during a bot window (no auto-drive)').toBe(false);
   });
 });
 
@@ -189,6 +202,16 @@ test.describe('NEW-2 human-driven pickup — real press per batch; no progress a
 // no direct pickup mutation; we read the real DOM + the client's own pickup collection.
 test.describe('NEW-2b pickup HUD teardown — the Take-N banner must not orphan after the collection clears', () => {
   test('#pickup-hud is torn down once pickup["current"] clears post-ceremony (no lingering Take-N banner)', async ({ page }, testInfo) => {
+    // BOTH projects. Hudson's Pixel 5 probe proved `#pickup-take-btn` is
+    // rendered, hit-testable and 5/5 pressable under touch emulation, and the
+    // full chromium-vs-mobile-chrome matrix (Ripley, 2026-08-11, 30/30 cases,
+    // 0 skipped) came back BIT-IDENTICAL on both projects: every case that
+    // passes on chromium passes on mobile-chrome and every failure reproduces
+    // on both. There is no mobile-specific defect here — a chromium-only skip
+    // would have masked a real product defect as a "mobile viewport" issue.
+    // No extra readiness gate is needed either: makeConfig carries `seat: 0`
+    // on the URL, so the client is auto-seated and the `.take-seat` control is
+    // never rendered (seatsRowDisplay:"none").
     testInfo.setTimeout(150_000);
     await page.setViewportSize({ width: 1600, height: 900 });
     const base = testInfo.project.use.baseURL as string;
@@ -216,16 +239,21 @@ test.describe('NEW-2b pickup HUD teardown — the Take-N banner must not orphan 
       /* eslint-enable @typescript-eslint/no-explicit-any */
     });
 
-    // Drive the ceremony to completion (auto-drive fills the hand @200cad4), sampling
-    // the banner so the teardown gate is provably non-vacuous (the banner is expected
-    // to appear while the pickup affordance is live).
+    // Drive the ceremony to completion via real per-batch presses on the
+    // rendered #pickup-take-btn (shared takePickup) — the client auto-drive
+    // that used to self-fill the hand (@200cad4) was removed (D5), so
+    // without a real press per batch the ceremony stalls on the dealer's
+    // own unpressed first window and never reaches the post-ceremony
+    // tombstone this gate is actually about. Still sampling the banner every
+    // tick so the teardown assertion below stays provably non-vacuous (the
+    // banner is expected to appear while the pickup affordance is live).
     let hudEverVisible = false;
     const deadline = Date.now() + 90_000;
-    while (Date.now() < deadline) {
+    while (Date.now() < deadline && !(await hasExtraHandTile(page))) {
       const h = await readHud();
       if (h.visible) hudEverVisible = true;
-      if (h.hand >= 13) break;
-      await page.waitForTimeout(300);
+      if (await readIsMyPickupTurn(page)) await takePickup(page);
+      else await page.waitForTimeout(300);
     }
     // Settle the final post-deal snapshot (the map.clear() clear path).
     await page.waitForTimeout(2500);

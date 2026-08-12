@@ -81,7 +81,13 @@ jobs:
         working-directory: src/frontend/autotable-src
         env:
           E2E_BASE_URL: http://localhost:8080/autotable/
-        run: npm run e2e
+        # The four P0 real-UI playability tests already run in the dedicated
+        # `playability-gate` job (~12.6m); running them again here (x2 for
+        # mobile-chrome) burns ~13m of this job's budget for no extra
+        # coverage. Excluded by TITLE (not the `@playability-gate` tag,
+        # which claim-key-collision.spec.ts also carries and must keep
+        # running here).
+        run: npm run e2e -- --grep-invert "P0 real-UI playability"
 
       - name: Tear down
         if: always()
