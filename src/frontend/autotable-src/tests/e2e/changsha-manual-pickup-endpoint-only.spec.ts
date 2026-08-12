@@ -624,13 +624,41 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     // stalled/capped flag with the viewer still designated — the precondition assertion below
     // then fails with that diagnostic (never hidden). stallMs 45s / capMs 90s bounded under
     // the 120s test timeout.
+    let observedOwnWindow = false;
+    let vacuousBlockedPolls = 0;
     let d = await readDesignation(page);
     const conv = await pollWithStallGuard(page, async () => {
-      if (await readIsMyPickupTurn(page)) await takePickup(page);
+      const myTurnNow = await readIsMyPickupTurn(page);
+      const dSeen = await readDesignation(page);
+      // NON-VACUOUS MILESTONE (Hudson — S11 DPR1 micro-state fix). The bare predicate
+      // `!(myTurn || gateLen===1)` converged VACUOUSLY on the FIRST poll whenever the dealer's
+      // seat-0 BreakPointMarked window had not yet synced to the client: Dietrich's DPR1 probe
+      // (and the local timeline probe) show that window opens ~3.4s after the deal and PARKS
+      // open until pressed, yet the guard could return done in ~1.6–4.4s with keyChanges=0 and
+      // ZERO presses. The window then opened and the "arbitrary" wall press below landed on the
+      // now-live designated tile, tripping fail-closed for a TIMING reason — not a real any-wall
+      // fallback. We now require having genuinely HELD our OWN single-trigger window before
+      // converging, so the gate exercises a REAL no-designation state DPR-independently.
+      if (myTurnNow || (dSeen && dSeen.gate && dSeen.gateLen === 1)) observedOwnWindow = true;
+      if (myTurnNow) await takePickup(page);
       d = await readDesignation(page);
       const myTurn = await readIsMyPickupTurn(page);
-      const stillDesignated = myTurn || !!(d && d.gate && d.gateLen === 1);
-      return { done: !stillDesignated, key: await readCeremonyKey(page) };
+      const stillMine = myTurn || !!(d && d.gate && d.gateLen === 1);
+      // Terminal must be an AUTHORITATIVE stable no-designation state — a LIVE pickup parked on
+      // ANOTHER seat, or the post-ceremony tombstone — never a transient inter-batch null gap.
+      const term = await page.evaluate(() => {
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        const g = (window as any).game; const w = g?.world;
+        const pu = g?.client?.pickup?.get ? g.client.pickup.get('current') : null;
+        const seat = g?.client?.seat ?? null;
+        const extra = !!(w?.hasExtraHandTile && w.hasExtraHandTile());
+        return { foreignLive: !!pu && (pu.seatIndex ?? null) !== seat, tombstone: !pu && extra };
+        /* eslint-enable @typescript-eslint/no-explicit-any */
+      });
+      // Non-vacuity proof: count polls where the OLD predicate would have converged (no own
+      // designation) but we had NOT yet observed our own window — exactly the vacuous case blocked.
+      if (!stillMine && !observedOwnWindow) vacuousBlockedPolls++;
+      return { done: observedOwnWindow && !stillMine && (term.foreignLive || term.tombstone), key: await readCeremonyKey(page) };
     }, { stallMs: 45_000, capMs: 90_000, pollMs: 250 });
     // Record WHICH reachable no-designation state we landed in, so the gate is provably
     // non-vacuous rather than silently degenerating to "nothing was happening".
@@ -659,12 +687,14 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     const anyWallActed = (handAfter > handBefore) || emitted.length > 0 || !!(drag.held && drag.held.isHolding) || ((drag.held?.dragOffsetWorld ?? 0) > 5);
     recordEvidence('g17-fail-closed.json', { noValidDesignation, designationLen: d ? d.gateLen : null, reached, handBefore, handAfter, emittedTakes: emitted, held: drag.held, anyWallActed,
       convGuard: { done: conv.done, stalled: conv.stalled, capped: conv.capped, elapsedMs: conv.elapsedMs, keyChanges: conv.keyChanges, maxIdleMs: conv.maxIdleMs },
-      note: 'Fail-closed (actor-scoped, Hudson): inert ⟺ zero outbound pickup.take AND unchanged `hand.*@0` AND no local hold/drag. Shared-wall deltas are NOT used — bots take concurrently. `reached` names the real state exercised: pickupLive && pickupSeat !== mySeat = a live ceremony parked on another seat (display-only); pickupLive=false = the post-ceremony tombstone.' });
+      milestone: { observedOwnWindow, vacuousBlockedPolls },
+      note: 'Fail-closed (actor-scoped, Hudson): inert ⟺ zero outbound pickup.take AND unchanged `hand.*@0` AND no local hold/drag. Shared-wall deltas are NOT used — bots take concurrently. `reached` names the real state exercised: pickupLive && pickupSeat !== mySeat = a live ceremony parked on another seat (display-only); pickupLive=false = the post-ceremony tombstone. `milestone.observedOwnWindow` must be true (we held our own window before converging); `vacuousBlockedPolls`>0 means the old bare predicate would have converged vacuously here and the fix blocked it.' });
     // PRECONDITION (now reachable on a FIXED build, not pinned to the RED one): the
     // viewer holds no single-trigger designation — either the live pickup belongs to
     // another seat, or the ceremony has tombstoned. Either way the client must NOT let
-    // any wall tile act.
-    expect(noValidDesignation, `precondition: this viewer holds no exact-1 targetSlots designation (converged state: ${JSON.stringify(reached)}; drive: done=${conv.done} stalled=${conv.stalled} capped=${conv.capped} elapsedMs=${conv.elapsedMs} maxIdleMs=${conv.maxIdleMs})`).toBe(true);
+    // any wall tile act. The convergence is NON-VACUOUS: we observed our own window first.
+    expect(observedOwnWindow, `S11 non-vacuity: must have HELD this viewer's own single-trigger pickup window before converging (guards the DPR1 first-poll vacuous case); observedOwnWindow=${observedOwnWindow}, reached=${JSON.stringify(reached)}, drive done=${conv.done} stalled=${conv.stalled} capped=${conv.capped} elapsedMs=${conv.elapsedMs}`).toBe(true);
+    expect(noValidDesignation, `precondition: this viewer holds no exact-1 targetSlots designation (converged state: ${JSON.stringify(reached)}; drive: done=${conv.done} stalled=${conv.stalled} capped=${conv.capped} elapsedMs=${conv.elapsedMs} maxIdleMs=${conv.maxIdleMs}; vacuousBlockedPolls=${vacuousBlockedPolls})`).toBe(true);
     expect(anyWallActed, `FAIL-CLOSED: with no valid targetSlots, pressing ANY wall tile must be inert — zero pickup.take (emitted=${emitted.length}), unchanged hand (${handBefore}→${handAfter}), no hold/drag`).toBe(false);
   });
 
