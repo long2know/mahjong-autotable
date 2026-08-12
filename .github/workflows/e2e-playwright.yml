@@ -22,11 +22,17 @@ on:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    # 474-test suite runs on a single worker; the legacy 30-min cap
-    # was sized for a smaller suite and now hard-times out the run.
-    # Bumped to 60 to give the smoke set headroom; tracked as a
-    # standalone follow-up to investigate worker-parallelism.
-    timeout-minutes: 60
+    # General E2E runs single-worker (workers=1). Filtered topology:
+    # 1026 discovered / 722 executed / 304 intentional project skips
+    # (the 8 P0 real-UI tests are grep-inverted out here and pass
+    # separately in playability-gate). Measured CI throughput is
+    # ~10-12 executed tests/min (vs ~15.8 local), so a clean 722-test
+    # run is ~60-72m of execution plus ~1m36 setup (~62-74m envelope).
+    # At timeout-minutes=60, run 31576171218 canceled at ~573/722
+    # (~79%) with zero headroom. Raised to 90 to clear the measured
+    # envelope; the stateful tests must stay serial, so the fix is
+    # budget, not parallelism.
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
