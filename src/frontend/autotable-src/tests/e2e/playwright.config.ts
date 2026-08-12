@@ -64,7 +64,15 @@ const projects: Project[] = [
   },
   {
     name: 'mobile-chrome',
-    use: { ...devices['Pixel 5'] },
+    // Functional mobile gate: keep Pixel 5 CSS-mobile semantics (viewport, touch,
+    // isMobile, userAgent) but pin deviceScaleFactor:1. Pixel 5's native DSF 2.75
+    // makes the SwiftShader backing buffer ~7.5x larger (2.15M vs 0.285M px), which
+    // monopolises the browser main thread on the 4-vCPU hosted runner and starves
+    // the client's WS/UI observation of server-pushed ceremony windows (deals park
+    // at RollingDice/BreakPointMarked). DPR1 restores observation with NO change to
+    // CSS layout / touch / raycasting (all pointer math is CSS-px) and no pixel
+    // baselines are affected (no toHaveScreenshot runs on mobile-chrome).
+    use: { ...devices['Pixel 5'], deviceScaleFactor: 1 },
     testIgnore: /view-mode-visual-baseline\.spec\.ts/,
   },
 ];
