@@ -369,8 +369,16 @@ public sealed class AutotableWsSeatAuthorizationTests : IAsyncLifetime
             "seat=0&bots=false&botCount=0&dealMode=auto",
             attackerPlayerId);
 
+        var processingBarrierKey = NewPlayerId("occupied-seat-processing-barrier");
         await attacker.SendUpdateAsync(
-            new object[] { "seats", attackerPlayerId, new { seat = 0 } });
+            new object[] { "seats", attackerPlayerId, new { seat = 0 } },
+            new object[] { "mouse", processingBarrierKey, new { x = 1, y = 2, z = 3 } });
+        var processingBarrier = await game.Owner.ReadNonFullUpdateAsync();
+        var processingBarrierEntry = Assert.Single(
+            processingBarrier.GetProperty("entries").EnumerateArray(),
+            entry => entry[0].GetString() == "mouse"
+                && entry[1].GetString() == processingBarrierKey);
+        Assert.Equal(1, processingBarrierEntry[2].GetProperty("x").GetInt32());
 
         var afterTake = await SnapshotAsync(game.RuntimeGameId);
         Assert.Equal(before.StateVersion, afterTake.StateVersion);
