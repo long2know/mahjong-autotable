@@ -486,6 +486,32 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectExposedKongClaim_ReturnsFalse_WhenChangshaSevenPairsLeanWouldBreakForKong()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 4);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            MahjongRuleset.Changsha258,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public void TrySelectExposedKongClaim_ReturnsTrue_WhenChangshaHasAlternateSmallWinPair()
     {
         var handTiles = new List<Tile>

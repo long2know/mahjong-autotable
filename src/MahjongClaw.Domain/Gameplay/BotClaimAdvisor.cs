@@ -106,12 +106,21 @@ public static class BotClaimAdvisor
         visibleCounts.TryGetValue(discardedTile, out var discardCount);
         visibleCounts[discardedTile] = discardCount + 1;
 
+        var allowChangshaFlexibleEye = ruleset == MahjongRuleset.Changsha258
+            && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
+
+        if (ruleset == MahjongRuleset.Changsha258
+            && !Changsha258Ruleset.IsSmallWinPair(discardedTile)
+            && ShouldAvoidChangshaSevenPairsExposedKong(handTiles, meldTiles, visibleCounts))
+        {
+            return false;
+        }
+
         if (ruleset == MahjongRuleset.Changsha258 && Changsha258Ruleset.IsSmallWinPair(discardedTile))
         {
-            var allowFlexibleEye = Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
             var hasSevenPairsLean = IsChangshaSevenPairsLean(handTiles, meldTiles);
 
-            if (!allowFlexibleEye || hasSevenPairsLean)
+            if (!allowChangshaFlexibleEye || hasSevenPairsLean)
             {
                 var hasAlternateSmallWinPairCandidate = HasAlternateSmallWinPairCandidate(
                     handTiles,
@@ -165,11 +174,9 @@ public static class BotClaimAdvisor
             }
         }
 
-        var allowChangshaFlexibleEye = ruleset == MahjongRuleset.Changsha258
-            && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
-
         if (preClaimOuts.TileTypes > 0
-            && IsOutsDropBeyondTolerance(preClaimOuts, postClaimOuts, ExposedKongOutsDropTolerance))
+            && IsOutsDropBeyondTolerance(preClaimOuts, postClaimOuts, ExposedKongOutsDropTolerance)
+            && !(allowChangshaFlexibleEye && Changsha258Ruleset.IsSmallWinPair(discardedTile)))
         {
             return false;
         }
@@ -314,6 +321,60 @@ public static class BotClaimAdvisor
             .Sum(static group => group.Count() / 2);
 
         return pairCount >= 6;
+    }
+
+    private static bool ShouldAvoidChangshaSevenPairsExposedKong(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        if (meldTiles.Count > 0)
+        {
+            return false;
+        }
+
+        var handCounts = handTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var pairCount = handCounts.Values.Sum(static count => count / 2);
+        if (pairCount < 6)
+        {
+            return false;
+        }
+
+        if (visibleCounts.Count == 0)
+        {
+            return true;
+        }
+
+        var singletonTiles = handCounts
+            .Where(entry => entry.Value == 1)
+            .Select(entry => entry.Key)
+            .ToList();
+
+        if (singletonTiles.Count == 0)
+        {
+            return true;
+        }
+
+        var ownedCounts = handTiles
+            .Concat(meldTiles)
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        foreach (var tile in singletonTiles)
+        {
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+            var remainingCopies = 4 - ownedCount - visibleCount;
+            if (remainingCopies > 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool HasAlternateSmallWinPairCandidate(
