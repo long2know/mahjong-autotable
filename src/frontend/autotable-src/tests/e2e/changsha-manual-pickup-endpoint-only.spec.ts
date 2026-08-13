@@ -604,69 +604,72 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     // (not the invariant) flips false and S11 goes red for the wrong reason. The setup
     // was pinned to the very defect the gate is meant to outlive.
     //
-    // The INVARIANT below is unchanged and is NOT weakened. Only the state we exercise
-    // it in moves to one that is reachable on a CORRECT build. We advance ONLY our own
-    // batches (never fabricating a press we don't own) until the viewer holds no
-    // single-trigger designation — which converges on one of two real, display-only
-    // states: (a) a LIVE ceremony whose pickup cursor is parked on another (bot) seat
-    // — readDesignation() returns null for a foreign seatIndex — or (b) the
-    // post-ceremony tombstone. (a) is strictly stronger than the empty pre-ceremony /
-    // post-deal states already covered above, because a pickup collection IS live:
-    // it is precisely where an any-wall fallback would be most dangerous.
-    // Progress-aware, stall-guarded convergence (replaces the fixed 45s window that, under
-    // CI mobile saturation, run 31594744369, expired while the viewer's OWN dealer window
-    // was still genuinely open — parked on a LIVE BreakPointMarked, count 4, seat 0 — so the
-    // "no exact-1 designation" PRECONDITION below flipped false for a TIMING reason, not a
-    // real one). Advance ONLY our own batches until this viewer holds no single-trigger
-    // designation — either the pickup cursor moved to a bot seat (readDesignation() is null
-    // for a foreign seatIndex) or the ceremony tombstoned. The authoritative ceremony
-    // fingerprint gates progress; a GENUINE no-progress park surfaces as the guard's
-    // stalled/capped flag with the viewer still designated — the precondition assertion below
-    // then fails with that diagnostic (never hidden). stallMs 45s / capMs 90s bounded under
-    // the 120s test timeout.
+    // The INVARIANT below is unchanged and is NOT weakened. Only the state we exercise it in
+    // moves to a STABLE, same-hand ceremony-complete terminal. We advance ONLY our own batches
+    // (never fabricating a press we don't own), driving EVERY owned pickup window to completion,
+    // and converge solely on the post-ceremony TOMBSTONE: the pickup collection has cleared
+    // (pickup["current"] === null) AND the dealer holds its drawn extra tile / is AwaitingDiscard.
+    //
+    // We DELIBERATELY do NOT accept a transient `foreignLive` (a bot's fleeting turn) as terminal.
+    // Under the manual-deal parking model the cursor rotates back to the viewer's NEXT PickupRound
+    // within a poll; the previous fix converged on foreignLive and the downstream `noValidDesignation`
+    // re-read then caught the reopened seat-0 window — S11 flaked in BOTH projects on the otherwise
+    // green run 31650150219 (converged foreignLive, re-read saw the viewer's window). The tombstone is
+    // the only no-designation state that is STABLE for this hand: no further owned window opens after it.
+    //
+    // Progress-aware + stall-guarded (replaces the fixed 45s window that flaked under CI mobile
+    // saturation, run 31594744369). The `observedOwnWindow` milestone still blocks the first-poll
+    // VACUOUS convergence (Dietrich's DPR1 probe: the seat-0 window opens ~3.4s post-deal and PARKS
+    // until pressed). A GENUINE no-progress park surfaces as the guard's stalled/capped flag with the
+    // ceremony NOT complete — the ceremony-complete assertion below then fails with that diagnostic
+    // (never hidden). stallMs 45s / capMs 90s bounded under the 120s test timeout (unchanged from the
+    // pre-existing gate — the full owned-batch drive to the tombstone measures ~10.5s, well inside it).
     let observedOwnWindow = false;
     let vacuousBlockedPolls = 0;
+    let ownBatchesPressed = 0;
+    let foreignLiveBlockedPolls = 0;
     let d = await readDesignation(page);
     const conv = await pollWithStallGuard(page, async () => {
       const myTurnNow = await readIsMyPickupTurn(page);
       const dSeen = await readDesignation(page);
-      // NON-VACUOUS MILESTONE (Hudson — S11 DPR1 micro-state fix). The bare predicate
-      // `!(myTurn || gateLen===1)` converged VACUOUSLY on the FIRST poll whenever the dealer's
-      // seat-0 BreakPointMarked window had not yet synced to the client: Dietrich's DPR1 probe
-      // (and the local timeline probe) show that window opens ~3.4s after the deal and PARKS
-      // open until pressed, yet the guard could return done in ~1.6–4.4s with keyChanges=0 and
-      // ZERO presses. The window then opened and the "arbitrary" wall press below landed on the
-      // now-live designated tile, tripping fail-closed for a TIMING reason — not a real any-wall
-      // fallback. We now require having genuinely HELD our OWN single-trigger window before
-      // converging, so the gate exercises a REAL no-designation state DPR-independently.
+      // Non-vacuity milestone: latch once this viewer has genuinely HELD its own single-trigger
+      // window, so we never converge before the seat-0 window has synced/parked.
       if (myTurnNow || (dSeen && dSeen.gate && dSeen.gateLen === 1)) observedOwnWindow = true;
-      if (myTurnNow) await takePickup(page);
+      // Drive EVERY owned pickup batch with a real press on the rendered take control.
+      if (myTurnNow) { await takePickup(page); ownBatchesPressed++; }
       d = await readDesignation(page);
       const myTurn = await readIsMyPickupTurn(page);
       const stillMine = myTurn || !!(d && d.gate && d.gateLen === 1);
-      // Terminal must be an AUTHORITATIVE stable no-designation state — a LIVE pickup parked on
-      // ANOTHER seat, or the post-ceremony tombstone — never a transient inter-batch null gap.
+      // STABLE same-hand ceremony-complete terminal: pickup tombstoned (null) AND dealer holds its
+      // drawn extra tile / AwaitingDiscard. `foreignLive` (a bot's fleeting turn) is recorded for
+      // diagnostics but is NOT a terminal (see rationale above).
       const term = await page.evaluate(() => {
         /* eslint-disable @typescript-eslint/no-explicit-any */
-        const g = (window as any).game; const w = g?.world;
-        const pu = g?.client?.pickup?.get ? g.client.pickup.get('current') : null;
-        const seat = g?.client?.seat ?? null;
+        const g = (window as any).game; const w = g?.world; const cli = g?.client;
+        const pu = cli?.pickup?.get ? cli.pickup.get('current') : null;
+        const seat = cli?.seat ?? null;
         const extra = !!(w?.hasExtraHandTile && w.hasExtraHandTile());
-        return { foreignLive: !!pu && (pu.seatIndex ?? null) !== seat, tombstone: !pu && extra };
+        const tn = cli?.turn?.get ? cli.turn.get('current') : null;
+        return { pickupNull: pu === null, extra, awaiting: !!(tn && tn.awaitingDiscard), foreignLive: !!pu && (pu.seatIndex ?? null) !== seat };
         /* eslint-enable @typescript-eslint/no-explicit-any */
       });
-      // Non-vacuity proof: count polls where the OLD predicate would have converged (no own
-      // designation) but we had NOT yet observed our own window — exactly the vacuous case blocked.
+      const ceremonyComplete = term.pickupNull && (term.extra || term.awaiting);
+      // Non-vacuity proof: OLD bare predicate would converge with no own designation before we ever
+      // observed our window (pre-window) — blocked here.
       if (!stillMine && !observedOwnWindow) vacuousBlockedPolls++;
-      return { done: observedOwnWindow && !stillMine && (term.foreignLive || term.tombstone), key: await readCeremonyKey(page) };
+      // Transient-terminal proof: the PRIOR fix accepted foreignLive; count polls where it would have
+      // converged on a fleeting bot turn that is NOT ceremony-complete — now blocked.
+      if (observedOwnWindow && !stillMine && term.foreignLive && !ceremonyComplete) foreignLiveBlockedPolls++;
+      return { done: observedOwnWindow && !stillMine && ceremonyComplete, key: await readCeremonyKey(page) };
     }, { stallMs: 45_000, capMs: 90_000, pollMs: 250 });
     // Record WHICH reachable no-designation state we landed in, so the gate is provably
     // non-vacuous rather than silently degenerating to "nothing was happening".
     const reached = await page.evaluate(() => {
       /* eslint-disable @typescript-eslint/no-explicit-any */
-      const g = (window as any).game;
-      const pu = g?.client?.pickup?.get ? g.client.pickup.get('current') : null;
-      return { pickupLive: !!pu, pickupSeat: pu ? (pu.seatIndex ?? null) : null, mySeat: g?.client?.seat ?? null, phase: pu ? pu.phase : null };
+      const g = (window as any).game; const w = g?.world; const cli = g?.client;
+      const pu = cli?.pickup?.get ? cli.pickup.get('current') : null;
+      const tn = cli?.turn?.get ? cli.turn.get('current') : null;
+      return { pickupLive: !!pu, pickupSeat: pu ? (pu.seatIndex ?? null) : null, mySeat: cli?.seat ?? null, phase: pu ? pu.phase : null, hasExtraHandTile: !!(w?.hasExtraHandTile && w.hasExtraHandTile()), awaitingDiscard: !!(tn && tn.awaitingDiscard) };
       /* eslint-enable @typescript-eslint/no-explicit-any */
     });
     // the client-parsed designation: missing/empty/multiple ⇒ NO exact-1 trigger
@@ -687,13 +690,13 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     const anyWallActed = (handAfter > handBefore) || emitted.length > 0 || !!(drag.held && drag.held.isHolding) || ((drag.held?.dragOffsetWorld ?? 0) > 5);
     recordEvidence('g17-fail-closed.json', { noValidDesignation, designationLen: d ? d.gateLen : null, reached, handBefore, handAfter, emittedTakes: emitted, held: drag.held, anyWallActed,
       convGuard: { done: conv.done, stalled: conv.stalled, capped: conv.capped, elapsedMs: conv.elapsedMs, keyChanges: conv.keyChanges, maxIdleMs: conv.maxIdleMs },
-      milestone: { observedOwnWindow, vacuousBlockedPolls },
-      note: 'Fail-closed (actor-scoped, Hudson): inert ⟺ zero outbound pickup.take AND unchanged `hand.*@0` AND no local hold/drag. Shared-wall deltas are NOT used — bots take concurrently. `reached` names the real state exercised: pickupLive && pickupSeat !== mySeat = a live ceremony parked on another seat (display-only); pickupLive=false = the post-ceremony tombstone. `milestone.observedOwnWindow` must be true (we held our own window before converging); `vacuousBlockedPolls`>0 means the old bare predicate would have converged vacuously here and the fix blocked it.' });
-    // PRECONDITION (now reachable on a FIXED build, not pinned to the RED one): the
-    // viewer holds no single-trigger designation — either the live pickup belongs to
-    // another seat, or the ceremony has tombstoned. Either way the client must NOT let
-    // any wall tile act. The convergence is NON-VACUOUS: we observed our own window first.
+      milestone: { observedOwnWindow, vacuousBlockedPolls, ownBatchesPressed, foreignLiveBlockedPolls },
+      note: 'Fail-closed (actor-scoped, Hudson): inert ⟺ zero outbound pickup.take AND unchanged `hand.*@0` AND no local hold/drag. Shared-wall deltas are NOT used — bots take concurrently. S11 converges ONLY on the STABLE same-hand ceremony-complete TOMBSTONE (reached.pickupLive=false + hasExtraHandTile/awaitingDiscard); the transient foreignLive (a bot turn) is NOT accepted — `foreignLiveBlockedPolls`>0 counts polls where the prior fix would have converged on a fleeting bot turn (now blocked, killing the gate-4 re-read race). `observedOwnWindow` must be true and `ownBatchesPressed`>0 (we drove every owned batch); `vacuousBlockedPolls`>0 means the old bare predicate would have converged vacuously pre-window.' });
+    // PRECONDITION at the STABLE tombstone: the ceremony has completed this hand, so the viewer
+    // holds no single-trigger designation and no owned window will reopen. The convergence is
+    // NON-VACUOUS (we observed and drove our own windows) and STABLE (no transient foreignLive).
     expect(observedOwnWindow, `S11 non-vacuity: must have HELD this viewer's own single-trigger pickup window before converging (guards the DPR1 first-poll vacuous case); observedOwnWindow=${observedOwnWindow}, reached=${JSON.stringify(reached)}, drive done=${conv.done} stalled=${conv.stalled} capped=${conv.capped} elapsedMs=${conv.elapsedMs}`).toBe(true);
+    expect(reached.pickupLive === false && (reached.hasExtraHandTile || reached.awaitingDiscard), `S11 stable terminal: must converge on the same-hand ceremony-complete TOMBSTONE (pickup["current"]==null AND dealer hasExtraHandTile/AwaitingDiscard), never a transient live pickup; reached=${JSON.stringify(reached)}, drive done=${conv.done} stalled=${conv.stalled} capped=${conv.capped} elapsedMs=${conv.elapsedMs} ownBatchesPressed=${ownBatchesPressed} foreignLiveBlockedPolls=${foreignLiveBlockedPolls}`).toBe(true);
     expect(noValidDesignation, `precondition: this viewer holds no exact-1 targetSlots designation (converged state: ${JSON.stringify(reached)}; drive: done=${conv.done} stalled=${conv.stalled} capped=${conv.capped} elapsedMs=${conv.elapsedMs} maxIdleMs=${conv.maxIdleMs}; vacuousBlockedPolls=${vacuousBlockedPolls})`).toBe(true);
     expect(anyWallActed, `FAIL-CLOSED: with no valid targetSlots, pressing ANY wall tile must be inert — zero pickup.take (emitted=${emitted.length}), unchanged hand (${handBefore}→${handAfter}), no hold/drag`).toBe(false);
   });
