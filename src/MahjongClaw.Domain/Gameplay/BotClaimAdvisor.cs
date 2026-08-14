@@ -156,21 +156,23 @@ public static class BotClaimAdvisor
                 visibleCounts,
                 ruleset,
                 requireMinimumFan: false);
+            var postClaimPotentialOuts = CountWinningDrawOutsAfterExposedKong(
+                handTiles,
+                meldTiles,
+                discardedTile,
+                visibleCounts,
+                ruleset,
+                requireMinimumFan: false);
 
-            if (preClaimPotentialOuts.TileTypes > 0)
+            if (preClaimPotentialOuts.TileTypes == 0 && postClaimPotentialOuts.TileTypes == 0)
             {
-                var postClaimPotentialOuts = CountWinningDrawOutsAfterExposedKong(
-                    handTiles,
-                    meldTiles,
-                    discardedTile,
-                    visibleCounts,
-                    ruleset,
-                    requireMinimumFan: false);
+                return false;
+            }
 
-                if (IsOutsDropBeyondTolerance(preClaimPotentialOuts, postClaimPotentialOuts, ExposedKongOutsDropTolerance))
-                {
-                    return false;
-                }
+            if (preClaimPotentialOuts.TileTypes > 0
+                && IsOutsDropBeyondTolerance(preClaimPotentialOuts, postClaimPotentialOuts, ExposedKongOutsDropTolerance))
+            {
+                return false;
             }
         }
 
