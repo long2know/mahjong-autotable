@@ -4198,12 +4198,6 @@ public static class BotDiscardAdvisor
             return null;
         }
 
-        var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
-        if (smallWinPairCount != 0)
-        {
-            return null;
-        }
-
         var smallWinSingletons = handCounts
             .Where(entry => entry.Value == 1 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
             .Select(entry =>
