@@ -1958,6 +1958,58 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (ruleset == MahjongRuleset.ChineseOfficial
+            && visibleCounts.Count > 0
+            && sevenPairsPairCount < 6)
+        {
+            var honorSingletonCandidates = candidates
+                .Where(candidate =>
+                {
+                    if (!candidate.Tile.IsHonor)
+                    {
+                        return false;
+                    }
+
+                    if (promotableKongTiles.Contains(candidate.Tile))
+                    {
+                        return false;
+                    }
+
+                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                    return handCount == 1;
+                })
+                .ToList();
+
+            if (honorSingletonCandidates.Count > 0)
+            {
+                var honorPairCount = ownedCounts.Count(entry => entry.Key.IsHonor && entry.Value >= 2);
+                var honorCount = ownedTiles.Count(static tile => tile.IsHonor);
+                var suitedCount = ownedTiles.Count(static tile => !tile.IsHonor);
+
+                if (honorPairCount == 0 && honorCount <= 2 && suitedCount >= 8)
+                {
+                    var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestOverallOutCopies = candidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var bestHonorOuts = honorSingletonCandidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestHonorOutCopies = honorSingletonCandidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestHonorOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var withinOutsTolerance = bestHonorOuts >= bestOverallOuts - NearDeadHonorSingletonOutsTolerance;
+                    var withinCopyTolerance = bestHonorOuts < bestOverallOuts
+                        || bestHonorOutCopies >= bestOverallOutCopies - NearDeadHonorSingletonOutsTolerance;
+
+                    if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                    {
+                        candidates = honorSingletonCandidates;
+                    }
+                }
+            }
+        }
+
         if (ruleset == MahjongRuleset.Changsha258 && promotableKongTiles.Count > 0)
         {
             promotableKongTiles.RemoveWhere(tile =>
