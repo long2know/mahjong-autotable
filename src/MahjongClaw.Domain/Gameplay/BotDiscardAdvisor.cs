@@ -1752,8 +1752,14 @@ public static class BotDiscardAdvisor
                     var withinOutsTolerance = bestDeadOuts >= bestOverallOuts - DeadPairOutsTolerance;
                     var withinCopyTolerance = bestDeadOuts < bestOverallOuts
                         || bestDeadOutCopies >= bestOverallOutCopies - DeadPairOutsTolerance;
+                    var losesAllWinningOuts = bestOverallOuts > 0 && bestDeadOuts == 0;
 
                     var shouldPreferDeadPairs = bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance);
+                    if (losesAllWinningOuts)
+                    {
+                        shouldPreferDeadPairs = false;
+                    }
+
                     if (shouldPreferDeadPairs && bestOverallOuts == 0 && potentialOutSummaries is not null)
                     {
                         var bestPotentialOuts = candidates.Max(candidate => candidate.PotentialWinningDrawOuts);
