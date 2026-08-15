@@ -90,6 +90,15 @@ public static class BotClaimAdvisor
 
         meldTilesForClaim = Array.Empty<Tile>();
 
+        var declaredKongCount = meldTiles
+            .GroupBy(static tile => tile)
+            .Count(group => group.Count() == 4);
+
+        if (!TurnFlowValidator.CanDraw(handTiles.Count, meldTiles.Count, declaredKongCount))
+        {
+            return false;
+        }
+
         if (ruleset == MahjongRuleset.Changsha258 && !Changsha258Ruleset.IsAllowedTile(discardedTile))
         {
             return false;

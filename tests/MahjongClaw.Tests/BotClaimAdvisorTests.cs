@@ -251,6 +251,31 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectExposedKongClaim_ReturnsFalse_WhenPlayerOwnsWrongTileShape()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 8)
+        };
+        var discardedTile = new Tile(TileSuit.Dots, 1);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
+            handTiles,
+            Array.Empty<Tile>(),
+            discardedTile,
+            MahjongRuleset.ChineseOfficial,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public void TrySelectExposedKongClaim_ReturnsFalse_WhenNoWinningOrPotentialOutsExist()
     {
         var ruleset = MahjongRuleset.ChineseOfficial;
