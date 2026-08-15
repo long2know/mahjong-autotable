@@ -580,6 +580,15 @@ public static class BotDiscardAdvisor
                 var opponentKongFeedBonus = kongThreatIsDead
                     ? 0
                     : GetOpponentMeldKongAvoidBonus(tile, kongThreatCounts);
+                var safeMeldExposure = 0;
+                if (visibleMeldCounts.TryGetValue(tile, out var meldExposure) && meldExposure > 0)
+                {
+                    kongThreatCounts.TryGetValue(tile, out var threatExposure);
+                    if (threatExposure == 0)
+                    {
+                        safeMeldExposure = meldExposure;
+                    }
+                }
 
                 return new
                 {
@@ -611,6 +620,7 @@ public static class BotDiscardAdvisor
                             ? LastSmallWinSingletonKeepBonus
                             : 0),
                     RemainingCopies = remainingCopies,
+                    SafeMeldExposure = safeMeldExposure,
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies,
                     PotentialWinningDrawOuts = potentialOutSummary.TileTypes,
@@ -3000,6 +3010,7 @@ public static class BotDiscardAdvisor
         var orderedPrioritizedCandidates = prioritizedCandidates
             .OrderBy(candidate => candidate.Score)
             .ThenBy(candidate => useRemainingCopyTieBreaker ? candidate.RemainingCopies : 0)
+            .ThenByDescending(candidate => candidate.SafeMeldExposure)
             .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
             .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
             .ThenBy(candidate => candidate.Tile.Suit)
