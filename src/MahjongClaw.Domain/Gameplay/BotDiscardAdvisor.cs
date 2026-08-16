@@ -2157,6 +2157,8 @@ public static class BotDiscardAdvisor
                     }
 
                     var withinOutsTolerance = bestNonThreatOuts >= bestOverallOuts - OpponentKongFeedOutsTolerance;
+                    var withinCopyTolerance = bestNonThreatOutCopies >= bestOverallOutCopies - OpponentKongFeedOutsTolerance;
+                    var withinOutsAndCopies = withinOutsTolerance && withinCopyTolerance;
                     var matchesBestCopies = bestNonThreatOuts == bestOverallOuts
                         && bestNonThreatOutCopies == bestOverallOutCopies;
                     var losesAllWinningOuts = bestOverallOuts > 0 && bestNonThreatOuts == 0;
@@ -2229,7 +2231,7 @@ public static class BotDiscardAdvisor
                         }
                     }
                     else if (!losesAllWinningOuts
-                        && ((withinOutsTolerance && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies))
+                        && ((withinOutsAndCopies && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies))
                     {
                         candidates = nonThreatCandidates;
                         filteredByKongThreatAvoidance = true;

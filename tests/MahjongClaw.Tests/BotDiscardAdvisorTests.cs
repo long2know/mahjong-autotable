@@ -7193,6 +7193,98 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotAvoidKongThreat_WhenWinningOutCopiesDropSignificantly()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+        var visibleTiles = new List<Tile>();
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Dots, 9), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Bamboos, 1), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Bamboos, 9), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Winds, 0, Wind.East), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Winds, 0, Wind.South), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Winds, 0, Wind.West), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Winds, 0, Wind.North), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Dragons, 0, null, Dragon.Red), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Dragons, 0, null, Dragon.Green), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Dragons, 0, null, Dragon.White), 3));
+
+        var baselineIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            MahjongRuleset.ChineseOfficial);
+        var baselineTile = handTiles[baselineIndex];
+
+        var visibleCounts = visibleTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var winningOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                handTiles,
+                visibleCounts,
+                index,
+                MahjongRuleset.ChineseOfficial,
+                requireMinimumFan: true))
+            .ToList();
+
+        var bestOverallOuts = winningOutSummaries.Max(summary => summary.TileTypes);
+        var bestOverallOutCopies = winningOutSummaries
+            .Where(summary => summary.TileTypes == bestOverallOuts)
+            .Max(summary => summary.RemainingCopies);
+
+        var nonThreatSummaries = handTiles
+            .Select((tile, index) => new { tile, summary = winningOutSummaries[index] })
+            .Where(entry => !entry.tile.Equals(baselineTile))
+            .ToList();
+
+        nonThreatSummaries.Should().NotBeEmpty();
+
+        var bestNonThreatOuts = nonThreatSummaries.Max(entry => entry.summary.TileTypes);
+        var bestNonThreatOutCopies = nonThreatSummaries
+            .Where(entry => entry.summary.TileTypes == bestNonThreatOuts)
+            .Max(entry => entry.summary.RemainingCopies);
+
+        var withinOutsTolerance = bestNonThreatOuts >= bestOverallOuts - 2;
+        var withinCopyTolerance = bestNonThreatOutCopies >= bestOverallOutCopies - 2;
+
+        withinOutsTolerance.Should().BeTrue();
+        withinCopyTolerance.Should().BeFalse($"bestOverallOutCopies={bestOverallOutCopies}, bestNonThreatOutCopies={bestNonThreatOutCopies}, baseline={baselineTile}");
+
+        var kongThreatTiles = Enumerable
+            .Repeat(baselineTile, 3)
+            .ToList();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            Array.Empty<Tile>(),
+            kongThreatTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(baselineTile);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithKongThreatsAndNoPotentialOuts_DoesNotForceMultiCopyThreatDiscard()
     {
         var handTiles = new List<Tile>
