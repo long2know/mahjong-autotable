@@ -144,6 +144,22 @@ public static class BotClaimAdvisor
             }
         }
 
+        if (ruleset == MahjongRuleset.Changsha258
+            && !Changsha258Ruleset.IsSmallWinPair(discardedTile)
+            && !allowChangshaFlexibleEye)
+        {
+            var hasSmallWinPairCandidate = HasAlternateSmallWinPairCandidate(
+                handTiles,
+                meldTiles,
+                discardedTile,
+                visibleCounts);
+
+            if (!hasSmallWinPairCandidate)
+            {
+                return false;
+            }
+        }
+
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
         var postClaimOuts = CountWinningDrawOutsAfterExposedKong(
             handTiles,
