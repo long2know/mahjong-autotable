@@ -4453,6 +4453,39 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleMeldTiles_IgnoresSingleChowExposureForSafety()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 3)
+        };
+
+        var visibleMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 3)
+        };
+        visibleTiles.AddRange(visibleMeldTiles);
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            visibleMeldTiles,
+            Array.Empty<Tile>(),
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 3));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleMeldTiles_PrefersNonFeedWhenWinningOutsAreClose()
     {
         var handTiles = new List<Tile>

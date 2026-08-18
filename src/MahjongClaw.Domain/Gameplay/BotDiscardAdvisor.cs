@@ -575,7 +575,7 @@ public static class BotDiscardAdvisor
                     ? 0
                     : GetOpponentMeldKongAvoidBonus(tile, kongThreatCounts);
                 var safeMeldExposure = 0;
-                if (visibleMeldCounts.TryGetValue(tile, out var meldExposure) && meldExposure > 0)
+                if (visibleMeldCounts.TryGetValue(tile, out var meldExposure) && meldExposure > 1)
                 {
                     kongThreatCounts.TryGetValue(tile, out var threatExposure);
                     if (threatExposure == 0)
