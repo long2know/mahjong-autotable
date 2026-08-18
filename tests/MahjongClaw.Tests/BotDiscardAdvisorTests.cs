@@ -3971,6 +3971,41 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleMeldTiles_UsesMeldCountsAsMinimumNotSum()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 1)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1)
+        };
+
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Characters, 2), 4));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Characters, 3), 4));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Bamboos, 2), 4));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Bamboos, 3), 4));
+
+        var visibleMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            visibleMeldTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 1));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrefersMeldExposedTile_WhenDiscardScoresTie()
     {
         var handTiles = new List<Tile>
