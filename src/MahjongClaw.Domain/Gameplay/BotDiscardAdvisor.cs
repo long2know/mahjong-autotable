@@ -4283,6 +4283,23 @@ public static class BotDiscardAdvisor
             })
             .ToList();
 
+        var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
+
+        bool ShouldIgnoreSequencePotential(Tile tile)
+        {
+            if (smallWinPairCount < 1 || !Changsha258Ruleset.IsSmallWinPair(tile))
+            {
+                return false;
+            }
+
+            if (hasChangshaPureSuitLean && changshaDominantSuit.HasValue && tile.Suit == changshaDominantSuit.Value)
+            {
+                return false;
+            }
+
+            return !HasInHandSequenceAnchor(tile, handCounts);
+        }
+
         var liveSmallWinSingletons = smallWinSingletons
             .Where(entry => entry.RemainingCopies > 0)
             .ToList();
@@ -4306,7 +4323,8 @@ public static class BotDiscardAdvisor
                     continue;
                 }
 
-                if (HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
+                var ignoreSequencePotential = ShouldIgnoreSequencePotential(tile);
+                if (!ignoreSequencePotential && HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
                 {
                     continue;
                 }
@@ -4323,7 +4341,8 @@ public static class BotDiscardAdvisor
                 continue;
             }
 
-            if (HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
+            var ignoreSequencePotential = ShouldIgnoreSequencePotential(tile);
+            if (!ignoreSequencePotential && HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
             {
                 continue;
             }
@@ -4343,7 +4362,8 @@ public static class BotDiscardAdvisor
                         continue;
                     }
 
-                    if (HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
+                    var ignoreSequencePotential = ShouldIgnoreSequencePotential(tile);
+                    if (!ignoreSequencePotential && HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
                     {
                         continue;
                     }
@@ -4360,7 +4380,8 @@ public static class BotDiscardAdvisor
                     continue;
                 }
 
-                if (HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
+                var ignoreSequencePotential = ShouldIgnoreSequencePotential(tile);
+                if (!ignoreSequencePotential && HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
                 {
                     continue;
                 }
