@@ -335,6 +335,48 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectExposedKongClaim_ReturnsFalse_WhenChangshaKongHasNoWinningOuts()
+    {
+        var ruleset = MahjongRuleset.Changsha258;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 8),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 7)
+        };
+        var discardedTile = new Tile(TileSuit.Dots, 3);
+        var drawTileTypes = BuildDrawTileTypes(ruleset);
+        var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, Array.Empty<Tile>(), drawTileTypes, ruleset);
+        var postClaimOuts = CountWinningDrawOutsAfterExposedKong(
+            handTiles,
+            Array.Empty<Tile>(),
+            discardedTile,
+            drawTileTypes,
+            ruleset);
+
+        preClaimOuts.Should().Be(0);
+        postClaimOuts.Should().Be(0);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
+            handTiles,
+            Array.Empty<Tile>(),
+            discardedTile,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public void TrySelectExposedKongClaim_ReturnsFalse_WhenPotentialOutsDropWithoutMinimumFan()
     {
         var ruleset = MahjongRuleset.ChineseOfficial;
