@@ -378,6 +378,7 @@ public static class BotDiscardAdvisor
             && liveSmallWinPairCandidates.Any(tile => tile.Suit == changshaDominantSuit.Value);
 
         Tile? lastSmallWinSingleton = null;
+        var lastSmallWinSingletonRemainingCopies = 0;
         if (enforceSmallWinPairBias)
         {
             var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
@@ -415,6 +416,7 @@ public static class BotDiscardAdvisor
                             || candidate.Tile.Suit == changshaDominantSuit.GetValueOrDefault())
                         {
                             lastSmallWinSingleton = candidate.Tile;
+                            lastSmallWinSingletonRemainingCopies = candidate.RemainingCopies;
                         }
                     }
                 }
@@ -3032,6 +3034,20 @@ public static class BotDiscardAdvisor
                 {
                     prioritizedCandidates = nonPairCandidates;
                 }
+            }
+        }
+
+        if (lastSmallWinSingleton is not null
+            && enforceSmallWinPairBias
+            && lastSmallWinSingletonRemainingCopies >= 2)
+        {
+            var nonSingletonCandidates = prioritizedCandidates
+                .Where(candidate => !candidate.Tile.Equals(lastSmallWinSingleton))
+                .ToList();
+
+            if (nonSingletonCandidates.Count > 0)
+            {
+                prioritizedCandidates = nonSingletonCandidates;
             }
         }
 
