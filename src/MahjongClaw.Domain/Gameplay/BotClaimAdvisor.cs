@@ -174,7 +174,6 @@ public static class BotClaimAdvisor
         }
 
         if (ruleset == MahjongRuleset.Changsha258
-            && !Changsha258Ruleset.IsSmallWinPair(discardedTile)
             && preClaimOuts.TileTypes == 0
             && postClaimOuts.TileTypes == 0)
         {
