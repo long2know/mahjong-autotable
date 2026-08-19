@@ -110,6 +110,21 @@ public static class BotMeldAdvisor
 
             candidates = candidatesThatKeepOuts;
         }
+        else if (ruleset == MahjongRuleset.Changsha258)
+        {
+            var candidatesWithShape = candidates
+                .Where(candidate => candidateOuts[candidate] > 0
+                    || HasPairOrChowAfterConcealedKong(handTiles, candidate))
+                .ToList();
+
+            if (candidatesWithShape.Count == 0)
+            {
+                kongTile = null!;
+                return false;
+            }
+
+            candidates = candidatesWithShape;
+        }
 
         if (candidates.Count > 1)
         {
@@ -270,6 +285,21 @@ public static class BotMeldAdvisor
             }
 
             candidates = candidatesThatKeepOuts;
+        }
+        else if (ruleset == MahjongRuleset.Changsha258)
+        {
+            var candidatesWithShape = candidates
+                .Where(candidate => candidateOuts[candidate] > 0
+                    || HasPairOrChowAfterPromotedKong(handTiles, candidate))
+                .ToList();
+
+            if (candidatesWithShape.Count == 0)
+            {
+                kongTile = null!;
+                return false;
+            }
+
+            candidates = candidatesWithShape;
         }
 
         if (candidates.Count > 1)
@@ -648,6 +678,76 @@ public static class BotMeldAdvisor
         }
 
         return hasStrongAlternateSingleton;
+    }
+
+    private static bool HasPairOrChowAfterConcealedKong(IReadOnlyList<Tile> handTiles, Tile kongTile)
+    {
+        var handAfterKong = new List<Tile>(handTiles);
+
+        for (var i = 0; i < 4; i++)
+        {
+            var index = handAfterKong.FindIndex(tile => tile.Equals(kongTile));
+            if (index < 0)
+            {
+                return false;
+            }
+
+            handAfterKong.RemoveAt(index);
+        }
+
+        return HasPairOrChow(handAfterKong);
+    }
+
+    private static bool HasPairOrChowAfterPromotedKong(IReadOnlyList<Tile> handTiles, Tile kongTile)
+    {
+        var handAfterKong = new List<Tile>(handTiles);
+        var kongTileIndex = handAfterKong.FindIndex(tile => tile.Equals(kongTile));
+        if (kongTileIndex < 0)
+        {
+            return false;
+        }
+
+        handAfterKong.RemoveAt(kongTileIndex);
+        return HasPairOrChow(handAfterKong);
+    }
+
+    private static bool HasPairOrChow(IReadOnlyList<Tile> tiles)
+    {
+        if (tiles.Count == 0)
+        {
+            return false;
+        }
+
+        var counts = tiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        if (counts.Any(entry => entry.Value >= 2))
+        {
+            return true;
+        }
+
+        var suitedSuits = new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos };
+        foreach (var suit in suitedSuits)
+        {
+            var ranks = counts
+                .Where(entry => entry.Key.Suit == suit)
+                .Select(entry => entry.Key.Rank)
+                .Distinct()
+                .ToHashSet();
+
+            for (var rank = 1; rank <= 7; rank++)
+            {
+                if (ranks.Contains(rank)
+                    && ranks.Contains(rank + 1)
+                    && ranks.Contains(rank + 2))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static bool IsTerminalSuitedTile(Tile tile)
