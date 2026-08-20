@@ -561,6 +561,51 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectExposedKongClaim_ReturnsTrue_WhenChangshaOffRankKongHasSingleLiveSmallWinPairCandidate()
+    {
+        var ruleset = MahjongRuleset.Changsha258;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 6)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 1);
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 2)
+        };
+
+        var drawTileTypes = BuildDrawTileTypes(ruleset);
+        var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, Array.Empty<Tile>(), drawTileTypes, ruleset);
+        var postClaimOuts = CountWinningDrawOutsAfterExposedKong(handTiles, Array.Empty<Tile>(), discardedTile, drawTileTypes, ruleset);
+
+        preClaimOuts.Should().Be(0);
+        postClaimOuts.Should().Be(0);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            visibleTiles,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeTrue();
+        claimTiles.Should().HaveCount(3);
+        claimTiles.Should().OnlyContain(tile => tile.Equals(discardedTile));
+    }
+
+    [Fact]
     public void TrySelectExposedKongClaim_ReturnsFalse_WhenChangshaOffRankKongHasNoSmallWinPairCandidates()
     {
         var handTiles = new List<Tile>
