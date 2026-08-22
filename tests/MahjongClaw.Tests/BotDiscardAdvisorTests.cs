@@ -7513,6 +7513,33 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithKongThreatTiles_AvoidsThreatEvenWithoutVisibleTiles()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dots, 5)
+        };
+
+        var kongThreatTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            kongThreatTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 5));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithKongThreatsAndNoPotentialOuts_DoesNotForceMultiCopyThreatDiscard()
     {
         var handTiles = new List<Tile>
