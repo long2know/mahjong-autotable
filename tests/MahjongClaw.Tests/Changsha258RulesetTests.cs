@@ -170,6 +170,23 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void IsBigWinEyeFlexibleCandidate_ReturnsFalse_WhenHonorTilePresent()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Winds, 0, Wind.East)
+        };
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>()).Should().BeFalse();
+    }
+
+    [Fact]
     public void TryGetWinningHand_Throws_WhenTilesNull()
     {
         var act = () => Changsha258Ruleset.TryGetWinningHand(null!, out _);

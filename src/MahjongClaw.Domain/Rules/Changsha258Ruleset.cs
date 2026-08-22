@@ -120,6 +120,11 @@ public static class Changsha258Ruleset
         }
 
         var ownedTiles = handTiles.Concat(meldTiles).ToList();
+        if (ownedTiles.Any(static tile => !IsAllowedTile(tile)))
+        {
+            return false;
+        }
+
         if (ownedTiles.Count < 7)
         {
             return false;
