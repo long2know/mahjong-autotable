@@ -173,6 +173,14 @@ public static class BotClaimAdvisor
             return false;
         }
 
+        if (ruleset == MahjongRuleset.ChineseOfficial
+            && IsChineseOfficialSevenPairsLean(handTiles, meldTiles)
+            && preClaimOuts.TileTypes > 0
+            && postClaimOuts.TileTypes <= preClaimOuts.TileTypes)
+        {
+            return false;
+        }
+
         if (ruleset == MahjongRuleset.Changsha258
             && preClaimOuts.TileTypes == 0
             && postClaimOuts.TileTypes == 0)
@@ -384,6 +392,22 @@ public static class BotClaimAdvisor
         }
 
         return false;
+    }
+
+    private static bool IsChineseOfficialSevenPairsLean(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles)
+    {
+        if (meldTiles.Count > 0)
+        {
+            return false;
+        }
+
+        var pairCount = handTiles
+            .GroupBy(static tile => tile)
+            .Sum(static group => group.Count() / 2);
+
+        return pairCount >= 6;
     }
 
     private static bool IsChangshaSevenPairsLean(
