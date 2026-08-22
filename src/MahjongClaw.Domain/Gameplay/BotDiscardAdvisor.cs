@@ -3063,6 +3063,51 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (ruleset == MahjongRuleset.ChineseOfficial && visibleMeldCounts.Count > 0)
+        {
+            var safelyExposedCandidates = prioritizedCandidates
+                .Where(candidate => candidate.SafeMeldExposure >= 2)
+                .ToList();
+
+            if (safelyExposedCandidates.Count > 0)
+            {
+                var bestOverallOuts = prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestSafeOuts = safelyExposedCandidates.Max(candidate => candidate.WinningDrawOuts);
+
+                if (bestSafeOuts == bestOverallOuts)
+                {
+                    if (bestOverallOuts > 0)
+                    {
+                        prioritizedCandidates = safelyExposedCandidates;
+                    }
+                    else if (potentialOutSummaries is null)
+                    {
+                        prioritizedCandidates = safelyExposedCandidates;
+                    }
+                    else
+                    {
+                        var bestPotentialOuts = prioritizedCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+                        var bestSafePotentialOuts = safelyExposedCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+
+                        if (bestSafePotentialOuts == bestPotentialOuts)
+                        {
+                            var bestPotentialCopies = prioritizedCandidates
+                                .Where(candidate => candidate.PotentialWinningDrawOuts == bestPotentialOuts)
+                                .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+                            var bestSafePotentialCopies = safelyExposedCandidates
+                                .Where(candidate => candidate.PotentialWinningDrawOuts == bestSafePotentialOuts)
+                                .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+
+                            if (bestSafePotentialCopies == bestPotentialCopies)
+                            {
+                                prioritizedCandidates = safelyExposedCandidates;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         var lowestScore = prioritizedCandidates.Min(candidate => candidate.Score);
         var lowestScoreCandidates = prioritizedCandidates
             .Where(candidate => candidate.Score == lowestScore)
