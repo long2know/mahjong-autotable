@@ -1998,7 +1998,41 @@ public static class BotDiscardAdvisor
                     var withinCopyTolerance = bestHonorOuts < bestOverallOuts
                         || bestHonorOutCopies >= bestOverallOutCopies - NearDeadHonorSingletonOutsTolerance;
 
-                    if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                    var shouldPreferHonorCandidates = bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance);
+
+                    if (bestOverallOuts == 0 && potentialOutSummaries is not null)
+                    {
+                        var bestPotentialOuts = candidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+                        if (bestPotentialOuts > 0)
+                        {
+                            var bestPotentialOutCopies = candidates
+                                .Where(candidate => candidate.PotentialWinningDrawOuts == bestPotentialOuts)
+                                .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+
+                            var bestHonorPotentialOuts = honorSingletonCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+                            var bestHonorPotentialOutCopies = honorSingletonCandidates
+                                .Where(candidate => candidate.PotentialWinningDrawOuts == bestHonorPotentialOuts)
+                                .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+
+                            if (bestHonorPotentialOuts == 0)
+                            {
+                                shouldPreferHonorCandidates = false;
+                            }
+                            else
+                            {
+                                var withinPotentialTolerance = bestHonorPotentialOuts >= bestPotentialOuts - NearDeadHonorSingletonOutsTolerance;
+                                var withinPotentialCopyTolerance = bestHonorPotentialOuts < bestPotentialOuts
+                                    || bestHonorPotentialOutCopies >= bestPotentialOutCopies - NearDeadHonorSingletonOutsTolerance;
+
+                                if (!withinPotentialTolerance || !withinPotentialCopyTolerance)
+                                {
+                                    shouldPreferHonorCandidates = false;
+                                }
+                            }
+                        }
+                    }
+
+                    if (shouldPreferHonorCandidates)
                     {
                         candidates = honorSingletonCandidates;
                     }
