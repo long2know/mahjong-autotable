@@ -447,7 +447,7 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
-    public void TrySelectExposedKongClaim_ReturnsFalse_WhenPotentialOutsDropWithoutMinimumFan()
+    public void TrySelectExposedKongClaim_ReturnsTrue_WhenImmediateOutsAppearDespitePotentialOutsDrop()
     {
         var ruleset = MahjongRuleset.ChineseOfficial;
         var handTiles = new List<Tile>
@@ -461,6 +461,7 @@ public class BotClaimAdvisorTests
         var discardedTile = new Tile(TileSuit.Dots, 7);
         var drawTileTypes = BuildDrawTileTypes(ruleset);
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, Array.Empty<Tile>(), drawTileTypes, ruleset);
+        var postClaimOuts = CountWinningDrawOutsAfterExposedKong(handTiles, Array.Empty<Tile>(), discardedTile, drawTileTypes, ruleset);
         var preClaimPotentialOuts = CountWinningDrawOutsAfterDraw(
             handTiles,
             Array.Empty<Tile>(),
@@ -476,6 +477,7 @@ public class BotClaimAdvisorTests
             requireMinimumFan: false);
 
         preClaimOuts.Should().Be(0);
+        postClaimOuts.Should().BeGreaterThan(0);
         preClaimPotentialOuts.Should().BeGreaterThan(0);
         postClaimPotentialOuts.Should().BeLessThan(preClaimPotentialOuts);
 
@@ -484,9 +486,11 @@ public class BotClaimAdvisorTests
             Array.Empty<Tile>(),
             discardedTile,
             ruleset,
-            out _);
+            out var claimTiles);
 
-        shouldClaim.Should().BeFalse();
+        shouldClaim.Should().BeTrue();
+        claimTiles.Should().HaveCount(3);
+        claimTiles.Should().OnlyContain(tile => tile.Equals(discardedTile));
     }
 
     [Fact]
@@ -569,6 +573,40 @@ public class BotClaimAdvisorTests
             out _);
 
         shouldClaim.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TrySelectExposedKongClaim_ReturnsTrue_WhenKongCreatesImmediateWinningOuts()
+    {
+        var ruleset = MahjongRuleset.ChineseOfficial;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 3), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 5)
+        };
+        var discardedTile = new Tile(TileSuit.Dots, 5);
+        var drawTileTypes = BuildDrawTileTypes(ruleset);
+        var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, Array.Empty<Tile>(), drawTileTypes, ruleset);
+        var postClaimOuts = CountWinningDrawOutsAfterExposedKong(handTiles, Array.Empty<Tile>(), discardedTile, drawTileTypes, ruleset);
+
+        preClaimOuts.Should().Be(0);
+        postClaimOuts.Should().BeGreaterThan(0);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
+            handTiles,
+            Array.Empty<Tile>(),
+            discardedTile,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeTrue();
+        claimTiles.Should().HaveCount(3);
+        claimTiles.Should().OnlyContain(tile => tile.Equals(discardedTile));
     }
 
     [Fact]
