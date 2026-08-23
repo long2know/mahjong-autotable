@@ -254,15 +254,18 @@ public static class BotClaimAdvisor
                 ruleset,
                 requireMinimumFan: false);
 
-            if (preClaimPotentialOuts.TileTypes == 0 && postClaimPotentialOuts.TileTypes == 0)
+            if (postClaimOuts.TileTypes == 0)
             {
-                return false;
-            }
+                if (preClaimPotentialOuts.TileTypes == 0 && postClaimPotentialOuts.TileTypes == 0)
+                {
+                    return false;
+                }
 
-            if (preClaimPotentialOuts.TileTypes > 0
-                && IsOutsDropBeyondTolerance(preClaimPotentialOuts, postClaimPotentialOuts, ExposedKongOutsDropTolerance))
-            {
-                return false;
+                if (preClaimPotentialOuts.TileTypes > 0
+                    && IsOutsDropBeyondTolerance(preClaimPotentialOuts, postClaimPotentialOuts, ExposedKongOutsDropTolerance))
+                {
+                    return false;
+                }
             }
         }
 
