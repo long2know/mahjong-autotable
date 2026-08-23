@@ -3996,6 +3996,7 @@ public static class BotDiscardAdvisor
         var hasMissingOrphan = false;
         var hasMissingPairPotential = false;
         var hasNearDeadMissingOrphan = false;
+        var missingOrphanCount = 0;
         foreach (var tile in ChineseOfficialOrphanTileTypes)
         {
             if (ownedCounts.ContainsKey(tile))
@@ -4003,6 +4004,7 @@ public static class BotDiscardAdvisor
                 continue;
             }
 
+            missingOrphanCount++;
             hasMissingOrphan = true;
             visibleCounts.TryGetValue(tile, out var visibleCount);
             var remainingCopies = 4 - visibleCount;
@@ -4027,9 +4029,17 @@ public static class BotDiscardAdvisor
             return hasOrphanPair || hasOwnedPairPotential;
         }
 
-        if (hasNearDeadMissingOrphan && !hasOrphanPair && nonOrphanCount >= 2)
+        if (hasNearDeadMissingOrphan && nonOrphanCount >= 2)
         {
-            return false;
+            if (!hasOrphanPair)
+            {
+                return false;
+            }
+
+            if (missingOrphanCount >= 2)
+            {
+                return false;
+            }
         }
 
         if (hasOrphanPair)
