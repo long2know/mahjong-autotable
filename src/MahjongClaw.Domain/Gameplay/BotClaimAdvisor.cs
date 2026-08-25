@@ -390,6 +390,14 @@ public static class BotClaimAdvisor
             return false;
         }
 
+        if (ruleset == MahjongRuleset.ChineseOfficial
+            && IsChineseOfficialSevenPairsLean(handTiles, meldTiles)
+            && preClaimOuts.TileTypes > 0
+            && postClaimOuts.TileTypes <= preClaimOuts.TileTypes)
+        {
+            return false;
+        }
+
         if (ruleset == MahjongRuleset.ChineseOfficial && preClaimOuts.TileTypes == 0)
         {
             var preClaimPotentialOuts = CountWinningDrawOutsAfterDraw(

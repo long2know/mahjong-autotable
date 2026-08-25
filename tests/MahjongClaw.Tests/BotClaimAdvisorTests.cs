@@ -1101,6 +1101,51 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectPungClaim_ReturnsFalse_WhenChineseOfficialSevenPairsLeanWouldBreakForPung()
+    {
+        var ruleset = MahjongRuleset.ChineseOfficial;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dragons, 0, null, Dragon.Red);
+        var drawTileTypes = BuildDrawTileTypes(ruleset);
+        var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, drawTileTypes, ruleset);
+        var postClaimOuts = CountBestWinningOutsAfterPungClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            drawTileTypes,
+            ruleset);
+
+        preClaimOuts.Should().BeGreaterThan(0);
+        postClaimOuts.Should().BeLessOrEqualTo(preClaimOuts);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectPungClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public void ShouldClaimDiscardWin_ReturnsTrue_ForChangsha258RequiredPairDiscardWin()
     {
         var handTiles = new List<Tile>
@@ -1253,6 +1298,49 @@ public class BotClaimAdvisorTests
             .ToList();
 
         return CountWinningDrawOutsAfterDraw(handAfterKong, meldAfterKong, drawTileTypes, ruleset, requireMinimumFan);
+    }
+
+    private static int CountBestWinningOutsAfterPungClaim(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        Tile discardedTile,
+        IReadOnlyList<Tile> drawTileTypes,
+        MahjongRuleset ruleset,
+        bool requireMinimumFan = true)
+    {
+        var handAfterClaim = new List<Tile>(handTiles);
+
+        for (var i = 0; i < 2; i++)
+        {
+            var index = handAfterClaim.FindIndex(tile => tile.Equals(discardedTile));
+            if (index < 0)
+            {
+                return 0;
+            }
+
+            handAfterClaim.RemoveAt(index);
+        }
+
+        var meldAfterClaim = meldTiles
+            .Concat(Enumerable.Repeat(discardedTile, 3))
+            .ToList();
+
+        var bestOuts = 0;
+
+        for (var discardIndex = 0; discardIndex < handAfterClaim.Count; discardIndex++)
+        {
+            var reducedHand = handAfterClaim
+                .Where((_, index) => index != discardIndex)
+                .ToList();
+
+            var outs = CountWinningDrawOutsAfterDraw(reducedHand, meldAfterClaim, drawTileTypes, ruleset, requireMinimumFan);
+            if (outs > bestOuts)
+            {
+                bestOuts = outs;
+            }
+        }
+
+        return bestOuts;
     }
 
     private static IReadOnlyList<Tile> BuildDrawTileTypes(MahjongRuleset ruleset)
