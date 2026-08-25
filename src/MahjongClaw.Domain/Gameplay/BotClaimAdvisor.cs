@@ -420,6 +420,14 @@ public static class BotClaimAdvisor
             return false;
         }
 
+        if (ruleset == MahjongRuleset.Changsha258
+            && IsChangshaSevenPairsLean(handTiles, meldTiles)
+            && preClaimOuts.TileTypes > 0
+            && postClaimOuts.TileTypes <= preClaimOuts.TileTypes)
+        {
+            return false;
+        }
+
         if (ruleset == MahjongRuleset.ChineseOfficial && preClaimOuts.TileTypes == 0)
         {
             var preClaimPotentialOuts = CountWinningDrawOutsAfterDraw(
