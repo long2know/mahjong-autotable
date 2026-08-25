@@ -2409,6 +2409,15 @@ static async Task ProcessBotClaimsAsync(
                 new { PlayerId = botPlayerId, ClaimType = "ExposedKong" },
                 cancellationToken);
         }
+        else if (BotClaimAdvisor.TrySelectPungClaim(hand, melds, claimWindow.DiscardedTile, visibleTiles, ruleset, out var pungTiles))
+        {
+            var pungClaim = new ClaimRequest(botPlayerId, ClaimType.Pung, pungTiles, null);
+            claimWindow.SubmittedClaims.Add(pungClaim);
+
+            await SendToGameWithAliases(hubContext, game.Id, "ClaimSubmitted",
+                new { PlayerId = botPlayerId, ClaimType = "Pung" },
+                cancellationToken);
+        }
         else
         {
             var passClaim = new ClaimRequest(botPlayerId, ClaimType.Pass);
