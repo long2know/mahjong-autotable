@@ -502,6 +502,10 @@ public static class BotClaimAdvisor
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
 
+        var requireStrongAlternate = Changsha258Ruleset.IsSmallWinPair(discardedTile);
+        var liveAlternateSingletons = 0;
+        var hasStrongAlternateSingleton = false;
+
         foreach (var entry in handCounts)
         {
             if (!Changsha258Ruleset.IsSmallWinPair(entry.Key) || entry.Key.Equals(discardedTile))
@@ -516,11 +520,37 @@ public static class BotClaimAdvisor
 
             if (entry.Value == 1)
             {
+                if (visibleCounts.Count == 0)
+                {
+                    liveAlternateSingletons++;
+                    return true;
+                }
+
                 ownedCounts.TryGetValue(entry.Key, out var ownedCount);
                 visibleCounts.TryGetValue(entry.Key, out var visibleCount);
                 var remainingCopies = 4 - ownedCount - visibleCount;
 
-                if (remainingCopies >= 1)
+                if (!requireStrongAlternate)
+                {
+                    if (remainingCopies >= 1)
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
+                if (remainingCopies >= 2)
+                {
+                    hasStrongAlternateSingleton = true;
+                }
+
+                if (remainingCopies > 0)
+                {
+                    liveAlternateSingletons++;
+                }
+
+                if (hasStrongAlternateSingleton || liveAlternateSingletons >= 2)
                 {
                     return true;
                 }
