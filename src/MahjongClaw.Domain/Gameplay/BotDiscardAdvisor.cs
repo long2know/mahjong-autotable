@@ -2022,7 +2022,11 @@ public static class BotDiscardAdvisor
                 var honorCount = ownedTiles.Count(static tile => tile.IsHonor);
                 var suitedCount = ownedTiles.Count(static tile => !tile.IsHonor);
 
-                if (honorPairCount == 0 && honorCount <= 3 && suitedCount >= 9)
+                var honorSparseGate = honorPairCount == 0
+                    && ((honorCount <= 3 && suitedCount >= 9)
+                        || (honorCount == 4 && suitedCount >= 10));
+
+                if (honorSparseGate)
                 {
                     var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
                     var bestOverallOutCopies = candidates
