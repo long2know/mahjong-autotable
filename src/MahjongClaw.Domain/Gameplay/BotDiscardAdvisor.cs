@@ -742,6 +742,46 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (ruleset == MahjongRuleset.Changsha258
+            && enforceSmallWinPairBias
+            && visibleCounts.Count == 0)
+        {
+            var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
+            if (smallWinPairCount == 0)
+            {
+                var smallWinSingletons = handCounts
+                    .Where(entry => entry.Value == 1 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                    .Select(entry => entry.Key)
+                    .ToList();
+
+                if (smallWinSingletons.Count == 1)
+                {
+                    var singletonTile = smallWinSingletons[0];
+                    var shouldProtectSingleton = !allowBreakingSoleChangshaSmallWinPairForPureSuitLean;
+
+                    if (shouldProtectSingleton
+                        && hasChangshaPureSuitLean
+                        && changshaDominantSuit.HasValue
+                        && singletonTile.Suit != changshaDominantSuit.Value)
+                    {
+                        shouldProtectSingleton = false;
+                    }
+
+                    if (shouldProtectSingleton)
+                    {
+                        var nonProtectedCandidates = candidates
+                            .Where(candidate => !candidate.Tile.Equals(singletonTile))
+                            .ToList();
+
+                        if (nonProtectedCandidates.Count > 0)
+                        {
+                            candidates = nonProtectedCandidates;
+                        }
+                    }
+                }
+            }
+        }
+
         if (ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias && visibleCounts.Count > 0)
         {
             var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
