@@ -9,6 +9,7 @@ public static class BotClaimAdvisor
     private const int PungOutsDropTolerance = 0;
     private static readonly IReadOnlyList<Tile> ChineseOfficialDrawTileTypes = BuildDrawTileTypes(MahjongRuleset.ChineseOfficial);
     private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
+    private static readonly IReadOnlyList<Tile> ChineseOfficialOrphanTileTypes = BuildChineseOfficialOrphanTileTypes();
     private readonly record struct WinningOutSummary(int TileTypes, int RemainingCopies);
 
     public static bool ShouldClaimDiscardWin(
@@ -341,6 +342,27 @@ public static class BotClaimAdvisor
         // visibleTiles should exclude the current discard; add it here so outs reflect the new visible tile.
         visibleCounts.TryGetValue(discardedTile, out var discardCount);
         visibleCounts[discardedTile] = discardCount + 1;
+
+        if (ruleset == MahjongRuleset.ChineseOfficial && meldTiles.Count == 0)
+        {
+            var orphanTiles = handTiles
+                .Where(tile => tile.IsHonor || IsTerminalSuitedTile(tile))
+                .ToList();
+            var nonOrphanCount = handTiles.Count - orphanTiles.Count;
+            var distinctOrphanTypes = orphanTiles.Distinct().Count();
+
+            if (nonOrphanCount <= 3 && distinctOrphanTypes >= 8)
+            {
+                var ownedCounts = handTiles
+                    .GroupBy(static tile => tile)
+                    .ToDictionary(group => group.Key, group => group.Count());
+
+                if (HasLiveThirteenOrphansPath(ownedCounts, visibleCounts, distinctOrphanTypes, nonOrphanCount))
+                {
+                    return false;
+                }
+            }
+        }
 
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
 
@@ -792,4 +814,112 @@ public static class BotClaimAdvisor
             .Concat(dragonTiles)
             .ToArray();
     }
+
+    private static IReadOnlyList<Tile> BuildChineseOfficialOrphanTileTypes()
+    {
+        var suitedOrphans = new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos }
+            .SelectMany(static suit => new[] { 1, 9 }.Select(rank => new Tile(suit, rank)));
+        var windTiles = Enum
+            .GetValues<Wind>()
+            .Select(wind => new Tile(TileSuit.Winds, 0, wind));
+        var dragonTiles = Enum
+            .GetValues<Dragon>()
+            .Select(dragon => new Tile(TileSuit.Dragons, 0, null, dragon));
+
+        return suitedOrphans
+            .Concat(windTiles)
+            .Concat(dragonTiles)
+            .ToArray();
+    }
+
+    private static bool HasLiveThirteenOrphansPath(
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
+        int distinctOrphanTypes,
+        int nonOrphanCount)
+    {
+        var orphanTypeCount = ChineseOfficialOrphanTileTypes.Count;
+        var orphanTilesInHand = ChineseOfficialOrphanTileTypes
+            .Where(tile => ownedCounts.TryGetValue(tile, out var count) && count > 0)
+            .ToList();
+        var hasOrphanPair = orphanTilesInHand.Any(tile => ownedCounts[tile] >= 2);
+
+        bool HasRemainingCopy(Tile tile, int ownedCount)
+        {
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+            return 4 - ownedCount - visibleCount > 0;
+        }
+
+        var hasOwnedPairPotential = orphanTilesInHand.Any(tile =>
+        {
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            return ownedCount == 1 && HasRemainingCopy(tile, ownedCount);
+        });
+
+        if (distinctOrphanTypes >= orphanTypeCount)
+        {
+            return hasOrphanPair || hasOwnedPairPotential;
+        }
+
+        var hasMissingOrphan = false;
+        var hasMissingPairPotential = false;
+        var hasNearDeadMissingOrphan = false;
+        var missingOrphanCount = 0;
+        foreach (var tile in ChineseOfficialOrphanTileTypes)
+        {
+            if (ownedCounts.ContainsKey(tile))
+            {
+                continue;
+            }
+
+            missingOrphanCount++;
+            hasMissingOrphan = true;
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+            var remainingCopies = 4 - visibleCount;
+            if (remainingCopies <= 0)
+            {
+                return false;
+            }
+
+            if (remainingCopies == 1)
+            {
+                hasNearDeadMissingOrphan = true;
+            }
+
+            if (remainingCopies >= 2)
+            {
+                hasMissingPairPotential = true;
+            }
+        }
+
+        if (!hasMissingOrphan)
+        {
+            return hasOrphanPair || hasOwnedPairPotential;
+        }
+
+        if (hasNearDeadMissingOrphan && nonOrphanCount >= 2)
+        {
+            if (!hasOrphanPair)
+            {
+                return false;
+            }
+
+            if (missingOrphanCount >= 2)
+            {
+                return false;
+            }
+        }
+
+        if (hasOrphanPair)
+        {
+            return true;
+        }
+
+        return hasOwnedPairPotential || hasMissingPairPotential;
+    }
+
+    private static bool IsTerminalSuitedTile(Tile tile)
+        => !tile.IsHonor
+            && !tile.IsFlower
+            && tile.Rank is 1 or 9;
 }
