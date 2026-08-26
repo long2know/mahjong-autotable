@@ -179,6 +179,11 @@ public static class BotClaimAdvisor
             {
                 return false;
             }
+
+            if (HasOnlyThinSmallWinPairCandidate(handTiles, meldTiles, visibleCounts))
+            {
+                return false;
+            }
         }
 
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
@@ -393,6 +398,11 @@ public static class BotClaimAdvisor
                     visibleCounts);
 
                 if (!hasSmallWinPairCandidate)
+                {
+                    return false;
+                }
+
+                if (HasOnlyThinSmallWinPairCandidate(handTiles, meldTiles, visibleCounts))
                 {
                     return false;
                 }
@@ -791,6 +801,44 @@ public static class BotClaimAdvisor
         }
 
         return false;
+    }
+
+    private static bool HasOnlyThinSmallWinPairCandidate(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        var handCounts = handTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
+
+        if (smallWinPairCount > 0)
+        {
+            return false;
+        }
+
+        var smallWinSingletons = handCounts
+            .Where(entry => entry.Value == 1 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+            .Select(entry => entry.Key)
+            .ToList();
+
+        if (smallWinSingletons.Count != 1)
+        {
+            return false;
+        }
+
+        var ownedCounts = handTiles
+            .Concat(meldTiles)
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var singletonTile = smallWinSingletons[0];
+        ownedCounts.TryGetValue(singletonTile, out var ownedCount);
+        visibleCounts.TryGetValue(singletonTile, out var visibleCount);
+        var remainingCopies = 4 - ownedCount - visibleCount;
+
+        return remainingCopies <= 1;
     }
 
     private static Dictionary<Tile, int> BuildVisibleCounts(IReadOnlyList<Tile> visibleTiles)

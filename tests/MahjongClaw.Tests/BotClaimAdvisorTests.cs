@@ -669,7 +669,7 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
-    public void TrySelectExposedKongClaim_ReturnsTrue_WhenChangshaOffRankKongHasSingleLiveSmallWinPairCandidate()
+    public void TrySelectExposedKongClaim_ReturnsFalse_WhenChangshaOffRankKongHasThinSmallWinSingletonCandidate()
     {
         var ruleset = MahjongRuleset.Changsha258;
         var handTiles = new List<Tile>
@@ -699,6 +699,42 @@ public class BotClaimAdvisorTests
 
         preClaimOuts.Should().Be(0);
         postClaimOuts.Should().Be(0);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            visibleTiles,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TrySelectExposedKongClaim_ReturnsTrue_WhenChangshaOffRankKongHasStrongSmallWinSingletonCandidate()
+    {
+        var ruleset = MahjongRuleset.Changsha258;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 6)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 1);
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2)
+        };
 
         var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
             handTiles,
@@ -1072,6 +1108,37 @@ public class BotClaimAdvisorTests
         shouldClaim.Should().BeTrue();
         claimTiles.Should().HaveCount(2);
         claimTiles.Should().OnlyContain(tile => tile.Equals(discardedTile));
+    }
+
+    [Fact]
+    public void TrySelectPungClaim_ReturnsFalse_WhenChangshaOffRankPungHasThinSmallWinSingletonCandidate()
+    {
+        var ruleset = MahjongRuleset.Changsha258;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 9)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 1);
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        var shouldClaim = BotClaimAdvisor.TrySelectPungClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            visibleTiles,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
     }
 
     [Fact]
