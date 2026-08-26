@@ -458,7 +458,6 @@ public static class BotClaimAdvisor
 
         if (ruleset == MahjongRuleset.Changsha258
             && IsChangshaSevenPairsLean(handTiles, meldTiles)
-            && preClaimOuts.TileTypes > 0
             && postClaimOuts.TileTypes <= preClaimOuts.TileTypes)
         {
             return false;
