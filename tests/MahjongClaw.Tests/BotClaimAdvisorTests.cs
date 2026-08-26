@@ -1144,6 +1144,37 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectPungClaim_ReturnsTrue_WhenChangshaOffRankPungHasLiveSmallWinPairsInWall()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Characters, 9)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Characters, 7);
+
+        Changsha258Ruleset.IsSmallWinPair(discardedTile).Should().BeFalse();
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles).Should().BeFalse();
+
+        var shouldClaim = BotClaimAdvisor.TrySelectPungClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            MahjongRuleset.Changsha258,
+            out var claimTiles);
+
+        shouldClaim.Should().BeTrue();
+        claimTiles.Should().HaveCount(2);
+        claimTiles.Should().OnlyContain(tile => tile.Equals(discardedTile));
+    }
+
+    [Fact]
     public void TrySelectPungClaim_ReturnsTrue_WhenChangshaBigWinFlexibleEyeAllowsPung()
     {
         var handTiles = new List<Tile>

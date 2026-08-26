@@ -422,13 +422,15 @@ public static class BotClaimAdvisor
                     meldTiles,
                     discardedTile,
                     visibleCounts);
+                var hasLiveSmallWinPairCandidate = hasSmallWinPairCandidate
+                    || HasLiveSmallWinPairCandidate(handTiles, meldTiles, visibleCounts);
 
-                if (!hasSmallWinPairCandidate)
+                if (!hasLiveSmallWinPairCandidate)
                 {
                     return false;
                 }
 
-                if (HasOnlyThinSmallWinPairCandidate(handTiles, meldTiles, visibleCounts))
+                if (hasSmallWinPairCandidate && HasOnlyThinSmallWinPairCandidate(handTiles, meldTiles, visibleCounts))
                 {
                     return false;
                 }
@@ -917,6 +919,45 @@ public static class BotClaimAdvisor
         var remainingCopies = 4 - ownedCount - visibleCount;
 
         return remainingCopies <= 1;
+    }
+
+    private static bool HasLiveSmallWinPairCandidate(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        var ownedCounts = handTiles
+            .Concat(meldTiles)
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        foreach (var suit in Changsha258Ruleset.AllowedSuits)
+        {
+            foreach (var rank in Changsha258Ruleset.SmallWinPairRanks)
+            {
+                var tile = new Tile(suit, rank);
+                ownedCounts.TryGetValue(tile, out var ownedCount);
+                visibleCounts.TryGetValue(tile, out var visibleCount);
+
+                var remainingCopies = 4 - ownedCount - visibleCount;
+                if (ownedCount >= 2)
+                {
+                    return true;
+                }
+
+                if (ownedCount == 1 && remainingCopies >= 1)
+                {
+                    return true;
+                }
+
+                if (ownedCount == 0 && remainingCopies >= 2)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static Dictionary<Tile, int> BuildVisibleCounts(IReadOnlyList<Tile> visibleTiles)
