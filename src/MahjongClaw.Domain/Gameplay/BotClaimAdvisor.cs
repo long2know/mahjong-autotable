@@ -438,6 +438,59 @@ public static class BotClaimAdvisor
             return false;
         }
 
+        if (ruleset == MahjongRuleset.Changsha258
+            && preClaimOuts.TileTypes == 0
+            && postClaimOuts.TileTypes == 0)
+        {
+            var handAfterPung = new List<Tile>(handTiles);
+
+            for (var i = 0; i < 2; i++)
+            {
+                var index = handAfterPung.FindIndex(tile => tile.Equals(discardedTile));
+                if (index < 0)
+                {
+                    break;
+                }
+
+                handAfterPung.RemoveAt(index);
+            }
+
+            var remainingCounts = handAfterPung
+                .GroupBy(static tile => tile)
+                .ToDictionary(group => group.Key, group => group.Count());
+            var hasPair = remainingCounts.Any(entry => entry.Value >= 2);
+
+            bool HasChow()
+            {
+                var suitedSuits = new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos };
+                foreach (var suit in suitedSuits)
+                {
+                    var ranks = remainingCounts
+                        .Where(entry => entry.Key.Suit == suit)
+                        .Select(entry => entry.Key.Rank)
+                        .Distinct()
+                        .ToHashSet();
+
+                    for (var rank = 1; rank <= 7; rank++)
+                    {
+                        if (ranks.Contains(rank)
+                            && ranks.Contains(rank + 1)
+                            && ranks.Contains(rank + 2))
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+
+            if (!hasPair && !HasChow())
+            {
+                return false;
+            }
+        }
+
         if (ruleset == MahjongRuleset.ChineseOfficial && preClaimOuts.TileTypes == 0)
         {
             var preClaimPotentialOuts = CountWinningDrawOutsAfterDraw(
