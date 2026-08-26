@@ -378,15 +378,20 @@ public static class BotClaimAdvisor
         {
             if (Changsha258Ruleset.IsSmallWinPair(discardedTile))
             {
-                var hasAlternateSmallWinPairCandidate = HasAlternateSmallWinPairCandidate(
-                    handTiles,
-                    meldTiles,
-                    discardedTile,
-                    visibleCounts);
+                var hasSevenPairsLean = IsChangshaSevenPairsLean(handTiles, meldTiles);
 
-                if (!hasAlternateSmallWinPairCandidate)
+                if (!allowChangshaFlexibleEye || hasSevenPairsLean)
                 {
-                    return false;
+                    var hasAlternateSmallWinPairCandidate = HasAlternateSmallWinPairCandidate(
+                        handTiles,
+                        meldTiles,
+                        discardedTile,
+                        visibleCounts);
+
+                    if (!hasAlternateSmallWinPairCandidate)
+                    {
+                        return false;
+                    }
                 }
             }
             else if (!allowChangshaFlexibleEye)
