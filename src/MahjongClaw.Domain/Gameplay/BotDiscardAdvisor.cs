@@ -999,6 +999,35 @@ public static class BotDiscardAdvisor
 
         if (ruleset == MahjongRuleset.Changsha258
             && enforceSmallWinPairBias
+            && changshaSmallWinPairCount > 0
+            && visibleCounts.Count > 0)
+        {
+            var deadOffRankSingletonCandidates = candidates
+                .Where(candidate =>
+                {
+                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                    if (handCount != 1 || Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
+                    {
+                        return false;
+                    }
+
+                    if (candidate.RemainingCopies > 0)
+                    {
+                        return false;
+                    }
+
+                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                })
+                .ToList();
+
+            if (deadOffRankSingletonCandidates.Count > 0)
+            {
+                candidates = deadOffRankSingletonCandidates;
+            }
+        }
+
+        if (ruleset == MahjongRuleset.Changsha258
+            && enforceSmallWinPairBias
             && changshaSmallWinPairCount == 0
             && visibleCounts.Count > 0)
         {
