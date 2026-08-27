@@ -312,8 +312,7 @@ public static class BotClaimAdvisor
         }
 
         if (preClaimOuts.TileTypes > 0
-            && IsOutsDropBeyondTolerance(preClaimOuts, postClaimOuts, ExposedKongOutsDropTolerance)
-            && !(allowChangshaFlexibleEye && Changsha258Ruleset.IsSmallWinPair(discardedTile)))
+            && IsOutsDropBeyondTolerance(preClaimOuts, postClaimOuts, ExposedKongOutsDropTolerance))
         {
             return false;
         }
