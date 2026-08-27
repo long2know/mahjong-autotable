@@ -1758,73 +1758,107 @@ public static class BotDiscardAdvisor
             filteredByDeadPair = false;
             if (!filteredByDeadSuitedSingleton && pairCount >= 2)
             {
-                var deadPairCandidates = candidates
-                    .Where(candidate =>
-                    {
-                        handCounts.TryGetValue(candidate.Tile, out var handCount);
-                        if (handCount != 2 || candidate.RemainingCopies != 0)
-                        {
-                            return false;
-                        }
-
-                        return !HasInHandSequenceAnchor(candidate.Tile, handCounts)
-                            && (IsTerminalSuitedTile(candidate.Tile)
-                                || !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts));
-                    })
-                    .ToList();
-
-                if (deadPairCandidates.Count > 0)
+                var sevenPairsNearLean = meldTiles.Count == 0 && sevenPairsPairCount == 5;
+                if (sevenPairsNearLean)
                 {
-                    var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
-                    var bestOverallOutCopies = candidates
-                        .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
-                        .Max(candidate => candidate.WinningDrawOutCopies);
+                    var singletonCandidates = candidates
+                        .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var handCount) && handCount == 1)
+                        .ToList();
 
-                    var bestDeadOuts = deadPairCandidates.Max(candidate => candidate.WinningDrawOuts);
-                    var bestDeadOutCopies = deadPairCandidates
-                        .Where(candidate => candidate.WinningDrawOuts == bestDeadOuts)
-                        .Max(candidate => candidate.WinningDrawOutCopies);
-
-                    var withinOutsTolerance = bestDeadOuts >= bestOverallOuts - DeadPairOutsTolerance;
-                    var withinCopyTolerance = bestDeadOuts < bestOverallOuts
-                        || bestDeadOutCopies >= bestOverallOutCopies - DeadPairOutsTolerance;
-                    var losesAllWinningOuts = bestOverallOuts > 0 && bestDeadOuts == 0;
-
-                    var shouldPreferDeadPairs = bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance);
-                    if (losesAllWinningOuts)
+                    if (singletonCandidates.Count > 0)
                     {
-                        shouldPreferDeadPairs = false;
-                    }
+                        var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                        var bestOverallOutCopies = candidates
+                            .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                            .Max(candidate => candidate.WinningDrawOutCopies);
 
-                    if (shouldPreferDeadPairs && bestOverallOuts == 0 && potentialOutSummaries is not null)
-                    {
-                        var bestPotentialOuts = candidates.Max(candidate => candidate.PotentialWinningDrawOuts);
-                        if (bestPotentialOuts > 0)
+                        var bestSingletonOuts = singletonCandidates.Max(candidate => candidate.WinningDrawOuts);
+                        var bestSingletonOutCopies = singletonCandidates
+                            .Where(candidate => candidate.WinningDrawOuts == bestSingletonOuts)
+                            .Max(candidate => candidate.WinningDrawOutCopies);
+
+                        var withinOutsTolerance = bestSingletonOuts >= bestOverallOuts - DeadPairOutsTolerance;
+                        var withinCopyTolerance = bestSingletonOuts < bestOverallOuts
+                            || bestSingletonOutCopies >= bestOverallOutCopies - DeadPairOutsTolerance;
+
+                        if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
                         {
-                            var bestPotentialOutCopies = candidates
-                                .Where(candidate => candidate.PotentialWinningDrawOuts == bestPotentialOuts)
-                                .Max(candidate => candidate.PotentialWinningDrawOutCopies);
-
-                            var bestDeadPotentialOuts = deadPairCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
-                            var bestDeadPotentialOutCopies = deadPairCandidates
-                                .Where(candidate => candidate.PotentialWinningDrawOuts == bestDeadPotentialOuts)
-                                .Max(candidate => candidate.PotentialWinningDrawOutCopies);
-
-                            var hasHonorDeadPairCandidate = deadPairCandidates.Any(candidate => candidate.Tile.IsHonor);
-                            var withinPotentialTolerance = hasHonorDeadPairCandidate
-                                ? bestDeadPotentialOuts >= bestPotentialOuts
-                                : bestDeadPotentialOuts >= bestPotentialOuts - DeadPairOutsTolerance;
-                            var withinPotentialCopyTolerance = bestDeadPotentialOuts < bestPotentialOuts
-                                || bestDeadPotentialOutCopies >= bestPotentialOutCopies - DeadPairOutsTolerance;
-
-                            shouldPreferDeadPairs = withinPotentialTolerance && withinPotentialCopyTolerance;
+                            candidates = singletonCandidates;
+                            filteredByDeadPair = true;
                         }
                     }
+                }
 
-                    if (shouldPreferDeadPairs)
+                if (!filteredByDeadPair)
+                {
+                    var deadPairCandidates = candidates
+                        .Where(candidate =>
+                        {
+                            handCounts.TryGetValue(candidate.Tile, out var handCount);
+                            if (handCount != 2 || candidate.RemainingCopies != 0)
+                            {
+                                return false;
+                            }
+
+                            return !HasInHandSequenceAnchor(candidate.Tile, handCounts)
+                                && (IsTerminalSuitedTile(candidate.Tile)
+                                    || !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts));
+                        })
+                        .ToList();
+
+                    if (deadPairCandidates.Count > 0)
                     {
-                        candidates = deadPairCandidates;
-                        filteredByDeadPair = true;
+                        var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                        var bestOverallOutCopies = candidates
+                            .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                            .Max(candidate => candidate.WinningDrawOutCopies);
+
+                        var bestDeadOuts = deadPairCandidates.Max(candidate => candidate.WinningDrawOuts);
+                        var bestDeadOutCopies = deadPairCandidates
+                            .Where(candidate => candidate.WinningDrawOuts == bestDeadOuts)
+                            .Max(candidate => candidate.WinningDrawOutCopies);
+
+                        var withinOutsTolerance = bestDeadOuts >= bestOverallOuts - DeadPairOutsTolerance;
+                        var withinCopyTolerance = bestDeadOuts < bestOverallOuts
+                            || bestDeadOutCopies >= bestOverallOutCopies - DeadPairOutsTolerance;
+                        var losesAllWinningOuts = bestOverallOuts > 0 && bestDeadOuts == 0;
+
+                        var shouldPreferDeadPairs = bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance);
+                        if (losesAllWinningOuts)
+                        {
+                            shouldPreferDeadPairs = false;
+                        }
+
+                        if (shouldPreferDeadPairs && bestOverallOuts == 0 && potentialOutSummaries is not null)
+                        {
+                            var bestPotentialOuts = candidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+                            if (bestPotentialOuts > 0)
+                            {
+                                var bestPotentialOutCopies = candidates
+                                    .Where(candidate => candidate.PotentialWinningDrawOuts == bestPotentialOuts)
+                                    .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+
+                                var bestDeadPotentialOuts = deadPairCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+                                var bestDeadPotentialOutCopies = deadPairCandidates
+                                    .Where(candidate => candidate.PotentialWinningDrawOuts == bestDeadPotentialOuts)
+                                    .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+
+                                var hasHonorDeadPairCandidate = deadPairCandidates.Any(candidate => candidate.Tile.IsHonor);
+                                var withinPotentialTolerance = hasHonorDeadPairCandidate
+                                    ? bestDeadPotentialOuts >= bestPotentialOuts
+                                    : bestDeadPotentialOuts >= bestPotentialOuts - DeadPairOutsTolerance;
+                                var withinPotentialCopyTolerance = bestDeadPotentialOuts < bestPotentialOuts
+                                    || bestDeadPotentialOutCopies >= bestPotentialOutCopies - DeadPairOutsTolerance;
+
+                                shouldPreferDeadPairs = withinPotentialTolerance && withinPotentialCopyTolerance;
+                            }
+                        }
+
+                        if (shouldPreferDeadPairs)
+                        {
+                            candidates = deadPairCandidates;
+                            filteredByDeadPair = true;
+                        }
                     }
                 }
 
