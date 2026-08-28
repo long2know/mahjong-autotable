@@ -3204,7 +3204,8 @@ public static class BotDiscardAdvisor
             }
         }
 
-        if (ruleset == MahjongRuleset.ChineseOfficial && visibleMeldCounts.Count > 0)
+        if ((ruleset == MahjongRuleset.ChineseOfficial || ruleset == MahjongRuleset.Changsha258)
+            && visibleMeldCounts.Count > 0)
         {
             var safelyExposedCandidates = prioritizedCandidates
                 .Where(candidate => candidate.SafeMeldExposure >= 2)

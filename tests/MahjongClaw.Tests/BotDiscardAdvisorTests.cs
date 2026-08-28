@@ -4233,6 +4233,69 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleMeldTiles_PrefersSafelyExposedTile_WhenChangshaHasNoOutsAndSafetyTies()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2),
+            new(TileSuit.Characters, 9)
+        };
+
+        var visibleMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        var visibleTiles = visibleMeldTiles
+            .Concat(Enumerable.Repeat(new Tile(TileSuit.Characters, 9), 3))
+            .ToList();
+        var visibleCounts = visibleTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var dotNineIndex = handTiles.FindIndex(tile => tile.Equals(new Tile(TileSuit.Dots, 9)));
+        var charNineIndex = handTiles.FindIndex(tile => tile.Equals(new Tile(TileSuit.Characters, 9)));
+
+        CountWinningDrawOutsAfterDiscard(
+            handTiles,
+            visibleCounts,
+            dotNineIndex,
+            MahjongRuleset.Changsha258,
+            requireMinimumFan: true).Should().Be(new WinningDrawOutSummary(0, 0));
+        CountWinningDrawOutsAfterDiscard(
+            handTiles,
+            visibleCounts,
+            charNineIndex,
+            MahjongRuleset.Changsha258,
+            requireMinimumFan: true).Should().Be(new WinningDrawOutSummary(0, 0));
+        CountWinningDrawOutsAfterDiscard(
+            handTiles,
+            visibleCounts,
+            dotNineIndex,
+            MahjongRuleset.Changsha258,
+            requireMinimumFan: false).Should().Be(new WinningDrawOutSummary(0, 0));
+        CountWinningDrawOutsAfterDiscard(
+            handTiles,
+            visibleCounts,
+            charNineIndex,
+            MahjongRuleset.Changsha258,
+            requireMinimumFan: false).Should().Be(new WinningDrawOutSummary(0, 0));
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            visibleMeldTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 9));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleMeldTiles_AccountsForMeldsWhenVisibleTilesOmitThem()
     {
         var handTiles = new List<Tile>
