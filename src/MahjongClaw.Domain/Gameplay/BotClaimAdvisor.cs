@@ -196,7 +196,8 @@ public static class BotClaimAdvisor
                 discardedTile,
                 visibleCounts);
 
-            if (!hasSmallWinPairCandidate)
+            if (!hasSmallWinPairCandidate
+                && !HasLiveSmallWinPairCandidate(handTiles, meldTiles, visibleCounts))
             {
                 return false;
             }
@@ -426,15 +427,14 @@ public static class BotClaimAdvisor
                     meldTiles,
                     discardedTile,
                     visibleCounts);
-                var hasLiveSmallWinPairCandidate = hasSmallWinPairCandidate
-                    || HasLiveSmallWinPairCandidate(handTiles, meldTiles, visibleCounts);
 
-                if (!hasLiveSmallWinPairCandidate)
+                if (!hasSmallWinPairCandidate
+                    && !HasLiveSmallWinPairCandidate(handTiles, meldTiles, visibleCounts))
                 {
                     return false;
                 }
 
-                if (hasSmallWinPairCandidate && HasOnlyThinSmallWinPairCandidate(handTiles, meldTiles, visibleCounts))
+                if (HasOnlyThinSmallWinPairCandidate(handTiles, meldTiles, visibleCounts))
                 {
                     return false;
                 }
