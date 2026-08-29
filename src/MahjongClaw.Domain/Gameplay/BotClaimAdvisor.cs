@@ -832,6 +832,8 @@ public static class BotClaimAdvisor
         var requireStrongAlternate = Changsha258Ruleset.IsSmallWinPair(discardedTile);
         var liveAlternateSingletons = 0;
         var hasStrongAlternateSingleton = false;
+        var hasVisibilityBeyondDiscard = visibleCounts.Count > 1
+            || (visibleCounts.Count == 1 && !visibleCounts.ContainsKey(discardedTile));
 
         foreach (var entry in handCounts)
         {
@@ -847,10 +849,20 @@ public static class BotClaimAdvisor
 
             if (entry.Value == 1)
             {
-                if (visibleCounts.Count == 0)
+                if (!hasVisibilityBeyondDiscard)
                 {
                     liveAlternateSingletons++;
-                    return true;
+                    if (!requireStrongAlternate)
+                    {
+                        return true;
+                    }
+
+                    if (liveAlternateSingletons >= 2)
+                    {
+                        return true;
+                    }
+
+                    continue;
                 }
 
                 ownedCounts.TryGetValue(entry.Key, out var ownedCount);
