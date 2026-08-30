@@ -136,6 +136,12 @@ public static class BotClaimAdvisor
         visibleCounts.TryGetValue(discardedTile, out var discardCount);
         visibleCounts[discardedTile] = discardCount + 1;
 
+        var hasLiveSmallWinPairCandidate = ruleset == MahjongRuleset.Changsha258
+            && HasLiveSmallWinPairCandidate(handTiles, meldTiles, visibleCounts);
+        var allowChangshaSmallWinDeadFallback = ruleset == MahjongRuleset.Changsha258
+            && visibleCounts.Count > 0
+            && !hasLiveSmallWinPairCandidate;
+
         if (ruleset == MahjongRuleset.ChineseOfficial && meldTiles.Count == 0)
         {
             var orphanTiles = handTiles
@@ -171,7 +177,7 @@ public static class BotClaimAdvisor
         {
             var hasSevenPairsLean = IsChangshaSevenPairsLean(handTiles, meldTiles);
 
-            if (!allowChangshaFlexibleEye || hasSevenPairsLean)
+            if ((!allowChangshaFlexibleEye && !allowChangshaSmallWinDeadFallback) || hasSevenPairsLean)
             {
                 var hasAlternateSmallWinPairCandidate = HasAlternateSmallWinPairCandidate(
                     handTiles,
@@ -188,7 +194,8 @@ public static class BotClaimAdvisor
 
         if (ruleset == MahjongRuleset.Changsha258
             && !Changsha258Ruleset.IsSmallWinPair(discardedTile)
-            && !allowChangshaFlexibleEye)
+            && !allowChangshaFlexibleEye
+            && !allowChangshaSmallWinDeadFallback)
         {
             var hasSmallWinPairCandidate = HasAlternateSmallWinPairCandidate(
                 handTiles,
@@ -196,8 +203,7 @@ public static class BotClaimAdvisor
                 discardedTile,
                 visibleCounts);
 
-            if (!hasSmallWinPairCandidate
-                && !HasLiveSmallWinPairCandidate(handTiles, meldTiles, visibleCounts))
+            if (!hasSmallWinPairCandidate && !hasLiveSmallWinPairCandidate)
             {
                 return false;
             }

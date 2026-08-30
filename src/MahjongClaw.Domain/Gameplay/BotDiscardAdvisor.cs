@@ -1198,7 +1198,7 @@ public static class BotDiscardAdvisor
                     if (offRankPairCandidates.Count > 1)
                     {
                         var protectedTiles = offRankPairCandidates
-                            .Where(candidate => HasGapAdjacentSmallWinSingletonWithBridge(candidate.Tile, handCounts))
+                            .Where(candidate => HasGapAdjacentSmallWinSingletonWithBridge(candidate.Tile, handCounts, ownedCounts, visibleCounts))
                             .Select(candidate => candidate.Tile)
                             .ToHashSet();
 
@@ -4869,7 +4869,9 @@ public static class BotDiscardAdvisor
 
     private static bool HasGapAdjacentSmallWinSingletonWithBridge(
         Tile pairTile,
-        IReadOnlyDictionary<Tile, int> handCounts)
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
     {
         if (!IsSuitedTile(pairTile) || Changsha258Ruleset.IsSmallWinPair(pairTile))
         {
@@ -4892,9 +4894,16 @@ public static class BotDiscardAdvisor
             }
 
             var candidate = new Tile(suit, targetRank);
-            return Changsha258Ruleset.IsSmallWinPair(candidate)
-                && handCounts.TryGetValue(candidate, out var count)
-                && count == 1;
+            if (!Changsha258Ruleset.IsSmallWinPair(candidate)
+                || !handCounts.TryGetValue(candidate, out var count)
+                || count != 1)
+            {
+                return false;
+            }
+
+            ownedCounts.TryGetValue(candidate, out var ownedCount);
+            visibleCounts.TryGetValue(candidate, out var visibleCount);
+            return 4 - ownedCount - visibleCount > 0;
         }
 
         bool HasBridgeAt(int bridgeRank)
