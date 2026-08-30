@@ -144,7 +144,7 @@ public static class BotClaimAdvisor
             var nonOrphanCount = handTiles.Count - orphanTiles.Count;
             var distinctOrphanTypes = orphanTiles.Distinct().Count();
 
-            if (nonOrphanCount <= 3 && distinctOrphanTypes >= 8)
+            if (nonOrphanCount <= 4 && distinctOrphanTypes >= 8)
             {
                 var ownedCounts = handTiles
                     .GroupBy(static tile => tile)
@@ -388,7 +388,7 @@ public static class BotClaimAdvisor
             var nonOrphanCount = handTiles.Count - orphanTiles.Count;
             var distinctOrphanTypes = orphanTiles.Distinct().Count();
 
-            if (nonOrphanCount <= 3 && distinctOrphanTypes >= 8)
+            if (nonOrphanCount <= 4 && distinctOrphanTypes >= 8)
             {
                 var ownedCounts = handTiles
                     .GroupBy(static tile => tile)
