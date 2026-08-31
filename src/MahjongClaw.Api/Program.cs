@@ -2345,6 +2345,10 @@ static async Task ProcessBotClaimsAsync(
     Dictionary<Guid, Random> gameRngs,
     CancellationToken cancellationToken)
 {
+    var playerSeats = game.Players.ToDictionary(
+        p => p.Id,
+        p => Enum.Parse<Wind>(p.Seat, true));
+
     foreach (var botPlayerId in claimWindow.EligiblePlayerIds)
     {
         var botPlayer = game.Players.FirstOrDefault(p => p.Id == botPlayerId);
@@ -2416,6 +2420,16 @@ static async Task ProcessBotClaimsAsync(
 
             await SendToGameWithAliases(hubContext, game.Id, "ClaimSubmitted",
                 new { PlayerId = botPlayerId, ClaimType = "Pung" },
+                cancellationToken);
+        }
+        else if (ChowEligibilityRule.IsEligibleForChow(botPlayerId, claimWindow.DiscarderId, playerSeats)
+            && BotClaimAdvisor.TrySelectChowClaim(hand, melds, claimWindow.DiscardedTile, visibleTiles, ruleset, out var chowTiles))
+        {
+            var chowClaim = new ClaimRequest(botPlayerId, ClaimType.Chow, chowTiles, null);
+            claimWindow.SubmittedClaims.Add(chowClaim);
+
+            await SendToGameWithAliases(hubContext, game.Id, "ClaimSubmitted",
+                new { PlayerId = botPlayerId, ClaimType = "Chow" },
                 cancellationToken);
         }
         else
