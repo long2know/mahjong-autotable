@@ -1788,6 +1788,67 @@ public class BotClaimAdvisorTests
         shouldClaim.Should().BeFalse();
     }
 
+    [Fact]
+    public void TrySelectChowClaim_ReturnsTrue_WhenChangshaClaimCreatesWinningOuts()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Bamboos, 9)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Bamboos, 4);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectChowClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            MahjongRuleset.Changsha258,
+            out var claimTiles);
+
+        shouldClaim.Should().BeTrue();
+        claimTiles.Should().HaveCount(2);
+        claimTiles.Should().OnlyContain(tile => tile.Suit == TileSuit.Bamboos);
+
+        var chowRanks = claimTiles
+            .Select(tile => tile.Rank)
+            .Append(discardedTile.Rank)
+            .OrderBy(rank => rank)
+            .ToArray();
+
+        chowRanks.Distinct().Should().HaveCount(3);
+        (chowRanks[2] - chowRanks[0]).Should().Be(2);
+    }
+
+    [Fact]
+    public void TrySelectChowClaim_ReturnsFalse_WhenDiscardIsHonor()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Winds, 0, Wind.East);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectChowClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            MahjongRuleset.ChineseOfficial,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
     private static int CountWinningDrawOutsAfterDraw(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,

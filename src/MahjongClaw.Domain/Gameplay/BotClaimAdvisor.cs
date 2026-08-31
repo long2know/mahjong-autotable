@@ -7,6 +7,7 @@ public static class BotClaimAdvisor
 {
     private const int ExposedKongOutsDropTolerance = 0;
     private const int PungOutsDropTolerance = 0;
+    private const int ChowOutsDropTolerance = 0;
     private static readonly IReadOnlyList<Tile> ChineseOfficialDrawTileTypes = BuildDrawTileTypes(MahjongRuleset.ChineseOfficial);
     private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
     private static readonly IReadOnlyList<Tile> ChineseOfficialOrphanTileTypes = BuildChineseOfficialOrphanTileTypes();
@@ -77,6 +78,20 @@ public static class BotClaimAdvisor
         MahjongRuleset ruleset,
         out IReadOnlyList<Tile> meldTilesForClaim)
         => TrySelectPungClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            Array.Empty<Tile>(),
+            ruleset,
+            out meldTilesForClaim);
+
+    public static bool TrySelectChowClaim(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        Tile discardedTile,
+        MahjongRuleset ruleset,
+        out IReadOnlyList<Tile> meldTilesForClaim)
+        => TrySelectChowClaim(
             handTiles,
             meldTiles,
             discardedTile,
@@ -574,6 +589,156 @@ public static class BotClaimAdvisor
         return true;
     }
 
+    public static bool TrySelectChowClaim(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        Tile discardedTile,
+        IReadOnlyList<Tile> visibleTiles,
+        MahjongRuleset ruleset,
+        out IReadOnlyList<Tile> meldTilesForClaim)
+    {
+        ArgumentNullException.ThrowIfNull(handTiles);
+        ArgumentNullException.ThrowIfNull(meldTiles);
+        ArgumentNullException.ThrowIfNull(discardedTile);
+        ArgumentNullException.ThrowIfNull(visibleTiles);
+
+        if (handTiles.Any(static tile => tile is null)
+            || meldTiles.Any(static tile => tile is null)
+            || visibleTiles.Any(static tile => tile is null))
+        {
+            throw new ArgumentException("Tiles cannot contain null values.");
+        }
+
+        meldTilesForClaim = Array.Empty<Tile>();
+
+        var declaredKongCount = meldTiles
+            .GroupBy(static tile => tile)
+            .Count(group => group.Count() == 4);
+
+        if (!TurnFlowValidator.CanDraw(handTiles.Count, meldTiles.Count, declaredKongCount))
+        {
+            return false;
+        }
+
+        if (!IsSuitedTile(discardedTile) || discardedTile.IsFlower)
+        {
+            return false;
+        }
+
+        if (ruleset == MahjongRuleset.Changsha258 && !Changsha258Ruleset.IsAllowedTile(discardedTile))
+        {
+            return false;
+        }
+
+        var chowCandidates = BuildChowCandidates(handTiles, discardedTile);
+        if (chowCandidates.Count == 0)
+        {
+            return false;
+        }
+
+        var visibleCounts = BuildVisibleCounts(visibleTiles);
+        // visibleTiles should exclude the current discard; add it here so outs reflect the new visible tile.
+        visibleCounts.TryGetValue(discardedTile, out var discardCount);
+        visibleCounts[discardedTile] = discardCount + 1;
+
+        var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
+        var bestOuts = default(WinningOutSummary);
+        IReadOnlyList<Tile>? bestCandidate = null;
+        WinningOutSummary preClaimPotentialOuts = default;
+        bool hasPreClaimPotentialOuts = false;
+
+        foreach (var candidate in chowCandidates)
+        {
+            var postClaimOuts = CountBestWinningOutsAfterChowClaim(
+                handTiles,
+                meldTiles,
+                discardedTile,
+                candidate,
+                visibleCounts,
+                ruleset,
+                requireMinimumFan: true);
+
+            if (preClaimOuts.TileTypes > 0 && postClaimOuts.TileTypes == 0)
+            {
+                continue;
+            }
+
+            if (preClaimOuts.TileTypes > 0
+                && IsOutsDropBeyondTolerance(preClaimOuts, postClaimOuts, ChowOutsDropTolerance))
+            {
+                continue;
+            }
+
+            if (ruleset == MahjongRuleset.ChineseOfficial
+                && IsChineseOfficialSevenPairsLean(handTiles, meldTiles)
+                && preClaimOuts.TileTypes > 0
+                && postClaimOuts.TileTypes <= preClaimOuts.TileTypes)
+            {
+                continue;
+            }
+
+            if (ruleset == MahjongRuleset.Changsha258
+                && IsChangshaSevenPairsLean(handTiles, meldTiles)
+                && postClaimOuts.TileTypes <= preClaimOuts.TileTypes)
+            {
+                continue;
+            }
+
+            if (ruleset == MahjongRuleset.ChineseOfficial && preClaimOuts.TileTypes == 0)
+            {
+                if (!hasPreClaimPotentialOuts)
+                {
+                    preClaimPotentialOuts = CountWinningDrawOutsAfterDraw(
+                        handTiles,
+                        meldTiles,
+                        visibleCounts,
+                        ruleset,
+                        requireMinimumFan: false);
+                    hasPreClaimPotentialOuts = true;
+                }
+
+                var postClaimPotentialOuts = CountBestWinningOutsAfterChowClaim(
+                    handTiles,
+                    meldTiles,
+                    discardedTile,
+                    candidate,
+                    visibleCounts,
+                    ruleset,
+                    requireMinimumFan: false);
+
+                if (postClaimOuts.TileTypes == 0)
+                {
+                    if (preClaimPotentialOuts.TileTypes == 0 && postClaimPotentialOuts.TileTypes == 0)
+                    {
+                        continue;
+                    }
+
+                    if (preClaimPotentialOuts.TileTypes > 0
+                        && IsOutsDropBeyondTolerance(preClaimPotentialOuts, postClaimPotentialOuts, ChowOutsDropTolerance))
+                    {
+                        continue;
+                    }
+                }
+            }
+
+            if (bestCandidate is null
+                || postClaimOuts.TileTypes > bestOuts.TileTypes
+                || (postClaimOuts.TileTypes == bestOuts.TileTypes && postClaimOuts.RemainingCopies > bestOuts.RemainingCopies))
+            {
+                bestOuts = postClaimOuts;
+                bestCandidate = candidate;
+            }
+        }
+
+        if (bestCandidate is null)
+        {
+            return false;
+        }
+
+        meldTilesForClaim = bestCandidate;
+        return true;
+    }
+
     private static WinningOutSummary CountWinningDrawOutsAfterDraw(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
@@ -723,6 +888,104 @@ public static class BotClaimAdvisor
         }
 
         return bestOuts;
+    }
+
+    private static WinningOutSummary CountBestWinningOutsAfterChowClaim(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        Tile discardedTile,
+        IReadOnlyList<Tile> chowTiles,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
+        MahjongRuleset ruleset,
+        bool requireMinimumFan)
+    {
+        var handAfterClaim = new List<Tile>(handTiles);
+
+        foreach (var chowTile in chowTiles)
+        {
+            var index = handAfterClaim.FindIndex(tile => tile.Equals(chowTile));
+            if (index < 0)
+            {
+                return default;
+            }
+
+            handAfterClaim.RemoveAt(index);
+        }
+
+        var meldAfterClaim = meldTiles
+            .Concat(chowTiles)
+            .Append(discardedTile)
+            .ToList();
+
+        var bestOuts = default(WinningOutSummary);
+
+        for (var discardIndex = 0; discardIndex < handAfterClaim.Count; discardIndex++)
+        {
+            var reducedHand = handAfterClaim
+                .Where((_, index) => index != discardIndex)
+                .ToList();
+
+            var outs = CountWinningDrawOutsAfterDraw(reducedHand, meldAfterClaim, visibleCounts, ruleset, requireMinimumFan);
+            if (outs.TileTypes > bestOuts.TileTypes
+                || (outs.TileTypes == bestOuts.TileTypes && outs.RemainingCopies > bestOuts.RemainingCopies))
+            {
+                bestOuts = outs;
+            }
+        }
+
+        return bestOuts;
+    }
+
+    private static IReadOnlyList<IReadOnlyList<Tile>> BuildChowCandidates(
+        IReadOnlyList<Tile> handTiles,
+        Tile discardedTile)
+    {
+        if (!IsSuitedTile(discardedTile) || discardedTile.IsFlower)
+        {
+            return Array.Empty<IReadOnlyList<Tile>>();
+        }
+
+        var handCounts = handTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        bool HasTile(Tile tile) => handCounts.TryGetValue(tile, out var count) && count > 0;
+
+        var candidates = new List<IReadOnlyList<Tile>>();
+        var suit = discardedTile.Suit;
+        var rank = discardedTile.Rank;
+
+        void TryAdd(int firstRank, int secondRank)
+        {
+            if (firstRank < 1 || secondRank > 9)
+            {
+                return;
+            }
+
+            var firstTile = new Tile(suit, firstRank);
+            var secondTile = new Tile(suit, secondRank);
+            if (HasTile(firstTile) && HasTile(secondTile))
+            {
+                candidates.Add(new[] { firstTile, secondTile });
+            }
+        }
+
+        if (rank >= 3)
+        {
+            TryAdd(rank - 2, rank - 1);
+        }
+
+        if (rank >= 2 && rank <= 8)
+        {
+            TryAdd(rank - 1, rank + 1);
+        }
+
+        if (rank <= 7)
+        {
+            TryAdd(rank + 1, rank + 2);
+        }
+
+        return candidates;
     }
 
     private static bool IsOutsDropBeyondTolerance(WinningOutSummary preClaimOuts, WinningOutSummary postClaimOuts, int tolerance)
@@ -1126,6 +1389,9 @@ public static class BotClaimAdvisor
 
         return hasOwnedPairPotential || hasMissingPairPotential;
     }
+
+    private static bool IsSuitedTile(Tile tile)
+        => tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos;
 
     private static bool IsTerminalSuitedTile(Tile tile)
         => !tile.IsHonor
