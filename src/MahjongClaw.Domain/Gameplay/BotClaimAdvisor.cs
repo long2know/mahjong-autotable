@@ -721,6 +721,59 @@ public static class BotClaimAdvisor
                 }
             }
 
+            if (ruleset == MahjongRuleset.Changsha258
+                && preClaimOuts.TileTypes == 0
+                && postClaimOuts.TileTypes == 0)
+            {
+                var handAfterChow = new List<Tile>(handTiles);
+
+                foreach (var chowTile in candidate)
+                {
+                    var index = handAfterChow.FindIndex(tile => tile.Equals(chowTile));
+                    if (index < 0)
+                    {
+                        continue;
+                    }
+
+                    handAfterChow.RemoveAt(index);
+                }
+
+                var remainingCounts = handAfterChow
+                    .GroupBy(static tile => tile)
+                    .ToDictionary(group => group.Key, group => group.Count());
+                var hasPair = remainingCounts.Any(entry => entry.Value >= 2);
+
+                bool HasChow()
+                {
+                    var suitedSuits = new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos };
+                    foreach (var suit in suitedSuits)
+                    {
+                        var ranks = remainingCounts
+                            .Where(entry => entry.Key.Suit == suit)
+                            .Select(entry => entry.Key.Rank)
+                            .Distinct()
+                            .ToHashSet();
+
+                        for (var rank = 1; rank <= 7; rank++)
+                        {
+                            if (ranks.Contains(rank)
+                                && ranks.Contains(rank + 1)
+                                && ranks.Contains(rank + 2))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+
+                    return false;
+                }
+
+                if (!hasPair && !HasChow())
+                {
+                    continue;
+                }
+            }
+
             if (bestCandidate is null
                 || postClaimOuts.TileTypes > bestOuts.TileTypes
                 || (postClaimOuts.TileTypes == bestOuts.TileTypes && postClaimOuts.RemainingCopies > bestOuts.RemainingCopies))
