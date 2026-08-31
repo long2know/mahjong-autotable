@@ -641,6 +641,14 @@ public static class BotClaimAdvisor
         visibleCounts.TryGetValue(discardedTile, out var discardCount);
         visibleCounts[discardedTile] = discardCount + 1;
 
+        var allowChangshaFlexibleEye = ruleset == MahjongRuleset.Changsha258
+            && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
+        var hasLiveSmallWinPairCandidate = ruleset == MahjongRuleset.Changsha258
+            && HasLiveSmallWinPairCandidate(handTiles, meldTiles, visibleCounts);
+        var allowChangshaSmallWinDeadFallback = ruleset == MahjongRuleset.Changsha258
+            && visibleCounts.Count > 0
+            && !hasLiveSmallWinPairCandidate;
+
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
         var bestOuts = default(WinningOutSummary);
         IReadOnlyList<Tile>? bestCandidate = null;
@@ -649,6 +657,32 @@ public static class BotClaimAdvisor
 
         foreach (var candidate in chowCandidates)
         {
+            var handAfterChow = new List<Tile>(handTiles);
+
+            foreach (var chowTile in candidate)
+            {
+                var index = handAfterChow.FindIndex(tile => tile.Equals(chowTile));
+                if (index < 0)
+                {
+                    continue;
+                }
+
+                handAfterChow.RemoveAt(index);
+            }
+
+            var meldAfterChow = meldTiles
+                .Concat(candidate)
+                .Append(discardedTile)
+                .ToList();
+
+            if (ruleset == MahjongRuleset.Changsha258
+                && !allowChangshaFlexibleEye
+                && !allowChangshaSmallWinDeadFallback
+                && HasOnlyThinSmallWinPairCandidate(handAfterChow, meldAfterChow, visibleCounts))
+            {
+                continue;
+            }
+
             var postClaimOuts = CountBestWinningOutsAfterChowClaim(
                 handTiles,
                 meldTiles,
@@ -725,19 +759,6 @@ public static class BotClaimAdvisor
                 && preClaimOuts.TileTypes == 0
                 && postClaimOuts.TileTypes == 0)
             {
-                var handAfterChow = new List<Tile>(handTiles);
-
-                foreach (var chowTile in candidate)
-                {
-                    var index = handAfterChow.FindIndex(tile => tile.Equals(chowTile));
-                    if (index < 0)
-                    {
-                        continue;
-                    }
-
-                    handAfterChow.RemoveAt(index);
-                }
-
                 var remainingCounts = handAfterChow
                     .GroupBy(static tile => tile)
                     .ToDictionary(group => group.Key, group => group.Count());
