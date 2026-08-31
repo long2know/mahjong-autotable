@@ -2809,31 +2809,61 @@ public static class BotDiscardAdvisor
                         distinctOrphanTypes,
                         nonOrphanCount);
 
-                    if (hasLiveThirteenOrphansPath)
+                    var preferNonOrphanDiscard = hasLiveThirteenOrphansPath;
+                    if (preferNonOrphanDiscard)
                     {
-                        if (soleChineseOfficialPairTile is not null
-                            && !soleChineseOfficialPairTile.IsHonor
-                            && !IsTerminalSuitedTile(soleChineseOfficialPairTile))
-                        {
-                            allowBreakingSolePairForTerminalHonorLean = true;
-                        }
-
                         var nonOrphanCandidates = candidates
                             .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
                             .ToList();
 
-                        if (nonOrphanCandidates.Count > 0)
+                        if (nonOrphanCandidates.Count == 0)
                         {
-                            var nonOrphanSingletonCandidates = nonOrphanCandidates
-                                .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var count) && count == 1)
-                                .ToList();
+                            preferNonOrphanDiscard = false;
+                        }
+                        else
+                        {
+                            var nonOrphanTripletTiles = handCounts
+                                .Where(entry => entry.Value >= 3 && !entry.Key.IsHonor && !IsTerminalSuitedTile(entry.Key))
+                                .Select(entry => entry.Key)
+                                .ToHashSet();
 
-                            candidates = nonOrphanSingletonCandidates.Count > 0
-                                ? nonOrphanSingletonCandidates
-                                : nonOrphanCandidates;
+                            if (nonOrphanTripletTiles.Count > 0)
+                            {
+                                var nonTripletCandidates = nonOrphanCandidates
+                                    .Where(candidate => !nonOrphanTripletTiles.Contains(candidate.Tile))
+                                    .ToList();
+
+                                if (nonTripletCandidates.Count > 0)
+                                {
+                                    nonOrphanCandidates = nonTripletCandidates;
+                                }
+                                else
+                                {
+                                    preferNonOrphanDiscard = false;
+                                }
+                            }
+
+                            if (preferNonOrphanDiscard)
+                            {
+                                if (soleChineseOfficialPairTile is not null
+                                    && !soleChineseOfficialPairTile.IsHonor
+                                    && !IsTerminalSuitedTile(soleChineseOfficialPairTile))
+                                {
+                                    allowBreakingSolePairForTerminalHonorLean = true;
+                                }
+
+                                var nonOrphanSingletonCandidates = nonOrphanCandidates
+                                    .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var count) && count == 1)
+                                    .ToList();
+
+                                candidates = nonOrphanSingletonCandidates.Count > 0
+                                    ? nonOrphanSingletonCandidates
+                                    : nonOrphanCandidates;
+                            }
                         }
                     }
-                    else
+
+                    if (!preferNonOrphanDiscard)
                     {
                         var orphanCandidates = candidates
                             .Where(candidate => candidate.Tile.IsHonor || IsTerminalSuitedTile(candidate.Tile))
