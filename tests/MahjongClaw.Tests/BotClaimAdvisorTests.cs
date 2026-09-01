@@ -1310,7 +1310,7 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
-    public void TrySelectPungClaim_ReturnsFalse_WhenHandAlreadyHasThreeOfDiscardedTile()
+    public void TrySelectPungClaim_ReturnsTrue_WhenHandAlreadyHasThreeOfDiscardedTile()
     {
         var handTiles = new List<Tile>
         {
@@ -1331,8 +1331,9 @@ public class BotClaimAdvisorTests
             MahjongRuleset.Changsha258,
             out var claimTiles);
 
-        shouldClaim.Should().BeFalse();
-        claimTiles.Should().BeEmpty();
+        shouldClaim.Should().BeTrue();
+        claimTiles.Should().HaveCount(2);
+        claimTiles.Should().OnlyContain(tile => tile.Equals(discardedTile));
     }
 
     [Fact]
