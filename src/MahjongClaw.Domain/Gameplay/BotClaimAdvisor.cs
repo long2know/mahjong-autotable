@@ -641,6 +641,27 @@ public static class BotClaimAdvisor
         visibleCounts.TryGetValue(discardedTile, out var discardCount);
         visibleCounts[discardedTile] = discardCount + 1;
 
+        if (ruleset == MahjongRuleset.ChineseOfficial && meldTiles.Count == 0)
+        {
+            var orphanTiles = handTiles
+                .Where(tile => tile.IsHonor || IsTerminalSuitedTile(tile))
+                .ToList();
+            var nonOrphanCount = handTiles.Count - orphanTiles.Count;
+            var distinctOrphanTypes = orphanTiles.Distinct().Count();
+
+            if (nonOrphanCount <= 4 && distinctOrphanTypes >= 8)
+            {
+                var ownedCounts = handTiles
+                    .GroupBy(static tile => tile)
+                    .ToDictionary(group => group.Key, group => group.Count());
+
+                if (HasLiveThirteenOrphansPath(ownedCounts, visibleCounts, distinctOrphanTypes, nonOrphanCount))
+                {
+                    return false;
+                }
+            }
+        }
+
         var allowChangshaFlexibleEye = ruleset == MahjongRuleset.Changsha258
             && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
         var hasLiveSmallWinPairCandidate = ruleset == MahjongRuleset.Changsha258
