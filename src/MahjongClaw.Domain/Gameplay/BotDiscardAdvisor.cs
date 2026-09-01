@@ -765,7 +765,13 @@ public static class BotDiscardAdvisor
                         && changshaDominantSuit.HasValue
                         && singletonTile.Suit != changshaDominantSuit.Value)
                     {
-                        shouldProtectSingleton = false;
+                        var offSuitCount = ownedTiles.Count(tile => tile.IsHonor
+                            || tile.Suit != changshaDominantSuit.Value);
+
+                        if (offSuitCount <= 1)
+                        {
+                            shouldProtectSingleton = false;
+                        }
                     }
 
                     if (shouldProtectSingleton)
