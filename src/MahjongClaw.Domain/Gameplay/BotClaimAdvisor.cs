@@ -699,6 +699,14 @@ public static class BotClaimAdvisor
                 continue;
             }
 
+            if (ruleset == MahjongRuleset.Changsha258
+                && !allowChangshaFlexibleEye
+                && hasLiveSmallWinPairCandidate
+                && !HasLiveSmallWinPairCandidate(handAfterChow, meldAfterChow, visibleCounts))
+            {
+                continue;
+            }
+
             var postClaimOuts = CountBestWinningOutsAfterChowClaim(
                 handTiles,
                 meldTiles,
@@ -1313,6 +1321,9 @@ public static class BotClaimAdvisor
         IReadOnlyList<Tile> meldTiles,
         IReadOnlyDictionary<Tile, int> visibleCounts)
     {
+        var handCounts = handTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
         var ownedCounts = handTiles
             .Concat(meldTiles)
             .GroupBy(static tile => tile)
@@ -1323,21 +1334,22 @@ public static class BotClaimAdvisor
             foreach (var rank in Changsha258Ruleset.SmallWinPairRanks)
             {
                 var tile = new Tile(suit, rank);
+                handCounts.TryGetValue(tile, out var handCount);
                 ownedCounts.TryGetValue(tile, out var ownedCount);
                 visibleCounts.TryGetValue(tile, out var visibleCount);
 
                 var remainingCopies = 4 - ownedCount - visibleCount;
-                if (ownedCount >= 2)
+                if (handCount >= 2)
                 {
                     return true;
                 }
 
-                if (ownedCount == 1 && remainingCopies >= 1)
+                if (handCount == 1 && remainingCopies >= 1)
                 {
                     return true;
                 }
 
-                if (ownedCount == 0 && remainingCopies >= 2)
+                if (handCount == 0 && remainingCopies >= 2)
                 {
                     return true;
                 }
