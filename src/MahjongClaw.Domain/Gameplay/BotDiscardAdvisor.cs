@@ -2094,7 +2094,7 @@ public static class BotDiscardAdvisor
 
                 var honorSparseGate = honorPairCount == 0
                     && ((honorCount <= 3 && suitedCount >= 9)
-                        || (honorCount == 4 && suitedCount >= 10));
+                        || (honorCount == 4 && suitedCount >= 9));
 
                 if (honorSparseGate)
                 {
