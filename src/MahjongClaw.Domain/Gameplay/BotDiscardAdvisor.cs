@@ -5302,7 +5302,7 @@ public static class BotDiscardAdvisor
         => tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos;
 
     private static bool IsTerminalSuitedTile(Tile tile)
-        => !tile.IsHonor && tile.Rank is 1 or 9;
+        => IsSuitedTile(tile) && tile.Rank is 1 or 9;
 
     private static IReadOnlyList<Tile> BuildChangshaSmallWinPairTiles()
         => Changsha258Ruleset.AllowedSuits

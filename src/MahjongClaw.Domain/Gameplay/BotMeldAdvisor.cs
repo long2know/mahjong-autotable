@@ -751,5 +751,6 @@ public static class BotMeldAdvisor
     }
 
     private static bool IsTerminalSuitedTile(Tile tile)
-        => !tile.IsHonor && tile.Rank is 1 or 9;
+        => tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos
+            && tile.Rank is 1 or 9;
 }
