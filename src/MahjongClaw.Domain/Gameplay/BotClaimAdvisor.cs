@@ -1298,7 +1298,7 @@ public static class BotClaimAdvisor
             .Select(entry => entry.Key)
             .ToList();
 
-        if (smallWinSingletons.Count != 1)
+        if (smallWinSingletons.Count == 0)
         {
             return false;
         }
@@ -1308,12 +1308,26 @@ public static class BotClaimAdvisor
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
 
-        var singletonTile = smallWinSingletons[0];
-        ownedCounts.TryGetValue(singletonTile, out var ownedCount);
-        visibleCounts.TryGetValue(singletonTile, out var visibleCount);
-        var remainingCopies = 4 - ownedCount - visibleCount;
+        var singletonSummaries = smallWinSingletons
+            .Select(tile =>
+            {
+                ownedCounts.TryGetValue(tile, out var ownedCount);
+                visibleCounts.TryGetValue(tile, out var visibleCount);
+                return new
+                {
+                    Tile = tile,
+                    RemainingCopies = 4 - ownedCount - visibleCount
+                };
+            })
+            .ToList();
 
-        return remainingCopies <= 1;
+        if (singletonSummaries.Any(entry => entry.RemainingCopies >= 2))
+        {
+            return false;
+        }
+
+        var totalRemainingCopies = singletonSummaries.Sum(entry => Math.Max(0, entry.RemainingCopies));
+        return totalRemainingCopies <= 2;
     }
 
     private static bool HasLiveSmallWinPairCandidate(
