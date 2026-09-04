@@ -1527,6 +1527,38 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectPungClaim_ReturnsFalse_WhenAlternateSmallWinSingletonsAreExhaustedWithoutVisibility()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Bamboos, 4)
+        };
+        var meldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5)
+        };
+        var discardedTile = new Tile(TileSuit.Dots, 8);
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles).Should().BeFalse();
+
+        var shouldClaim = BotClaimAdvisor.TrySelectPungClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            MahjongRuleset.Changsha258,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public void TrySelectPungClaim_ReturnsFalse_WhenChangshaOnlySmallWinPairWouldBeConsumed()
     {
         var handTiles = new List<Tile>

@@ -1222,25 +1222,42 @@ public static class BotClaimAdvisor
 
             if (entry.Value == 1)
             {
+                ownedCounts.TryGetValue(entry.Key, out var ownedCount);
+                visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+                var remainingCopies = 4 - ownedCount - visibleCount;
+
                 if (!hasVisibilityBeyondDiscard)
                 {
+                    if (remainingCopies <= 0)
+                    {
+                        continue;
+                    }
+
                     liveAlternateSingletons++;
+                    totalAlternateRemainingCopies += remainingCopies;
+
                     if (!requireStrongAlternate)
                     {
                         return true;
                     }
 
-                    if (liveAlternateSingletons >= 2)
+                    if (remainingCopies >= 2)
+                    {
+                        hasStrongAlternateSingleton = true;
+                    }
+
+                    if (hasStrongAlternateSingleton)
+                    {
+                        return true;
+                    }
+
+                    if (liveAlternateSingletons >= 2 && totalAlternateRemainingCopies >= 3)
                     {
                         return true;
                     }
 
                     continue;
                 }
-
-                ownedCounts.TryGetValue(entry.Key, out var ownedCount);
-                visibleCounts.TryGetValue(entry.Key, out var visibleCount);
-                var remainingCopies = 4 - ownedCount - visibleCount;
 
                 if (!requireStrongAlternate)
                 {
