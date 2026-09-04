@@ -365,6 +365,18 @@ public static class BotDiscardAdvisor
             return offRankKongDiscardIndex.Value;
         }
 
+        var isolatedSmallWinSingletonDiscardIndex = TrySelectChangshaIsolatedSmallWinSingletonDiscardIndex(
+            handTiles,
+            handCounts,
+            visibleCounts,
+            enforceSmallWinPairBias,
+            hasChangshaPureSuitLean);
+
+        if (isolatedSmallWinSingletonDiscardIndex.HasValue)
+        {
+            return isolatedSmallWinSingletonDiscardIndex.Value;
+        }
+
         var hasStrongSmallWinPairCandidate = enforceSmallWinPairBias && visibleCounts.Count > 0
             ? HasStrongSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts)
             : enforceSmallWinPairBias;
@@ -4497,6 +4509,60 @@ public static class BotDiscardAdvisor
         }
 
         return true;
+    }
+
+    private static int? TrySelectChangshaIsolatedSmallWinSingletonDiscardIndex(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
+        bool enforceSmallWinPairBias,
+        bool hasChangshaPureSuitLean)
+    {
+        if (!enforceSmallWinPairBias || visibleCounts.Count > 0 || hasChangshaPureSuitLean)
+        {
+            return null;
+        }
+
+        var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
+        if (smallWinPairCount > 0)
+        {
+            return null;
+        }
+
+        var pairCount = handCounts.Count(entry => entry.Value >= 2);
+        if (pairCount == 0)
+        {
+            return null;
+        }
+
+        var smallWinSingletons = handCounts
+            .Where(entry => entry.Value == 1 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+            .Select(entry => entry.Key)
+            .ToList();
+
+        if (smallWinSingletons.Count < 2)
+        {
+            return null;
+        }
+
+        var isolatedSmallWinSingletons = smallWinSingletons
+            .Where(tile => !HasAdjacentSuitedTile(handCounts, tile))
+            .ToHashSet();
+
+        if (isolatedSmallWinSingletons.Count == 0 || isolatedSmallWinSingletons.Count == smallWinSingletons.Count)
+        {
+            return null;
+        }
+
+        for (var i = 0; i < handTiles.Count; i++)
+        {
+            if (isolatedSmallWinSingletons.Contains(handTiles[i]))
+            {
+                return i;
+            }
+        }
+
+        return null;
     }
 
     private static int? TrySelectChangshaDeadSmallWinSingletonDiscardIndex(
