@@ -682,6 +682,19 @@ public static class BotClaimAdvisor
             }
         }
 
+        var protectSoleSmallWinPairWhenNearDead = false;
+        if (ruleset == MahjongRuleset.Changsha258
+            && !allowChangshaFlexibleEye
+            && soleSmallWinPairTile is not null
+            && soleSmallWinPairCount == 2)
+        {
+            var ownedCount = handTiles.Count(tile => tile.Equals(soleSmallWinPairTile))
+                + meldTiles.Count(tile => tile.Equals(soleSmallWinPairTile));
+            visibleCounts.TryGetValue(soleSmallWinPairTile, out var visibleCount);
+            var remainingCopies = 4 - ownedCount - visibleCount;
+            protectSoleSmallWinPairWhenNearDead = remainingCopies <= 1;
+        }
+
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
         var bestOuts = default(WinningOutSummary);
         IReadOnlyList<Tile>? bestCandidate = null;
@@ -841,6 +854,11 @@ public static class BotClaimAdvisor
                 && soleSmallWinPairCount == 2
                 && candidate.Any(tile => tile.Equals(soleSmallWinPairTile));
             var preservesSmallWinPair = !breaksSoleSmallWinPair;
+
+            if (protectSoleSmallWinPairWhenNearDead && breaksSoleSmallWinPair)
+            {
+                continue;
+            }
 
             if (bestCandidate is null
                 || postClaimOuts.TileTypes > bestOuts.TileTypes

@@ -2022,6 +2022,36 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectChowClaim_ReturnsFalse_WhenChangshaClaimBreaksSoleNearDeadSmallWinPair()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Characters, 6), new(TileSuit.Characters, 7), new(TileSuit.Characters, 8)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 1);
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2)
+        };
+
+        var shouldClaim = BotClaimAdvisor.TrySelectChowClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            visibleTiles,
+            MahjongRuleset.Changsha258,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public void TrySelectChowClaim_ReturnsFalse_WhenChineseOfficialThirteenOrphansLeanWouldBreakForChow()
     {
         var ruleset = MahjongRuleset.ChineseOfficial;
