@@ -665,9 +665,27 @@ public static class BotClaimAdvisor
             && visibleCounts.Count > 0
             && !hasLiveSmallWinPairCandidate;
 
+        Tile? soleSmallWinPairTile = null;
+        var soleSmallWinPairCount = 0;
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            var smallWinPairs = handTiles
+                .GroupBy(static tile => tile)
+                .Where(group => group.Count() >= 2 && Changsha258Ruleset.IsSmallWinPair(group.Key))
+                .Select(group => new { Tile = group.Key, Count = group.Count() })
+                .ToList();
+
+            if (smallWinPairs.Count == 1)
+            {
+                soleSmallWinPairTile = smallWinPairs[0].Tile;
+                soleSmallWinPairCount = smallWinPairs[0].Count;
+            }
+        }
+
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
         var bestOuts = default(WinningOutSummary);
         IReadOnlyList<Tile>? bestCandidate = null;
+        var bestPreservesSmallWinPair = true;
         WinningOutSummary preClaimPotentialOuts = default;
         bool hasPreClaimPotentialOuts = false;
 
@@ -819,12 +837,22 @@ public static class BotClaimAdvisor
                 }
             }
 
+            var breaksSoleSmallWinPair = soleSmallWinPairTile is not null
+                && soleSmallWinPairCount == 2
+                && candidate.Any(tile => tile.Equals(soleSmallWinPairTile));
+            var preservesSmallWinPair = !breaksSoleSmallWinPair;
+
             if (bestCandidate is null
                 || postClaimOuts.TileTypes > bestOuts.TileTypes
-                || (postClaimOuts.TileTypes == bestOuts.TileTypes && postClaimOuts.RemainingCopies > bestOuts.RemainingCopies))
+                || (postClaimOuts.TileTypes == bestOuts.TileTypes && postClaimOuts.RemainingCopies > bestOuts.RemainingCopies)
+                || (postClaimOuts.TileTypes == bestOuts.TileTypes
+                    && postClaimOuts.RemainingCopies == bestOuts.RemainingCopies
+                    && preservesSmallWinPair
+                    && !bestPreservesSmallWinPair))
             {
                 bestOuts = postClaimOuts;
                 bestCandidate = candidate;
+                bestPreservesSmallWinPair = preservesSmallWinPair;
             }
         }
 

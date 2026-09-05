@@ -1891,6 +1891,50 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectChowClaim_PrefersPreservingChangshaSmallWinPair_WhenOutsTie()
+    {
+        var ruleset = MahjongRuleset.Changsha258;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 9),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 6), new(TileSuit.Characters, 7), new(TileSuit.Characters, 7)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 4);
+        var preserveCandidate = new List<Tile> { new(TileSuit.Dots, 2), new(TileSuit.Dots, 3) };
+        var breakCandidate = new List<Tile> { new(TileSuit.Dots, 3), new(TileSuit.Dots, 5) };
+
+        var drawTileTypes = BuildDrawTileTypes(ruleset);
+        var preserveOuts = CountBestWinningOutsAfterChowClaimSummary(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            preserveCandidate,
+            drawTileTypes,
+            ruleset);
+        var breakOuts = CountBestWinningOutsAfterChowClaimSummary(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            breakCandidate,
+            drawTileTypes,
+            ruleset);
+
+        preserveOuts.Should().Be(breakOuts);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectChowClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeTrue();
+        claimTiles.Should().BeEquivalentTo(preserveCandidate);
+    }
+
+    [Fact]
     public void TrySelectChowClaim_ReturnsFalse_WhenChangshaClaimLeavesNoPairOrChow()
     {
         var handTiles = new List<Tile>
@@ -2170,6 +2214,127 @@ public class BotClaimAdvisorTests
 
             var outs = CountWinningDrawOutsAfterDraw(reducedHand, meldAfterClaim, drawTileTypes, ruleset, requireMinimumFan);
             if (outs > bestOuts)
+            {
+                bestOuts = outs;
+            }
+        }
+
+        return bestOuts;
+    }
+
+    private readonly record struct WinningOutSummary(int TileTypes, int RemainingCopies);
+
+    private static WinningOutSummary CountWinningDrawOutsAfterDrawSummary(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        IReadOnlyList<Tile> drawTileTypes,
+        MahjongRuleset ruleset,
+        bool requireMinimumFan = true)
+    {
+        var ownedTiles = handTiles
+            .Concat(meldTiles)
+            .ToList();
+        var ownedCounts = ownedTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var winningOuts = 0;
+        var winningOutCopies = 0;
+
+        foreach (var drawTileType in drawTileTypes)
+        {
+            ownedCounts.TryGetValue(drawTileType, out var drawTileCount);
+            var remainingCopies = 4 - drawTileCount;
+            if (remainingCopies <= 0)
+            {
+                continue;
+            }
+
+            var candidateTiles = ownedTiles
+                .Append(drawTileType)
+                .ToList();
+
+            WinningHand? winningHand;
+            if (!requireMinimumFan)
+            {
+                if (ruleset == MahjongRuleset.Changsha258)
+                {
+                    if (!Changsha258Ruleset.TryGetWinningHand(candidateTiles, out winningHand))
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    if (!HandAnalyzer.TryGetWinningHand(candidateTiles, out winningHand))
+                    {
+                        continue;
+                    }
+                }
+            }
+            else
+            {
+                if (!RulesetHandAnalyzer.TryGetWinningHand(candidateTiles, ruleset, out winningHand))
+                {
+                    continue;
+                }
+            }
+
+            if (winningHand is null)
+            {
+                continue;
+            }
+
+            if (requireMinimumFan && !ScoreCalculator.MeetsRulesetMinimumFan(winningHand, ruleset))
+            {
+                continue;
+            }
+
+            winningOuts++;
+            winningOutCopies += remainingCopies;
+        }
+
+        return new WinningOutSummary(winningOuts, winningOutCopies);
+    }
+
+    private static WinningOutSummary CountBestWinningOutsAfterChowClaimSummary(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        Tile discardedTile,
+        IReadOnlyList<Tile> chowTiles,
+        IReadOnlyList<Tile> drawTileTypes,
+        MahjongRuleset ruleset,
+        bool requireMinimumFan = true)
+    {
+        var handAfterClaim = new List<Tile>(handTiles);
+
+        foreach (var chowTile in chowTiles)
+        {
+            var index = handAfterClaim.FindIndex(tile => tile.Equals(chowTile));
+            if (index < 0)
+            {
+                return default;
+            }
+
+            handAfterClaim.RemoveAt(index);
+        }
+
+        var meldAfterClaim = meldTiles
+            .Concat(chowTiles)
+            .Append(discardedTile)
+            .ToList();
+
+        var bestOuts = default(WinningOutSummary);
+
+        for (var discardIndex = 0; discardIndex < handAfterClaim.Count; discardIndex++)
+        {
+            var reducedHand = handAfterClaim
+                .Where((_, index) => index != discardIndex)
+                .ToList();
+
+            var outs = CountWinningDrawOutsAfterDrawSummary(reducedHand, meldAfterClaim, drawTileTypes, ruleset, requireMinimumFan);
+            if (outs.TileTypes > bestOuts.TileTypes
+                || (outs.TileTypes == bestOuts.TileTypes && outs.RemainingCopies > bestOuts.RemainingCopies))
             {
                 bestOuts = outs;
             }
