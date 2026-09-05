@@ -2166,6 +2166,33 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (ruleset == MahjongRuleset.ChineseOfficial
+            && visibleCounts.Count == 0
+            && sevenPairsPairCount < 6)
+        {
+            var honorSingletonCandidates = candidates
+                .Where(candidate => candidate.Tile.IsHonor
+                    && handCounts.TryGetValue(candidate.Tile, out var count)
+                    && count == 1)
+                .ToList();
+
+            if (honorSingletonCandidates.Count > 0)
+            {
+                var honorPairCount = ownedCounts.Count(entry => entry.Key.IsHonor && entry.Value >= 2);
+                var honorCount = ownedTiles.Count(static tile => tile.IsHonor);
+                var suitedCount = ownedTiles.Count(static tile => !tile.IsHonor);
+
+                var honorSparseGate = honorPairCount == 0
+                    && ((honorCount <= 3 && suitedCount >= 9)
+                        || (honorCount == 4 && suitedCount >= 9));
+
+                if (honorSparseGate)
+                {
+                    candidates = honorSingletonCandidates;
+                }
+            }
+        }
+
         if (ruleset == MahjongRuleset.Changsha258 && promotableKongTiles.Count > 0)
         {
             promotableKongTiles.RemoveWhere(tile =>
