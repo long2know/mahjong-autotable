@@ -1108,6 +1108,28 @@ public static class BotDiscardAdvisor
 
                     if (shouldDiscardSingleton)
                     {
+                        var liveSingletonIndex = -1;
+                        for (var i = 0; i < handTiles.Count; i++)
+                        {
+                            if (handTiles[i].Equals(liveSingleton.Tile))
+                            {
+                                liveSingletonIndex = i;
+                                break;
+                            }
+                        }
+
+                        if (liveSingletonIndex >= 0)
+                        {
+                            var liveSingletonOuts = discardOutSummaries[liveSingletonIndex].TileTypes;
+                            if (maxWinningOuts > 0 && liveSingletonOuts == 0)
+                            {
+                                shouldDiscardSingleton = false;
+                            }
+                        }
+                    }
+
+                    if (shouldDiscardSingleton)
+                    {
                         var deadOffRankPairCandidates = candidates
                             .Where(candidate =>
                             {
