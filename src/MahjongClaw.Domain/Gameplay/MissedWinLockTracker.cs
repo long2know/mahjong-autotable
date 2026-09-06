@@ -34,7 +34,7 @@ public static class MissedWinLockTracker
             .Append(discardedTile)
             .ToList();
 
-        if (!RulesetHandAnalyzer.IsWinningHand(candidateTiles, ruleset))
+        if (!IsWinningWithMinimumFan(candidateTiles, ruleset))
         {
             return null;
         }
@@ -74,7 +74,7 @@ public static class MissedWinLockTracker
         {
             var candidateTiles = baseTiles.Append(testTile).ToList();
             
-            if (RulesetHandAnalyzer.IsWinningHand(candidateTiles, ruleset))
+            if (IsWinningWithMinimumFan(candidateTiles, ruleset))
             {
                 waitTiles.Add(testTile);
             }
@@ -106,6 +106,17 @@ public static class MissedWinLockTracker
         }
 
         throw new NotSupportedException($"Ruleset {ruleset} not supported for wait set computation.");
+    }
+
+    private static bool IsWinningWithMinimumFan(IReadOnlyList<Tile> tiles, MahjongRuleset ruleset)
+    {
+        if (!RulesetHandAnalyzer.TryGetWinningHand(tiles, ruleset, out var winningHand)
+            || winningHand is null)
+        {
+            return false;
+        }
+
+        return ScoreCalculator.MeetsRulesetMinimumFan(winningHand, ruleset);
     }
 
     private static IEnumerable<Tile> BuildSuitedTiles(IEnumerable<TileSuit> suits)
