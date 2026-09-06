@@ -63,6 +63,28 @@ public sealed class MissedWinLockTests
     }
 
     [Fact]
+    public void CreateLock_ChineseOfficialMinimumFanNotMet_ReturnsNull()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5)
+        };
+        var discardedTile = new Tile(TileSuit.Dots, 5);
+
+        var result = MissedWinLockTracker.CreateLock(
+            handTiles,
+            Array.Empty<Tile>(),
+            discardedTile,
+            MahjongRuleset.ChineseOfficial);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public void IsLockedOnTile_TileInLockedSet_ReturnsTrue()
     {
         var lockedTiles = new HashSet<Tile>
@@ -199,6 +221,26 @@ public sealed class MissedWinLockTests
         var meldTiles = new List<Tile>();
 
         var waitSet = MissedWinLockTracker.ComputeWaitSet(handTiles, meldTiles);
+
+        Assert.Empty(waitSet);
+    }
+
+    [Fact]
+    public void ComputeWaitSet_ChineseOfficialMinimumFanNotMet_ReturnsEmptySet()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5)
+        };
+
+        var waitSet = MissedWinLockTracker.ComputeWaitSet(
+            handTiles,
+            Array.Empty<Tile>(),
+            MahjongRuleset.ChineseOfficial);
 
         Assert.Empty(waitSet);
     }
