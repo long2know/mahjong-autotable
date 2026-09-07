@@ -91,6 +91,30 @@ public sealed class ChangshaWinTypeEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_DetectsSanTong_AsSmallWin_WhenInitialDeal()
+    {
+        List<Tile> tiles =
+        [
+            new Tile(TileSuit.Characters, 3), new Tile(TileSuit.Characters, 3), new Tile(TileSuit.Characters, 3),
+            new Tile(TileSuit.Dots, 3), new Tile(TileSuit.Dots, 3), new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Bamboos, 3), new Tile(TileSuit.Bamboos, 3), new Tile(TileSuit.Bamboos, 3),
+            new Tile(TileSuit.Characters, 4), new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 6),
+            new Tile(TileSuit.Dots, 2), new Tile(TileSuit.Dots, 2)
+        ];
+
+        var hand = ResolveWinningHand(tiles);
+        var evaluation = ChangshaWinTypeEvaluator.Evaluate(
+            tiles,
+            hand,
+            new ChangshaWinContext(IsInitialDeal: true));
+
+        evaluation.WinTypes.Should().Contain(ChangshaWinType.SanTong);
+        evaluation.WinTypes.Should().Contain(ChangshaWinType.SixSixStraight);
+        evaluation.IsSmallWin.Should().BeTrue();
+        evaluation.IsBigWin.Should().BeFalse();
+    }
+
+    [Fact]
     public void Evaluate_DetectsAllTwoFiveEight_AndPureSuit()
     {
         List<Tile> allTwoFiveEightTiles =
