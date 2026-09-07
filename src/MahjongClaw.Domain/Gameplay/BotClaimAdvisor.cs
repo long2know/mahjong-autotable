@@ -266,6 +266,16 @@ public static class BotClaimAdvisor
                 handAfterKong.RemoveAt(index);
             }
 
+            var meldAfterKong = meldTiles
+                .Concat(Enumerable.Repeat(discardedTile, 4))
+                .ToList();
+
+            if (!allowChangshaFlexibleEye
+                && !HasLiveSmallWinPairCandidate(handAfterKong, meldAfterKong, visibleCounts))
+            {
+                return false;
+            }
+
             var remainingCounts = handAfterKong
                 .GroupBy(static tile => tile)
                 .ToDictionary(group => group.Key, group => group.Count());
@@ -505,6 +515,16 @@ public static class BotClaimAdvisor
                 }
 
                 handAfterPung.RemoveAt(index);
+            }
+
+            var meldAfterPung = meldTiles
+                .Concat(Enumerable.Repeat(discardedTile, 3))
+                .ToList();
+
+            if (!allowChangshaFlexibleEye
+                && !HasLiveSmallWinPairCandidate(handAfterPung, meldAfterPung, visibleCounts))
+            {
+                return false;
             }
 
             var remainingCounts = handAfterPung
@@ -814,6 +834,12 @@ public static class BotClaimAdvisor
                 && preClaimOuts.TileTypes == 0
                 && postClaimOuts.TileTypes == 0)
             {
+                if (!allowChangshaFlexibleEye
+                    && !HasLiveSmallWinPairCandidate(handAfterChow, meldAfterChow, visibleCounts))
+                {
+                    continue;
+                }
+
                 var remainingCounts = handAfterChow
                     .GroupBy(static tile => tile)
                     .ToDictionary(group => group.Key, group => group.Count());
