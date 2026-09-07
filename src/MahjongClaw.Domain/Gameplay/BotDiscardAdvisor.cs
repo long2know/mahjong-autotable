@@ -104,6 +104,31 @@ public static class BotDiscardAdvisor
             throw new ArgumentException("Tiles cannot contain null values.", nameof(handTiles));
         }
 
+        int? flowerBonusIndex = null;
+        int? seasonBonusIndex = null;
+
+        for (var i = 0; i < handTiles.Count; i++)
+        {
+            if (handTiles[i].Suit == TileSuit.Flowers)
+            {
+                flowerBonusIndex ??= i;
+            }
+            else if (handTiles[i].Suit == TileSuit.Seasons)
+            {
+                seasonBonusIndex ??= i;
+            }
+        }
+
+        if (flowerBonusIndex.HasValue)
+        {
+            return flowerBonusIndex.Value;
+        }
+
+        if (seasonBonusIndex.HasValue)
+        {
+            return seasonBonusIndex.Value;
+        }
+
         if (ruleset == MahjongRuleset.Changsha258)
         {
             int? firstInvalidIndex = null;
