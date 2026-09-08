@@ -742,6 +742,24 @@ public static class BotClaimAdvisor
                 .Append(discardedTile)
                 .ToList();
 
+            Dictionary<Tile, int>? remainingCounts = null;
+
+            if (ruleset == MahjongRuleset.Changsha258
+                && !allowChangshaFlexibleEye
+                && soleSmallWinPairTile is not null
+                && soleSmallWinPairCount == 2
+                && candidate.Any(tile => tile.Equals(soleSmallWinPairTile)))
+            {
+                remainingCounts = handAfterChow
+                    .GroupBy(static tile => tile)
+                    .ToDictionary(group => group.Key, group => group.Count());
+
+                if (!remainingCounts.Any(entry => entry.Value >= 2))
+                {
+                    continue;
+                }
+            }
+
             if (ruleset == MahjongRuleset.Changsha258
                 && !allowChangshaFlexibleEye
                 && !allowChangshaSmallWinDeadFallback
@@ -840,7 +858,7 @@ public static class BotClaimAdvisor
                     continue;
                 }
 
-                var remainingCounts = handAfterChow
+                remainingCounts ??= handAfterChow
                     .GroupBy(static tile => tile)
                     .ToDictionary(group => group.Key, group => group.Count());
                 var hasPair = remainingCounts.Any(entry => entry.Value >= 2);
