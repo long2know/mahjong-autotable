@@ -3266,11 +3266,67 @@ public static class BotDiscardAdvisor
                 .ToList();
         }
 
+        var allowBreakingSolePairForOuts = false;
+        if (soleChineseOfficialPairTile is not null
+            && handCounts.TryGetValue(soleChineseOfficialPairTile, out var solePairTileCount)
+            && solePairTileCount >= 3)
+        {
+            var solePairCandidates = prioritizedCandidates
+                .Where(candidate => candidate.Tile.Equals(soleChineseOfficialPairTile))
+                .ToList();
+            var nonPairCandidates = prioritizedCandidates
+                .Where(candidate => !candidate.Tile.Equals(soleChineseOfficialPairTile))
+                .ToList();
+
+            if (solePairCandidates.Count > 0 && nonPairCandidates.Count > 0)
+            {
+                var bestSolePairOuts = solePairCandidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestNonPairOuts = nonPairCandidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestSolePairCopies = solePairCandidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestSolePairOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+                var bestNonPairCopies = nonPairCandidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestNonPairOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                if (bestSolePairOuts > bestNonPairOuts
+                    || (bestSolePairOuts == bestNonPairOuts && bestSolePairCopies > bestNonPairCopies))
+                {
+                    allowBreakingSolePairForOuts = true;
+                }
+                else if (bestSolePairOuts == 0
+                    && bestNonPairOuts == 0
+                    && potentialOutSummaries is not null)
+                {
+                    var bestSolePairPotentialOuts = solePairCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+                    var bestNonPairPotentialOuts = nonPairCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+                    var bestSolePairPotentialCopies = solePairCandidates
+                        .Where(candidate => candidate.PotentialWinningDrawOuts == bestSolePairPotentialOuts)
+                        .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+                    var bestNonPairPotentialCopies = nonPairCandidates
+                        .Where(candidate => candidate.PotentialWinningDrawOuts == bestNonPairPotentialOuts)
+                        .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+
+                    if (bestSolePairPotentialOuts > bestNonPairPotentialOuts
+                        || (bestSolePairPotentialOuts == bestNonPairPotentialOuts
+                            && bestSolePairPotentialCopies > bestNonPairPotentialCopies))
+                    {
+                        allowBreakingSolePairForOuts = true;
+                    }
+                }
+            }
+        }
+
         if (soleChineseOfficialPairTile is not null)
         {
             var protectSolePair = !allowBreakingSolePairForTerminalHonorLean
                 || soleChineseOfficialPairTile.IsHonor
                 || IsTerminalSuitedTile(soleChineseOfficialPairTile);
+
+            if (allowBreakingSolePairForOuts)
+            {
+                protectSolePair = false;
+            }
 
             if (protectSolePair)
             {
