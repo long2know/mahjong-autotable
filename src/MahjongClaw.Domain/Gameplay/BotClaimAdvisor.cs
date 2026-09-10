@@ -433,6 +433,41 @@ public static class BotClaimAdvisor
         var allowChangshaFlexibleEye = ruleset == MahjongRuleset.Changsha258
             && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
 
+        Tile? soleSmallWinPairTile = null;
+        var soleSmallWinPairCount = 0;
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            var smallWinPairs = handTiles
+                .GroupBy(static tile => tile)
+                .Where(group => group.Count() >= 2 && Changsha258Ruleset.IsSmallWinPair(group.Key))
+                .Select(group => new { Tile = group.Key, Count = group.Count() })
+                .ToList();
+
+            if (smallWinPairs.Count == 1)
+            {
+                soleSmallWinPairTile = smallWinPairs[0].Tile;
+                soleSmallWinPairCount = smallWinPairs[0].Count;
+            }
+        }
+
+        var protectSoleSmallWinPairWhenNearDead = false;
+        if (ruleset == MahjongRuleset.Changsha258
+            && !allowChangshaFlexibleEye
+            && soleSmallWinPairTile is not null
+            && soleSmallWinPairCount == 2)
+        {
+            var ownedCount = handTiles.Count(tile => tile.Equals(soleSmallWinPairTile))
+                + meldTiles.Count(tile => tile.Equals(soleSmallWinPairTile));
+            visibleCounts.TryGetValue(soleSmallWinPairTile, out var visibleCount);
+            var remainingCopies = 4 - ownedCount - visibleCount;
+            protectSoleSmallWinPairWhenNearDead = remainingCopies <= 1;
+        }
+
+        if (protectSoleSmallWinPairWhenNearDead && discardedTile.Equals(soleSmallWinPairTile))
+        {
+            return false;
+        }
+
         if (ruleset == MahjongRuleset.Changsha258)
         {
             if (Changsha258Ruleset.IsSmallWinPair(discardedTile))
