@@ -271,6 +271,7 @@ public static class BotClaimAdvisor
                 .ToList();
 
             if (!allowChangshaFlexibleEye
+                && !allowChangshaSmallWinDeadFallback
                 && !HasLiveSmallWinPairCandidate(handAfterKong, meldAfterKong, visibleCounts))
             {
                 return false;
@@ -522,6 +523,7 @@ public static class BotClaimAdvisor
                 .ToList();
 
             if (!allowChangshaFlexibleEye
+                && !allowChangshaSmallWinDeadFallback
                 && !HasLiveSmallWinPairCandidate(handAfterPung, meldAfterPung, visibleCounts))
             {
                 return false;
@@ -1318,30 +1320,12 @@ public static class BotClaimAdvisor
 
                 if (!hasVisibilityBeyondDiscard)
                 {
-                    if (remainingCopies <= 0)
+                    if (requireStrongAlternate)
                     {
                         continue;
                     }
 
-                    liveAlternateSingletons++;
-                    totalAlternateRemainingCopies += remainingCopies;
-
-                    if (!requireStrongAlternate)
-                    {
-                        return true;
-                    }
-
-                    if (remainingCopies >= 2)
-                    {
-                        hasStrongAlternateSingleton = true;
-                    }
-
-                    if (hasStrongAlternateSingleton)
-                    {
-                        return true;
-                    }
-
-                    if (liveAlternateSingletons >= 2 && totalAlternateRemainingCopies >= 3)
+                    if (remainingCopies > 0)
                     {
                         return true;
                     }
