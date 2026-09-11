@@ -175,8 +175,9 @@ public static class BotDiscardAdvisor
                 visibleCounts.TryGetValue(entry.Key, out var visibleCount);
                 if (visibleCount < entry.Value)
                 {
-                    // When visibleTiles exclude meld tiles, add meld exposure to discard counts.
-                    visibleCounts[entry.Key] = visibleCount + entry.Value;
+                    // When visibleTiles exclude meld tiles, treat meld exposure as a minimum
+                    // visibility floor without double-counting discards.
+                    visibleCounts[entry.Key] = entry.Value;
                 }
             }
         }
