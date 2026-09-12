@@ -2155,7 +2155,8 @@ public static class BotDiscardAdvisor
                 var honorSparseGate = honorPairCount == 0
                     && ((honorCount <= 3 && suitedCount >= 9)
                         || (honorCount == 4 && suitedCount >= 9)
-                        || (honorCount == 5 && suitedCount >= 8));
+                        || (honorCount == 5 && suitedCount >= 8)
+                        || (honorCount == 6 && suitedCount >= 8));
 
                 if (honorSparseGate)
                 {
@@ -2234,7 +2235,8 @@ public static class BotDiscardAdvisor
                 var honorSparseGate = honorPairCount == 0
                     && ((honorCount <= 3 && suitedCount >= 9)
                         || (honorCount == 4 && suitedCount >= 9)
-                        || (honorCount == 5 && suitedCount >= 8));
+                        || (honorCount == 5 && suitedCount >= 8)
+                        || (honorCount == 6 && suitedCount >= 8));
 
                 if (honorSparseGate)
                 {
