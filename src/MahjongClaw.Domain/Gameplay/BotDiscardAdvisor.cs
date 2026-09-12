@@ -2124,6 +2124,25 @@ public static class BotDiscardAdvisor
             }
         }
 
+        var shouldPreserveThirteenOrphansPath = false;
+        if (ruleset == MahjongRuleset.ChineseOfficial && meldTiles.Count == 0)
+        {
+            var orphanTiles = ownedTiles
+                .Where(tile => tile.IsHonor || IsTerminalSuitedTile(tile))
+                .ToList();
+            var distinctOrphanTypes = orphanTiles.Distinct().Count();
+            var nonOrphanCount = ownedTiles.Count - orphanTiles.Count;
+
+            if (nonOrphanCount is > 0 and <= 3 && distinctOrphanTypes >= 8)
+            {
+                shouldPreserveThirteenOrphansPath = HasLiveThirteenOrphansPath(
+                    ownedCounts,
+                    visibleCounts,
+                    distinctOrphanTypes,
+                    nonOrphanCount);
+            }
+        }
+
         if (ruleset == MahjongRuleset.ChineseOfficial
             && visibleCounts.Count > 0
             && sevenPairsPairCount < 6)
@@ -2152,7 +2171,8 @@ public static class BotDiscardAdvisor
                 var honorCount = ownedTiles.Count(static tile => tile.IsHonor);
                 var suitedCount = ownedTiles.Count(static tile => !tile.IsHonor);
 
-                var honorSparseGate = honorPairCount == 0
+                var honorSparseGate = !shouldPreserveThirteenOrphansPath
+                    && honorPairCount == 0
                     && ((honorCount <= 3 && suitedCount >= 9)
                         || (honorCount == 4 && suitedCount >= 9)
                         || (honorCount == 5 && suitedCount >= 8)
@@ -2232,7 +2252,8 @@ public static class BotDiscardAdvisor
                 var honorCount = ownedTiles.Count(static tile => tile.IsHonor);
                 var suitedCount = ownedTiles.Count(static tile => !tile.IsHonor);
 
-                var honorSparseGate = honorPairCount == 0
+                var honorSparseGate = !shouldPreserveThirteenOrphansPath
+                    && honorPairCount == 0
                     && ((honorCount <= 3 && suitedCount >= 9)
                         || (honorCount == 4 && suitedCount >= 9)
                         || (honorCount == 5 && suitedCount >= 8)
