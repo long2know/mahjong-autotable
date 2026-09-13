@@ -141,6 +141,35 @@ public class BotMeldAdvisorTests
     }
 
     [Fact]
+    public void TrySelectConcealedKong_SkipsSmallWinPair_WhenAlternateSingletonsAreNearDead()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 8),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 4), new(TileSuit.Characters, 6), new(TileSuit.Characters, 7),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 7),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
+        };
+
+        var result = BotMeldAdvisor.TrySelectConcealedKong(
+            tiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258,
+            out _);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
     public void TrySelectConcealedKong_AllowsSmallWinPair_WhenChangshaBigWinEyeFlexible()
     {
         var tiles = new List<Tile>

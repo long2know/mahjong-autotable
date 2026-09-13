@@ -631,6 +631,7 @@ public static class BotMeldAdvisor
         IReadOnlyDictionary<Tile, int> ownedCounts,
         IReadOnlyDictionary<Tile, int> visibleCounts)
     {
+        var hasVisibility = visibleCounts.Count > 0;
         var liveAlternateCount = 0;
         var hasStrongAlternateSingleton = false;
 
@@ -651,33 +652,31 @@ public static class BotMeldAdvisor
                 continue;
             }
 
-            if (visibleCounts.Count == 0)
+            if (!hasVisibility)
             {
                 liveAlternateCount++;
-            }
-            else
-            {
-                ownedCounts.TryGetValue(entry.Key, out var ownedCount);
-                visibleCounts.TryGetValue(entry.Key, out var visibleCount);
-                var remainingCopies = 4 - ownedCount - visibleCount;
-                if (remainingCopies > 0)
+
+                if (liveAlternateCount >= 2)
                 {
-                    liveAlternateCount++;
+                    return true;
                 }
 
-                if (remainingCopies >= 2)
-                {
-                    hasStrongAlternateSingleton = true;
-                }
+                continue;
             }
 
-            if (liveAlternateCount >= 2)
+            ownedCounts.TryGetValue(entry.Key, out var ownedCount);
+            visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+            var remainingCopies = 4 - ownedCount - visibleCount;
+            if (remainingCopies >= 2)
             {
-                return true;
+                hasStrongAlternateSingleton = true;
+                break;
             }
         }
 
-        return hasStrongAlternateSingleton;
+        return hasVisibility
+            ? hasStrongAlternateSingleton
+            : liveAlternateCount >= 2;
     }
 
     private static bool HasPairOrChowAfterConcealedKong(IReadOnlyList<Tile> handTiles, Tile kongTile)
