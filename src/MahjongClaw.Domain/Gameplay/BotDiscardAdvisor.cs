@@ -2956,6 +2956,22 @@ public static class BotDiscardAdvisor
                                 {
                                     nonOrphanCandidates = nonTripletCandidates;
                                 }
+                                else if (visibleCounts.Count > 0)
+                                {
+                                    var deadTripletCandidates = nonOrphanCandidates
+                                        .Where(candidate => nonOrphanTripletTiles.Contains(candidate.Tile)
+                                            && candidate.RemainingCopies <= 0)
+                                        .ToList();
+
+                                    if (deadTripletCandidates.Count > 0)
+                                    {
+                                        nonOrphanCandidates = deadTripletCandidates;
+                                    }
+                                    else
+                                    {
+                                        preferNonOrphanDiscard = false;
+                                    }
+                                }
                                 else
                                 {
                                     preferNonOrphanDiscard = false;
