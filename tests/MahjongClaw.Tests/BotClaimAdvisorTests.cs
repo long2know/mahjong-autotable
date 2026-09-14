@@ -302,6 +302,32 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectExposedKongClaim_ReturnsFalse_WhenDiscardIsFlower()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Flowers, 1),
+            new(TileSuit.Flowers, 1),
+            new(TileSuit.Flowers, 1),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+        var discardedTile = new Tile(TileSuit.Flowers, 1);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
+            handTiles,
+            Array.Empty<Tile>(),
+            discardedTile,
+            MahjongRuleset.ChineseOfficial,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public void TrySelectExposedKongClaim_ReturnsFalse_WhenNoWinningOrPotentialOutsExist()
     {
         var ruleset = MahjongRuleset.ChineseOfficial;
@@ -1279,6 +1305,32 @@ public class BotClaimAdvisorTests
             out _);
 
         shouldClaim.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TrySelectPungClaim_ReturnsFalse_WhenDiscardIsSeason()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Seasons, 2),
+            new(TileSuit.Seasons, 2),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Green)
+        };
+        var discardedTile = new Tile(TileSuit.Seasons, 2);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectPungClaim(
+            handTiles,
+            Array.Empty<Tile>(),
+            discardedTile,
+            MahjongRuleset.ChineseOfficial,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
     }
 
     [Fact]

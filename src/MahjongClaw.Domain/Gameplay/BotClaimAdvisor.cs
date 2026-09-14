@@ -130,6 +130,11 @@ public static class BotClaimAdvisor
             return false;
         }
 
+        if (discardedTile.IsFlower)
+        {
+            return false;
+        }
+
         if (ruleset == MahjongRuleset.Changsha258 && !Changsha258Ruleset.IsAllowedTile(discardedTile))
         {
             return false;
@@ -381,6 +386,11 @@ public static class BotClaimAdvisor
             .Count(group => group.Count() == 4);
 
         if (!TurnFlowValidator.CanDraw(handTiles.Count, meldTiles.Count, declaredKongCount))
+        {
+            return false;
+        }
+
+        if (discardedTile.IsFlower)
         {
             return false;
         }
