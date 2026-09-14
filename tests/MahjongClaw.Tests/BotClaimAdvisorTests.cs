@@ -2019,6 +2019,48 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectChowClaim_ReturnsFalse_WhenChangshaBigWinEyeStopsBeingFlexibleAfterClaim()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 7)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 3);
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles).Should().BeTrue();
+
+        var chowTiles = new List<Tile> { new(TileSuit.Dots, 2), new(TileSuit.Dots, 4) };
+        var handAfterChow = handTiles.ToList();
+        foreach (var chowTile in chowTiles)
+        {
+            handAfterChow.Remove(chowTile);
+        }
+
+        var meldAfterChow = meldTiles
+            .Concat(chowTiles)
+            .Append(discardedTile)
+            .ToList();
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handAfterChow, meldAfterChow).Should().BeFalse();
+
+        var shouldClaim = BotClaimAdvisor.TrySelectChowClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            MahjongRuleset.Changsha258,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public void TrySelectChowClaim_ReturnsFalse_WhenChangshaClaimLeavesNoPairOrChow()
     {
         var handTiles = new List<Tile>

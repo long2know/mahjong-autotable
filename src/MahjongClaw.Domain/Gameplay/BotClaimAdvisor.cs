@@ -794,10 +794,20 @@ public static class BotClaimAdvisor
                 .Append(discardedTile)
                 .ToList();
 
+            var allowChangshaFlexibleEyeAfterClaim = ruleset == MahjongRuleset.Changsha258
+                && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handAfterChow, meldAfterChow);
+
+            if (ruleset == MahjongRuleset.Changsha258
+                && allowChangshaFlexibleEye
+                && !allowChangshaFlexibleEyeAfterClaim)
+            {
+                continue;
+            }
+
             Dictionary<Tile, int>? remainingCounts = null;
 
             if (ruleset == MahjongRuleset.Changsha258
-                && !allowChangshaFlexibleEye
+                && !allowChangshaFlexibleEyeAfterClaim
                 && soleSmallWinPairTile is not null
                 && soleSmallWinPairCount == 2
                 && candidate.Any(tile => tile.Equals(soleSmallWinPairTile)))
@@ -813,7 +823,7 @@ public static class BotClaimAdvisor
             }
 
             if (ruleset == MahjongRuleset.Changsha258
-                && !allowChangshaFlexibleEye
+                && !allowChangshaFlexibleEyeAfterClaim
                 && !allowChangshaSmallWinDeadFallback
                 && HasOnlyThinSmallWinPairCandidate(handAfterChow, meldAfterChow, visibleCounts))
             {
@@ -821,7 +831,7 @@ public static class BotClaimAdvisor
             }
 
             if (ruleset == MahjongRuleset.Changsha258
-                && !allowChangshaFlexibleEye
+                && !allowChangshaFlexibleEyeAfterClaim
                 && hasLiveSmallWinPairCandidate
                 && !HasLiveSmallWinPairCandidate(handAfterChow, meldAfterChow, visibleCounts))
             {
@@ -904,7 +914,7 @@ public static class BotClaimAdvisor
                 && preClaimOuts.TileTypes == 0
                 && postClaimOuts.TileTypes == 0)
             {
-                if (!allowChangshaFlexibleEye
+                if (!allowChangshaFlexibleEyeAfterClaim
                     && !HasLiveSmallWinPairCandidate(handAfterChow, meldAfterChow, visibleCounts))
                 {
                     continue;
