@@ -406,6 +406,11 @@ public static class BotClaimAdvisor
             return false;
         }
 
+        if (matchingCount > 2)
+        {
+            return false;
+        }
+
         var visibleCounts = BuildVisibleCounts(visibleTiles);
         // visibleTiles should exclude the current discard; add it here so outs reflect the new visible tile.
         visibleCounts.TryGetValue(discardedTile, out var discardCount);
