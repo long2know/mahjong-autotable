@@ -271,6 +271,7 @@ public static class BotDiscardAdvisor
             && sevenPairsPairCount >= 6;
 
         Tile? soleChineseOfficialPairTile = null;
+        Tile? soleChineseOfficialNonTerminalPairTile = null;
         var allowBreakingSolePairForTerminalHonorLean = false;
         if (ruleset == MahjongRuleset.ChineseOfficial)
         {
@@ -281,6 +282,15 @@ public static class BotDiscardAdvisor
             if (pairEntries.Count == 1)
             {
                 soleChineseOfficialPairTile = pairEntries[0].Key;
+            }
+
+            var nonTerminalPairEntries = pairEntries
+                .Where(entry => !entry.Key.IsHonor && !IsTerminalSuitedTile(entry.Key))
+                .ToList();
+
+            if (nonTerminalPairEntries.Count == 1)
+            {
+                soleChineseOfficialNonTerminalPairTile = nonTerminalPairEntries[0].Key;
             }
         }
 
@@ -2718,85 +2728,96 @@ public static class BotDiscardAdvisor
                     {
                         allowBreakingSolePairForTerminalHonorLean = false;
                     }
-                    else if (soleChineseOfficialPairTile is not null
-                        && !soleChineseOfficialPairTile.IsHonor
-                        && !IsTerminalSuitedTile(soleChineseOfficialPairTile))
+                    else
                     {
-                        var nonTerminalSingletonCandidates = nonTerminalCandidates
-                            .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var count) && count == 1)
-                            .ToList();
-
-                        if (nonTerminalSingletonCandidates.Count > 0)
+                        var soleNonTerminalPairTile = soleChineseOfficialPairTile;
+                        if (soleNonTerminalPairTile is null
+                            || soleNonTerminalPairTile.IsHonor
+                            || IsTerminalSuitedTile(soleNonTerminalPairTile))
                         {
-                            allowBreakingSolePairForTerminalHonorLean = false;
-                            candidates = nonTerminalSingletonCandidates;
+                            soleNonTerminalPairTile = soleChineseOfficialNonTerminalPairTile;
                         }
-                        else
-                        {
-                            if (visibleCounts.Count > 0)
-                            {
-                                var deadHonorSingletonCandidates = candidates
-                                    .Where(candidate => (candidate.Tile.IsHonor || IsTerminalSuitedTile(candidate.Tile))
-                                        && handCounts.TryGetValue(candidate.Tile, out var count)
-                                        && count == 1
-                                        && candidate.RemainingCopies <= 0)
-                                    .ToList();
 
-                                if (deadHonorSingletonCandidates.Count > 0)
+                        if (soleNonTerminalPairTile is not null)
+                        {
+                            var nonTerminalSingletonCandidates = nonTerminalCandidates
+                                .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var count) && count == 1)
+                                .ToList();
+
+                            if (nonTerminalSingletonCandidates.Count > 0)
+                            {
+                                allowBreakingSolePairForTerminalHonorLean = false;
+                                candidates = nonTerminalSingletonCandidates;
+                            }
+                            else
+                            {
+                                if (visibleCounts.Count > 0)
                                 {
-                                    allowBreakingSolePairForTerminalHonorLean = false;
-                                    candidates = deadHonorSingletonCandidates;
-                                }
-                                else
-                                {
-                                    var nearDeadHonorSingletonCandidates = candidates
+                                    var deadHonorSingletonCandidates = candidates
                                         .Where(candidate => (candidate.Tile.IsHonor || IsTerminalSuitedTile(candidate.Tile))
                                             && handCounts.TryGetValue(candidate.Tile, out var count)
                                             && count == 1
-                                            && candidate.RemainingCopies == 1)
+                                            && candidate.RemainingCopies <= 0)
                                         .ToList();
 
-                                    if (nearDeadHonorSingletonCandidates.Count > 0)
+                                    if (deadHonorSingletonCandidates.Count > 0)
                                     {
-                                        var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
-                                        var bestOverallOutCopies = candidates
-                                            .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
-                                            .Max(candidate => candidate.WinningDrawOutCopies);
+                                        allowBreakingSolePairForTerminalHonorLean = false;
+                                        candidates = deadHonorSingletonCandidates;
+                                    }
+                                    else
+                                    {
+                                        var nearDeadHonorSingletonCandidates = candidates
+                                            .Where(candidate => (candidate.Tile.IsHonor || IsTerminalSuitedTile(candidate.Tile))
+                                                && handCounts.TryGetValue(candidate.Tile, out var count)
+                                                && count == 1
+                                                && candidate.RemainingCopies == 1)
+                                            .ToList();
 
-                                        var bestNearDeadOuts = nearDeadHonorSingletonCandidates.Max(candidate => candidate.WinningDrawOuts);
-                                        var bestNearDeadOutCopies = nearDeadHonorSingletonCandidates
-                                            .Where(candidate => candidate.WinningDrawOuts == bestNearDeadOuts)
-                                            .Max(candidate => candidate.WinningDrawOutCopies);
-
-                                        var withinOutsTolerance = bestNearDeadOuts >= bestOverallOuts - NearDeadHonorSingletonOutsTolerance;
-                                        var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
-                                            || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadHonorSingletonOutsTolerance;
-
-                                        if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                                        if (nearDeadHonorSingletonCandidates.Count > 0)
                                         {
-                                            allowBreakingSolePairForTerminalHonorLean = false;
-                                            candidates = nearDeadHonorSingletonCandidates;
+                                            var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                                            var bestOverallOutCopies = candidates
+                                                .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                                                .Max(candidate => candidate.WinningDrawOutCopies);
+
+                                            var bestNearDeadOuts = nearDeadHonorSingletonCandidates.Max(candidate => candidate.WinningDrawOuts);
+                                            var bestNearDeadOutCopies = nearDeadHonorSingletonCandidates
+                                                .Where(candidate => candidate.WinningDrawOuts == bestNearDeadOuts)
+                                                .Max(candidate => candidate.WinningDrawOutCopies);
+
+                                            var withinOutsTolerance = bestNearDeadOuts >= bestOverallOuts - NearDeadHonorSingletonOutsTolerance;
+                                            var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
+                                                || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadHonorSingletonOutsTolerance;
+
+                                            if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                                            {
+                                                allowBreakingSolePairForTerminalHonorLean = false;
+                                                candidates = nearDeadHonorSingletonCandidates;
+                                            }
+                                            else
+                                            {
+                                                candidates = nonTerminalCandidates;
+                                            }
                                         }
                                         else
                                         {
                                             candidates = nonTerminalCandidates;
                                         }
                                     }
-                                    else
-                                    {
-                                        candidates = nonTerminalCandidates;
-                                    }
+                                }
+                                else
+                                {
+                                    // With no visibility, avoid breaking the only non-terminal pair just to lean
+                                    // into terminal/honor-heavy shapes.
+                                    allowBreakingSolePairForTerminalHonorLean = false;
                                 }
                             }
-                            else
-                            {
-                                candidates = nonTerminalCandidates;
-                            }
                         }
-                    }
-                    else
-                    {
-                        candidates = nonTerminalCandidates;
+                        else
+                        {
+                            candidates = nonTerminalCandidates;
+                        }
                     }
                 }
             }
@@ -3359,13 +3380,14 @@ public static class BotDiscardAdvisor
             }
         }
 
-        if (soleChineseOfficialPairTile is not null)
+        var protectedChineseOfficialPairTile = soleChineseOfficialPairTile ?? soleChineseOfficialNonTerminalPairTile;
+        if (protectedChineseOfficialPairTile is not null)
         {
             var protectSolePair = !allowBreakingSolePairForTerminalHonorLean
-                || soleChineseOfficialPairTile.IsHonor
-                || IsTerminalSuitedTile(soleChineseOfficialPairTile);
+                || protectedChineseOfficialPairTile.IsHonor
+                || IsTerminalSuitedTile(protectedChineseOfficialPairTile);
 
-            if (allowBreakingSolePairForOuts)
+            if (allowBreakingSolePairForOuts && soleChineseOfficialPairTile is not null)
             {
                 protectSolePair = false;
             }
@@ -3373,7 +3395,7 @@ public static class BotDiscardAdvisor
             if (protectSolePair)
             {
                 var nonPairCandidates = prioritizedCandidates
-                    .Where(candidate => !candidate.Tile.Equals(soleChineseOfficialPairTile))
+                    .Where(candidate => !candidate.Tile.Equals(protectedChineseOfficialPairTile))
                     .ToList();
 
                 if (nonPairCandidates.Count > 0)
