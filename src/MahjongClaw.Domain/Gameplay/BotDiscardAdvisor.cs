@@ -1183,14 +1183,51 @@ public static class BotDiscardAdvisor
                         }
                         else
                         {
-                            var singletonCandidates = candidates
-                                .Where(candidate => candidate.Tile.Equals(liveSingleton.Tile))
+                            var nearDeadOffRankPairCandidates = candidates
+                                .Where(candidate =>
+                                {
+                                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                                    return handCount == 2
+                                        && !Changsha258Ruleset.IsSmallWinPair(candidate.Tile)
+                                        && candidate.RemainingCopies == 1
+                                        && !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                                })
                                 .ToList();
 
-                            if (singletonCandidates.Count > 0)
+                            if (nearDeadOffRankPairCandidates.Count > 0)
                             {
-                                candidates = singletonCandidates;
-                                filteredByNearDeadSmallWinSingleton = true;
+                                var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                                var bestOverallOutCopies = candidates
+                                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                                var bestNearDeadOuts = nearDeadOffRankPairCandidates.Max(candidate => candidate.WinningDrawOuts);
+                                var bestNearDeadOutCopies = nearDeadOffRankPairCandidates
+                                    .Where(candidate => candidate.WinningDrawOuts == bestNearDeadOuts)
+                                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                                var withinOutsTolerance = bestNearDeadOuts >= bestOverallOuts - NearDeadOffRankPairOutsTolerance;
+                                var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
+                                    || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadOffRankPairOutsTolerance;
+
+                                if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                                {
+                                    candidates = nearDeadOffRankPairCandidates;
+                                    filteredByNearDeadOffRankPair = true;
+                                }
+                            }
+
+                            if (!filteredByNearDeadOffRankPair)
+                            {
+                                var singletonCandidates = candidates
+                                    .Where(candidate => candidate.Tile.Equals(liveSingleton.Tile))
+                                    .ToList();
+
+                                if (singletonCandidates.Count > 0)
+                                {
+                                    candidates = singletonCandidates;
+                                    filteredByNearDeadSmallWinSingleton = true;
+                                }
                             }
                         }
                     }
@@ -1503,11 +1540,9 @@ public static class BotDiscardAdvisor
                 var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
                     || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadOffRankPairOutsTolerance;
                 var losesAllWinningOuts = bestOverallOuts > 0 && bestNearDeadOuts == 0;
-                var hasNonTerminalNearDeadPair = nearDeadOffRankPairCandidates.Any(candidate =>
-                    !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile));
 
                 if ((bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
-                    && (!losesAllWinningOuts || hasNonTerminalNearDeadPair))
+                    && !losesAllWinningOuts)
                 {
                     candidates = nearDeadOffRankPairCandidates;
                     filteredByNearDeadOffRankPair = true;
