@@ -2472,7 +2472,6 @@ public static class BotDiscardAdvisor
                     var losesAllWinningOuts = bestOverallOuts > 0 && bestNonThreatOuts == 0;
                     var avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton = ruleset == MahjongRuleset.Changsha258
                         && enforceSmallWinPairBias
-                        && bestOverallOuts == 0
                         && lastSmallWinSingleton is not null
                         && lastSmallWinSingletonRemainingCopies > 0
                         && nonThreatCandidates.All(candidate => candidate.Tile.Equals(lastSmallWinSingleton));
@@ -2523,8 +2522,11 @@ public static class BotDiscardAdvisor
 
                                     if (!hasSingleCopyThreat)
                                     {
-                                        candidates = nonThreatCandidates;
-                                        filteredByKongThreatAvoidance = true;
+                                        if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton)
+                                        {
+                                            candidates = nonThreatCandidates;
+                                            filteredByKongThreatAvoidance = true;
+                                        }
                                     }
                                     else
                                     {
@@ -2534,8 +2536,11 @@ public static class BotDiscardAdvisor
                             }
                             else if (withinPotentialTolerance || matchesPotentialCopies)
                             {
-                                candidates = nonThreatCandidates;
-                                filteredByKongThreatAvoidance = true;
+                                if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton)
+                                {
+                                    candidates = nonThreatCandidates;
+                                    filteredByKongThreatAvoidance = true;
+                                }
                             }
                         }
                         else
@@ -2550,8 +2555,11 @@ public static class BotDiscardAdvisor
                     else if (!losesAllWinningOuts
                         && ((withinOutsAndCopies && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies))
                     {
-                        candidates = nonThreatCandidates;
-                        filteredByKongThreatAvoidance = true;
+                        if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton)
+                        {
+                            candidates = nonThreatCandidates;
+                            filteredByKongThreatAvoidance = true;
+                        }
                     }
                     else if (losesAllWinningOuts
                         && !singleCopyThreatCarriesOnlyWinningPath

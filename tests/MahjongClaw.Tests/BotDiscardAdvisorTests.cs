@@ -8655,6 +8655,71 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithKongThreatTiles_DoesNotForceDiscardOfSoleLiveChangshaSmallWinSingleton_WhenOutsRemain()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 2)
+        };
+
+        var visibleTiles = new List<Tile>();
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Characters, 2), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Characters, 5), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Characters, 8), 3));
+        visibleTiles.AddRange(Enumerable.Repeat(new Tile(TileSuit.Dots, 2), 2));
+
+        var visibleCounts = visibleTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var winningOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                handTiles,
+                visibleCounts,
+                index,
+                MahjongRuleset.Changsha258,
+                requireMinimumFan: true))
+            .ToList();
+
+        var bestOverallOuts = winningOutSummaries.Max(summary => summary.TileTypes);
+        bestOverallOuts.Should().BeGreaterThan(0);
+
+        var bestOverallOutCopies = winningOutSummaries
+            .Where(summary => summary.TileTypes == bestOverallOuts)
+            .Max(summary => summary.RemainingCopies);
+
+        var smallWinTile = new Tile(TileSuit.Dots, 2);
+        var smallWinIndex = handTiles.FindIndex(tile => tile.Equals(smallWinTile));
+        smallWinIndex.Should().BeGreaterThanOrEqualTo(0);
+
+        var nonThreatSummary = winningOutSummaries[smallWinIndex];
+        var withinOutsTolerance = nonThreatSummary.TileTypes >= bestOverallOuts - 2;
+        var withinCopyTolerance = nonThreatSummary.RemainingCopies >= bestOverallOutCopies - 2;
+        withinOutsTolerance.Should().BeTrue();
+        withinCopyTolerance.Should().BeTrue();
+
+        var kongThreatTiles = handTiles
+            .Where(tile => !tile.Equals(smallWinTile))
+            .SelectMany(tile => Enumerable.Repeat(tile, 3))
+            .ToList();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            Array.Empty<Tile>(),
+            kongThreatTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().NotBe(smallWinTile);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithKongThreatsAndNoPotentialOuts_DoesNotForceMultiCopyThreatDiscard()
     {
         var handTiles = new List<Tile>
