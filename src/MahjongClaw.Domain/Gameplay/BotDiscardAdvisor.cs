@@ -2470,6 +2470,12 @@ public static class BotDiscardAdvisor
                     var matchesBestCopies = bestNonThreatOuts == bestOverallOuts
                         && bestNonThreatOutCopies == bestOverallOutCopies;
                     var losesAllWinningOuts = bestOverallOuts > 0 && bestNonThreatOuts == 0;
+                    var avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton = ruleset == MahjongRuleset.Changsha258
+                        && enforceSmallWinPairBias
+                        && bestOverallOuts == 0
+                        && lastSmallWinSingleton is not null
+                        && lastSmallWinSingletonRemainingCopies > 0
+                        && nonThreatCandidates.All(candidate => candidate.Tile.Equals(lastSmallWinSingleton));
 
                     if (bestOverallOuts == 0)
                     {
@@ -2534,8 +2540,11 @@ public static class BotDiscardAdvisor
                         }
                         else
                         {
-                            candidates = nonThreatCandidates;
-                            filteredByKongThreatAvoidance = true;
+                            if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton)
+                            {
+                                candidates = nonThreatCandidates;
+                                filteredByKongThreatAvoidance = true;
+                            }
                         }
                     }
                     else if (!losesAllWinningOuts

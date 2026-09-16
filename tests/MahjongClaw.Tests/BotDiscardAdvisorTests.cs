@@ -8628,6 +8628,33 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithKongThreatTiles_DoesNotDiscardSoleChangshaSmallWinSingletonToAvoidThreat()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 4), new(TileSuit.Dots, 7), new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4), new(TileSuit.Characters, 7), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 9)
+        };
+
+        var kongThreatTiles = handTiles
+            .Where(tile => !tile.Equals(new Tile(TileSuit.Dots, 2)))
+            .SelectMany(tile => Enumerable.Repeat(tile, 3))
+            .ToList();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            kongThreatTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithKongThreatsAndNoPotentialOuts_DoesNotForceMultiCopyThreatDiscard()
     {
         var handTiles = new List<Tile>
