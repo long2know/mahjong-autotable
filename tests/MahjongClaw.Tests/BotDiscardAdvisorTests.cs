@@ -1529,6 +1529,60 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotDiscardDeadSmallWinSingleton_WhenItEliminatesOnlyWinningOut()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 1)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>()).Should().BeFalse();
+
+        var visibleCounts = visibleTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var dot2Index = handTiles.FindIndex(tile => tile.Equals(new Tile(TileSuit.Dots, 2)));
+        var fillerIndex = handTiles.FindIndex(tile => tile.Equals(new Tile(TileSuit.Characters, 1)));
+
+        dot2Index.Should().BeGreaterThanOrEqualTo(0);
+        fillerIndex.Should().BeGreaterThanOrEqualTo(0);
+
+        CountWinningDrawOutsAfterDiscard(
+            handTiles,
+            visibleCounts,
+            dot2Index,
+            MahjongRuleset.Changsha258,
+            requireMinimumFan: true).TileTypes.Should().Be(0);
+
+        CountWinningDrawOutsAfterDiscard(
+            handTiles,
+            visibleCounts,
+            fillerIndex,
+            MahjongRuleset.Changsha258,
+            requireMinimumFan: true).TileTypes.Should().BeGreaterThan(0);
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 1));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesDiscardingInvalidTile_WhenChangsha258Ruleset()
     {
         var tiles = new List<Tile>

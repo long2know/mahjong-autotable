@@ -382,6 +382,13 @@ public static class BotDiscardAdvisor
             hasChangshaPureSuitLean,
             changshaDominantSuit);
 
+        if (forcedDiscardIndex.HasValue
+            && maxWinningOuts > 0
+            && discardOutSummaries[forcedDiscardIndex.Value].TileTypes == 0)
+        {
+            forcedDiscardIndex = null;
+        }
+
         if (forcedDiscardIndex.HasValue)
         {
             return forcedDiscardIndex.Value;
