@@ -2185,7 +2185,7 @@ public static class BotDiscardAdvisor
             var distinctOrphanTypes = orphanTiles.Distinct().Count();
             var nonOrphanCount = ownedTiles.Count - orphanTiles.Count;
 
-            if (nonOrphanCount <= 3 && distinctOrphanTypes >= 8)
+            if (nonOrphanCount <= 4 && distinctOrphanTypes >= 8)
             {
                 shouldPreserveThirteenOrphansPath = HasLiveThirteenOrphansPath(
                     ownedCounts,
@@ -3000,7 +3000,7 @@ public static class BotDiscardAdvisor
                 }
 
                 var distinctOrphanTypes = orphanTiles.Distinct().Count();
-                if (nonOrphanCount is > 0 and <= 3 && distinctOrphanTypes >= 8)
+                if (nonOrphanCount is > 0 and <= 4 && distinctOrphanTypes >= 8)
                 {
                     var hasLiveThirteenOrphansPath = HasLiveThirteenOrphansPath(
                         ownedCounts,
