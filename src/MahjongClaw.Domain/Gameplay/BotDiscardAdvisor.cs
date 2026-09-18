@@ -4799,7 +4799,7 @@ public static class BotDiscardAdvisor
         }
 
         var isolatedSmallWinSingletons = smallWinSingletons
-            .Where(tile => !HasAdjacentSuitedTile(handCounts, tile))
+            .Where(tile => !HasNearbySuitedTile(handCounts, tile))
             .ToHashSet();
 
         if (isolatedSmallWinSingletons.Count == 0 || isolatedSmallWinSingletons.Count == smallWinSingletons.Count)
@@ -5066,6 +5066,35 @@ public static class BotDiscardAdvisor
             }
 
             if (Math.Abs(candidate.Rank - rank) == 1)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasNearbySuitedTile(
+        IReadOnlyDictionary<Tile, int> handCounts,
+        Tile tile)
+    {
+        if (tile.IsHonor)
+        {
+            return false;
+        }
+
+        var suit = tile.Suit;
+        var rank = tile.Rank;
+
+        foreach (var candidate in handCounts.Keys)
+        {
+            if (candidate.IsHonor || candidate.Suit != suit)
+            {
+                continue;
+            }
+
+            var diff = Math.Abs(candidate.Rank - rank);
+            if (diff is 1 or 2)
             {
                 return true;
             }

@@ -613,6 +613,31 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DiscardsTrulyIsolatedSmallWinSingleton_WhenGapSequenceExists()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 9)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 5));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleTiles_PreservesOffRankPair_WhenNoSmallWinTilesInHand()
     {
         var handTiles = new List<Tile>
