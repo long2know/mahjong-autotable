@@ -65,6 +65,19 @@ public static class BotMeldAdvisor
             return false;
         }
 
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            candidates = candidates
+                .Where(Changsha258Ruleset.IsAllowedTile)
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                kongTile = null!;
+                return false;
+            }
+        }
+
         if (ShouldAvoidSevenPairsConcealedKong(handCounts, meldTiles, ownedCounts, visibleCounts))
         {
             kongTile = null!;
@@ -245,6 +258,19 @@ public static class BotMeldAdvisor
         {
             kongTile = null!;
             return false;
+        }
+
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            candidates = candidates
+                .Where(Changsha258Ruleset.IsAllowedTile)
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                kongTile = null!;
+                return false;
+            }
         }
 
         if (ruleset == MahjongRuleset.Changsha258)

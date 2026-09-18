@@ -79,6 +79,24 @@ public class BotMeldAdvisorTests
     }
 
     [Fact]
+    public void TrySelectConcealedKong_SkipsInvalidKong_ForChangsha258()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6)
+        };
+
+        var result = BotMeldAdvisor.TrySelectConcealedKong(tiles, MahjongRuleset.Changsha258, out var kongTile);
+
+        result.Should().BeTrue();
+        kongTile.Should().Be(new Tile(TileSuit.Characters, 3));
+    }
+
+    [Fact]
     public void TrySelectConcealedKong_SkipsSoleSmallWinPair_ForChangsha258()
     {
         var tiles = new List<Tile>
@@ -346,6 +364,31 @@ public class BotMeldAdvisorTests
 
         result.Should().BeTrue();
         kongTile.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.Red));
+    }
+
+    [Fact]
+    public void TrySelectPromotedKong_SkipsInvalidKong_ForChangsha258()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 5)
+        };
+        var meldTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 4), new(TileSuit.Characters, 4),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        var result = BotMeldAdvisor.TrySelectPromotedKong(handTiles, meldTiles, MahjongRuleset.Changsha258, out var kongTile);
+
+        result.Should().BeTrue();
+        kongTile.Should().Be(new Tile(TileSuit.Characters, 4));
     }
 
     [Fact]
