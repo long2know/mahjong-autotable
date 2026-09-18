@@ -659,6 +659,7 @@ public static class BotMeldAdvisor
     {
         var hasVisibility = visibleCounts.Count > 0;
         var liveAlternateCount = 0;
+        var nearDeadAlternateCount = 0;
         var hasStrongAlternateSingleton = false;
 
         foreach (var entry in handCounts)
@@ -698,10 +699,15 @@ public static class BotMeldAdvisor
                 hasStrongAlternateSingleton = true;
                 break;
             }
+
+            if (remainingCopies == 1)
+            {
+                nearDeadAlternateCount++;
+            }
         }
 
         return hasVisibility
-            ? hasStrongAlternateSingleton
+            ? hasStrongAlternateSingleton || nearDeadAlternateCount >= 2
             : liveAlternateCount >= 2;
     }
 
