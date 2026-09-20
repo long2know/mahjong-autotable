@@ -235,6 +235,14 @@ public static class BotClaimAdvisor
         }
 
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
+
+        if (ruleset == MahjongRuleset.ChineseOfficial
+            && IsChineseOfficialSevenPairsLean(handTiles, meldTiles)
+            && preClaimOuts.TileTypes > 0)
+        {
+            return false;
+        }
+
         var postClaimOuts = CountWinningDrawOutsAfterExposedKong(
             handTiles,
             meldTiles,
@@ -444,6 +452,13 @@ public static class BotClaimAdvisor
         }
 
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
+
+        if (ruleset == MahjongRuleset.ChineseOfficial
+            && IsChineseOfficialSevenPairsLean(handTiles, meldTiles)
+            && preClaimOuts.TileTypes > 0)
+        {
+            return false;
+        }
 
         var allowChangshaFlexibleEye = ruleset == MahjongRuleset.Changsha258
             && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
@@ -768,6 +783,14 @@ public static class BotClaimAdvisor
         }
 
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
+
+        if (ruleset == MahjongRuleset.ChineseOfficial
+            && IsChineseOfficialSevenPairsLean(handTiles, meldTiles)
+            && preClaimOuts.TileTypes > 0)
+        {
+            return false;
+        }
+
         var bestOuts = default(WinningOutSummary);
         IReadOnlyList<Tile>? bestCandidate = null;
         var bestPreservesSmallWinPair = true;
