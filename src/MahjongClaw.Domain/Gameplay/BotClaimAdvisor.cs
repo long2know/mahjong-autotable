@@ -752,6 +752,25 @@ public static class BotClaimAdvisor
             && visibleCounts.Count > 0
             && !hasLiveSmallWinPairCandidate;
 
+        Tile? soleChineseOfficialPairTile = null;
+        var soleChineseOfficialPairCount = 0;
+        var preserveChineseOfficialSolePairOnTie = false;
+        if (ruleset == MahjongRuleset.ChineseOfficial)
+        {
+            var pairEntries = handTiles
+                .GroupBy(static tile => tile)
+                .Where(group => group.Count() >= 2)
+                .Select(group => new { Tile = group.Key, Count = group.Count() })
+                .ToList();
+
+            if (pairEntries.Count == 1)
+            {
+                soleChineseOfficialPairTile = pairEntries[0].Tile;
+                soleChineseOfficialPairCount = pairEntries[0].Count;
+                preserveChineseOfficialSolePairOnTie = soleChineseOfficialPairCount == 2;
+            }
+        }
+
         Tile? soleSmallWinPairTile = null;
         var soleSmallWinPairCount = 0;
         if (ruleset == MahjongRuleset.Changsha258)
@@ -794,6 +813,7 @@ public static class BotClaimAdvisor
         var bestOuts = default(WinningOutSummary);
         IReadOnlyList<Tile>? bestCandidate = null;
         var bestPreservesSmallWinPair = true;
+        var bestPreservesChineseOfficialPair = true;
         WinningOutSummary preClaimPotentialOuts = default;
         bool hasPreClaimPotentialOuts = false;
 
@@ -983,6 +1003,10 @@ public static class BotClaimAdvisor
                 && soleSmallWinPairCount == 2
                 && candidate.Any(tile => tile.Equals(soleSmallWinPairTile));
             var preservesSmallWinPair = !breaksSoleSmallWinPair;
+            var breaksSoleChineseOfficialPair = preserveChineseOfficialSolePairOnTie
+                && soleChineseOfficialPairTile is not null
+                && candidate.Any(tile => tile.Equals(soleChineseOfficialPairTile));
+            var preservesChineseOfficialPair = !breaksSoleChineseOfficialPair;
 
             if (protectSoleSmallWinPairWhenNearDead && breaksSoleSmallWinPair)
             {
@@ -995,11 +1019,17 @@ public static class BotClaimAdvisor
                 || (postClaimOuts.TileTypes == bestOuts.TileTypes
                     && postClaimOuts.RemainingCopies == bestOuts.RemainingCopies
                     && preservesSmallWinPair
-                    && !bestPreservesSmallWinPair))
+                    && !bestPreservesSmallWinPair)
+                || (postClaimOuts.TileTypes == bestOuts.TileTypes
+                    && postClaimOuts.RemainingCopies == bestOuts.RemainingCopies
+                    && preserveChineseOfficialSolePairOnTie
+                    && preservesChineseOfficialPair
+                    && !bestPreservesChineseOfficialPair))
             {
                 bestOuts = postClaimOuts;
                 bestCandidate = candidate;
                 bestPreservesSmallWinPair = preservesSmallWinPair;
+                bestPreservesChineseOfficialPair = preservesChineseOfficialPair;
             }
         }
 

@@ -1006,6 +1006,40 @@ public class RulesetResolverTests
     }
 
     [Fact]
+    public void Resolve_ReturnsChangsha258_WhenCronReminderUsesSeptemberTimestampMetadata()
+    {
+        const string ruleset = """
+            [cron:aac88361-c047-4527-8bef-737045ae8702 Reminder to #mahjong] Autonomous Mahjong closeout for channel 1474176085838004255.
+            Use ONLY:
+            - /home/node/.openclaw/workspaces/main/channel-mahjong/AGENTS.md
+            - /home/node/.openclaw/workspaces/main/channel-mahjong/TASKS.md
+            - /home/node/.openclaw/workspaces/main/channel-mahjong/MEMORY.md
+
+            Hard focus: finish playable quality with Changsha + Chinese Official rules logic and bot turn quality.
+            Current time: Sunday, September 20th, 2026 — 6:40 AM (America/Los_Angeles) / 2026-09-20 13:40 UTC
+            """;
+
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Fact]
+    public void IsChangsha258_ReturnsTrue_WhenCronReminderUsesSeptemberTimestampMetadata()
+    {
+        const string ruleset = """
+            [cron:aac88361-c047-4527-8bef-737045ae8702 Reminder to #mahjong] Autonomous Mahjong closeout for channel 1474176085838004255.
+            Use ONLY:
+            - /home/node/.openclaw/workspaces/main/channel-mahjong/AGENTS.md
+            - /home/node/.openclaw/workspaces/main/channel-mahjong/TASKS.md
+            - /home/node/.openclaw/workspaces/main/channel-mahjong/MEMORY.md
+
+            Hard focus: finish playable quality with Changsha + Chinese Official rules logic and bot turn quality.
+            Current time: Sunday, September 20th, 2026 — 6:40 AM (America/Los_Angeles) / 2026-09-20 13:40 UTC
+            """;
+
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
+    [Fact]
     public void Resolve_ReturnsChangsha258_WhenRulesetCronReminderBodyIsRepeatedWithCurrentTimeMetadata()
     {
         const string ruleset = """

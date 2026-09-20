@@ -2007,6 +2007,52 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectChowClaim_PrefersPreservingSolePair_WhenOutsTie_ForChineseOfficial()
+    {
+        var ruleset = MahjongRuleset.ChineseOfficial;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 4);
+        var preserveCandidate = new List<Tile> { new(TileSuit.Dots, 2), new(TileSuit.Dots, 3) };
+        var breakCandidate = new List<Tile> { new(TileSuit.Dots, 3), new(TileSuit.Dots, 5) };
+
+        var drawTileTypes = BuildDrawTileTypes(ruleset);
+        var preserveOuts = CountBestWinningOutsAfterChowClaimSummary(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            preserveCandidate,
+            drawTileTypes,
+            ruleset);
+        var breakOuts = CountBestWinningOutsAfterChowClaimSummary(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            breakCandidate,
+            drawTileTypes,
+            ruleset);
+
+        preserveOuts.Should().Be(breakOuts);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectChowClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeTrue();
+        claimTiles.Should().BeEquivalentTo(preserveCandidate);
+    }
+
+    [Fact]
     public void TrySelectChowClaim_PrefersPreservingChangshaSmallWinPair_WhenOutsTie()
     {
         var ruleset = MahjongRuleset.Changsha258;
