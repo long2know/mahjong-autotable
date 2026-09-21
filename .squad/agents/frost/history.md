@@ -20,266 +20,11 @@
 - Backend port for local/playtest: 8088 (NOT 8080)
 - Local backend startup (verified):
   ```bash
-  cd src/backend/src/Mahjong.Autotable.Api
-  export ConnectionStrings__Sqlite="Data Source=/tmp/<unique>.db"
-  export ASPNETCORE_URLS="http://0.0.0.0:8088"
-  export ASPNETCORE_ENVIRONMENT="Development"
-  nohup dotnet run --no-launch-profile > /tmp/<unique>.log 2>&1 &
-  ```
+  cd src/backend/src/Mahjong.Autotable
 
-**Team context:**
-- **Bishop** — Backend trunk owner (ChangshaGameRuntime, AutotableWsEndpoint, ChangshaDomain). I work AROUND him, not THROUGH him.
-- **Hicks** — Frontend trunk (autotable TS, lobby, HUD, bundle build)
-- **Ferro** — Frontend UI specialist (joined same wave as me) — visual polish, claim windows, win screens
-- **Vasquez** — Rules engineer + tests (final say on Changsha rule interpretation)
-- **Hudson** — Tester (regression + integration)
-- **Apone** — DevOps / CI (workflows, container, supply-chain)
-- **Scribe** — decisions.md merges + orchestration logs (ALWAYS commits to `.squad/decisions/inbox/` via `git add -f`)
-- **Ralph** — Work-queue monitor
-- **Ripley** — Project lead
-- **Squad** — Coordinator (the user)
+## Learnings (summarized 2026-07-27T01-56-23-811-07-00)
 
-## Important Conventions
-
-- **Atomic flock pipeline** for ALL git ops in parallel agent work (see charter)
-- **Per-provider EF migrations**: when adding/altering EF entities, you MUST add migrations for ALL THREE providers:
-  ```bash
-  dotnet ef migrations add <Name> --project src/backend/src/Mahjong.Autotable.Api -- --provider Sqlite
-  dotnet ef migrations add <Name> --project src/backend/src/Mahjong.Autotable.Api -- --provider Postgres
-  dotnet ef migrations add <Name> --project src/backend/src/Mahjong.Autotable.Api -- --provider SqlServer
-  ```
-  Don't forget the `<Context>ModelSnapshot.cs` is regenerated alongside.
-- **Avoid HasColumnType("TEXT")** in EF — collapses to nvarchar(4000) on SQL Server. Let EF pick provider-native unbounded type.
-- **EF Core can't translate IComparer overload** of OrderBy — use plain `OrderBy(x => x.Id)`.
-- **Services that hold IServiceScopeFactory** + open fresh AppDbContext per call MUST be Singleton, not Scoped.
-- **Squad memos** in `.squad/decisions/inbox/*.md` are gitignored — force-add with `git add -f`.
-
-## Initial Charter Focus
-
-When I'm first dispatched (after Bishop's PR `fix/manual-deal-plumb-and-auto-ack` merges), my first task is likely one of:
-- **Fan/scoring catalog** — extend the Changsha scoring beyond the basic 258-pair to include 七对, 清一色, 混一色, 杠上开花, 海底捞月, etc.
-- **Bot strategy hardening** — analyze why bots seem to spam Pung calls; add efficiency heuristics
-- **Replay event capture** — wire game events into the persisted `events` JSON so games can be replayed
-
-I should READ `.squad/decisions.md` and `.squad/agents/bishop/history.md` before picking up any task.
-
----
-
-## Log
-
-### 2026-07-25 — PR `feat/changsha-fan-catalog` — Fan catalog beyond 258-pair
-
-**First ship.** Extended Changsha scoring with a standalone fan-catalog layer
-without touching Bishop's trunk (`ChangshaGameRuntime.cs`,
-`AutotableWsEndpoint.cs`, `ChangshaDomain.cs`).
-
-**Files added (NEW only — no edits to existing):**
-- `src/backend/src/Mahjong.Autotable.Api/Changsha/Scoring/Fan.cs`
-  — `Fan` enum (14 members) + `FanInfo` record + `FanCatalog` lookup with
-    Chinese / Pinyin / English / Points / Description / Variant per fan.
-  — `FanVariant` enum: `Changsha` (default) and `ExpandedChinese` (gate for
-    future 144-tile / honors / dragons rules).
-- `src/backend/src/Mahjong.Autotable.Api/Changsha/Scoring/FanCalculator.cs`
-  — Pure-function `FanCalculator.EvaluateHand(WinningHand, FanContext) → FanResult`.
-  — `WinningHand` (concealed + melds + winning tile id) and `FanContext`
-    (situational flags + variant) records — deliberately a SIBLING of the
-    existing `WinContext` in `WinDetector.cs` to avoid coupling the two
-    layers.
-  — Variant-gated fans (`MixedOneSuit` 混一色, `BigThreeDragons` 大三元) are
-    SOLELY filtered at emission time via `ctx.Variant`; the dragon/honor
-    detection hooks already exist for a future expanded-deck builder (tile-id
-    range 108..119 reserved for 中/發/白).
-- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Scoring/FanCalculatorTests.cs`
-  — 39 tests: positive + negative per fan + catalog integrity + deterministic
-    ordering + combinatorial smoke.
-
-**Integration status:** Opt-in / query-only. Did NOT wire into
-`ChangshaStateMachine.Score` because the existing state-machine-driven score
-tests assert exact `BasePoints` from `ScoringService.CalculateScore`, and
-adding fan bonuses would silently break ~dozens of regression tests. The
-calculator is ready for a follow-up by Bishop to integrate via a wire-surface
-extension (see `.squad/decisions/inbox/frost-fan-catalog.md`).
-
-**Test count:** 5082 → 5121 (+39). One pre-existing W9 cron-schedule test
-still fails (unrelated).
-
-**Followups documented in decision memo:** Bishop to consider extending
-`ScoreResult` with a `FanBreakdown` field and switching `ChangshaStateMachine.Score`
-to call `FanCalculator.EvaluateHand` for the additive bonus.
-
-### 2026-07-26 — PR `feat/bot-strategy-changsha-heuristics` — Changsha-aware bot heuristics (W24)
-
-**Second ship.** Delivered on Master's previously-unfulfilled "suit-purity
-awareness" docstring promise and added a real tenpai-aware defensive
-discard tier, plus a clean public `Shanten.Calculate` façade. All
-additions live under `Changsha/Bot/Heuristics/` so Bishop's trunk
-(`ChangshaGameStateMachine.cs`, `ChangshaGameRuntime.cs`,
-`AutotableWsEndpoint.cs`, `ChangshaDomain.cs`) stays untouched.
-
-**Files added (NEW only):**
-- `Changsha/Bot/Heuristics/Shanten.cs` — public façade for
-  `HandEvaluator.MinShantenToHu`. Exposes `Calculate`,
-  `CalculateAfterDiscardingLogical`, `CalculateAfterAddingLogical`,
-  and `IsTenpai`.
-- `Changsha/Bot/Heuristics/DiscardEfficiency.cs` — pure scorer for the
-  directive's exact formula `neighbours + 2 * matches`. Reference
-  implementation untainted by 2/5/8 / gap-partial tuning.
-- `Changsha/Bot/Heuristics/SuitCommitment.cs` — detects ≥8-tile
-  dominant suit (declared melds count); returns −1 bias for
-  non-dominant discards to drive 清一色 (FullFlush, 4-fan).
-- `Changsha/Bot/Heuristics/TenpaiDetector.cs` — flags opponents with
-  ≥3 declared melds as likely-tenpai; `SafetyBias` returns −1 when
-  a tile is genbutsu against at least one dangerous opponent.
-
-**Files modified (within my lane):**
-- `Changsha/Bot/MasterStrategy.cs` — added two `ThenBy(...)` tier
-  breakers after the existing opponent-discard safety: `TenpaiDetector.SafetyBias`
-  and `SuitCommitment.Bias`. Both return small ints (−1) only in
-  hot-path conditions so the shanten + keep-score primaries always
-  dominate. Also extended `DecideWithReasoning` to surface
-  "tenpai defense" and "suit-commitment" lines in the audit replay.
-
-**Test files added:**
-- `tests/.../Changsha/Bots/BotStrategyTests.cs` — 20 focused unit
-  tests across heuristics (≥2 per directive), claim priority, and
-  Master-tier composition.
-- `tests/.../Changsha/Bots/BotSimulationLog.cs` — [Skip]-gated 100-game
-  simulation harness (run manually for memo data).
-
-**Test count:** 5125 → 5145 (+20). Same 1 pre-existing W9 cron-schedule
-failure, unchanged.
-
-**Simulation results (memo `frost-bot-strategy.md` §Simulation):**
-- 4×Master 100-game self-play: seat0=23, seat1=20, seat2=32,
-  seat3=12, draws=13. Healthy distribution, not degenerate.
-- Master vs 3×Hard 100 hands: master=22, hard avg/seat=21.67 — Master
-  matches Hard's baseline; the new tiers deliver reasoning lift, not
-  raw win-rate lift (which is the directive's "FUN to watch" goal).
-
-**Lane discipline:** Followed the directive — no migrations (Vasquez's
-in-flight test-isolation work), no state-machine changes (Bishop's
-trunk), no frontend.
-
-**Followups documented in memo:**
-1. `botDifficulty` query string is parsed but `ChangshaGameRuntime`
-   always uses Medium — Bishop should wire it through.
-2. Replay storage deferred to wave 4 per directive.
-
-### 2026-07-27 — PR `feat/changsha-dealing-ceremony` — Pure-function dealing ceremony rule engine
-
-**Third ship.** Per Stephen's `copilot-directive-2026-05-27T2127Z-face-down-walls.md`,
-shipped a pure-function rule engine for the Changsha 抓牌 ceremony as a sibling
-to Bishop's runtime-side state machine. Lives entirely under
-`src/backend/src/Mahjong.Autotable.Api/Changsha/Dealing/` — does NOT touch the
-runtime, the SignalR endpoint, the translator, or the domain.
-
-**Files added (NEW only):**
-- `Changsha/Dealing/ChangshaDealingCeremony.cs` — public static API
-  (`Start`, `ApplyDiceRoll`, `ValidateAndApplyPickup`, `ComputeStartingWall`,
-  `ComputeBreakIndex`, `ExpectedPickupCount`) + immutable
-  `ChangshaDealingState` (DealerSeat, DiceRoll, StartingWall, BreakIndex,
-  CurrentPickerSeat, TilesTakenThisRound, RoundIndex, HandSizes, Phase) +
-  `ChangshaDealingResult` (Valid, RejectReason, NewState, TilesPickedUp) +
-  `ChangshaDealingPhase` enum (WaitingForDice/PickingFour/PickingOne/
-  DealerExtra/Complete).
-- `tests/.../Changsha/Dealing/ChangshaDealingCeremonyTests.cs` — 28 test
-  methods expanding to 76 xunit cases via Theories. Covers every dice sum
-  (2..12), every dealer (0..3), every phase transition, every reject path,
-  plus a combinatorial full-deal smoke.
-
-**Lane discipline:** Per the directive, I touched ONLY new files under
-`Changsha/Dealing/**`. Did not touch `Changsha/Runtime/**`,
-`AutotableWsEndpoint.cs`, `ChangshaToAutotableTranslator.cs`,
-`ChangshaDomain.cs`, `Changsha/Scoring/**`, persistence, migrations, or
-frontend.
-
-**Workspace hazard during this ship:** another agent ran branch switches
-that clobbered my untracked working files mid-flight. Recovered by writing
-content into `.work/` (which survives branch switches better than
-working-tree files) and doing all git ops under flock. Committed
-immediately after writing files to make subsequent clobbers harmless.
-
-**Integration contract:** documented in `.squad/decisions/inbox/frost-changsha-dealing-ceremony.md`.
-Bishop's runtime must call: `Start(dealer)` at game start (manual mode),
-`ApplyDiceRoll(state, dice)` on dice action, and
-`ValidateAndApplyPickup(state, seat, count)` on each pickup. Runtime owns
-tile-id assignment from wall slots; the ceremony only computes turn order
-+ counts + phase.
-
-**Test count:** baseline 5145 + 76 new = 5221 expected; actual 5223 (includes
-2 from other intervening merges), 5220 pass / 1 pre-existing W9 cron fail / 2
-skipped.
-
-**Commits:**
-- Feature branch: `feat/changsha-dealing-ceremony` → `15fa72d`
-- Squash-merged to main as `85b8ed6`
-
-📌 Team update (2026-05-27T22:00:00Z): Wave 4 — Dealing ceremony rebuild. Shipped pure-function Changsha dealing ceremony rule engine at Changsha/Dealing/ChangshaDealingCeremony.cs. Public API: Start(dealerSeat) → WaitingForDice; ApplyDiceRoll(state, dice[]) → PickingFour; ValidateAndApplyPickup(state, seat, count) → validation result or new state. Invariants: pure-function transducer (no mutation), programmer errors throw (ArgumentException/InvalidOperationException), runtime violations surface as ChangshaDealingResult { Valid=false, RejectReason="…" }. Turn order: CCW from dealer (dealer + i) % 4. Final hands: 14 (dealer) / 13 (others). Tests: 28 methods, 76 cases under xunit Theories covering Start, ApplyDiceRoll, ComputeStartingWall (15 cases), ComputeBreakIndex (11 cases), ValidateAndApplyPickup, full deal sequence, phase transitions (17 pickups), purity assertions, all ✅. Sibling to Bishop's runtime state machine (intentional clean-room reimplementation as canonical rule spec). Suggested follow-up (Bishop's lane): Consolidate runtime to call this engine, store returned ChangshaDealingState on game state. Full suite 5219 tests pass.
-
----
-
-## Wave-K — Scoring End-to-End Audit (2026-05-29)
-
-**Audit scope:** End-to-end Hu → `FanCalculator` → `ScoreResult` → `PlayerStats`
-pipeline + bot-strength sanity check. Report at
-`.squad/decisions/inbox/frost-scoring-audit.md`.
-
-**Findings**
-
-- Fan catalog: 14 fans defined, 12 reachable in pure Changsha (2 correctly
-  variant-gated to `ExpandedChinese`). All 12 reachable fans have unit-test
-  coverage; the variant-gated pair has gating tests.
-- Hu → score → persistence pipeline is intact. New
-  `HuToScoreToPersistenceTests` drives the real `ChangshaGameStateMachine`
-  through self-draw Hu and discard-Hu and asserts the resulting `PlayerStats`
-  row lands in SQLite with the expected `GamesWon` / `LastGameAt` / `TotalScore`
-  / `LongestWinStreak`.
-- Bot-strength simulation: 4×Master produces 20 Hu / 30 hands, 4×Easy
-  produces 18 Hu / 30 hands, Master@seat0-vs-3×Easy produces a clean +9 win
-  delta for the Master seat. The strategy abstraction is observable.
-
-**New tests (all passing)**
-
-- `Changsha/Acceptance/HuToScoreToPersistenceTests.cs` — 3 tests
-  - `SevenPairsSelfDrawHu_ScoresAndPersistsWinnerStats` — BasePoints=30,
-    persists row.
-  - `DiscardHu_ScoresAndPersistsWinnerStats` — 7-pair shape completing on
-    dealer's discard; persists row with `SelfDraw` fan absent.
-  - `RepeatedHu_AccumulatesWinsAndStreak` — 3 self-draws → streak=3.
-- `Changsha/Bots/BotStrengthSimulationTests.cs` — 3 tests, permanent
-  unskipped sibling of `BotSimulationLog.cs`.
-
-**Pitfall captured for future Frost / Bishop work**
-
-`PlayerProfileService.RecordGameCompletedAsync` skips IDs starting with
-`bot-` (PlayerProfileService.cs:256). `ChangshaGameStateMachine.CreateGame`
-seeds bot seats with exactly that prefix. Any test asserting persistence
-**must** overwrite seat `PlayerId` to a non-bot ID before invoking the
-persistence hook, or the test will pass-by-vacuum (no row written and no
-assertion that catches it).
-
-**Lane discipline**
-
-Touched only test files under `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/`
-and two squad-state files (`.squad/decisions/inbox/frost-scoring-audit.md`,
-this file). No production code changed.
-
-**Regression**
-
-61 / 61 pass on
-`~FanCalculator|~FanCatalogIntegration|~HuToScoreToPersistence|~BotStrengthSimulation|~BotContextualHu|~ScoringService`.
-
-**Suggested follow-ups (handed to next Frost wave)**
-
-1. Variant switcher to enable `FanVariant.ExpandedChinese` + 144-tile deck.
-2. End-to-end persistence test for robbing-kong Hu (currently only the fan
-   detection is covered in isolation).
-3. Persistence-side stacked-fan test (HeavenlyHand + FullFlush) confirming
-   `HighestSingleGameScore` increments by the correct stacked total.
-
-📌 Team update (2026-05-29T00:00:00Z): Wave K — Scoring end-to-end audit. Verified Hu → FanCalculator → ScoreResult → PlayerStats pipeline is intact. New tests: HuToScoreToPersistenceTests (3, self-draw + discard + streak, real SQLite persistence) and BotStrengthSimulationTests (3, permanent 30-hand bot-strength simulation). Audit memo at .squad/decisions/inbox/frost-scoring-audit.md with fan coverage matrix (12/12 reachable fans tested, 2 variant-gated for future ExpandedChinese deck), per-seat bot simulation numbers (4×Master: 20 Hu / 30 hands; Master@seat0 banks +9 wins vs Easy peers), and persistence-side gaps for follow-up. **Pitfall for all squad members:** PlayerProfileService.cs:256 skips PlayerIds starting with "bot-" — persistence tests must overwrite the seed IDs the state machine plants or assertions pass-by-vacuum.
-
-📌 Team update (2026-05-29T19:30:00Z): Wave L — Claim window doesn't open for local seat. Investigated Vasquez integration-audit gate D1 ("claim overlay never appears in a 4-Hard-bot game"). Found **two** layered bugs + one audit-premise issue. **BUG #1:** `ChangshaToAutotableTranslator` always emitted `deadlineUnixMs: 0` — both Ferro overlay and side-panel compute `remaining = deadline - Date.now()`, so 0 made them auto-pass / auto-hide instantly. Fix: added `OpenedAtUnixMs` to `ChangshaClaimWindow`, set it on every claim-window open (`Discard` + `DeclareAddedKong`), plumbed `ClaimWindowTimeoutMs` from `IOptions<ChangshaRuntimeOptions>` through `AutotableConnectionManager` into both `Translate` call sites. **BUG #2:** `EncodeClaimWindow` wrote `CollectionEntry.Key` as an `int`, which the JSON converter serialised as a bare number. The frontend `Collection<K,V>` is a `Map`, where `Map.get(0) !== Map.get("0")`, and every consumer (`game-ui.ts.sendClaim`, overlay, side-panel) keys by `String(selfSeat)`. Net effect: overlay's listener never matched any wire entry and `activeClaim` stayed `null`. Fix: stringified the seat key on encode (`EncodeClaimWindow` + `EncodeClaimWindowClosed`). **Audit premise:** Vasquez's D scenario used `botCount=4`, which fills every seat with a bot and makes the viewer a spectator — spectators are by-design never claim-eligible. Hand-off to Vasquez to update D to `botCount=3` + explicit takeSeat. Defensive frontend guards (`deadline <= 0` → "no client countdown" instead of "expired now") added in both Ferro overlay (`ui/claim-window-overlay.ts`) and side-panel (`game-ui.ts`). 4 new translator tests + updated key-shape test (50/50 pass). End-to-end verified via `playtest-artifacts/frost-claim-window-verify.spec.mjs` — observed `claim` entry with non-zero deadline, overlay class `ferro-claim-overlay-visible`, `display: grid`. Memo: `.squad/decisions/inbox/frost-claim-window.md`. **Pitfall for all squad members:** when you wire a new Collection consumer, never rely on numeric-vs-string Map keys matching — coerce both to a single type. `client.claim.set(String(seat), …)` (local writes) and a backend-side `int` key would silently create two separate map entries.
+> Full history (31224 B, 20 entries) preserved verbatim in `history-archive.md`. Most-recent entries retained below.
 
 📌 Team update (2026-05-29T20:00:00Z): Wave M — Backend deal-emit verdict for Stephen's "dealing seems very whacky" screenshot. **VERDICT: backend mixed — one real bug found + fixed; remaining visual symptoms are frontend (Hicks's lane).** Evidence: live WS capture against the running backend with Stephen's exact URL params (`dealMode=auto&botCount=3&botDifficulty=Hard&handCount=4&seat=0`) — hand counts correct (14/13/13/13), discards correctly empty, but wall counts were **28 / 27 / 0 / 0** (all 55 post-deal wall tiles packed into seats 0+1, seats 2+3 walls physically empty). **Root cause:** `AutotableSlotMap.EnumerateWallSlotsInOrder` was seat-major, so packing the 55-tile remainder col-major within seat 0 first stuffed it before reaching seats 2/3. **Fix:** flipped to col-major-across-seats — for each col yield every seat × 2 layers, so 55 tiles now distribute ~13-14 per seat, all 2-high stacks. Pre-deal synthesized 108-tile wall is unchanged (every slot still filled). **Tests:** +3 regression tests (`WallTiles_DistributedAcrossAllFourSeats`, `WallTiles_StackedTwoHighAtEverySeat`, `NoPhantomDiscards_BeforeAnyDiscardEvent`) pin the contract going forward. Full suite: 5263/5267 pass; 2 failures (`MultiGameRoutingTests.LateJoin_…`, `VasquezW9SelfLaneTests.NightlyCron…`) are **pre-existing on baseline** (verified by `git stash` baseline run), unrelated to deal-emit. Other Stephen symptoms (only 1 hand tile visible, corner wedges, floating labels) confirmed via WS dump to NOT be backend bugs — handed off to Hicks. Memo: `.squad/decisions/inbox/frost-backend-deal-emit-verdict.md`. **Pitfall for all squad members:** translator slot enumeration order is load-bearing whenever the authoritative collection is smaller than the slot capacity — seat-major orders silently strand entire seats once the source list is partial. Default to col-major-across-seats when downstream rendering must remain visually balanced.
 
@@ -292,165 +37,36 @@ this file). No production code changed.
 
 ---
 
-## Wave N — Scoring + Rules Thoroughness Audit (2026-06-03)
+## Waves N & O — Scoring/rules audit + live scoring wire-proof (2026-06-03/04)
 
-**Trigger:** Stephen's "fan out + thoroughly test" directive after the
-broken-deal wrap. Memo: `.squad/decisions/inbox/frost-scoring-thorough-audit.md`.
+> Long-form preserved verbatim in `history-archive.md` (folded 2026-08-07T09-21). Compact summaries retained:
 
-**Production bug found AND fixed.** `FanCalculator.EvaluateHand` emitted
-`ConcealedHand` + every set situational fan (`SelfDraw`,
-`KongReplacement`, `LastTileFromWall`, `LastDiscardCatch`, `RobbingKong`)
-on hands that were NOT structurally winning. `HeavenlyHand`/`EarthlyHand`
-had the right gate; the other six didn't. Empty hand with no flags →
-`[ConcealedHand]` (1 point) instead of empty. The production state
-machine masked it (only calls Score when CurrentWin is populated by a
-detector that already returned IsWin=true), but the calculator class
-XML doc explicitly markets query-only use (replay, frontend audit) and
-documents an empty-when-no-fan-applies contract, so the gap was a
-ticking time bomb for any future caller. Fix: hoist `RunDetector` to
-the top of `EvaluateHand` and gate situational fans + `ConcealedHand`
-on `detection.IsWin`. Variant-gated `MixedOneSuit`/`BigThreeDragons`
-remain ungated by IsWin so they stay unit-testable with phantom-tile
-forward-compat hands (preserving the existing
-`MixedOneSuit_ExpandedChineseWithHonors_FanEmitted` test verbatim).
+📌 Scoring thoroughness audit (2026-06-03): 26 new `FanCalculator` tests; 1 prod bug fixed — spurious situational fans + `ConcealedHand` emitted on non-winning hands, now gated on `detection.IsWin` (committed `87e53c8`). Wash-hand 洗胡 verified N/A for Changsha.
 
-**Tests added (all PASS): 26 new** in
-`Changsha/Scoring/FanCalculatorThoroughnessTests.cs`:
+📌 Live scoring wire-proof (2026-06-04): 6 new wire-serialization tests + CDP-tapped Playwright spec PASS — `FanCalculator` fires in real 4-bot games and fans reach the WebSocket payload end-to-end (state machine → translator → `AutotableProtocol` → SignalR mirror; Draw omits `scoreResult`). Memo: `frost-scoring-live-wiring.md`.
 
-- Edge cases (5): empty hand ×2, non-winning 14-tile, all-phantom,
-  phantom-mixed-with-suit FullFlush spillover, Standard-shape with
-  invalid pair rank.
-- Multi-kong (7): 1/2/3/4 concealed, exposed-only, added-kong,
-  mixed-concealed-and-exposed.
-- Self-draw vs discard delta (2): standard hand delta = +1 fan point;
-  FullFlush self-draw vs claimed-chow delta = +2 (SelfDraw + ConcealedHand).
-- Dealer bonus via ScoringService (3): dealer self-draw / non-dealer
-  self-draw / stacked Big Win ×2 multiplier × dealer bonus.
-- Composite stacking (6): SevenPairs+FullFlush, AllPungs+FullFlush,
-  NineTerminals+SevenPairs (NineTerminals+AllPungs is mathematically
-  impossible — NineTerminals needs 6 distinct terminals but AllPungs
-  caps at 5 distinct logicals; documented inline), Heavenly+FullFlush+
-  AllPungs+SelfDraw+Concealed ultimate, KongReplacement+AllPungs,
-  LastTileFromWall+SelfDraw.
-- IsWin defensive gate regression pins (2): non-winning hand with every
-  flag set; 13-tile partial hand.
+📌 Team update (2026-07-27T01-56-23-811-07-00): The SqlServer live-EventLog-enumeration race was root-fixed in Bishop's PR #133 (`d4ff49b`, `TryGetSnapshotCopyAsync` deep copy); your #126 SqlServer integration merged in the wave. This spawn: independently investigate the PR #136 SqlServer failure. — recorded by Scribe (decisions.md §2026-07-27).
 
-**Wash hand (洗胡):** Verified N/A for Changsha per Baidu Baike 长沙麻将
-patterns section + Reddit r/Mahjong Changsha variant guide. Not a
-Changsha scoring pattern; appears in Shanghai/Wuhan variants only.
-Documented in the new test class XML doc + audit memo §3.
+📌 Team update (2026-07-27T01-56-23-811-07-00, late-arrival addendum): **PR #136 SqlServer failure = known WS-discard-race timing flake** (isolation 5/5 pass; same-commit CI pass+fail; `PersistSnapshots=false` → zero hot-path DB I/O) — NOT a #136 regression or persistence defect. Justified rerun; WS-race hardening handed to **Bishop** (consider `DbSerial` for the WS-manual-deal acceptance family). — recorded by Scribe.
 
-**Test count:** baseline 290 scoring-filter / 5298 full → after this
-wave: 316 scoring-filter (+26) / 5324 full (+26). Only remaining
-failures are pre-existing baseline (`VasquezW9SelfLaneTests.
-NightlyCronWorkflow_HasSchedule_AndRepoMode`) and flaky parallel
-(`DealerExtraTransitionsToAwaitingDiscardTests.WsEndpoint_DealerDiscard…`
-— passes in isolation). Neither caused by this wave.
-
-**Lane discipline:**
-
-- Touched only `Changsha/Scoring/FanCalculator.cs` (fix) +
-  `Changsha/Scoring/FanCalculatorThoroughnessTests.cs` (new) +
-  the audit memo + this history file.
-- Did NOT touch: frontend, Players, Auth, Hub, Runtime, Translator,
-  AutotableProtocol, ChangshaStateMachine, ScoringService, WinDetector.
-
-**Cross-lane WIP encountered + recovery.** Local working tree carried
-Bishop's W25 botDifficulty WIP in `AutotableWsEndpoint.cs` +
-`ChangshaGameRuntime.cs` + `ChangshaGameInstance.cs`. A concurrent agent
-race during the initial git push caused my first commit attempt
-(`abc1cf1`, orphan) to land on `test/bishop-bots-multigame` with mixed
-content + my fix reverted. Recovered the test file + audit memo from
-the orphan; re-applied the FanCalculator.cs fix + history append on a
-fresh branch off `origin/main`. Final clean commit lands my four
-lane-files only.
+📌 Team update (2026-07-27T02-51-38-764-07-00): Your PR #136 `Test (SqlServer)` completion-gate investigation is **finalized**: the failure was a known **WS-discard-race / test-isolation timing flake** (5/5 isolation pass; same-commit CI pass+fail; `PersistSnapshots=false` -> zero hot-path DB I/O) — NOT a #136 regression or persistence defect. Justified rerun **PASSED** -> #136 db-providers now fully green (Sqlite/Postgres/SqlServer/drift). WS-race hardening handoff stands with Bishop. Remaining #136 merge blocker = #137 (e2e/playability). — recorded by Scribe (decisions.md §2026-07-27).
 
 
-📌 Scoring thoroughness audit (2026-06-03): 26 new FanCalculator tests, 1 prod bug fixed (spurious fans on non-winning hands) — committed `87e53c8`.
+📌 Review-of-record (2026-07-27T14-54): **APPROVE PR #156** (author Bishop) — backend half of #153, "retire stale persistent `changsha-default` game for seat-seeking newcomers". Head `2bdc5ef` (parent `507268f`). Independent read-only review; **no merge**.
 
-## Wave-O — Live scoring wire-proof (2026-06-04)
+Change: 2 prod files (+105/-4) + 1 test (+306). `EnsureRuntimeBoundAsync` gains `resettingConnection` (passed ONLY from the numeric seat-take path); for `DefaultGameId` only, `ShouldRetireStaleDefault` retires the bound runtime via `RemoveGameAsync` + mints fresh when ALL hold: durable identity, past `Seating`, newcomer not already seated, and no other live connection. New `TryGetSeatForPlayer` keys off durable `ChangshaSeatState.PlayerId` (survives reconnect), bot-excluded.
 
-**Goal.** Prove end-to-end that `FanCalculator` fires during a real
-4-bot Changsha game AND that fans land on the WebSocket payload the
-frontend reads — not just unit-test isolation.
+Independently verified in an isolated `/data/frost-156-review` worktree (existing worktrees untouched; removed after): **genuine RED→GREEN** — reverting only the two prod files to parent `507268f` (test kept) fails PRIMARY `FreshBrowser_...GetsFreshTable_NotStaleState` (`ridB==ridA`, B inherited stale `AwaitingDiscard`); at head all **4/4 GREEN** in Release. Atomicity: whole check→remove→create under `_bindingLock`; fast-path bypassed for `(resettingConnection && DefaultGameId)` ⇒ no double-runtime/TOCTOU. Connection registration precedes `RunReadLoopAsync` ⇒ concurrently-reconnecting co-player counted by `ConnectionsInGame`, never erased. `RemoveGameAsync` marks row terminal; `ProviderHydrationMatrixTests` proves terminal rows skipped by `HydrateAsync` across Sqlite/Postgres/SqlServer. Process restart safe (`_runtimeBinding` empty ⇒ fresh, guard never runs). Creator-wins/explicit-`?gameId=` untouched. All 17 CI checks green at head (not rerun-flake). Frontend PR #155 compatible — additive; either merge order safe (recommend #156 as safety net before/with #155).
 
-**Outcome.** ✅ Wiring verified intact at every layer. Memory entry
-claiming "FanCalculator NOT wired" was OUTDATED — corrected via
-downvote + new fact. Decision memo:
-`.squad/decisions/inbox/frost-scoring-live-wiring.md`.
+Non-blocking: no truly-parallel concurrent seat-take race test (Live test is sequential); safe by construction — suggest a `Task.WhenAll` follow-up in a later wave (Bishop's lane).
 
-**Verified live path (citations).**
+Comment: https://github.com/long2know/mahjong-autotable/pull/156#issuecomment-5097302951 · Decision memo: `.squad/decisions/inbox/Frost-approve-pr-156-retire-stale-persistent-changsha-de.md`
 
-- `Changsha/ChangshaStateMachine.cs:944` — `Score` action calls
-  `FanCalculator.EvaluateHand` via `EvaluateFanBonuses`.
-- `Changsha/ChangshaStateMachine.cs:983` — `FanWireName` enum →
-  camelCase id mapping.
-- `Autotable/ChangshaToAutotableTranslator.cs:274-285` —
-  `BuildHandResult` projects `score.Fans` into `ScoreResultEntry.Fans`
-  with `FanCatalog.Get` labels.
-- `Autotable/AutotableProtocol.cs:296-317` — `FanEntry` wire schema
-  `{ fan, points, chinese, pinyin, english }`.
-- `Autotable/AutotableProtocol.cs:479-486` —
-  `JsonIgnoreCondition.WhenWritingNull` → Draw outcomes OMIT
-  `scoreResult` entirely (not `null`).
-- `Changsha/Runtime/ChangshaGameRuntime.cs:1972-2036` — SignalR
-  `ScoringComplete` mirror of the same shape.
+📌 Review-of-record re-affirmation (2026-08-05T17:21 PT): **REAFFIRM APPROVE** for two test-only PRs after clean merge-commits of current main `0dfd96a` onto previously-approved heads (READ-ONLY; no edit/push/merge; dirty pre-existing worktree untouched).
 
-**Acceptance tests (new).** 6 tests in
-`tests/Mahjong.Autotable.Api.Tests/Changsha/Scoring/LiveHuFanWiringTests.cs`:
+- **PR #145** (`squad/142-manual-deal-pickup-flake`) new head `71331519b4926cfa730cf877b88cdbd70977b678` = true merge of approved `32b29c0` + main `0dfd96a`. All 5 PR-owned test files byte-identical (blob-hash) to approved head; `git diff 0dfd96a..71331519` = only those 5 test files (+322/−20), zero prod/harness/bundle drift. 19 check-runs terminal green on exact head (Test Sqlite/Postgres/SqlServer, e2e, playability-gate, pre-commit, migration-drift, gitleaks, Trivy HIGH, /health amd64+arm64); slsa/sticky-Trivy skipping/neutral. MERGEABLE/CLEAN. **APPROVE `71331519`.** Comment: https://github.com/long2know/mahjong-autotable/pull/145#issuecomment-5198960823
+- **PR #151** (`squad/137-bot-chow-advance-guard`) new head `a7a987daca0645ee45fa6e8f29342d1f432fc4c6` = true merge of approved `2d4d801` + main `0dfd96a`. `BotChowAdvancesTests.cs` byte-identical (blob `283436a`); `git diff 0dfd96a..a7a987da` = only that 1 file (+230), zero prod/bundle drift. All check-runs terminal green on exact head. MERGEABLE/CLEAN. **APPROVE `a7a987da`.** Comment: https://github.com/long2know/mahjong-autotable/pull/151#issuecomment-5198962468
 
-1. `SelfDraw7PairHu_WireSerialization_CarriesFansWithLabels`
-2. `Discard7PairHu_WireSerialization_CarriesSevenPairsAndConcealedHandFans`
-3. `Draw_WireSerialization_OmitsScoreResultAndWinResult` (pins
-   `WhenWritingNull` semantics).
-4. `FullFlushSelfDrawConcealedHu_StacksFans_FanPointsMatchesPerFanSum`
-5. `WireSerialization_PaymentsRows_HaveFanReasonPrefix`
-6. `FanWireIdentifiers_RoundTripThroughFanCatalog` (catalog drift
-   guard).
+Blockers: none. Shared reviewer identity ⇒ no formal GitHub approval; the pinned comments are the review of record. Did NOT merge.
 
-All 6 PASS. Targeted sweep
-(`~Scoring|~FanCalculator|~HandResult`) remains 105/105 green.
-
-**Live wire-tap spec (new).**
-`playtest-artifacts/playtest-scoring-live.spec.mjs` — spectates real
-4-bot Hard games at `:8088`, loops up to 6 fresh games, captures on
-TWO channels: (a) bundle `client.result.on('update')` events, (b)
-CDP `Network.webSocketFrameReceived` to prove the wire payload
-itself carries fans. Asserts at least one Hu with non-empty fans +
-full schema + payments fan-reason rows.
-
-**Latest run (game 1):**
-
-```
-[frost-scoring-live] Hu#1 winner=1 basePoints=1 fanPoints=0 fans=[]
-[frost-scoring-live] Hu#2 winner=2 basePoints=2 fanPoints=1 fans=[concealedHand]
-[frost-scoring-live] wireSnapshot: result=111, Hu=111, fans=6
-[frost-scoring-live] FIRST Hu-with-fans @ game 1: winner=2,
-    basePoints=2, fanPoints=1, category=smallWin
-[frost-scoring-live]   · concealedHand (门清 / mén qīng / Concealed
-    Hand) = 1 pts
-[frost-scoring-live] result: PASS
-```
-
-Findings + screenshot:
-`playtest-artifacts/screenshots/frost-scoring-live-2026-06-04T14-11-30-915Z/`.
-
-**4-bot Draw investigation.** Hicks's earlier "stuck on hand 1"
-observation was an ARTEFACT of my first spec's poller — it counted
-each snapshot replay (327 in 300 s) as a fresh event. The current
-spec de-duplicates by `winner|basePoints|fanPoints|fan-ids`
-fingerprint and correctly observes 2 distinct Hu's in a single 75 s
-game. 4-bot Hard advances normally. The "Medium Draw-bias"
-hypothesis remains open as a future bot-strategy tuning wave (my
-lane) but is OUT OF SCOPE for this wave.
-
-**Lane discipline.** Touched only the explicit allowlist: the new
-test file, the new spec, screenshots, the decision memo, and this
-history file. Did NOT touch frontend, Players, runtime, translator,
-state machine, or scoring production sources.
-
-
-📌 Live scoring wire-proof (2026-06-04): 6 new wire-serialization
-tests + CDP-tapped Playwright spec PASS — `FanCalculator` is wired
-end-to-end and fans reach the WebSocket. Memo:
-`.squad/decisions/inbox/frost-scoring-live-wiring.md`.
+📌 Cross-agent (2026-08-07T09-21, recorded by Scribe): Your RV-2 FINAL (`Frost-RV2-FINAL-SC4-single-trigger-slot.md`) now ALIGNS with the parent-locked DEFINITIVE ruling — manual-pickup match key = `pickup.targetSlots` (single-trigger, top-first, len-1), superseding your OWN prior "count-based targetSlots confirm" AND "targetHandles pin". The pickup-key question is therefore CLOSED / CONVERGED across ALL parties: code (Hicks/Bishop slot-based), parent (locked), rules (Vasquez), review (you). Your G19/privacy handle analysis stays valid but re-points to SC-2 (`things` = opaque per-viewer HANDLES), which remains OPEN/BLOCKING in Bishop's lane — the ONLY place opaque handles belong. See decisions.md §2026-08-07T09-06 (SC-4 v4 FINAL, CLOSED/CONVERGED).

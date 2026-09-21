@@ -20,6 +20,11 @@
 | Apone | DevOps / Platform Engineer | `.squad/agents/apone/charter.md` | Active |
 | Frost | Backend Dev (parallel to Bishop) | `.squad/agents/frost/charter.md` | Active |
 | Ferro | Frontend / UI Engineer (parallel to Hicks) | `.squad/agents/ferro/charter.md` | Active |
+| Drake | Backend Runtime Engineer | `.squad/agents/drake/charter.md` | Active |
+| Dietrich | Frontend Renderer Engineer | `.squad/agents/dietrich/charter.md` | Active |
+| Wierzbowski | WebSocket Security Engineer | `.squad/agents/wierzbowski/charter.md` | Active |
+| Spunkmeyer | Endpoint Authorization Engineer | `.squad/agents/spunkmeyer/charter.md` | Active |
+| Burke | Identity Security Engineer | `.squad/agents/burke/charter.md` | Active |
 | Scribe | Session Logger | `.squad/agents/scribe/charter.md` | Active |
 | Ralph | Work Monitor | `.squad/agents/ralph/charter.md` | Active |
 

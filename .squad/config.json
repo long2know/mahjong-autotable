@@ -1,6 +1,6 @@
 {
-  "defaultModel": "claude-opus-4.8",
+  "defaultModel": "gpt-6-astra",
   "defaultReasoningEffort": "max",
   "defaultContextTier": "long_context",
-  "notes": "Stephen's standing directive 2026-06-15: ALL spawns (including Scribe + mechanical ops) use claude-opus-4.8 at max reasoning effort with long_context (1M). No model downgrades. Supersedes the 2026-05-22 opus-4.7-xhigh directive."
+  "notes": "User directive 2026-09-09: ALL spawns (including Scribe + mechanical ops) use gpt-6-astra at max reasoning effort with long_context. No model downgrades. Supersedes the 2026-06-15 claude-opus-4.8-max directive."
 }
