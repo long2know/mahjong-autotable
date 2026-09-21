@@ -52,6 +52,9 @@ export class MainView {
   private height = 0;
   private fitCorners: Vector3[] = [];
   private viewportSignature = '';
+  private tableStatusInset = 0;
+  private tableStatusRegion: 'top' | 'bottom' | null = null;
+  private framingSeat: number | null | undefined;
 
   private dummyObject: Object3D;
 
@@ -273,6 +276,8 @@ export class MainView {
   }
 
   updateCamera(seat: number | null, lookDown: number, zoom: number, mouse2: Vector2 | null, gameType: GameType): void {
+    if (seat !== this.framingSeat || gameType !== GameType.CHANGSHA) this.tableStatusInset = 0;
+    this.framingSeat = seat;
     this.updateCameraProjection(this.width, this.height);
     const angle = (seat ?? 0) * Math.PI * 0.5;
     this.viewGroup.rotation.set(0, 0, angle);
@@ -317,7 +322,6 @@ export class MainView {
     };
     const compact = this.width <= 900 || this.height <= 520;
     const topChrome = ['new-game', 'variant-badge', 'settings-button', 'lobby-toggle'];
-    if (compact) topChrome.push('bot-banner');
     for (const id of topChrome) {
       const element = document.getElementById(id);
       if (!element || !element.getClientRects().length) continue;
@@ -331,8 +335,24 @@ export class MainView {
     // Turn text and transient pickup/claim overlays do not define the camera's
     // viewport. Their changing size/countdown must never move the table.
     const tableStatus = document.getElementById('bot-banner');
-    if (!compact && tableStatus?.getClientRects().length) {
-      area.bottom = Math.min(area.bottom, tableStatus.getBoundingClientRect().top - canvas.top - margin);
+    const statusRegion = compact
+      ? (document.body.classList.contains('mobile-table-status-visible') ? 'top' : null) : 'bottom';
+    if (statusRegion !== this.tableStatusRegion) {
+      this.tableStatusRegion = statusRegion;
+      this.tableStatusInset = 0;
+    }
+    if (statusRegion !== null) {
+      // Transport loss retracts the status text, not its framing footprint.
+      // Retain only the inset; real seat changes and explicit compact-HUD
+      // choices reset it, while resizing and other panels still fit normally.
+      if (tableStatus?.getClientRects().length) {
+        const bounds = tableStatus.getBoundingClientRect();
+        this.tableStatusInset = Math.max(0, statusRegion === 'top'
+          ? bounds.bottom - canvas.top + margin
+          : this.height - (bounds.top - canvas.top - margin));
+      }
+      if (statusRegion === 'top') area.top = Math.max(area.top, this.tableStatusInset);
+      else area.bottom = Math.min(area.bottom, this.height - this.tableStatusInset);
     }
     // Keep a collapsed chat header below the rendered hand in desktop mode too.
     const chat = document.querySelector('.chat-panel-collapsed');

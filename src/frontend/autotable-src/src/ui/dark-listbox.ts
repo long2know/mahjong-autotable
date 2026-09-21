@@ -133,7 +133,7 @@ export function enhanceDarkSelect(select: HTMLSelectElement): void {
     const above = Math.max(0, rect.top - top - 4);
     const desired = Math.min(260, popup.scrollHeight + 2);
     const opensBelow = desired <= below || below >= above;
-    const height = Math.min(desired, opensBelow ? below : above);
+    const height = Math.min(desired, opensBelow ? below : above, Math.max(0, bottom - top));
     popup.style.maxHeight = `${height}px`;
     popup.style.top = `${Math.max(top, Math.min(
       opensBelow ? rect.bottom + 4 : rect.top - 4 - height, bottom - height,

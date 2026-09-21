@@ -41,6 +41,12 @@ interface SceneReport {
   things: number;
   slots: number;
   realTiles: number;
+  tileThings: number;
+  anonymousBacks: number;
+  markers: number;
+  visibleMarkerMeshes: number;
+  thingIds: number[];
+  parkedIds: number[];
   parked: number;
   /** Things whose `slot` is no longer the instance registered under its name. */
   orphanSlotRefs: number;
@@ -64,9 +70,12 @@ async function readScene(page: Page): Promise<SceneReport> {
     const w = g.world;
     const parkSlot = w.slots.get(park) ?? null;
     let parked = 0, orphanSlotRefs = 0, asymmetric = 0, undefinedPlaces = 0, realTiles = 0;
+    let tileThings = 0, markers = 0;
+    const parkedIds: number[] = [];
+    const realTileLimit = w.conditions.gameType === 'CHANGSHA' ? 108 : 136;
     for (const t of w.things.values()) {
       const name = String(t?.slot?.name ?? '');
-      if (name === park) parked++;
+      if (name === park) { parked++; parkedIds.push(t.index); }
       if (w.slots.get(name) !== t.slot) orphanSlotRefs++;
       // The park slot is intentionally MULTI-TENANT: many parked Things share it
       // and its `.thing` back-pointer is not authoritative. Symmetry is only an
@@ -75,7 +84,11 @@ async function readScene(page: Page): Promise<SceneReport> {
       let place;
       try { place = t.place(); } catch { place = undefined; }
       if (!place) undefinedPlaces++;
-      if (t.index < 108 && t.type === 'TILE') realTiles++;
+      if (t.type === 'TILE') {
+        tileThings++;
+        if (t.index < realTileLimit) realTiles++;
+      }
+      if (t.type === 'MARKER') markers++;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let sel: Array<any> = [];
@@ -91,6 +104,13 @@ async function readScene(page: Page): Promise<SceneReport> {
       things: w.things.size,
       slots: w.slots.size,
       realTiles,
+      tileThings,
+      anonymousBacks: (w.hiddenBackPool ?? []).filter((t: { index: number }) => w.things.get(t.index) === t).length,
+      markers,
+      visibleMarkerMeshes: (g.objectView.thingGroups.get('MARKER')?.meshes ?? [])
+        .filter((mesh: { visible: boolean; parent: unknown }) => mesh.visible && mesh.parent !== null).length,
+      thingIds: [...w.things.keys()].sort((a, b) => a - b),
+      parkedIds: parkedIds.sort((a, b) => a - b),
       parked,
       orphanSlotRefs,
       asymmetric,
@@ -184,7 +204,12 @@ test.describe('renderer — off-table hidden park slot', () => {
     // Non-vacuity: SC-2 really is active — 108 backs exist and the pool parks
     // everything it isn't rendering.
     expect(active.hasPark).toBe(true);
-    expect(active.things).toBe(217); // 108 reals + marker + 108 anonymous backs
+    expect(active.things).toBe(216); // 108 real tiles + 108 anonymous backs; Changsha has no relay marker.
+    expect(active.realTiles).toBe(108);
+    expect(active.tileThings).toBe(216);
+    expect(active.anonymousBacks).toBe(108);
+    expect(active.markers).toBe(0);
+    expect(active.visibleMarkerMeshes).toBe(0);
     expect(active.parked).toBeGreaterThan(100);
     expect(active.orphanSlotRefs).toBe(0);
     expect(active.undefinedPlaces).toBe(0);
@@ -197,9 +222,15 @@ test.describe('renderer — off-table hidden park slot', () => {
     const after = await readScene(page);
     expect(after.hasPark).toBe(true);
     expect(after.parkOffTable).toBe(true);
-    expect(after.things).toBe(217);
+    expect(after.things).toBe(216);
     expect(after.realTiles).toBe(108);
-    expect(after.parked).toBeGreaterThan(100);
+    expect(after.tileThings).toBe(216);
+    expect(after.anonymousBacks).toBe(108);
+    expect(after.markers).toBe(0);
+    expect(after.visibleMarkerMeshes).toBe(0);
+    expect(after.thingIds).toEqual(active.thingIds);
+    expect(after.parkedIds).toEqual(active.parkedIds);
+    expect(after.parked).toBe(active.parked);
     // The rebuild must not strand Things in a dead slot generation, and every
     // on-table slot keeps symmetric thing.slot / slot.thing pointers.
     expect(after.orphanSlotRefs).toBe(0);
@@ -232,6 +263,10 @@ test.describe('renderer — off-table hidden park slot', () => {
     })).toBeNull();
     const relay = await readScene(page);
     expect(relay.things).toBe(197);        // 136 tiles + 60 sticks + marker
+    expect(relay.realTiles).toBe(136);
+    expect(relay.tileThings).toBe(136);
+    expect(relay.markers).toBe(1);
+    await expect.poll(async () => (await readScene(page)).visibleMarkerMeshes).toBe(1);
     expect(relay.hasPark).toBe(true);
     expect(relay.parked).toBe(0);          // relay never parks anything
     expect(relay.orphanSlotRefs).toBe(0);
@@ -245,11 +280,29 @@ test.describe('renderer — off-table hidden park slot', () => {
       gameType: 'CHANGSHA', fives: '000', points: '25', dealType: 'HANDS',
     })).toBeNull();
     const back = await readScene(page);
-    expect(back.things).toBe(109);
+    expect(back.things).toBe(108);
     expect(back.realTiles).toBe(108);
+    expect(back.tileThings).toBe(108);
+    expect(back.markers).toBe(0);
+    expect(back.visibleMarkerMeshes).toBe(0);
     expect(back.hasPark).toBe(true);
     expect(back.orphanSlotRefs).toBe(0);
     expect(back.asymmetric).toBe(0);
+
+    expect(await rebuildConditions(page, {
+      gameType: 'FOUR_PLAYER', fives: '111', points: '25', dealType: 'INITIAL',
+    })).toBeNull();
+    const restored = await readScene(page);
+    expect(restored.things).toBe(197);
+    expect(restored.realTiles).toBe(136);
+    expect(restored.tileThings).toBe(136);
+    expect(restored.markers).toBe(1);
+    await expect.poll(async () => (await readScene(page)).visibleMarkerMeshes).toBe(1);
+    expect(restored.parked).toBe(0);
+    expect(restored.orphanSlotRefs).toBe(0);
+    expect(restored.asymmetric).toBe(0);
+    expect(restored.undefinedPlaces).toBe(0);
+    expect(restored.select.prepareObjectsError).toBeNull();
     expect(errors).toEqual([]);
   });
 });

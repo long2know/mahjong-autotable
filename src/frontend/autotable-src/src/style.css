@@ -3331,6 +3331,27 @@ body.theme-light #settings-drawer .settings-drawer-close { color: #495057; }
 body.spectating .spectator-follow-panel {
     display: block;
 }
+/* Keep the two docks separate, including the collapsed chat opener. */
+@media (min-width: 901px), (orientation: landscape) {
+    body.spectating .spectator-follow-panel {
+        left: max(12px, env(safe-area-inset-left));
+        right: auto;
+        width: min(340px, calc(50vw - 24px - env(safe-area-inset-left)));
+        max-height: calc(100dvh - 132px);
+        overflow-y: auto;
+    }
+    body.spectating .chat-panel {
+        right: max(12px, env(safe-area-inset-right));
+        max-width: calc(50vw - 24px - env(safe-area-inset-right));
+    }
+}
+@media (max-width: 900px) and (orientation: portrait) {
+    body.spectating .spectator-follow-panel {
+        left: max(8px, env(safe-area-inset-left));
+        right: max(8px, env(safe-area-inset-right));
+        bottom: calc(64px + env(safe-area-inset-bottom) + var(--game-viewport-bottom, 0px));
+    }
+}
 .spectator-follow-heading {
     font-weight: 600;
     margin-bottom: 6px;

@@ -77,10 +77,20 @@ function assertLayout(layout: Awaited<ReturnType<typeof mobileGeometry>>, own = 
   expect(layout.tiles.length).toBeGreaterThanOrEqual(11);
   expect(new Set(layout.tiles.map(tile => tile.id)).size).toBe(layout.tiles.length);
   expect(layout.ownMeshCount).toBe(layout.tiles.length);
-  const tableWidth = layout.table!.right - layout.table!.left;
-  const tableHeight = layout.table!.bottom - layout.table!.top;
-  expect(Math.max(tableWidth / (layout.playArea.right - layout.playArea.left),
-    tableHeight / (layout.playArea.bottom - layout.playArea.top)), 'the board uses the limiting free dimension').toBeGreaterThan(.85);
+  // Compact framing reserves the enlarged on-board hand below the felt.
+  // Measure those submitted meshes together, not the now-smaller felt alone.
+  const content = [layout.table!, ...layout.tiles];
+  const bounds = {
+    left: Math.min(...content.map(r => r.left)), right: Math.max(...content.map(r => r.right)),
+    top: Math.min(...content.map(r => r.top)), bottom: Math.max(...content.map(r => r.bottom)),
+  };
+  expect(bounds.left).toBeGreaterThanOrEqual(layout.playArea.left - .01);
+  expect(bounds.right).toBeLessThanOrEqual(layout.playArea.right + .01);
+  expect(bounds.top).toBeGreaterThanOrEqual(layout.playArea.top - .01);
+  expect(bounds.bottom).toBeLessThanOrEqual(layout.playArea.bottom + .01);
+  expect(Math.max((bounds.right - bounds.left) / (layout.playArea.right - layout.playArea.left),
+    (bounds.bottom - bounds.top) / (layout.playArea.bottom - layout.playArea.top)),
+  'the real table and owned-hand meshes use the limiting free dimension').toBeGreaterThan(.85);
   const compact = layout.width <= 900 || layout.height <= 520;
   for (const tile of layout.tiles) {
     expect(tile.hit, `tile ${tile.id} body center must raycast its physical ID`).toBe(true);
@@ -170,6 +180,8 @@ test(`${viewport.width}x${viewport.height} ${mode} sorting persists and a real b
     await actor.page.reload({ waitUntil: 'domcontentloaded' });
     await dismissPrompts(actor);
     await closeLobby(actor);
+    // DOM readiness precedes the lazy WebGL/effects chunks on a DPR-2 reload.
+    await expect(actor.page.locator('body')).toHaveAttribute('data-scene-effects-ready', 'true', { timeout: 30_000 });
     await waitForBoardHand(actor.page);
     await expect.poll(async () => (await mobileGeometry(actor.page)).tiles.map(tile => tile.id)).toEqual(expectedOrder);
     expect(await actor.page.evaluate(() => JSON.parse(localStorage.getItem('mahjong.settings.v1')!).handSort)).toBe(mode);

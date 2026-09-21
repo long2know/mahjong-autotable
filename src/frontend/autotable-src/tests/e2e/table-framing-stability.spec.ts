@@ -12,6 +12,7 @@ interface MotionFrame {
   ownClaim: boolean; area: Rect; anchors: Array<{ x: number; y: number }>;
   camera: string; projection: number[]; pose: number[]; zoom: number; lookDown: number;
   connected: boolean; seat: number | null; viewSeat: number | null; privateMeshes: number;
+  bodyClasses: string;
   chrome: Record<string, { bounds: Rect; text: string }>;
 }
 interface MotionGame {
@@ -56,7 +57,8 @@ async function startMeasurement(page: Page, everyFrame = false): Promise<void> {
         return matrix.determinant() !== 0;
       }).length;
       const chrome: MotionFrame['chrome'] = {};
-      for (const selector of ['#turn-banner', '#bot-banner', '#pickup-hud',
+      for (const selector of ['#new-game', '#variant-badge', '#settings-button', '#lobby-toggle',
+        '#turn-banner', '#bot-banner', '#pickup-hud',
         '.ferro-claim-overlay-visible', '#sidebar', '#chat-panel', '#move-log']) {
         const element = document.querySelector<HTMLElement>(selector);
         if (!element?.getClientRects().length || getComputedStyle(element).visibility === 'hidden') continue;
@@ -69,6 +71,7 @@ async function startMeasurement(page: Page, everyFrame = false): Promise<void> {
         phase: turn?.phase ?? null, activeSeat: turn?.activeSeat ?? null,
         ownClaim: game.client.claim.get(String(game.client.seat)) !== null,
         connected: game.client.connected(), seat: game.client.seat, viewSeat: game.world.viewSeat, privateMeshes,
+        bodyClasses: document.body.className,
         camera: camera.type, projection: camera.projectionMatrix.elements.slice(),
         pose: [...camera.position.toArray(), camera.rotation.x, camera.rotation.y, camera.rotation.z, ...camera.scale.toArray()],
         zoom: game.zoom.pos, lookDown: game.lookDown.pos,
@@ -144,6 +147,13 @@ for (const viewport of [
         recording.running = false;
         return recording.frames;
       });
+      const maxAnchorJump = Math.max(...frames.map(frame => distance(frames[0], frame)));
+      const maxPoseDrift = Math.max(...frames.flatMap(frame => frame.pose.map((v, i) => Math.abs(v - frames[0].pose[i]))));
+      const maxProjectionDrift = Math.max(...frames.flatMap(frame => frame.projection.map((v, i) => Math.abs(v - frames[0].projection[i]))));
+      const output = info.outputPath('reconnect-camera-frames.json');
+      mkdirSync(dirname(output), { recursive: true });
+      writeFileSync(output, JSON.stringify({ viewport, maxAnchorJump, maxPoseDrift, maxProjectionDrift, frames }, null, 2));
+      await info.attach('reconnect-camera-frames', { path: output, contentType: 'application/json' });
       const lost = frames.filter(frame => !frame.connected);
       expect(lost.length, 'the test must sample the actual authority gap').toBeGreaterThan(5);
       expect(lost.every(frame => frame.seat === null && frame.privateMeshes === 0)).toBe(true);
@@ -152,9 +162,6 @@ for (const viewport of [
       expect(frames.every(frame => frame.pose[3] !== 0), 'no overhead frames in a perspective camera').toBe(true);
       expect(new Set(frames.map(frame => frame.document)).size).toBe(1);
       expect(navigations).toEqual([]);
-      const maxAnchorJump = Math.max(...frames.map(frame => distance(frames[0], frame)));
-      const maxPoseDrift = Math.max(...frames.flatMap(frame => frame.pose.map((v, i) => Math.abs(v - frames[0].pose[i]))));
-      const maxProjectionDrift = Math.max(...frames.flatMap(frame => frame.projection.map((v, i) => Math.abs(v - frames[0].projection[i]))));
       expect(maxAnchorJump, 'all intermediate poses and framing must remain stable').toBeLessThan(.25);
       expect(maxPoseDrift).toBe(0);
       expect(maxProjectionDrift).toBeLessThan(1e-10);
@@ -162,10 +169,6 @@ for (const viewport of [
       const settings = await page.evaluate(() => JSON.parse(localStorage.getItem('mahjong.settings.v1')!));
       expect(settings.perspective).toBe(true);
       expect(settings.handSort).toBe('groups');
-      const output = info.outputPath('reconnect-camera-frames.json');
-      mkdirSync(dirname(output), { recursive: true });
-      writeFileSync(output, JSON.stringify({ viewport, maxAnchorJump, maxPoseDrift, maxProjectionDrift, frames }, null, 2));
-      await info.attach('reconnect-camera-frames', { path: output, contentType: 'application/json' });
       expect(actor.errors).toEqual([]);
     } finally { await context.close(); }
   });

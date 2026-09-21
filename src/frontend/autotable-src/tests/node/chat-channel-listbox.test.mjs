@@ -108,7 +108,7 @@ function fixture() {
     Object.defineProperty(event, 'key', { value: key });
     trigger.dispatchEvent(event);
   }
-  return { select, trigger, popup, populate, key, changes: () => changes, document, observers };
+  return { select, trigger, popup, populate, key, changes: () => changes, document, observers, window, Option };
 }
 
 test('an initially empty enhanced chat channel renders its selected label as soon as chat populates options', () => {
@@ -166,3 +166,53 @@ test('an open channel menu refreshes localized text while retaining keyboard nav
   assert.equal(h.trigger.getAttribute('aria-expanded'), 'false');
   assert.equal(h.changes(), 1);
 });
+
+for (const [anchor, triggerTop, viewportTop, initialPopupTop] of [
+  ['above', 121, 200, 165],
+  ['below', 229, 40, 53],
+]) {
+  test(`an open channel menu stays inside a resized and panned visual viewport with its anchor ${anchor} it`, () => {
+    const h = fixture();
+    h.window.innerWidth = 844;
+    h.window.innerHeight = 390;
+    const viewport = Object.assign(new EventTarget(), { offsetLeft: 0, offsetTop: 0, width: 844, height: 390 });
+    h.window.visualViewport = viewport;
+    h.trigger.getBoundingClientRect = () => ({
+      left: 520, top: triggerTop, right: 800, bottom: triggerTop + 40, width: 280, height: 40,
+    });
+    h.populate();
+    h.select.appendChild(new h.Option('Spectators', 'spectators'));
+    h.select.appendChild(new h.Option('All', 'all'));
+    h.key('ArrowDown');
+    h.key('End');
+    const active = h.trigger.getAttribute('aria-activedescendant');
+    assert.equal(h.popup.style.top, `${initialPopupTop}px`);
+    assert.equal(h.popup.style.maxHeight, '172px');
+
+    viewport.height = 120;
+    for (const [event, offsetTop] of [['resize', viewportTop], ['scroll', viewportTop + 16]]) {
+      viewport.offsetTop = offsetTop;
+      viewport.dispatchEvent(new Event(event));
+      const top = Number.parseFloat(h.popup.style.top);
+      const height = Number.parseFloat(h.popup.style.maxHeight);
+      assert.equal(top, offsetTop + 8, `${event}: retain the top viewport margin`);
+      assert.ok(top + height <= offsetTop + viewport.height - 8, `${event}: retain the bottom viewport margin`);
+      assert.equal(height, 104, `${event}: height must fit between both 8px viewport margins`);
+      assert.equal(h.popup.hidden, false);
+      assert.equal(h.trigger.getAttribute('aria-activedescendant'), active);
+      assert.equal(h.select.value, 'table');
+      assert.equal(h.changes(), 0, 'viewport changes must not choose a channel');
+    }
+
+    viewport.offsetTop = 0;
+    viewport.height = 390;
+    viewport.dispatchEvent(new Event('resize'));
+    assert.equal(h.popup.style.top, `${initialPopupTop}px`);
+    assert.equal(h.popup.style.maxHeight, '172px');
+    h.key('Enter');
+    assert.equal(h.select.value, 'all');
+    assert.equal(h.trigger.textContent, 'All');
+    assert.equal(h.changes(), 1);
+    assert.equal(h.popup.hidden, true);
+  });
+}

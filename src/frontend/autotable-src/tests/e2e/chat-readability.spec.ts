@@ -25,6 +25,16 @@ async function expectReadableText(locator: Locator): Promise<void> {
   })).toEqual({ hasText: true, fitsWidth: true, inViewport: true, painted: true });
 }
 
+async function expectSeparatePanels(chat: Locator, spectator: Locator): Promise<void> {
+  await expect.poll(async () => {
+    const [a, b] = await Promise.all([chat.boundingBox(), spectator.boundingBox()]);
+    return a !== null && b !== null && (
+      a.x + a.width <= b.x || b.x + b.width <= a.x
+      || a.y + a.height <= b.y || b.y + b.height <= a.y
+    );
+  }, { message: 'Chat and spectator controls must not overlap' }).toBe(true);
+}
+
 for (const viewport of [
   { width: 1280, height: 900 }, { width: 390, height: 844 }, { width: 844, height: 390 },
 ]) {
@@ -117,17 +127,29 @@ for (const viewport of [
     });
 }
 
-test('the portrait spectator channel menu stays inside the viewport and selects the intended spectator channel',
+for (const { orientation, viewport } of [
+  { orientation: 'portrait', viewport: { width: 390, height: 844 } },
+  { orientation: 'short landscape', viewport: { width: 844, height: 390 } },
+]) {
+  test(`the ${orientation} spectator channel menu stays inside the viewport and selects the intended spectator channel`,
   async ({ browser, baseURL }, info) => {
     test.setTimeout(60_000);
     const context = await browser.newContext({
-      viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1, locale: 'en-US',
+      viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1, locale: 'en-US',
     });
     try {
       const actor = await newActor(browser, baseURL, info, 'spectator-chat-readability', context);
       await applyRoom(actor, 0, -1);
       await closeLobby(actor);
-      await actor.page.getByTestId('chat-toggle').click();
+      const panel = actor.page.getByTestId('chat-panel');
+      const toggle = actor.page.getByTestId('chat-toggle');
+      const spectator = actor.page.getByRole('region', { name: 'Spectator controls' });
+      await expect(spectator).toBeInViewport({ ratio: 1 });
+      await expectSeparatePanels(panel, spectator);
+      await expectReadableText(toggle);
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expectSeparatePanels(panel, spectator);
       const native = actor.page.getByTestId('chat-channel-select');
       const wrapper = native.locator('..');
       const trigger = wrapper.getByRole('button', { name: 'Chat channel', exact: true });
@@ -145,8 +167,33 @@ test('the portrait spectator channel menu stays inside the viewport and selects 
       await expect(trigger).toHaveText('Spectator DM');
       await expectReadableText(trigger);
       await expect(trigger).toBeFocused();
+
+      await expect(spectator.getByRole('button')).toHaveCount(5);
+      for (const button of await spectator.getByRole('button').all()) {
+        await expectReadableText(button);
+        await button.click();
+        await expect(button).toHaveAttribute('aria-pressed', 'true');
+      }
+      const showAll = spectator.getByRole('checkbox', { name: 'Show all hands' });
+      await showAll.check();
+      await expect(showAll).toBeChecked();
+      await showAll.uncheck();
+      await expect(showAll).not.toBeChecked();
+      await toggle.click();
+      await expect(toggle).toHaveAccessibleName('Open chat');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await expectSeparatePanels(panel, spectator);
+      await expectReadableText(toggle);
+      await expect(toggle).toBeFocused();
+      await toggle.press('Enter');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expectSeparatePanels(panel, spectator);
+      await expect(native).toHaveValue('spectator-private');
+      await expectReadableText(trigger);
+      await actor.page.screenshot({ path: info.outputPath('spectator-chat-controls-open.png') });
       expect(actor.errors).toEqual([]);
     } finally {
       await context.close();
     }
   });
+}
