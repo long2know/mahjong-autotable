@@ -4,17 +4,11 @@
 # PWA service-worker smoke. Boots the production Docker image on port
 # 18093 (unique in the smoke port allocation; see history.md) and runs
 # a Playwright (chromium-only) probe that asserts:
-#   1. `GET /` returns 200.
-#   2. `GET /sw.js` returns either 200 (then JS content-type) or 404
-#      (soft-pass — Hicks's SW artefact may still be in-flight).
-#   3. `navigator.serviceWorker.getRegistration()` yields an activated
-#      worker.
+#   1. `GET /autotable/` returns 200.
+#   2. `GET /autotable/sw.js` returns 200 with a JS content-type.
+#   3. The actual /autotable/ worker is registered and activated.
 #   4. After `page.reload()`, `navigator.serviceWorker.controller !=
 #      null` (the canonical "SW took control" assertion).
-#
-# Forward-compat: the smoke soft-passes on 404 for `/sw.js`. The moment
-# Hicks's Parcel pipeline ships the artefact, the assertion in #4 fires
-# as a hard pass and the gate tightens — no CI workflow change needed.
 #
 # Smoke port allocation: docker-build=18080, auth=18081, chat=18082,
 # token-rotation=18083, csp-report=18084, multi-arch-runtime
@@ -24,20 +18,23 @@ set -euo pipefail
 IMAGE="${IMAGE:-mahjong-autotable:pwa-smoke}"
 HOST_PORT="${HOST_PORT:-18093}"
 BOOT_TIMEOUT_S="${BOOT_TIMEOUT_S:-60}"
-CONTAINER="mahjong-autotable-pwa-smoke"
+CONTAINER="${CONTAINER:-mahjong-autotable-pwa-smoke-$$}"
+CONTAINER_ID=""
 
 cleanup() {
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  if [ -n "$CONTAINER_ID" ]; then
+    docker rm -f "$CONTAINER_ID" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
 echo "[pwa-smoke] booting $IMAGE on host port $HOST_PORT…"
-docker run -d --rm \
+CONTAINER_ID="$(docker run -d --rm \
   --name "$CONTAINER" \
-  -p "${HOST_PORT}:8080" \
+  -p "127.0.0.1:${HOST_PORT}:8080" \
   -e ASPNETCORE_URLS="http://0.0.0.0:8080" \
   -e Authentication__JwtSigningKeys__0="$(openssl rand -base64 48)" \
-  "$IMAGE" >/dev/null
+  "$IMAGE")"
 
 deadline=$(( $(date +%s) + BOOT_TIMEOUT_S ))
 while [ "$(date +%s)" -lt "$deadline" ]; do
