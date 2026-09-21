@@ -1,0 +1,3 @@
+# This exact historical line records an API assembly SHA-256, not a credential.
+# Limit the exception to its introducing commit, path, rule and line.
+7434c1321feeb8b29d8ef42c3a9944551fa905ca:.squad/log/2026-09-10T08-37-28-814Z-c03-final-local-gameplay.md:generic-api-key:12
