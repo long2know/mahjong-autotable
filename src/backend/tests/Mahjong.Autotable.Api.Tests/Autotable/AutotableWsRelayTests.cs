@@ -103,6 +103,81 @@ public class AutotableWsRelayTests : IAsyncLifetime
         });
     }
 
+    [Theory, Trait("Category", "PhaseC-Relay")]
+    [InlineData("four_player")]
+    [InlineData("four-player")]
+    [InlineData("three_player")]
+    [InlineData("three-player")]
+    [InlineData("bamboo")]
+    [InlineData("minefield")]
+    public async Task RelaySeatTake_ConfirmsOriginAndPeers_AndReplaysCurrentOwnership(string variant)
+    {
+        var gameId = $"relay-seat-{Guid.NewGuid():N}";
+        var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
+        await using var origin = await OpenAndJoinAsync(gameId, seat: 0, variant);
+        AssertSeatSnapshot(origin.LastSnapshot!.Value);
+
+        // A connected Collection does not apply its own set(): even the only
+        // player needs the server's UPDATE before client.seat becomes owned.
+        var take = new object[] { "seats", origin.PlayerId, new { seat = 0 } };
+        await origin.SendUpdateAsync(new[] { take });
+        AssertRelayDelta(await origin.ReadEnvelopeAsync(timeoutMs: 2000), take);
+
+        await using var peer = await OpenAndJoinAsync(gameId, seat: 1, variant);
+        AssertSeatSnapshot(peer.LastSnapshot!.Value, take);
+
+        foreach (var value in new object?[] { new { seat = 1 }, new { seat = (int?)null }, null })
+        {
+            var update = new object[] { "seats", origin.PlayerId, value! };
+            await origin.SendUpdateAsync(new[] { update });
+            AssertRelayDelta(await origin.ReadEnvelopeAsync(timeoutMs: 2000), update);
+            AssertRelayDelta(await peer.ReadEnvelopeAsync(timeoutMs: 2000), update);
+        }
+        Assert.Equal(0, manager.GetStoredEntryCount(gameId, "seats"));
+
+        var peerTake = new object[] { "seats", peer.PlayerId, new { seat = 0 } };
+        await peer.SendUpdateAsync(new[] { peerTake });
+        AssertRelayDelta(await peer.ReadEnvelopeAsync(timeoutMs: 2000), peerTake);
+        AssertRelayDelta(await origin.ReadEnvelopeAsync(timeoutMs: 2000), peerTake);
+
+        await using var lateJoiner = await OpenAndJoinAsync(gameId, seat: 2, variant);
+        AssertSeatSnapshot(lateJoiner.LastSnapshot!.Value, peerTake);
+        Assert.Null(manager.GetRuntimeGameIdBoundTo(gameId));
+    }
+
+    [Theory, Trait("Category", "PhaseC-Relay")]
+    [InlineData("four_player")]
+    [InlineData("four-player")]
+    [InlineData("three_player")]
+    [InlineData("three-player")]
+    [InlineData("bamboo")]
+    [InlineData("minefield")]
+    public async Task RelaySetupTransaction_ConfirmsUnmodifiedEntriesToOrigin(string variant)
+    {
+        var gameId = $"relay-setup-{Guid.NewGuid():N}";
+        var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
+        await using var origin = await OpenAndJoinAsync(gameId, seat: 0, variant);
+        var entries = new[]
+        {
+            new object[] { "unique", "seats", "seat" },
+            new object[] { "perPlayer", "seats", true },
+            new object[] { "seats", origin.PlayerId, new { seat = 0 } },
+            new object[] { "match", 0, new
+            {
+                conditions = new { gameType = variant.Replace('-', '_').ToUpperInvariant() },
+                dealer = 0,
+                honba = 0
+            } },
+            new object[] { "things", 7, new { slotName = "hand.0@0", rotationIndex = 1 } },
+            new object[] { "nicks", origin.PlayerId, "Relay origin" }
+        };
+
+        await origin.SendUpdateAsync(entries);
+        AssertRelayDelta(await origin.ReadEnvelopeAsync(timeoutMs: 2000), entries);
+        Assert.Equal(entries.Length, manager.GetStoredEntryCount(gameId));
+        Assert.Null(manager.GetRuntimeGameIdBoundTo(gameId));
+    }
+
     // ── C-1 anti-spoof: a client-pushed gameComplete is dropped, never relayed ──
 
     [Fact, Trait("Category", "PhaseC-Relay")]
@@ -253,7 +328,7 @@ public class AutotableWsRelayTests : IAsyncLifetime
     [Fact, Trait("Category", "PhaseC-Relay")]
     public async Task New_AllocatesGameId_WithEmptyState()
     {
-        await using var session = await OpenAsync(seat: 0);
+        await using var session = await OpenAsync(seat: 0, variant: "four_player");
         await session.SendNewAsync();
 
         var joined = await session.ReadEnvelopeAsync();
@@ -264,16 +339,21 @@ public class AutotableWsRelayTests : IAsyncLifetime
         // NEW is by definition the first joiner of a fresh game — bundle's
         // sendOnConnect path relies on this.
         Assert.True(joined.GetProperty("isFirst").GetBoolean());
+        Assert.False(joined.TryGetProperty("viewer", out _));
 
         var update = await session.ReadEnvelopeAsync();
         Assert.Equal("UPDATE", update.GetProperty("type").GetString());
         Assert.True(update.GetProperty("full").GetBoolean());
+        Assert.False(update.TryGetProperty("viewer", out _));
 
         // A brand-new game with no Changsha runtime backing it ships only the
         // translator's match[0] override (forces fives='000').
         var entries = update.GetProperty("entries");
         Assert.Equal(1, entries.GetArrayLength());
         Assert.Equal("match", entries[0][0].GetString());
+        Assert.Null(_factory!.Services.GetRequiredService<AutotableConnectionManager>()
+            .GetRuntimeGameIdBoundTo(joined.GetProperty("gameId").GetString()!));
+        Assert.Equal(0, _factory.Services.GetRequiredService<IChangshaGameRuntime>().GameCount);
     }
 
     // ── 5. Per-game isolation — UPDATE in game A doesn't leak to game B ─
@@ -372,6 +452,22 @@ public class AutotableWsRelayTests : IAsyncLifetime
     }
 
     // ── helpers ───────────────────────────────────────────────────────
+
+    private static void AssertRelayDelta(JsonElement envelope, params object[][] expectedEntries)
+    {
+        Assert.Equal("UPDATE", envelope.GetProperty("type").GetString());
+        Assert.False(envelope.GetProperty("full").GetBoolean());
+        Assert.Equal(JsonSerializer.Serialize(expectedEntries), envelope.GetProperty("entries").GetRawText());
+    }
+
+    private static void AssertSeatSnapshot(JsonElement envelope, params object[][] expectedEntries)
+    {
+        Assert.Equal("UPDATE", envelope.GetProperty("type").GetString());
+        Assert.True(envelope.GetProperty("full").GetBoolean());
+        var seats = envelope.GetProperty("entries").EnumerateArray()
+            .Where(entry => entry[0].GetString() == "seats").ToArray();
+        Assert.Equal(JsonSerializer.Serialize(expectedEntries), JsonSerializer.Serialize(seats));
+    }
 
     private async Task<RelaySession> OpenAsync(int seat, string variant = "changsha")
     {

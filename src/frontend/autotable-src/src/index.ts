@@ -10,8 +10,9 @@
 //
 // Wave-2 bundle target: eager `autotable-src.<hash>.js` < 500 kB.
 
-import { initLobby } from './lobby';
+import { bindNewGameControls, initLobby } from './lobby';
 import { installI18n } from './i18n';
+import { installBuildInfo } from './build-info';
 
 // Hicks — mobile-responsive + lobby/sidebar sizing parity.  Eager-loaded
 // CSS-only side-effect import so the styles ship in the lobby cold path
@@ -49,6 +50,9 @@ import './ui/hicks-mobile-sidebar.css';
 // chrome paints with the resolved locale (body[lang=…] attribute is
 // set immediately, downstream `t()` calls return localized strings).
 installI18n();
+installBuildInfo();
+// Bind the already-visible header before any lazy rejoin/PWA/game bootstrap.
+bindNewGameControls();
 
 // Phase K Wave 16 — bundle audit §3.1 + §3.5 surgery (Hicks).
 //

@@ -92,7 +92,7 @@ export interface Conditions {
   points: Points;          // starting points (drives addSticks)
   dealType: DealType;
   // Phase F additions.
-  baseUnit: number;        // Changsha scoring base unit (server pins to 1)
+  baseUnit: number;        // Authoritative creation-time Changsha scoring unit
   dealMode: DealMode;      // manual = click-driven pickup, auto = one-shot deal
 }
 
@@ -185,6 +185,9 @@ export interface DiceInfo {
 }
 
 export interface ClaimWindowEntry {
+  // Both absent is legacy; an advertised context must contain both valid fields.
+  gameId?: string;
+  stateVersion?: number;
   // Names the server pushes; render in 中文 primary + pinyin sublabel per
   // Default #5 (Vasquez Q5).
   available: Array<'Pung' | 'Chow' | 'Kong' | 'Hu'>;
@@ -192,8 +195,33 @@ export interface ClaimWindowEntry {
   deadline: number;
   // Discarding seat (0..3).
   source: number;
-  // Tile ID being claimed (0..26 in Changsha).
+  // Physical tile ID being claimed (0..107 in Changsha).
   tile: number;
+  // Legal physical partner pairs, private to the owning claimant.
+  chowOptions?: number[][];
+}
+
+export interface OwnTurnEntry {
+  gameId: string;
+  stateVersion: number;
+  hu: boolean;
+  concealedKongs: number[][];
+  addedKongs: number[];
+}
+
+export type OwnTurnCommand = {
+  gameId: string;
+  expectedVersion: number;
+} & (
+  { action: 'hu' } |
+  { action: 'concealedKong' | 'addedKong'; tileIds: number[] }
+);
+
+export interface ActionRejectedEntry {
+  action: string;
+  reason: string;
+  requestedSeat: number | null;
+  ownedSeat: number | null;
 }
 
 // Stuck-turn fix (Hicks) — authoritative turn signal.
@@ -236,6 +264,19 @@ export interface HandResultEntry {
   score: Array<ScoreDelta>;
   hand: Array<number>;
   nextBanker: number;
+  continuation?: HandResultContinuation | null;
+}
+
+export interface HandResultAckCommand {
+  gameId: string;
+  handNumber: number;
+  resultToken: string;
+}
+
+export interface HandResultContinuation extends HandResultAckCommand {
+  requiredSeats: number[];
+  acknowledgedSeats: number[];
+  waitingSeats: number[];
 }
 
 export interface DiceEntry {

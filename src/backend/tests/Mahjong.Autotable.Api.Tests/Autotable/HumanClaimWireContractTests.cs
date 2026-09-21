@@ -323,8 +323,10 @@ public sealed class HumanClaimWireContractTests : IAsyncLifetime
         var runtimeGameId = await WaitForBindingAsync(manager, gameId, 5000)
             ?? throw new InvalidOperationException("runtime never bound to the connection.");
 
-        // Ensure the table is full then auto-deal to a quiescent AwaitingDiscard (seat 0 = human).
-        await runtime.FillEmptySeatsWithBotsAsync(runtimeGameId);
+        // Bot seats are latched by this fixture's botCount=3 creation request.
+        Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var configured));
+        Assert.Equal(new[] { 1, 2, 3 },
+            configured!.Seats.Where(seat => seat.IsBot).Select(seat => seat.SeatIndex).OrderBy(seat => seat));
         // BE-3 — the seat-take already server-starts the auto game on seat-fill; a redundant
         // explicit start is a harmless no-op. Guard on Seating AND swallow the benign
         // "already started" InvalidOperationException so BE-3's async start can't race-flake.

@@ -38,6 +38,7 @@ import {
 // so the user knows why the click didn't fire instead of assuming the
 // game is broken.  showToast is the shared `#toast-region` helper.
 import { showToast } from "./toast";
+import { ownHandTiles, sortHand, type HandSortMode, type HandTile } from './hand-sort';
 
 
 interface Select extends Place {
@@ -94,6 +95,17 @@ export class World {
   private movement: Movement | null = null;
   private heldMouse: Vector3 | null = null;
   mouseTracker: MouseTracker;
+
+  private handMode: HandSortMode = 'suit';
+  private compactHand = false;
+  private handPointerDown = false;
+  private handPlaces = new Map<number, Place>();
+  private presentedHand: HandTile[] = [];
+  private handSignature = '';
+  private handDirty = true;
+  private presentedSeat: number | null = null;
+  private drawnTile: number | null = null;
+  private handChanged: (() => void) | null = null;
 
   soundPlayer: SoundPlayer;
 
@@ -202,6 +214,12 @@ export class World {
     this.client.match.on('update', this.onMatch.bind(this));
     this.client.dice.on('update', this.onDice.bind(this));
     this.client.pickup.on('update', this.onPickup.bind(this));
+    const refreshHand = (): void => { this.handDirty = true; };
+    this.client.things.on('update', refreshHand);
+    this.client.seats.on('update', refreshHand);
+    this.client.match.on('update', refreshHand);
+    this.client.on('connect', refreshHand);
+    this.client.on('disconnect', refreshHand);
     this.sendUpdate();
   }
 
@@ -850,6 +868,7 @@ export class World {
       this.surfaceDiscardRejection('Take a seat first');
       return false;
     }
+
     let tileId: number;
     let tile: Thing | undefined;
     if (typeof tileOrId === 'number') {
@@ -908,6 +927,19 @@ export class World {
     }
     this.client.discard.set(this.seat, { tileId });
     return true;
+  }
+
+  discardOwnHandTile(tileId: number): boolean {
+    const tile = this.things.get(tileId);
+    const info = this.client.things.get(tileId);
+    if (!this.client.connected() || !tile || tile.hidden || tile.hiddenHandle !== null
+      || tile.slot.thing !== tile || tile.slot.group !== 'hand'
+      || tile.slot.seat !== this.client.seat || info?.slotName !== tile.slot.name) return false;
+    if (!this.isMyDiscardTurn()) {
+      this.surfaceDiscardRejection(this.describeWhyCannotDiscard());
+      return false;
+    }
+    return this.emitDiscard(tileId);
   }
 
   // Hicks 2026-05-26 — first-play P1 unblock (B4 / Vasquez P0-H).
@@ -1726,9 +1758,88 @@ export class World {
   }
 
   updateView(): void {
+    this.updateHandPresentation();
     this.updateViewThings();
     this.updateViewDropShadows();
     this.objectView.updateScores(this.setup.getScores());
+  }
+
+  setHandPresentation(mode: HandSortMode, compact: boolean): void {
+    if (mode !== this.handMode) this.handDirty = true;
+    this.handMode = mode;
+    this.compactHand = compact;
+  }
+
+  setHandPointerDown(down: boolean): void {
+    this.handPointerDown = down;
+  }
+
+  onHandPresentationChanged(listener: () => void): void {
+    this.handChanged = listener;
+  }
+
+  ownHandPresentation(): { tiles: readonly HandTile[]; drawn: number | null } {
+    return { tiles: this.presentedHand, drawn: this.drawnTile };
+  }
+
+  clearDrawnHandTile(): void {
+    this.drawnTile = null;
+    this.handSignature = '';
+    this.handDirty = true;
+  }
+
+  private updateHandPresentation(): void {
+    const seat = this.client.connected() && this.conditions.gameType === GameType.CHANGSHA
+      ? this.client.seat : null;
+    // Authority loss/move clears the old view even while a gesture defers sorting.
+    if (seat !== this.presentedSeat) {
+      this.presentedSeat = seat;
+      this.handDirty = true;
+      this.handSignature = '';
+      this.drawnTile = null;
+      this.presentedHand = [];
+      this.handPlaces.clear();
+      this.handChanged?.();
+    }
+    if (!this.handDirty) return;
+    if (seat !== null && (this.handPointerDown || this.isHolding()
+      || this.client.claim.get(String(seat)) !== null)) return;
+    this.handDirty = false;
+    const candidates = [...this.client.things.entries()].map(([id, info]) => {
+      const thing = typeof id === 'number' ? this.things.get(id) : undefined;
+      return {
+        id, slotName: info?.slotName ?? '', face: info?.face,
+        knownFace: thing?.typeIndex, hidden: thing?.hidden,
+        confirmed: !!info && !!thing && thing.type === ThingType.TILE && thing.hiddenHandle === null
+          && thing.claimedBy === null && thing.slot.thing === thing && thing.slot.name === info.slotName,
+      };
+    });
+    const hand = ownHandTiles(candidates, seat);
+    const signature = `${seat}:${this.handMode}:` + hand.map(tile => `${tile.id}/${tile.face}/${tile.slotName}`).join(',');
+    if (signature === this.handSignature) return;
+    const previous = new Set(this.presentedHand.map(tile => tile.id));
+    const added = hand.filter(tile => !previous.has(tile.id));
+    if (previous.size > 0 && added.length === 1 && hand.length % 3 === 2) this.drawnTile = added[0].id;
+    if (!hand.some(tile => tile.id === this.drawnTile)) this.drawnTile = null;
+    this.handSignature = signature;
+    this.presentedHand = sortHand(hand, this.handMode);
+    const slots = hand.map(tile => this.slots.get(tile.slotName)!)
+      .sort((a, b) => a.indexes[0] - b.indexes[0]);
+    this.handPlaces.clear();
+    this.presentedHand.forEach((tile, i) => {
+      this.handPlaces.set(tile.id, slots[i].placeWithOffset(this.things.get(tile.id)!.rotationIndex));
+    });
+    this.handChanged?.();
+  }
+
+  private handInTray(thing: Thing): boolean {
+    return this.compactHand && this.handPlaces.has(thing.index)
+      && thing.slot.group === 'hand' && thing.slot.seat === this.client.seat;
+  }
+
+  private presentedPlace(thing: Thing): Place {
+    return thing.slot.group === 'hand' && thing.slot.seat === this.client.seat
+      ? this.handPlaces.get(thing.index) ?? thing.place() : thing.place();
   }
 
   private updateViewThings(): void {
@@ -1759,13 +1870,23 @@ export class World {
     this.objectView.highlightIntensity = highlightIntensity;
 
     for (const thing of this.things.values()) {
-      // FE-7 / SC-2 (G19) — a hidden pre-baked real (viewer not entitled) or a
-      // free/unassigned back pool object is not rendered. Skipping keeps its real
-      // identity off-screen (no leak) and keeps the pool zero-cost until used.
+      // Hidden Things must still clear their cached custom/instanced geometry.
+      // Submit their stable park place without held, hover or highlight effects.
       if (thing.hidden) {
+        toRender.push({
+          type: thing.type,
+          thingIndex: thing.index,
+          place: thing.place(),
+          selected: false,
+          hovered: false,
+          held: false,
+          temporary: false,
+          bottom: false,
+          highlighted: false,
+        });
         continue;
       }
-      let place = thing.place();
+      let place = this.presentedPlace(thing);
 
       if (thing.claimedBy !== null && thing.shiftSlot === null) {
         let mouse = null, heldMouse = null;
@@ -1818,6 +1939,8 @@ export class World {
       toRender.push({
         type: thing.type,
         thingIndex: thing.index,
+        hidden: this.handInTray(thing),
+        drawn: thing.index === this.drawnTile && this.handPlaces.has(thing.index),
         place,
         selected,
         hovered,
@@ -1850,11 +1973,11 @@ export class World {
         // hovered, selected or dragged, and a parked Thing has no on-table
         // place to raycast against (`Thing.place()` is undefined for it, which
         // made MouseUi.prepareObjects call Vector3.copy(undefined) every frame).
-        if (thing.hidden) {
+        if (thing.hidden || this.handInTray(thing)) {
           continue;
         }
         if (thing.claimedBy === null) {
-          const place = thing.place();
+          const place = this.presentedPlace(thing);
           result.push({...place, id: thing.index});
         }
       }

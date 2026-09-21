@@ -22,9 +22,7 @@ public sealed class EasyStrategy : IChangshaBotStrategy
         var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
 
         // Hu when we can.
-        var detector = new ChangshaWinDetector();
-        var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
-        if (winResult.IsWin)
+        if (ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, botSeatIndex))
             return BotAction.DeclareWin();
 
         // Discard the highest-rank loose tile; fall back to highest-rank overall.
@@ -65,10 +63,8 @@ public sealed class EasyStrategy : IChangshaBotStrategy
 
     public BotAction OnSelfDraw(ChangshaGameState state, int botSeatIndex)
     {
-        var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
-        var detector = new ChangshaWinDetector();
-        var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
-        return winResult.IsWin ? BotAction.DeclareWin() : BotAction.Wait();
+        return ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, botSeatIndex)
+            ? BotAction.DeclareWin() : BotAction.Wait();
     }
 
     public BotAction OnPickupCue(ChangshaGameState state, int botSeatIndex)
@@ -105,9 +101,7 @@ public sealed class EasyStrategy : IChangshaBotStrategy
         if (state.Phase == ChangshaPhase.AwaitingDiscard && state.ActiveSeatIndex == botSeatIndex)
         {
             var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
-            var detector = new ChangshaWinDetector();
-            var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
-            if (winResult.IsWin)
+            if (ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, botSeatIndex))
             {
                 reasoning.Add("winning hand detected on self-draw");
                 return new BotDecision(BotAction.DeclareWin(), null, Score: 0, reasoning);

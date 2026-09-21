@@ -10,7 +10,7 @@
 #
 # Adjust the `server_name`, `ssl_certificate*`, and `proxy_pass` host/port
 # to match your deployment. The mahjong-autotable container listens on
-# :8080 by default (see docs/deployment.md § "Environment variables");
+# :8080 internally, published on loopback :8950 by default;
 # this proxy fronts it on :80 + :443 and terminates TLS.
 #
 # Critical bits:
@@ -47,7 +47,7 @@ server {
     }
 }
 
-# 2. TLS + reverse proxy to the container on localhost:8080.
+# 2. TLS + reverse proxy to the host-published loopback port.
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
@@ -67,12 +67,12 @@ server {
 
     # Static assets + REST API + minimal-API endpoints.
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:8950;
         proxy_http_version 1.1;
 
-        proxy_set_header Host              $host;
+        proxy_set_header Host              $http_host;
         proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For   $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host  $host;
 
@@ -83,14 +83,14 @@ server {
 
     # SignalR hub — long-lived; needs WebSocket upgrade + 24-hour read timeout.
     location /hubs/ {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:8950;
         proxy_http_version 1.1;
 
-        proxy_set_header Host              $host;
+        proxy_set_header Host              $http_host;
         proxy_set_header Upgrade           $http_upgrade;
         proxy_set_header Connection        $mahjong_connection_upgrade;
         proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For   $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
 
         proxy_buffering off;
@@ -102,14 +102,14 @@ server {
     # as /hubs/ — SignalR-style negotiation isn't used here but the
     # Upgrade dance is identical.
     location /autotable/ws {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:8950;
         proxy_http_version 1.1;
 
-        proxy_set_header Host              $host;
+        proxy_set_header Host              $http_host;
         proxy_set_header Upgrade           $http_upgrade;
         proxy_set_header Connection        $mahjong_connection_upgrade;
         proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For   $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
 
         proxy_buffering off;
@@ -124,7 +124,7 @@ server {
     # location /metrics {
     #     auth_basic           "metrics";
     #     auth_basic_user_file /etc/nginx/metrics.htpasswd;
-    #     proxy_pass http://127.0.0.1:8080;
+    #     proxy_pass http://127.0.0.1:8950;
     #     proxy_set_header Host $host;
     # }
 }

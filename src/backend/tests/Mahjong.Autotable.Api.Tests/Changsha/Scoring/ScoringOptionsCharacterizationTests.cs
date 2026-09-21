@@ -129,15 +129,12 @@ public class ScoringOptionsCharacterizationTests
     {
         var state = BuildPostDealState(dealerSeat: 0);
         // Seat 1 (non-dealer) self-draws a concealed Standard hand with a 258 (Tong-5) pair.
-        state.ActiveSeatIndex = 1;
-        OverrideConcealedWith14(state, seatIndex: 1,
+        ArrangeThirteenAndDraw(state, seatIndex: 1,
             (Suit.Wan, 1), (Suit.Wan, 2), (Suit.Wan, 3),
             (Suit.Wan, 4), (Suit.Wan, 5), (Suit.Wan, 6),
             (Suit.Tong, 1), (Suit.Tong, 2), (Suit.Tong, 3),
             (Suit.Tiao, 4), (Suit.Tiao, 5), (Suit.Tiao, 6),
             (Suit.Tong, 5), (Suit.Tong, 5));
-        ClearOtherHands(state, keepSeat: 1);
-
         ChangshaGameStateMachine.DeclareSelfDrawWin(state, seatIndex: 1);
         ChangshaGameStateMachine.Score(state, options);
         return state;
@@ -147,15 +144,12 @@ public class ScoringOptionsCharacterizationTests
     {
         var state = BuildPostDealState(dealerSeat: 0);
         // Seat 1 self-draws an all-Wan AllPungs hand → AllPungs + FullFlush stack.
-        state.ActiveSeatIndex = 1;
-        OverrideConcealedWith14(state, seatIndex: 1,
+        ArrangeThirteenAndDraw(state, seatIndex: 1,
             (Suit.Wan, 1), (Suit.Wan, 1), (Suit.Wan, 1),
             (Suit.Wan, 4), (Suit.Wan, 4), (Suit.Wan, 4),
             (Suit.Wan, 5), (Suit.Wan, 5), (Suit.Wan, 5),
             (Suit.Wan, 7), (Suit.Wan, 7), (Suit.Wan, 7),
             (Suit.Wan, 2), (Suit.Wan, 2));
-        ClearOtherHands(state, keepSeat: 1);
-
         ChangshaGameStateMachine.DeclareSelfDrawWin(state, seatIndex: 1);
         ChangshaGameStateMachine.Score(state, options);
         return state;
@@ -171,18 +165,10 @@ public class ScoringOptionsCharacterizationTests
         ChangshaGameStateMachine.Deal(state);
         state.Phase = ChangshaPhase.AwaitingDiscard;
         state.MissedWinSeats.Clear();
-        // Benign prior discard so HeavenlyHand / first-action context fans stay off.
-        state.DiscardPile.Add(new ChangshaDiscard
-        {
-            SeatIndex = (dealerSeat + 1) % 4,
-            TileId = Tid(Suit.Tiao, 8, 0),
-            TurnNumber = 1,
-        });
-        state.TurnNumber = 1;
         return state;
     }
 
-    private static void OverrideConcealedWith14(ChangshaGameState state, int seatIndex,
+    private static void ArrangeThirteenAndDraw(ChangshaGameState state, int seatIndex,
         params (Suit suit, int rank)[] tiles)
     {
         var copies = new Dictionary<int, int>();
@@ -194,18 +180,37 @@ public class ScoringOptionsCharacterizationTests
             tileIds.Add(Tid(s, r, copy));
             copies[logical] = copy + 1;
         }
-        state.Hands[seatIndex].ConcealedTiles.Clear();
-        state.Hands[seatIndex].ConcealedTiles.AddRange(tileIds);
-        state.Hands[seatIndex].Melds.Clear();
+        var hand = state.Hands[seatIndex].ConcealedTiles;
+        Assert.Equal(13, hand.Count);
+        Assert.Equal(14, tileIds.Count);
+        for (var index = 0; index < hand.Count; index++)
+            SwapInto(state, hand, index, tileIds[index]);
+        SwapInto(state, state.Wall, 0, tileIds[^1]);
+
+        var dealer = state.DealerSeatIndex;
+        ChangshaGameStateMachine.Discard(state, dealer, state.Hands[dealer].ConcealedTiles[0]);
+        if (state.ClaimWindow is not null)
+            ChangshaGameStateMachine.PassClaim(state);
+        Assert.Equal(seatIndex, state.ActiveSeatIndex);
+        Assert.Equal(13, hand.Count);
+        Assert.False(ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, seatIndex));
+
+        var draws = ChangshaGameStateMachine.DrawTile(state);
+        Assert.Equal(tileIds, hand);
+        Assert.Equal(seatIndex, state.LastDrawSeatIndex);
+        Assert.Contains(draws, draw => draw.EventType == "tile-drawn"
+            && draw.SeatIndex == seatIndex && draw.TileId == tileIds[^1]);
+        Assert.Equal(Enumerable.Range(0, 108), state.Wall
+            .Concat(state.DiscardPile.Select(discard => discard.TileId))
+            .Concat(state.Hands.SelectMany(seat => seat.ConcealedTiles))
+            .OrderBy(tile => tile));
     }
 
-    private static void ClearOtherHands(ChangshaGameState state, int keepSeat)
+    private static void SwapInto(ChangshaGameState state, List<int> target, int index, int tile)
     {
-        for (var i = 0; i < 4; i++)
-        {
-            if (i == keepSeat) continue;
-            state.Hands[i].ConcealedTiles.Clear();
-            state.Hands[i].Melds.Clear();
-        }
+        var source = state.Hands.Select(seat => seat.ConcealedTiles).Append(state.Wall)
+            .Single(tiles => tiles.Contains(tile));
+        var sourceIndex = source.IndexOf(tile);
+        (source[sourceIndex], target[index]) = (target[index], source[sourceIndex]);
     }
 }

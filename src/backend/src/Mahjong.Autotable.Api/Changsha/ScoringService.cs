@@ -53,6 +53,8 @@ public interface IScoringService
     /// </summary>
     ScoreResult CalculateScore(WinResult win, int dealerSeatIndex, bool isFullFlush, int bigWinPatternCount);
 
+    ScoreResult CalculateScore(WinResult win, int dealerSeatIndex, bool isFullFlush, int bigWinPatternCount, int baseUnit);
+
     /// <summary>
     /// Builds the payment list for a 诈胡 (false-Hu) penalty per Baidu §诈胡处罚 — the
     /// offending seat pays <see cref="ScoringService.FalseHuPenaltyPerOpponent"/> to each
@@ -60,6 +62,8 @@ public interface IScoringService
     /// for applying the returned payments to <c>CumulativeScores</c>.
     /// </summary>
     FalseHuPenalty CalculateFalseHuPenalty(int offendingSeatIndex);
+
+    FalseHuPenalty CalculateFalseHuPenalty(int offendingSeatIndex, int baseUnit);
 }
 
 public sealed class ScoringService : IScoringService
@@ -85,7 +89,11 @@ public sealed class ScoringService : IScoringService
         => CalculateScore(win, dealerSeatIndex, isFullFlush, bigWinPatternCount: 1);
 
     public ScoreResult CalculateScore(WinResult win, int dealerSeatIndex, bool isFullFlush, int bigWinPatternCount)
+        => CalculateScore(win, dealerSeatIndex, isFullFlush, bigWinPatternCount, baseUnit: 1);
+
+    public ScoreResult CalculateScore(WinResult win, int dealerSeatIndex, bool isFullFlush, int bigWinPatternCount, int baseUnit)
     {
+        ChangshaBaseUnit.Validate(baseUnit);
         var payments = new List<PaymentEntry>();
         var category = ClassifyWin(win);
 
@@ -106,6 +114,7 @@ public sealed class ScoringService : IScoringService
             CalculateDiscardPayments(win, dealerSeatIndex, category, multiplier, payments);
         }
 
+        payments = ScalePayments(payments, baseUnit);
         var basePoints = payments.Sum(p => p.Amount);
 
         return new ScoreResult
@@ -117,7 +126,14 @@ public sealed class ScoringService : IScoringService
     }
 
     public FalseHuPenalty CalculateFalseHuPenalty(int offendingSeatIndex)
+        => CalculateFalseHuPenalty(offendingSeatIndex, baseUnit: 1);
+
+    public FalseHuPenalty CalculateFalseHuPenalty(int offendingSeatIndex, int baseUnit)
     {
+        if (offendingSeatIndex is < 0 or > 3)
+            throw new ArgumentOutOfRangeException(nameof(offendingSeatIndex));
+        ChangshaBaseUnit.Validate(baseUnit);
+        var perOpponent = checked(FalseHuPenaltyPerOpponent * baseUnit);
         var payments = new List<PaymentEntry>();
         for (var seat = 0; seat < 4; seat++)
         {
@@ -126,16 +142,53 @@ public sealed class ScoringService : IScoringService
             {
                 FromSeatIndex = offendingSeatIndex,
                 ToSeatIndex = seat,
-                Amount = FalseHuPenaltyPerOpponent,
+                Amount = perOpponent,
                 Reason = "falseHu-penalty"
             });
         }
         return new FalseHuPenalty
         {
             OffendingSeatIndex = offendingSeatIndex,
-            PenaltyPerOpponent = FalseHuPenaltyPerOpponent,
+            PenaltyPerOpponent = perOpponent,
             Payments = payments
         };
+    }
+
+    internal static List<PaymentEntry> ScalePayments(IReadOnlyList<PaymentEntry> payments, int baseUnit)
+    {
+        ChangshaBaseUnit.Validate(baseUnit);
+        return payments.Select(payment => new PaymentEntry
+        {
+            FromSeatIndex = payment.FromSeatIndex,
+            ToSeatIndex = payment.ToSeatIndex,
+            Amount = checked(payment.Amount * baseUnit),
+            Reason = payment.Reason
+        }).ToList();
+    }
+
+    internal static Dictionary<int, int> ApplyPayments(
+        IReadOnlyDictionary<int, int> scores,
+        IReadOnlyList<PaymentEntry> payments)
+    {
+        if (scores.Count != 4 || Enumerable.Range(0, 4).Any(seat => !scores.ContainsKey(seat)))
+            throw new InvalidOperationException("Cumulative scores must contain exactly the four seats.");
+
+        // Accumulate in a wider temporary vector; publish nothing until every final
+        // seat total fits. A late overflow must not leave a partially settled hand.
+        var totals = Enumerable.Range(0, 4).Select(seat => (long)scores[seat]).ToArray();
+        foreach (var payment in payments)
+        {
+            if (payment.FromSeatIndex is < 0 or > 3
+                || payment.ToSeatIndex is < 0 or > 3
+                || payment.FromSeatIndex == payment.ToSeatIndex
+                || payment.Amount <= 0)
+            {
+                throw new InvalidOperationException("A payment must transfer a positive amount between distinct seats.");
+            }
+            totals[payment.FromSeatIndex] = checked(totals[payment.FromSeatIndex] - payment.Amount);
+            totals[payment.ToSeatIndex] = checked(totals[payment.ToSeatIndex] + payment.Amount);
+        }
+        return Enumerable.Range(0, 4).ToDictionary(seat => seat, seat => checked((int)totals[seat]));
     }
 
     private static ScoreCategory ClassifyWin(WinResult win)

@@ -82,6 +82,7 @@ public static class ChangshaCollectionKinds
 {
     public const string Claim = "claim";
     public const string Result = "result";
+    public const string HandResultAck = "handResultAck";
     public const string Pickup = "pickup";
 
     /// <summary>
@@ -121,6 +122,10 @@ public static class ChangshaCollectionKinds
     /// the <c>things</c> collection).
     /// </summary>
     public const string Discard = "discard";
+
+    /// <summary>Private own-turn availability under a numeric seat key. Client commands carry
+    /// gameId, expectedVersion, action (hu/concealedKong/addedKong), and exact Kong tileIds.</summary>
+    public const string OwnTurn = "ownTurn";
 
     /// <summary>
     /// Server-emitted only (inbound to clients): the authoritative end-of-match signal.
@@ -171,6 +176,16 @@ public sealed class TurnEntry
 /// </summary>
 public sealed class ClaimWindowEntry
 {
+    /// <summary>Runtime identity paired with StateVersion for version-aware claim commands.</summary>
+    [JsonPropertyName("gameId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? GameId { get; set; }
+
+    /// <summary>Copy into expectedVersion; deadline/source/tile alone do not identify a window.</summary>
+    [JsonPropertyName("stateVersion")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? StateVersion { get; set; }
+
     [JsonPropertyName("available")]
     public List<string> Available { get; set; } = [];
 
@@ -185,6 +200,30 @@ public sealed class ClaimWindowEntry
     /// <summary>Changsha tile id of the discarded tile.</summary>
     [JsonPropertyName("tile")]
     public int TileId { get; set; }
+
+    /// <summary>Exact concealed partner pairs, supplied only to the owning claimant.</summary>
+    [JsonPropertyName("chowOptions")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<int[]>? ChowOptions { get; set; }
+}
+
+public sealed class OwnTurnEntry
+{
+    /// <summary>Runtime identity, copied into commands to reject cross-room replay.</summary>
+    [JsonPropertyName("gameId")]
+    public required string GameId { get; init; }
+
+    [JsonPropertyName("stateVersion")]
+    public int StateVersion { get; init; }
+
+    [JsonPropertyName("hu")]
+    public bool Hu { get; init; }
+
+    [JsonPropertyName("concealedKongs")]
+    public List<int[]> ConcealedKongs { get; init; } = [];
+
+    [JsonPropertyName("addedKongs")]
+    public List<int> AddedKongs { get; init; } = [];
 }
 
 /// <summary>
@@ -241,6 +280,32 @@ public sealed class HandResultEntry
     /// </summary>
     [JsonPropertyName("scoreResult")]
     public ScoreResultEntry? ScoreResult { get; set; }
+
+    /// <summary>Explicitly null unless this settlement is waiting for human Continue actions.</summary>
+    [JsonPropertyName("continuation")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public HandResultContinuationEntry? Continuation { get; set; }
+}
+
+public sealed class HandResultContinuationEntry
+{
+    [JsonPropertyName("gameId")]
+    public required string GameId { get; init; }
+
+    [JsonPropertyName("handNumber")]
+    public int HandNumber { get; init; }
+
+    [JsonPropertyName("resultToken")]
+    public required string ResultToken { get; init; }
+
+    [JsonPropertyName("requiredSeats")]
+    public int[] RequiredSeats { get; init; } = [];
+
+    [JsonPropertyName("acknowledgedSeats")]
+    public int[] AcknowledgedSeats { get; init; } = [];
+
+    [JsonPropertyName("waitingSeats")]
+    public int[] WaitingSeats { get; init; } = [];
 }
 
 /// <summary>
@@ -449,18 +514,27 @@ public static class ChangshaCollectionEncoder
         IEnumerable<string> available,
         int sourceSeat,
         int tileId,
-        long deadlineUnixMs)
+        long deadlineUnixMs,
+        IEnumerable<int[]>? chowOptions = null,
+        string? gameId = null,
+        int? stateVersion = null)
         => new(ChangshaCollectionKinds.Claim, seat.ToString(System.Globalization.CultureInfo.InvariantCulture), new ClaimWindowEntry
         {
             Available = available.ToList(),
             DeadlineUnixMs = deadlineUnixMs,
             SourceSeat = sourceSeat,
-            TileId = tileId
+            TileId = tileId,
+            ChowOptions = chowOptions?.ToList(),
+            GameId = gameId,
+            StateVersion = stateVersion
         });
 
     /// <summary>Encodes a tombstone for <paramref name="seat"/>'s claim window (window closed).</summary>
     public static CollectionEntry EncodeClaimWindowClosed(int seat)
         => new(ChangshaCollectionKinds.Claim, seat.ToString(System.Globalization.CultureInfo.InvariantCulture), null);
+
+    public static CollectionEntry EncodeOwnTurn(int seat, OwnTurnEntry? actions)
+        => new(ChangshaCollectionKinds.OwnTurn, seat, actions);
 
     /// <summary>Encodes the current hand's result as the <c>result["current"]</c> entry.</summary>
     public static CollectionEntry EncodeHandResult(HandResultEntry result)
@@ -637,6 +711,11 @@ public sealed class BreakPointWire
     public int TileIndex { get; set; }
 }
 
+public sealed record AutotableViewerAuthority(
+    [property: JsonPropertyName("roomId"), JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? RoomId,
+    [property: JsonPropertyName("revision")] long Revision,
+    [property: JsonPropertyName("seat"), JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? Seat);
+
 /// <summary>Outbound <c>JOINED</c> envelope.</summary>
 public sealed class JoinedMessage
 {
@@ -651,6 +730,10 @@ public sealed class JoinedMessage
 
     [JsonPropertyName("isFirst")]
     public bool IsFirst { get; set; }
+
+    [JsonPropertyName("viewer")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AutotableViewerAuthority? Viewer { get; init; }
 }
 
 /// <summary>Outbound <c>UPDATE</c> envelope (full or incremental).</summary>
@@ -664,6 +747,10 @@ public sealed class UpdateMessage
 
     [JsonPropertyName("full")]
     public bool Full { get; set; }
+
+    [JsonPropertyName("viewer")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AutotableViewerAuthority? Viewer { get; init; }
 }
 
 /// <summary>Shared JSON options for the autotable protocol. CamelCase matches the rest of the API.</summary>

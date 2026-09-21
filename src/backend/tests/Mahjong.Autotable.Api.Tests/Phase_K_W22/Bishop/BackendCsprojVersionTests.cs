@@ -40,10 +40,12 @@ public sealed class BackendCsprojVersionTests
     }
 
     [Fact, Trait("Category", "Build"), Trait("Wave", "Phase-K-22"), Trait("Lane", "Bishop")]
-    public void CsprojFile_VersionIsExpectedW22Stamp()
+    public void CsprojFile_VersionIsAtLeastW22Stamp()
     {
         var content = File.ReadAllText(LocateCsproj());
-        Assert.Contains($"<Version>{ExpectedVersion}</Version>", content);
+        var match = Regex.Match(content, @"<Version>(\d+\.\d+\.\d+)</Version>");
+        Assert.True(match.Success);
+        Assert.True(Version.Parse(match.Groups[1].Value) >= Version.Parse(ExpectedVersion));
     }
 
     [Fact, Trait("Category", "Build"), Trait("Wave", "Phase-K-22"), Trait("Lane", "Bishop")]

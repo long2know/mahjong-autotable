@@ -31,6 +31,88 @@ async function readMeldCount(page: Page): Promise<number> {
   });
 }
 
+interface RenderPlacementAudit {
+  counts: Record<string, number>;
+  mismatches: Array<{
+    id: number;
+    slot: string;
+    mode: 'custom' | 'instanced' | 'tray' | 'missing';
+    distance: number | null;
+  }>;
+}
+
+async function auditRenderedPlacements(
+  page: Page,
+  groups: ReadonlyArray<'hand' | 'discard' | 'meld'>,
+): Promise<RenderPlacementAudit> {
+  return page.evaluate((wantedGroups) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const world: any = (window as any).game?.world;
+    const counts: Record<string, number> = {};
+    const mismatches: RenderPlacementAudit['mismatches'] = [];
+    if (!world?.things || !world?.objectView?.thingGroups) {
+      return { counts, mismatches: [{ id: -1, slot: 'renderer-unavailable', mode: 'missing', distance: null }] };
+    }
+
+    for (const thing of world.things.values()) {
+      const slot = thing?.slot;
+      if (!slot || slot.thing !== thing || !wantedGroups.includes(slot.group)) continue;
+      if ((slot.group === 'hand' || slot.group === 'meld') && slot.seat !== world.seat) continue;
+      if (slot.group === 'hand' && String(slot.name).startsWith('hand.extra@')) continue;
+      counts[slot.group] = (counts[slot.group] ?? 0) + 1;
+
+      // Mobile replaces the own mesh row; sorting changes presentation, not ownership.
+      if (world.handInTray(thing)) {
+        const button = document.querySelector<HTMLElement>(
+          `[data-testid="hand-tile"][data-tile-id="${thing.index}"]`);
+        const rect = button?.getBoundingClientRect();
+        const hit = rect && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        if (!button || !rect || rect.width === 0 || rect.height === 0 || !hit
+          || !button.contains(hit) || button.dataset.face !== String(thing.typeIndex)) {
+          mismatches.push({ id: thing.index, slot: slot.name, mode: 'tray', distance: null });
+        }
+        continue;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let renderGroup: any = null;
+      for (const candidate of world.objectView.thingGroups.values()) {
+        const start = candidate.startIndex;
+        const length = candidate.meshes?.length ?? 0;
+        if (thing.index >= start && thing.index < start + length) {
+          renderGroup = candidate;
+          break;
+        }
+      }
+      if (!renderGroup) {
+        mismatches.push({ id: thing.index, slot: slot.name, mode: 'missing', distance: null });
+        continue;
+      }
+
+      const index = thing.index - renderGroup.startIndex;
+      const mesh = renderGroup.meshes[index];
+      const expected = world.presentedPlace(thing).position;
+      let actual: { x: number; y: number; z: number };
+      let mode: 'custom' | 'instanced';
+      if (mesh?.visible) {
+        actual = mesh.position;
+        mode = 'custom';
+      } else {
+        const matrix = renderGroup.instancedMesh?.instanceMatrix?.array;
+        if (!matrix) {
+          mismatches.push({ id: thing.index, slot: slot.name, mode: 'missing', distance: null });
+          continue;
+        }
+        actual = { x: matrix[index * 16 + 12], y: matrix[index * 16 + 13], z: matrix[index * 16 + 14] };
+        mode = 'instanced';
+      }
+      const distance = Math.hypot(actual.x - expected.x, actual.y - expected.y, actual.z - expected.z);
+      if (distance > 0.01) mismatches.push({ id: thing.index, slot: slot.name, mode, distance });
+    }
+    return { counts, mismatches };
+  }, groups);
+}
+
 // Drake (Lane C, 2026-08-11) — click the GENUINELY VISIBLE claim control.
 //
 // On the mobile (Pixel-5) layout the legacy side-panel `#claim-{type}` button is
@@ -180,6 +262,10 @@ test.describe('#147 post-meld discard — real-pointer claim then real-pointer d
       const postMelds = await readMeldCount(page);
       expect(postMelds, 'the claimed meld must be exposed in a meld slot').toBeGreaterThan(preMelds);
       expect(postHand, 'concealed tiles must drop after the meld').toBeLessThan(preHand);
+      await expect.poll(async () => (await auditRenderedPlacements(page, ['hand', 'meld'])).mismatches,
+        { message: 'claimed meld and presented hand must reach their actual render objects' }).toEqual([]);
+      const postClaimRender = await auditRenderedPlacements(page, ['hand', 'meld']);
+      expect(postClaimRender.counts.meld, 'all three claimed tiles must be rendered').toBeGreaterThanOrEqual(3);
       expect(
         await H.hasExtraHandTile(page),
         'the seat must now owe a discard after claiming the meld (#147)',
@@ -199,6 +285,10 @@ test.describe('#147 post-meld discard — real-pointer claim then real-pointer d
         outcome.discardAfter,
         'the authoritative discard pile must grow',
       ).toBeGreaterThan(outcome.discardBefore);
+      await expect.poll(async () => (await auditRenderedPlacements(page, ['hand', 'discard', 'meld'])).mismatches,
+        { message: 'discard, meld and presented hand must reach their actual render objects' }).toEqual([]);
+      const postDiscardRender = await auditRenderedPlacements(page, ['hand', 'discard', 'meld']);
+      expect(postDiscardRender.counts.discard, 'a discard must be visibly placed').toBeGreaterThan(0);
 
       // eslint-disable-next-line no-console
       console.log(

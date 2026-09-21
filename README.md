@@ -19,7 +19,8 @@ bots, replay/audit, and a single Docker image for self-hosting.
 
 | I want to…                                        | Use this                                                                                  |
 |---------------------------------------------------|-------------------------------------------------------------------------------------------|
-| **Play locally** (one terminal)                   | `./scripts/compose-bootstrap.sh` (one-time JWT key → gitignored `.env`), then `docker compose up -d --build` and open `http://localhost:8080/autotable/` |
+| **Build a Linux Docker image**                    | `./build.sh` or `./build.ps1` (Docker/Buildx only; no host Node/.NET, no deployment) |
+| **Play locally** (one terminal)                   | `./scripts/compose-bootstrap.sh` (one-time JWT key → gitignored `.env`), then `docker compose up -d --build` and open `http://127.0.0.1:8950/autotable/` |
 | **Develop in VS Code** with hot reload            | Open the repo, press **F5**, select `F5 Full Stack (Backend + Autotable)`                 |
 | **Deploy to my Linux server** (single image)      | See [Docker single-image deploy](#docker-single-image-deploy) below                       |
 | **Run with Postgres instead of SQLite**           | See [Postgres swap](#postgres-swap) below                                                 |
@@ -39,6 +40,7 @@ src/
   launch.json                       # F5 compounds for local dev
   tasks.json                        # backend/frontend tasks
 Dockerfile                          # single-image deploy (frontend + backend)
+build.sh / build.ps1                 # build and load a Linux image; optional archive
 docker-compose.yml                  # local-dev compose (SQLite volume)
 docker-compose.postgres.yml         # overlay adding a Postgres 16 sidecar
 infra/
@@ -102,57 +104,38 @@ The repo-root `Dockerfile` is a 3-stage build:
    as non-root UID 1000, persists SQLite on `/data` volume, has a
    `HEALTHCHECK` against `/health`, and signals cleanly via `tini`.
 
-### Build + run (verified 2026-06-04)
+### One-command image build
 
 ```bash
-# 1. Build the image (~5 min cold, ~30s with BuildKit cache)
-docker build -t mahjong-autotable:latest .
-
-# 2. Generate a stable JWT signing key (Phase L hardening — required
-#    in Production so JWTs survive container restarts. See
-#    docs/jwt-rotation.md §7.1 for the full operator runbook).
-JWT_KEY="$(openssl rand -base64 48)"
-
-# 3. Run it (replace 8080 with whatever port your server has free)
-docker run -d --name mahjong --restart unless-stopped \
-    -p 8080:8080 \
-    -e ASPNETCORE_URLS="http://0.0.0.0:8080" \
-    -e Authentication__JwtSigningKeys__0="$JWT_KEY" \
-    -v mahjong-data:/data \
-    mahjong-autotable:latest
-
-# 4. Verify health
-curl -sf http://127.0.0.1:8080/health
-
-# 5. Open the game in your browser
-open http://127.0.0.1:8080/autotable/      # or visit it from another machine
+./build.sh
 ```
 
-> **⚠️ Production-required env var:** the image pins
-> `ASPNETCORE_ENVIRONMENT=Production`, and the API now refuses to
-> start in Production without `Authentication__JwtSigningKeys__0`.
-> Without it every JWT minted by the prior container is silently
-> invalidated on restart. Persist `$JWT_KEY` in your secrets store
-> and reuse it across restarts. See
-> [`docs/jwt-rotation.md`](docs/jwt-rotation.md) §7.1 for the
-> rotation runbook + the optional `__1` fallback slot.
+Or from PowerShell:
 
-The smoke test (`playtest-artifacts/playtest-docker-smoke.spec.mjs`)
-proves the deployed image end-to-end: `/health` returns JSON 200,
-`/autotable/` serves the Vite bundle, and a 4-bot Changsha game runs
-through the deal + bot discards + claim windows with zero page errors.
-Re-run it any time against your deploy:
+```powershell
+./build.ps1
+```
+
+Both build from source through the root Dockerfile and load
+`mahjong-autotable:local` into Docker. They work from another working
+directory and paths containing spaces, propagate failures, and never start
+containers or push to a registry. The default platform is `linux/amd64`;
+use `--platform linux/arm64` / `-Platform linux/arm64` for an ARM64 server.
+Docker must support building the selected platform.
+
+To transfer the image to a Linux server without a registry:
 
 ```bash
-docker run -d --name mat-proof -p 9099:8080 \
-    -e ASPNETCORE_URLS="http://0.0.0.0:8080" mahjong-autotable:latest
-sleep 25
-E2E_BASE_URL=http://127.0.0.1:9099 \
-    node playtest-artifacts/playtest-docker-smoke.spec.mjs
-docker stop mat-proof && docker rm mat-proof
+./build.sh --archive mahjong-autotable.tar
+# PowerShell equivalent: ./build.ps1 -Archive mahjong-autotable.tar
+# Transfer the archive and this repo's Compose/bootstrap files, then on Linux:
+docker load --input mahjong-autotable.tar
 ```
 
-### Or use docker-compose
+Archive export is opt-in and refuses to overwrite an existing file. See
+[Docker quickstart](docs/docker.md) for tag/platform options and examples.
+
+### Run with Compose
 
 The image runs in `Production` posture, which refuses to boot without a
 stable JWT signing key. The one-time bootstrap writes a key into a local
@@ -161,17 +144,37 @@ re-running it keeps the existing key stable across restarts:
 
 ```bash
 ./scripts/compose-bootstrap.sh        # first run writes a JWT key to .env
-docker compose up -d --build
-open http://localhost:8080/autotable/
+docker compose up -d --no-build       # use the image built/loaded above
+curl --fail http://127.0.0.1:8950/health
 ```
 
-If `JWT_SIGNING_KEY` is missing, `docker compose up` fails fast with a
-one-line fix instruction instead of crash-looping. (Manual equivalent:
-`cp .env.example .env && echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)" >> .env`.)
+Open `http://127.0.0.1:8950/autotable/`. Alternatively,
+`docker compose up -d --build` builds and starts from source.
+Container port **8080 stays fixed**. Set `MAHJONG_HOST_PORT` to remap the host
+port, and `MAHJONG_BIND_ADDRESS=0.0.0.0` only if direct network access is
+intended. Loopback is the default for a host Nginx reverse proxy.
 
-The compose file (`docker-compose.yml`) names the SQLite volume
-`mahjong-data` so `docker compose down` keeps your data
-(`docker compose down -v` wipes it).
+If `JWT_SIGNING_KEY` is missing, `docker compose up` fails fast with a
+one-line fix instruction instead of crash-looping. Keep the key stable:
+regenerating it invalidates prior signed identities/tokens. Do not commit
+`.env`, pass the key as a build argument, or print resolved Compose
+configuration containing secrets.
+
+Compose generates project-scoped container and volume names; it no longer
+uses a globally fixed `container_name`. Keep the same project name and
+environment file across updates to preserve the database/key. An isolated
+second instance can use a separate env file, `-p` name, and host port:
+
+```bash
+./scripts/compose-bootstrap.sh --env-file ./.env.smoke.local
+MAHJONG_HOST_PORT=8951 docker compose --env-file ./.env.smoke.local \
+    -p mahjong-smoke up -d --no-build
+```
+
+Use a gitignored private env-file location such as `.env.smoke.local`.
+`docker compose down` retains the project's database volume;
+`docker compose down -v` destroys it. See the
+[Nginx HTTP/WebSocket guide](docs/reverse-proxy.md) for the matching upstream.
 
 ### Postgres swap
 

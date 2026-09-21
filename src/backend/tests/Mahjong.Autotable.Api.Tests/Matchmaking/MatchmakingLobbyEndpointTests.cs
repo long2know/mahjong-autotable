@@ -67,6 +67,7 @@ public class MatchmakingLobbyEndpointTests : IAsyncLifetime
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Development");
+            b.UseSetting("Persistence:Provider", "Sqlite");
             b.UseSetting("ConnectionStrings:Sqlite", $"Data Source={_tempDb}");
             b.ConfigureServices(s =>
             {
@@ -110,7 +111,7 @@ public class MatchmakingLobbyEndpointTests : IAsyncLifetime
         // Phase J Wave 6 — hostId is the persistent player id used by
         // SetGamePublicAsync's callerPlayerId check. Connection-id is not
         // used by the lobby snapshot path so we leave it null.
-        var gameId = await runtime.CreateGameAsync(seed: 0, botSeatIndexes: null, hostPlayerId: hostId, hostConnectionId: null);
+        var gameId = await runtime.CreateGameAsync(seed: 0, botSeatIndexes: [], hostPlayerId: hostId, hostConnectionId: null);
         await runtime.SetGamePublicAsync(gameId, callerPlayerId: hostId, isPublic: true, publicName: publicName, default);
         return gameId;
     }
@@ -164,7 +165,7 @@ public class MatchmakingLobbyEndpointTests : IAsyncLifetime
         // Game 3 — private (IsPublic stays false): must NOT appear.
         // CreateGameAsync defaults IsPublic=false; skipping SetGamePublic
         // leaves the game in the private state.
-        var privateId = await runtime.CreateGameAsync(seed: 0, botSeatIndexes: null,
+        var privateId = await runtime.CreateGameAsync(seed: 0, botSeatIndexes: [],
             hostPlayerId: "host-3-" + Guid.NewGuid().ToString("N"), hostConnectionId: null);
 
         Assert.NotNull(_factory);
@@ -265,6 +266,8 @@ public class MatchmakingLobbyEndpointTests : IAsyncLifetime
         Assert.Equal(JsonValueKind.Number, first.GetProperty("seatedCount").ValueKind);
         Assert.Equal(JsonValueKind.Number, first.GetProperty("maxSeats").ValueKind);
         Assert.Equal(4, first.GetProperty("maxSeats").GetInt32());
+        Assert.Equal(0, first.GetProperty("botCount").GetInt32());
+        Assert.Equal(4, first.GetProperty("openHumanSeats").GetInt32());
         Assert.Equal(JsonValueKind.String, first.GetProperty("variant").ValueKind);
         Assert.Equal("Changsha", first.GetProperty("variant").GetString());
         Assert.Equal(JsonValueKind.String, first.GetProperty("createdAt").ValueKind);

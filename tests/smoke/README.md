@@ -9,6 +9,30 @@ fast — these scripts are slow (multi-stage Docker builds dominate).
 | Script | Purpose | Approx runtime |
 | --- | --- | --- |
 | `docker-build-smoke.sh` | Builds Apone's multi-stage Dockerfile, runs the image, asserts `/health` returns the expected 4-field JSON shape, then tears everything down. | ~2–5 min (first build can be longer with cold base images) |
+| `test-build-entrypoints.py` | Runs Bash and real PowerShell against a Docker test double: argument quoting, local-image output, failure propagation and bootstrap key preservation. Does not claim a real image build. | ~20s |
+
+## Build entrypoint contracts
+
+Requires Python3, Bash and PowerShell (`pwsh`). Uses only Python's standard
+unittest runner; no packages are installed:
+
+```bash
+BUILD_SCRIPT_TEST_DIR="$PWD/.work/build-script-proof" \
+    python3 tests/smoke/test-build-entrypoints.py -v
+```
+
+Artifacts are isolated by a unique subdirectory, never placed in a system
+temporary directory. These contract tests complement, not replace, actual
+`./build.sh` / `./build.ps1` builds and an isolated Compose HTTP/WS/persistence
+smoke. Use a fresh Compose project/env file and alternate host port rather
+than stopping a live user's server.
+
+The dotenv cases invoke the real `docker compose config` parser (no
+containers started), covering empty and configured unquoted/single-/double-
+quoted keys, optional `export`, last-definition precedence, repeated-use
+preservation, and non-execution of env-file content. They also assert that
+runtime secrets do not enter Compose build arguments and that different
+project names produce different volume names.
 
 ## docker-build-smoke.sh
 

@@ -20,16 +20,24 @@
 #
 # Usage:
 #   ./scripts/compose-bootstrap.sh            # ensures ./.env has a JWT key
+#   ./scripts/compose-bootstrap.sh --env-file /path/to/project.env
 #   ./scripts/compose-bootstrap.sh && docker compose up -d --build
 
 set -euo pipefail
 
 # Resolve repo root from this script's location so it works from any CWD.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_ROOT"
-
-ENV_FILE=".env"
-EXAMPLE_FILE=".env.example"
+ENV_FILE="$REPO_ROOT/.env"
+EXAMPLE_FILE="$REPO_ROOT/.env.example"
+if (($#)); then
+    if [[ $# -ne 2 || "$1" != --env-file || -z "$2" ]]; then
+        printf 'Usage: %s [--env-file PATH]\n' "$0" >&2
+        exit 2
+    fi
+    ENV_FILE="$2"
+    [[ "$ENV_FILE" == /* ]] || ENV_FILE="$PWD/$ENV_FILE"
+fi
+umask 077
 
 # 1. Seed .env from the template on first run.
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -42,12 +50,62 @@ if [[ ! -f "$ENV_FILE" ]]; then
     fi
 fi
 
-# 2. If a non-empty, uncommented JWT_SIGNING_KEY already exists, keep it
-#    (stable across restarts). A commented (# ...) or empty (=) line does
-#    NOT count as set.
-if grep -Eq '^[[:space:]]*JWT_SIGNING_KEY=[^[:space:]]' "$ENV_FILE"; then
+# Classify literal emptiness, not key validity or interpolation. A leading #
+# is an unquoted value, and whitespace inside quotes is still key material.
+# Reject unsupported syntax rather than mistaking it for an absent/empty key.
+# Only the classification leaves awk; never source or print env-file values.
+if ! KEY_STATE="$(awk '
+    function unsupported() {
+        invalid = 1
+        exit 2
+    }
+    BEGIN { state = "empty"; single_quote = sprintf("%c", 39) }
+    {
+        line = $0
+        sub(/\r$/, "", line)
+        sub(/^[[:space:]]+/, "", line)
+        if (line == "" || line ~ /^#/) next
+        sub(/^export[[:space:]]+/, "", line)
+        name = line
+        sub(/[[:space:]=:].*$/, "", name)
+        if (name !~ /^[[:alnum:]_.-]+$/) unsupported()
+        rest = substr(line, length(name) + 1)
+        sub(/^[[:space:]]+/, "", rest)
+        if (rest !~ /^[=:]/) {
+            if (name == "JWT_SIGNING_KEY" || (rest != "" && rest !~ /^#/)) unsupported()
+            next
+        }
+        value = substr(rest, 2)
+        sub(/^[[:space:]]+/, "", value)
+        empty = value == ""
+        quote = substr(value, 1, 1)
+        if (quote == "\"" || quote == single_quote) {
+            end = 0
+            for (i = 2; i <= length(value); i++) {
+                char = substr(value, i, 1)
+                if (char == "\\") { i++; continue }
+                if (char == quote) { end = i; break }
+            }
+            # Multiline values could contain assignment-looking text.
+            if (!end) unsupported()
+            tail = substr(value, end + 1)
+            sub(/^[[:space:]]+/, "", tail)
+            if (tail != "" && tail !~ /^#/) unsupported()
+            empty = end == 2
+        }
+        if (name == "JWT_SIGNING_KEY") state = empty ? "empty" : "configured"
+    }
+    END {
+        if (invalid) exit 2
+        print state
+    }
+' "$ENV_FILE")"; then
+    printf '%s\n' 'Unsupported env-file syntax; no JWT signing key was generated. Use explicit single-line assignments.' >&2
+    exit 1
+fi
+if [[ "$KEY_STATE" == "configured" ]]; then
     echo "JWT_SIGNING_KEY already set in $ENV_FILE — leaving it unchanged."
-    echo "Next: docker compose up -d --build"
+    printf 'Next: docker compose --env-file "%s" -f "%s/docker-compose.yml" up -d --build\n' "$ENV_FILE" "$REPO_ROOT"
     exit 0
 fi
 
@@ -64,4 +122,4 @@ fi
 printf 'JWT_SIGNING_KEY=%s\n' "$KEY" >> "$ENV_FILE"
 
 echo "Wrote a new stable JWT_SIGNING_KEY to $ENV_FILE (gitignored — never commit it)."
-echo "Next: docker compose up -d --build"
+printf 'Next: docker compose --env-file "%s" -f "%s/docker-compose.yml" up -d --build\n' "$ENV_FILE" "$REPO_ROOT"

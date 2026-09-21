@@ -66,9 +66,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
         var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
 
         // Hu when we can.
-        var detector = new ChangshaWinDetector();
-        var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
-        if (winResult.IsWin)
+        if (ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, botSeatIndex))
             return BotAction.DeclareWin();
 
         // Conservative kongs — only when the hand still has room.
@@ -96,9 +94,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
     public BotAction OnSelfDraw(ChangshaGameState state, int botSeatIndex)
     {
         var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
-        var detector = new ChangshaWinDetector();
-        var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
-        if (winResult.IsWin)
+        if (ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, botSeatIndex))
             return BotAction.DeclareWin();
 
         if (HandEvaluator.CountLooseTiles(hand) >= 2)
@@ -148,9 +144,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
         if (state.Phase == ChangshaPhase.AwaitingDiscard && state.ActiveSeatIndex == botSeatIndex)
         {
             var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
-            var detector = new ChangshaWinDetector();
-            var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
-            if (winResult.IsWin)
+            if (ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, botSeatIndex))
             {
                 reasoning.Add("winning hand detected on self-draw");
                 return new BotDecision(BotAction.DeclareWin(), null, Score: 0, reasoning);

@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Data;
 using Mahjong.Autotable.Api.Data.Entities;
+using Mahjong.Autotable.Api.Players;
 using Microsoft.EntityFrameworkCore;
 
 namespace Mahjong.Autotable.Api.Changsha.Chat;
@@ -34,11 +36,21 @@ public sealed class ChatService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ChatContentFilter _filter;
     private readonly ConcurrentDictionary<string, Queue<DateTime>> _windows = new();
+    private readonly IChangshaGameRuntime? _runtime;
+    private readonly LobbyPresenceService? _presence;
+    private readonly PlayerProfileService? _profiles;
+    private readonly TimeProvider _time;
 
-    public ChatService(IServiceScopeFactory scopeFactory, ChatContentFilter filter)
+    public ChatService(IServiceScopeFactory scopeFactory, ChatContentFilter filter,
+        IChangshaGameRuntime? runtime = null, LobbyPresenceService? presence = null,
+        PlayerProfileService? profiles = null, TimeProvider? timeProvider = null)
     {
         _scopeFactory = scopeFactory;
         _filter = filter;
+        _runtime = runtime;
+        _presence = presence;
+        _profiles = profiles;
+        _time = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>
@@ -55,14 +67,15 @@ public sealed class ChatService
         var trimmed = body.Trim();
         if (trimmed.Length > ChatMessage.MaxBodyLength)
             return (ChatSendOutcome.TooLong, null);
-        var resolvedChannel = ResolveChannel(channel);
+        if (!TryResolveChannel(channel, null, out var resolvedChannel))
+            return (ChatSendOutcome.Invalid, null);
 
         // Sanitize first — banned tokens are masked rather than rejected,
         // so the conversation continues but the persisted body / audit
         // log never contains the original profanity.
         var sanitized = _filter.Sanitize(trimmed);
 
-        if (!RecordSendInWindow(playerId))
+        if (!TryConsumeSendQuota(playerId))
             return (ChatSendOutcome.RateLimited, null);
 
         var row = new ChatMessage
@@ -70,8 +83,8 @@ public sealed class ChatService
             GameId = gameId,
             PlayerId = playerId,
             Body = sanitized,
-            Channel = resolvedChannel,
-            At = DateTime.UtcNow,
+            Channel = resolvedChannel!.Stored,
+            At = _time.GetUtcNow().UtcDateTime,
         };
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -103,14 +116,88 @@ public sealed class ChatService
 
     public void AddProfanity(string word) => _filter.Add(word);
 
-    private bool RecordSendInWindow(string playerId)
+    public async Task<(ChatSendOutcome Outcome, ChatMessageDto? Message)> SendForMemberAsync(
+        RoomReference room, string playerId, string body, string? channel,
+        string? recipientPlayerId, CancellationToken ct = default)
     {
+        if (!TryResolveChannel(channel, recipientPlayerId, out var resolved))
+            return (ChatSendOutcome.Invalid, null);
+        var access = await RequireMembershipAsync(room, playerId, ct);
+        if (resolved!.Channel == "spectators" && access.ViewerHasConnectedHumanSeat)
+            return (ChatSendOutcome.NotAllowed, null);
+        if (resolved.RecipientPlayerId is { } recipient && !Presence.IsJoined(recipient, room.RuntimeGameId))
+            return (ChatSendOutcome.RecipientNotJoined, null);
+
+        var (outcome, row) = await SendAsync(room.RuntimeGameId, playerId, body, resolved.Stored, ct);
+        if (row is null) return (outcome, null);
+        var profile = await Profiles.GetOrCreateAsync(playerId, ct);
+        return (outcome, ToDto(row, room.RoomId, profile));
+    }
+
+    public async Task<IReadOnlyList<ChatMessageDto>> BackfillForMemberAsync(
+        RoomReference room, string playerId, DateTime? since, int limit, CancellationToken ct = default)
+    {
+        var access = await RequireMembershipAsync(room, playerId, ct);
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        // Force exact public-alias and identity comparisons on all supported stores.
+        var collation = db.Database.IsSqlServer() ? "Latin1_General_100_BIN2"
+            : db.Database.IsNpgsql() ? "C"
+            : db.Database.IsSqlite() ? "BINARY"
+            : throw new NotSupportedException("Chat history requires a supported relational provider.");
+        var spectator = !access.ViewerHasConnectedHumanSeat;
+        var query = db.ChatMessages.AsNoTracking().Where(message =>
+            EF.Functions.Collate(message.GameId, collation) == room.RuntimeGameId
+            || EF.Functions.Collate(message.GameId, collation) == room.RoomId);
+        query = query.Where(message =>
+            message.Channel.ToLower() == "table"
+            || (spectator && (message.Channel.ToLower() == "spectator" || message.Channel.ToLower() == "spectators"))
+            || (message.Channel.Length > 8 && message.Channel.ToLower().StartsWith("private:")
+                && (EF.Functions.Collate(message.PlayerId, collation) == playerId
+                    || EF.Functions.Collate(message.Channel.Substring(8), collation) == playerId)));
+        if (since.HasValue) query = query.Where(message => message.At > since.Value);
+        var rows = await query.OrderByDescending(message => message.At).ThenByDescending(message => message.Id)
+            .Take(Math.Clamp(limit, 1, 200)).ToListAsync(ct);
+        rows.Reverse();
+
+        var profiles = new Dictionary<string, PlayerProfile>(StringComparer.Ordinal);
+        foreach (var sender in rows.Select(row => row.PlayerId).Distinct(StringComparer.Ordinal))
+            profiles.Add(sender, await Profiles.GetOrCreateAsync(sender, ct));
+        return rows.Select(row => ToDto(row, room.RoomId, profiles[row.PlayerId])).ToArray();
+    }
+
+    private async Task<RoomAccessSnapshot> RequireMembershipAsync(RoomReference room, string playerId, CancellationToken ct)
+    {
+        if (!Presence.IsJoined(playerId, room.RuntimeGameId))
+            throw new ChatAccessException("not-joined");
+        var runtime = _runtime ?? throw new InvalidOperationException("Room chat runtime is not configured.");
+        return await runtime.GetRoomAccessAsync(room.RuntimeGameId, playerId, ct)
+            ?? throw new ChatAccessException("room-not-found");
+    }
+
+    private LobbyPresenceService Presence =>
+        _presence ?? throw new InvalidOperationException("Room chat presence is not configured.");
+    private PlayerProfileService Profiles =>
+        _profiles ?? throw new InvalidOperationException("Room chat profiles are not configured.");
+
+    private static ChatMessageDto ToDto(ChatMessage row, string roomId, PlayerProfile profile)
+    {
+        if (!TryResolveChannel(row.Channel, null, out var channel))
+            throw new InvalidOperationException("Stored chat message has an invalid channel.");
+        return new ChatMessageDto(row.Id.ToString(), roomId, channel!.Channel,
+            row.PlayerId, profile.DisplayName, profile.AvatarColor, channel.RecipientPlayerId,
+            row.Body, DateTime.SpecifyKind(row.At, DateTimeKind.Utc));
+    }
+
+    public bool TryConsumeSendQuota(string playerId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(playerId);
         var window = _windows.GetOrAdd(playerId, _ => new Queue<DateTime>());
         lock (window)
         {
-            var now = DateTime.UtcNow;
+            var now = _time.GetUtcNow().UtcDateTime;
             var cutoff = now.AddSeconds(-RateLimitWindowSeconds);
-            while (window.Count > 0 && window.Peek() < cutoff)
+            while (window.Count > 0 && window.Peek() <= cutoff)
             {
                 window.Dequeue();
             }
@@ -121,14 +208,34 @@ public sealed class ChatService
         }
     }
 
-    private static string ResolveChannel(string channel)
+    private sealed record ResolvedChannel(string Channel, string Stored, string? RecipientPlayerId);
+
+    private static bool TryResolveChannel(string? channel, string? recipientPlayerId, out ResolvedChannel? result)
     {
-        if (string.IsNullOrWhiteSpace(channel)) return "table";
-        var c = channel.Trim();
-        if (c.Equals("table", StringComparison.OrdinalIgnoreCase)) return "table";
-        if (c.Equals("spectator", StringComparison.OrdinalIgnoreCase)) return "spectator";
-        if (c.StartsWith("private:", StringComparison.OrdinalIgnoreCase)) return c;
-        return "table";
+        result = null;
+        var value = string.IsNullOrWhiteSpace(channel) ? "table" : channel.Trim();
+        if (value.StartsWith("private:", StringComparison.OrdinalIgnoreCase))
+        {
+            var encodedRecipient = value[8..];
+            if (recipientPlayerId is not null
+                && !string.Equals(recipientPlayerId, encodedRecipient, StringComparison.Ordinal))
+                return false;
+            recipientPlayerId = encodedRecipient;
+            value = "private";
+        }
+        if (value.Equals("private", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!PlayerIdentityService.IsValidPlayerId(recipientPlayerId)) return false;
+            result = new("private", $"private:{recipientPlayerId}", recipientPlayerId);
+            return true;
+        }
+        if (recipientPlayerId is not null) return false;
+        if (value.Equals("table", StringComparison.OrdinalIgnoreCase))
+            result = new("table", "table", null);
+        else if (value.Equals("spectator", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("spectators", StringComparison.OrdinalIgnoreCase))
+            result = new("spectators", "spectator", null);
+        return result is not null;
     }
 }
 
@@ -139,4 +246,6 @@ public enum ChatSendOutcome
     TooLong,
     Filtered,
     RateLimited,
+    NotAllowed,
+    RecipientNotJoined,
 }

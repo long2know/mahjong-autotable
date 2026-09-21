@@ -21,7 +21,6 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: mahjong-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mahjong_autotable}
       POSTGRES_USER: ${POSTGRES_USER:-mahjong}
@@ -29,7 +28,7 @@ services:
     volumes:
       - mahjong-postgres-data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     healthcheck:
       test:
         - CMD-SHELL

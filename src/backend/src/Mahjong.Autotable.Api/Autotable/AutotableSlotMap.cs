@@ -95,6 +95,16 @@ public static class AutotableSlotMap
     }
 
     /// <summary>
+    /// Added-Kong-only upper slot, over the middle tile of an existing Pung.
+    /// Flat meld slots 0..3 retain their existing meanings for every other kind.
+    /// </summary>
+    public static string AddedKongSlot(int seat, int meldIdx)
+    {
+        _ = MeldSlot(seat, meldIdx, 0);
+        return $"meld.{meldIdx}.4@{seat}";
+    }
+
+    /// <summary>
     /// Maps a Changsha tile id (0..107) to upstream's atlas <c>typeIndex</c>.
     /// Per spike §5.1: Changsha and upstream agree on suit / rank ordering.
     /// </summary>

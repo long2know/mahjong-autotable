@@ -96,6 +96,32 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Sqlite
                     b.ToTable("RotationSchedules");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.AutotableRoomBinding", b =>
+                {
+                    b.Property<string>("RoomKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RoomId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RuntimeGameId")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("RoomKey");
+
+                    b.HasIndex("RuntimeGameId")
+                        .IsUnique();
+
+                    b.ToTable("AutotableRoomBindings");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.ChangshaGame", b =>
                 {
                     b.Property<Guid>("Id")
@@ -156,7 +182,6 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Sqlite
 
                     b.Property<string>("Detail")
                         .IsRequired()
-                        .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("EventType")

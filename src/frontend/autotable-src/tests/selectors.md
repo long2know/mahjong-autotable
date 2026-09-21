@@ -47,7 +47,7 @@ the top-left re-opens it for new-game configuration.
 | `data-testid="lobby-player-chip-{0..3}"` | `<div class="lobby-player-chip">` | Per-seat joined-player chip. `chipIndex` is the seat the player took (0=East, 1=South, 2=West, 3=North). Dynamically injected; `data-seat` attribute carries the same seat number for non-test selectors. | `src/frontend/autotable-src/src/lobby.ts:802` |
 | `data-testid="lobby-seat-preview"` | `<div class="lobby-seat-preview">` | The 4-cell seat-grid preview shown above the lobby's apply button. | `src/frontend/autotable-src/index.html:705` |
 | `data-testid="lobby-seat-preview-{0..3}"` | `<div class="lobby-seat-preview-cell">` | One preview cell per seat. Reflects the current rule-set's bot-mix preview state. Dynamically injected. | `src/frontend/autotable-src/src/lobby.ts:668` |
-| `data-testid="lobby-quick-match"` | `<button>` | "Quick Match" CTA that bypasses fine-grained picker and starts a default 4-bot game. | `src/frontend/autotable-src/index.html:720` |
+| `data-testid="lobby-quick-match"` | `<button>` | "Quick Match" deliberately creates a fresh one-human/three-Medium-bot game. Use **Apply**, not Quick Match, when testing the bot-count picker. | `src/frontend/autotable-src/src/lobby.ts` |
 | `data-testid="lobby-variant-fieldset"` | `<fieldset>` | Rule-set variant picker (e.g., changsha-v1, changsha-v2). | `src/frontend/autotable-src/index.html:1154` |
 | `data-testid="lobby-bot-difficulty-fieldset"` | `<fieldset>` | Bot strength tier picker (Easy / Medium / Hard). | `src/frontend/autotable-src/index.html:1214` |
 | `data-testid="lobby-hand-count-fieldset"` | `<fieldset>` | N-hand cap picker. Defaults to 4 (one east-wind rotation); higher values raise `ChangshaGameState.MaxHands`. | `src/frontend/autotable-src/index.html:1238` |
@@ -55,6 +55,30 @@ the top-left re-opens it for new-game configuration.
 | `data-testid="lobby-apply"` | `<button>` | Primary CTA — "Apply" / "Start Game". Submits the lobby form and constructs the new-game URL with the chosen variant / difficulty / hands. | `src/frontend/autotable-src/index.html:1536` |
 
 ## Mobile drawers
+
+### Authoritative hand-result continuation
+
+| Selector | Element | Purpose | Source |
+|---|---|---|---|
+| `data-testid="hand-result-dialog"` | `#result-modal` | Held result; `data-continuation-state` reports its UI state. | `index.html`, `src/game-ui.ts` |
+| `data-testid="hand-result-continue"` | `#result-next` | Explicit hand-bound acknowledgement; observers dismiss locally instead. | `index.html`, `src/game-ui.ts` |
+| `data-testid="hand-result-status"` | `#result-dialog-status` | Continue, sending, waiting for other players, or reconnect status. | `index.html`, `src/game-ui.ts` |
+| `data-testid="hand-result-error"` | `#result-dialog-error` | Specific server rejection reason without dismissing the result. | `index.html`, `src/game-ui.ts` |
+| `data-testid="hand-result-refresh"` | `#result-refresh` | User-requested reconnect/status refresh; never acknowledges by itself. | `index.html`, `src/game-ui.ts` |
+
+### Mobile/table hand presentation (September 2026)
+
+| Selector | Element | Purpose | Source |
+|---|---|---|---|
+| `data-testid="own-hand-tray"` | `<section>` | Compact-screen concealed hand; replaces, rather than duplicates, the own 3D row. | `src/hand-view.ts` |
+| `data-testid="hand-tile"` | `<button data-tile-id data-face data-drawn>` | Actual physical tile ID and visible catalog face; normal tap discards this ID when authorized. | `src/hand-view.ts` |
+| `data-testid="hand-sort"` | `<select>` | Persisted local Suit + rank / Pairs-triples-first mode. | `src/hand-view.ts` |
+| `data-testid="settings-hand-sort"` | `<select>` | Same preference under Settings → Display, also available on desktop. | `src/settings-drawer.ts` |
+| `data-testid="settings-mobile-table-status"` | `<input type="checkbox">` | Persisted compact-screen table-status visibility; default off, desktop unaffected. | `src/settings-drawer.ts` |
+
+The playability pointer helper now observes the visible tray tile on compact
+screens, and the presented raycast position on desktop. It still sends ordinary
+pointer events; no collection/gameplay calls were added to test actions.
 
 Phase J Wave 4 — under the 768px breakpoint the move-log slides off-canvas;
 the toggle button reveals it as a drawer. Hidden on desktop.
@@ -141,17 +165,91 @@ when the "Public Games" tab is active.
 | `data-testid="lobby-public-game-name-{0..49}"` | `<div class="public-game-card-name">` | The friendly host-supplied `publicName` (≤64 chars per `ChangshaGameRuntime.SetGamePublicAsync`); falls back to `"<host>'s game"` when null. | `src/frontend/autotable-src/src/lobby.ts:1022` |
 | `data-testid="lobby-public-game-host-{0..49}"` | `<span class="public-game-card-meta-creator">` | The host's `creatorDisplayName` (resolved through `PlayerProfileService`). | `src/frontend/autotable-src/src/lobby.ts:1030` |
 | `data-testid="lobby-public-game-seats-{0..49}"` | `<span class="public-game-card-meta-seats">` | The `seatedCount / maxSeats` text. The wire shape is Bishop's `LobbyGameDto` (`seatedCount` + `maxSeats`); `matchmaking.ts:normalizePublicGame` consumes those keys directly. | `src/frontend/autotable-src/src/lobby.ts:1034` |
-| `data-testid="lobby-public-game-join-{0..49}"` | `<button class="public-game-card-join">` | Per-chip "Join" CTA — calls `navigateToGame(gameId)` which rewrites the URL and reloads into the chosen game. Disabled when `seatedCount === maxSeats`. | `src/frontend/autotable-src/src/lobby.ts:1051` |
-| `data-testid="lobby-join-random"` | `<button id="lobby-join-random">` | "Join any public game" shortcut — invokes the SignalR `JoinRandom` RPC (`MatchmakingService.JoinRandomAsync` picks a random public-seating game). | `src/frontend/autotable-src/index.html:923` |
+| `data-testid="lobby-public-game-join-{0..49}"` | `<button class="public-game-card-join">` | Per-card Join uses the canonical alias and join-only URL. Availability uses `openHumanSeats`, excluding bots and recovery reservations. | `src/frontend/autotable-src/src/lobby.ts` |
+| `data-testid="lobby-join-random"` | `<button id="lobby-join-random">` | Invokes non-seating `FindJoinableGame`, then navigates using the same join-only URL. The repaired browser must not use native seat-allocating `JoinRandom`. | `src/frontend/autotable-src/src/lobby.ts` |
 | `data-testid="lobby-set-public-toggle"` | `<input type="checkbox" id="lobby-make-public-toggle">` | Host-only checkbox in the lobby that flips `SetGamePublic`. Sender must be the host of the current `?gameId=…`. | `src/frontend/autotable-src/index.html:884` |
 | `data-testid="lobby-public-name-input"` | `<input id="lobby-make-public-name">` | Friendly public-name input bound to the `SetGamePublic` `publicName` argument. Server trims + caps at 64 chars; blank is sent as `null`. | `src/frontend/autotable-src/index.html:889` |
 
 > **Wire contract reminder.** Each `PublicGame` entry from
 > `/api/matchmaking/lobby` is `{ gameId, publicName, creatorDisplayName,
-> seatedCount, maxSeats, variant, createdAt }`.
+> seatedCount, maxSeats, variant, createdAt, botCount, openHumanSeats }`.
 > `matchmaking.ts:normalizePublicGame` consumes the wire shape as-is
 > (post-Wave-5 alignment with Bishop's `LobbyGameDto`). Backend
 > wire-shape assertions live in `MatchmakingLobbyEndpointTests`.
+
+## Lobby repair: online players and invitations (September 17, 2026)
+
+This is the approved repair's selector contract, published by Hicks before
+implementation. The new browser specs assert these controls after integration;
+authoring the specs is **not** evidence that the changing implementation passed.
+The existing vanilla-TypeScript chat widget is used on both the bare lobby and
+table pages.
+
+| Selector | Purpose |
+|---|---|
+| `data-testid="lobby-open-chat"` | Bare-lobby entry, accessible name **Online players and invitations**. |
+| `data-testid="chat-panel"` / `chat-toggle` | Existing widget; toggle exposes `aria-expanded`. |
+| `data-testid="online-players"` | Server-wide roster section, separate from room-private recipients. |
+| `data-testid="online-players-status"` | Explicit connecting/unavailable/ready state; outages are not an empty-online-list claim. |
+| `data-testid="online-player"` + `data-player-id` | One other signed identity per row; no own row, bots, rooms or transport IDs. |
+| `data-testid="online-player-name"` | Server profile display name rendered as text. |
+| `data-testid="online-player-invite"` | **Invite to this table** action scoped to that row. |
+| `data-testid="online-invite-status"` | Send result or actionable failure. |
+| `data-testid="online-players-retry"` | Retry failed verified bootstrap or presence connection. |
+| `data-testid="incoming-invites"` | Recipient-only inbox. |
+| `data-testid="table-invite"` + `data-invite-id` | One card per invite UUID, including after reload/reconnect. |
+| `data-testid="table-invite-sender"` / `table-invite-table` | Server-supplied sender and destination label. |
+| `data-testid="table-invite-join"` | Explicit **Join table** anchor. Expired cards have `aria-disabled="true"` and no `href`. |
+| `data-testid="table-invite-expired"` | Expired-card explanation. |
+| `data-testid="chat-invite-unread"` / `table-invite-toast` | Incoming indication even when chat is collapsed; never auto-navigates. |
+| `data-testid="lobby-public-status"` | Creator/phase/disconnected/unknown eligibility explanation. |
+| `data-testid="copy-table-link"` | **Copy table link**, using the same join-only URL as cards and invites. |
+| `data-testid="lobby-room-configuration"` | Authoritative room configuration rather than a late joiner's preferences. |
+| `data-testid="room-join-error"` | Visible missing/full/started admission error without creation fallback. |
+
+Ordinary chat keeps `chat-channel-select`, `chat-recipient-select`,
+`chat-messages`, `chat-input` and `chat-send`. The canonical send is
+`POST /api/games/{gameId}/chat`; readers consume `senderPlayerId`,
+`senderDisplayName`, `sentUtc` and `recipientPlayerId`. The compatibility aliases
+`playerId`/`at` do not replace those canonical fields.
+
+Join navigation contains exactly `gameId`, `variant=changsha`, and `join=1`;
+copy-link may make that same URL absolute. It must not inherit a numeric seat,
+creation intent, bot/config overrides, rejoin data or credentials.
+
+The focused specs are `room-bot-quota.spec.ts`, `lobby-online-presence.spec.ts`
+and `lobby-human-invites.spec.ts`. Their narrow `_lobby-repair.ts` helper performs
+real UI actions and read-only state/protocol observation. Separate contexts are
+separate players; extra pages in one context are intentionally the same player.
+No CSS overlay removal, forced clicks, fabricated server responses or game-API
+mutations are acceptance shortcuts. The identity-refresh negative test aborts
+one real request, then requires successful real bootstrap through the Retry UI.
+
+Internal-runtime binding is asserted in backend tests with an alias deliberately
+different from its GUID. Browser metadata is alias-based; do **not** invent or
+assert `turn.current.gameId`. The existing turn cue carries `activeSeat`,
+`phase` and `awaitingDiscard`, while private claim/own-turn IDs are observed only
+when the server actually emits those contexts.
+
+### C1: connection-specific viewer authority
+
+The approved C1 amendment adds `viewer: { roomId, revision, seat }` to `JOINED`
+and every server Changsha `UPDATE`; `seat:null` is explicit. Public `seats`
+entries keep their real stable player IDs. A live same-identity duplicate must
+therefore have `Client.seat === null` and `world.seat === null` even while
+`seatPlayers[0]` still identifies that same player in the original tab.
+
+The actual duplicate-tab test is in `lobby-online-presence.spec.ts` and uses a
+second real page sharing the owner's browser context, following a normal
+join-only link. It is not satisfied by changing the public roster.
+
+`viewer-authority.contract.spec.ts` is deliberately separate **controlled
+receive-path unit coverage, not browser acceptance**. It executes the actual
+`BaseClient` and `Client` source with a test socket and unrelated profile/metadata
+side effects stubbed. It checks ordering before consumers, old revisions,
+wrong rooms, callbacks from old sockets, malformed/missing authority,
+terminal null authority, forged collections, and explicit relay/offline
+compatibility. No results from pre-C1 bundles qualify this amendment.
 
 ## Profile drawer *(Phase J Wave 5)*
 

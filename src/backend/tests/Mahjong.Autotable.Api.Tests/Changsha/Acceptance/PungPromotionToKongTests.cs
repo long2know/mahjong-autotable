@@ -26,17 +26,57 @@ public class PungPromotionToKongTests
         var state = AcceptanceFixture.NewDealtGame(seed: 13, dealerSeat: 0);
         var dealer = state.DealerSeatIndex;
 
-        // Inject an existing exposed Pung of Tong-7 in seat 0.
-        state.Hands[dealer].Melds.Add(new Meld
+        var desired = new Dictionary<int, int[]>
         {
-            Kind = MeldKind.Pung,
-            TileIds = new() { Tid(Suit.Tong, 7, 0), Tid(Suit.Tong, 7, 1), Tid(Suit.Tong, 7, 2) },
-            ClaimedFromSeatIndex = 3
-        });
-        // Dealer just drew the 4th Tong-7.
-        state.Hands[dealer].ConcealedTiles.Add(Tid(Suit.Tong, 7, 3));
+            [0] = [60, 61, 104, 103, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36],
+            [1] = [1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 40, 44, 48],
+            [2] = [2, 6, 10, 14, 18, 22, 26, 30, 34, 38, 41, 45, 49],
+            [3] = [3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 62]
+        };
+        foreach (var (seat, tiles) in desired)
+        {
+            var hand = state.Hands[seat].ConcealedTiles;
+            Assert.Equal(tiles.Length, hand.Count);
+            for (var index = 0; index < tiles.Length; index++)
+                SwapInto(hand, index, tiles[index]);
+        }
+        int[] front = [105, 106, 107, 101, 100, 99, 63];
+        for (var index = 0; index < front.Length; index++)
+            SwapInto(state.Wall, index, front[index]);
+        AssertDeck();
+
+        ChangshaGameStateMachine.Discard(state, dealer, 104);
+        DrawThenDiscard(1, 105, 105);
+        DrawThenDiscard(2, 106, 106);
+        DrawThenDiscard(3, 107, Tid(Suit.Tong, 7, 2));
+        Assert.Contains(state.ClaimWindow!.Opportunities,
+            opportunity => opportunity.SeatIndex == dealer && opportunity.ClaimType == TableClaimType.Pung);
+        ChangshaGameStateMachine.ResolveClaim(state, dealer, TableClaimType.Pung);
+        Assert.Equal(MeldKind.Pung, Assert.Single(state.Hands[dealer].Melds).Kind);
+        Assert.Equal(11, state.Hands[dealer].ConcealedTiles.Count);
+        Assert.Null(state.LastDrawSeatIndex);
+        AssertDeck();
+
+        ChangshaGameStateMachine.Discard(state, dealer, 103);
+        Assert.Equal(10, state.Hands[dealer].ConcealedTiles.Count);
+        DrawThenDiscard(1, 101, 101);
+        DrawThenDiscard(2, 100, 100);
+        DrawThenDiscard(3, 99, 99);
+        Assert.Equal(dealer, state.ActiveSeatIndex);
+        Assert.Equal(10, state.Hands[dealer].ConcealedTiles.Count);
+        Assert.Equal(Tid(Suit.Tong, 7, 3), state.Wall[0]);
+        Assert.DoesNotContain(Tid(Suit.Tong, 7, 3), state.Hands[dealer].ConcealedTiles);
+        var draws = ChangshaGameStateMachine.DrawTile(state);
+        Assert.Contains(draws, draw => draw.EventType == "tile-drawn"
+            && draw.SeatIndex == dealer && draw.TileId == Tid(Suit.Tong, 7, 3));
+        Assert.Equal(11, state.Hands[dealer].ConcealedTiles.Count);
+        Assert.Equal(14, state.Hands[dealer].ConcealedTiles.Count + 3 * state.Hands[dealer].Melds.Count);
+        Assert.Equal(dealer, state.LastDrawSeatIndex);
+        AssertDeck();
 
         var wallSizeBefore = state.Wall.Count;
+        var replacement = state.Wall[^1];
+        var backDrawn = state.WallBackDrawn;
         ChangshaGameStateMachine.DeclareAddedKong(state, dealer, Tid(Suit.Tong, 7, 3));
 
         // The pung becomes an added-kong meld.
@@ -46,6 +86,33 @@ public class PungPromotionToKongTests
         Assert.All(meld.TileIds, t => Assert.Equal(Logical(Suit.Tong, 7), t / 4));
         // Replacement was drawn from BACK of wall (Vasquez §1.8): wall shrinks by 1.
         Assert.Equal(wallSizeBefore - 1, state.Wall.Count);
+        Assert.Equal(replacement, state.Hands[dealer].ConcealedTiles[^1]);
+        Assert.Equal(backDrawn + 1, state.WallBackDrawn);
+        Assert.Equal(11, state.Hands[dealer].ConcealedTiles.Count);
+        AssertDeck();
+
+        void SwapInto(List<int> target, int index, int tile)
+        {
+            var source = state.Hands.Select(hand => hand.ConcealedTiles).Append(state.Wall)
+                .Single(tiles => tiles.Contains(tile));
+            var sourceIndex = source.IndexOf(tile);
+            (source[sourceIndex], target[index]) = (target[index], source[sourceIndex]);
+        }
+
+        void DrawThenDiscard(int seat, int drawn, int discarded)
+        {
+            Assert.Equal(seat, state.ActiveSeatIndex);
+            Assert.Equal(13, state.Hands[seat].ConcealedTiles.Count + 3 * state.Hands[seat].Melds.Count);
+            Assert.Equal(drawn, state.Wall[0]);
+            ChangshaGameStateMachine.DrawTile(state);
+            Assert.Equal(drawn, state.Hands[seat].ConcealedTiles[^1]);
+            Assert.Equal(seat, state.LastDrawSeatIndex);
+            ChangshaGameStateMachine.Discard(state, seat, discarded);
+            AssertDeck();
+        }
+
+        void AssertDeck() =>
+            global::Mahjong.Autotable.Api.Tests.RulesQualification.HudsonOwnTurnWsFixture.AssertInventory(state);
     }
 
     [Fact, Trait("Category", "Acceptance")]
@@ -63,26 +130,43 @@ public class PungPromotionToKongTests
     [Fact, Trait("Category", "Acceptance")]
     public void ConcealedKong_FourMatchingTiles_PromotesToConcealedKong()
     {
-        // MahjongPros §Kongs: 4 matching tiles in hand → concealed kong (暗杠).
-        var state = AcceptanceFixture.NewDealtGame(seed: 13, dealerSeat: 0);
-        var dealer = state.DealerSeatIndex;
-
-        // Clear dealer hand and inject 4 Tiao-4s plus filler.
-        state.Hands[dealer].ConcealedTiles.Clear();
-        state.Hands[dealer].ConcealedTiles.AddRange(new[]
-        {
-            Tid(Suit.Tiao, 4, 0), Tid(Suit.Tiao, 4, 1),
-            Tid(Suit.Tiao, 4, 2), Tid(Suit.Tiao, 4, 3),
-            Tid(Suit.Wan, 1, 0)
-        });
+        // The recorded seed-0 trace naturally gives seat 1 a Tong-8 quartet.
+        var (state, _) = ChangshaGameStateMachine.CreateGame(seed: 0);
+        ChangshaGameStateMachine.StartGame(state);
+        ChangshaGameStateMachine.RollDice(state, new DiceService(42));
+        ChangshaGameStateMachine.Deal(state);
+        AssertDeck();
+        ChangshaGameStateMachine.Discard(state, 0, 56);
+        if (state.ClaimWindow is not null)
+            ChangshaGameStateMachine.PassClaim(state);
+        var seat = state.ActiveSeatIndex;
+        Assert.Equal(1, seat);
+        Assert.Equal(13, state.Hands[seat].ConcealedTiles.Count);
+        Assert.Null(state.LastDrawSeatIndex);
+        Assert.Equal(4, state.Hands[seat].ConcealedTiles.Count(tile => tile / 4 == Logical(Suit.Tong, 8)));
+        var front = state.Wall[0];
+        ChangshaGameStateMachine.DrawTile(state);
+        Assert.Equal(front, state.Hands[seat].ConcealedTiles[^1]);
+        Assert.Equal(14, state.Hands[seat].ConcealedTiles.Count);
+        Assert.Equal(seat, state.LastDrawSeatIndex);
+        AssertDeck();
 
         var wallSizeBefore = state.Wall.Count;
-        ChangshaGameStateMachine.DeclareConcealedKong(state, dealer, Logical(Suit.Tiao, 4));
+        var replacement = state.Wall[^1];
+        var backDrawn = state.WallBackDrawn;
+        ChangshaGameStateMachine.DeclareConcealedKong(state, seat, Logical(Suit.Tong, 8));
 
-        var meld = state.Hands[dealer].Melds.Single();
+        var meld = state.Hands[seat].Melds.Single();
         Assert.Equal(MeldKind.ConcealedKong, meld.Kind);
         Assert.Equal(4, meld.TileIds.Count);
         Assert.Equal(wallSizeBefore - 1, state.Wall.Count);
+        Assert.Equal(replacement, state.Hands[seat].ConcealedTiles[^1]);
+        Assert.Equal(backDrawn + 1, state.WallBackDrawn);
+        Assert.Equal(11, state.Hands[seat].ConcealedTiles.Count);
+        AssertDeck();
+
+        void AssertDeck() =>
+            global::Mahjong.Autotable.Api.Tests.RulesQualification.HudsonOwnTurnWsFixture.AssertInventory(state);
     }
 
     [Fact, Trait("Category", "Acceptance")]
@@ -106,39 +190,77 @@ public class PungPromotionToKongTests
     [Fact, Trait("Category", "Acceptance")]
     public void Pung_With_FourthTileInWall_PlayerDraws_It_PromoteAllowed()
     {
-        // End-to-end: seat 0 holds a Pung of Tong-7, the 4th Tong-7 is in the wall, dealer draws it,
-        // promotion succeeds. Asserts the pung→added-kong path works via natural draw, not injection.
-        var state = AcceptanceFixture.NewDealtGame(seed: 91, dealerSeat: 0);
+        // Recorded added-draw-1 trace: a real Wan-7 Pung, then its fourth physical tile arrives from the front.
+        var (state, _) = ChangshaGameStateMachine.CreateGame(seed: 0);
+        ChangshaGameStateMachine.StartGame(state);
+        ChangshaGameStateMachine.RollDice(state, new DiceService(42));
+        ChangshaGameStateMachine.Deal(state);
         var dealer = state.DealerSeatIndex;
-
-        // Pre-set: seat 0 has an exposed Pung of Tong-7 (copies 0/1/2).
-        state.Hands[dealer].ConcealedTiles.RemoveAll(t => t / 4 == Logical(Suit.Tong, 7));
-        for (var seat = 1; seat < 4; seat++)
-            state.Hands[seat].ConcealedTiles.RemoveAll(t => t / 4 == Logical(Suit.Tong, 7));
-        state.Wall.RemoveAll(t => t / 4 == Logical(Suit.Tong, 7));
-
-        state.Hands[dealer].Melds.Add(new Meld
+        const string steps =
+            "D:0:5 T:1 D:1:2 C:2:Chow D:2:13 T:3 D:3:1 T:0 D:0:10 C:1:Chow"
+            + " D:1:23 T:2 D:2:19 T:3 D:3:9 T:0 D:0:28 T:1 D:1:25 C:0:Pung"
+            + " D:0:44 T:1 D:1:45 T:2 D:2:21 T:3 D:3:11";
+        AssertDeck();
+        foreach (var step in steps.Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
-            Kind = MeldKind.Pung,
-            TileIds = new() { Tid(Suit.Tong, 7, 0), Tid(Suit.Tong, 7, 1), Tid(Suit.Tong, 7, 2) },
-            ClaimedFromSeatIndex = 3
-        });
+            var parts = step.Split(':');
+            var actor = int.Parse(parts[1]);
+            switch (parts[0])
+            {
+                case "D":
+                    Assert.Equal(actor, state.ActiveSeatIndex);
+                    Assert.Equal(14, state.Hands[actor].ConcealedTiles.Count + 3 * state.Hands[actor].Melds.Count);
+                    ChangshaGameStateMachine.Discard(state, actor, int.Parse(parts[2]));
+                    break;
+                case "T":
+                    Assert.Equal(actor, state.ActiveSeatIndex);
+                    Assert.Equal(13, state.Hands[actor].ConcealedTiles.Count + 3 * state.Hands[actor].Melds.Count);
+                    ChangshaGameStateMachine.DrawTile(state);
+                    break;
+                case "C":
+                    var claim = Enum.Parse<TableClaimType>(parts[2]);
+                    Assert.Contains(state.ClaimWindow!.Opportunities,
+                        opportunity => opportunity.SeatIndex == actor && opportunity.ClaimType == claim);
+                    ChangshaGameStateMachine.ResolveClaim(state, actor, claim);
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unknown recorded fixture step {step}.");
+            }
+            AssertDeck();
+        }
+        Assert.Equal(dealer, state.ActiveSeatIndex);
+        Assert.Equal(10, state.Hands[dealer].ConcealedTiles.Count);
+        Assert.Equal(MeldKind.Pung, Assert.Single(state.Hands[dealer].Melds).Kind);
+        Assert.Equal(13, state.Hands[dealer].ConcealedTiles.Count + 3 * state.Hands[dealer].Melds.Count);
+        Assert.Null(state.LastDrawSeatIndex);
+        var drawnTile = 26;
+        Assert.Equal(drawnTile, state.Wall[0]);
+        Assert.DoesNotContain(drawnTile, state.Hands[dealer].ConcealedTiles);
+        ChangshaGameStateMachine.DrawTile(state);
+        Assert.Equal(drawnTile, state.Hands[dealer].ConcealedTiles[^1]);
+        Assert.Equal(11, state.Hands[dealer].ConcealedTiles.Count);
+        Assert.Equal(14, state.Hands[dealer].ConcealedTiles.Count + 3 * state.Hands[dealer].Melds.Count);
+        Assert.Equal(dealer, state.LastDrawSeatIndex);
+        AssertDeck();
 
-        // Put the 4th Tong-7 at the FRONT of the wall (so the next DrawTile delivers it).
-        state.Wall.Insert(0, Tid(Suit.Tong, 7, 3));
-
-        // Re-balance hand size: dealer melded 3 already so concealed should be 11 (14 - 3 meld). Adjust freely.
-        while (state.Hands[dealer].ConcealedTiles.Count > 11)
-            state.Hands[dealer].ConcealedTiles.RemoveAt(state.Hands[dealer].ConcealedTiles.Count - 1);
-
-        // Dealer needs to discard first, advance to next seat, etc. — simpler path: manually deliver the
-        // tile (mimicking a draw) and declare added kong.
-        var drawnTile = Tid(Suit.Tong, 7, 3);
-        state.Wall.Remove(drawnTile);
-        state.Hands[dealer].ConcealedTiles.Add(drawnTile);
-
+        var wallSizeBefore = state.Wall.Count;
+        var replacement = state.Wall[^1];
+        var backDrawn = state.WallBackDrawn;
         ChangshaGameStateMachine.DeclareAddedKong(state, dealer, drawnTile);
+        if (state.ClaimWindow is not null)
+        {
+            Assert.True(state.ClaimWindow.IsKongRobbing);
+            ChangshaGameStateMachine.PassClaim(state);
+        }
 
         Assert.Equal(MeldKind.AddedKong, state.Hands[dealer].Melds.Single().Kind);
+        Assert.Equal(wallSizeBefore - 1, state.Wall.Count);
+        Assert.Equal(replacement, state.Hands[dealer].ConcealedTiles[^1]);
+        Assert.Equal(backDrawn + 1, state.WallBackDrawn);
+        Assert.Equal(11, state.Hands[dealer].ConcealedTiles.Count);
+        AssertDeck();
+
+        void AssertDeck() =>
+            global::Mahjong.Autotable.Api.Tests.RulesQualification.HudsonOwnTurnWsFixture.AssertInventory(state);
     }
 }

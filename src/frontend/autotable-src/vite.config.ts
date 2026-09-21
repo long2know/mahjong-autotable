@@ -1368,6 +1368,7 @@ export default defineConfig({
     minify: 'esbuild',
   },
   define: {
+    __BUILD_SHA__: JSON.stringify(process.env.BUILD_SHA || 'dev'),
     // `hub.ts` + `client-ui.ts` read process.env.NODE_ENV; Vite
     // doesn't inject it by default (it prefers import.meta.env.MODE).
     // We inline the production literal so dead-branch elimination

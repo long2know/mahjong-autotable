@@ -37,7 +37,13 @@ import type { Client } from './client';
 // #153 (Ferro) — shared default-game URL helpers so the lobby's New Game
 // surface gate and client-ui.ts's connect funnel agree on what counts as a
 // "concrete game" (deliberate reload/reconnect) vs a fresh New Game.
-import { hasConcreteGameId, mintFreshGameId as mintFreshGameIdShared, resolveApplyGameId } from './session-url';
+import {
+  buildFreshGameUrl, hasConcreteGameId, hasNewGameIntent,
+  mintFreshGameId as mintFreshGameIdShared, readConcreteGameId, resolveApplyGameId, setNewGameIntent,
+} from './session-url';
+import { isNewGameActivation, NEW_GAME_ACTION_SELECTOR } from './new-game-action';
+import { DEFAULT_BASE_UNIT, MAX_BASE_UNIT, parseBaseUnit } from './base-unit';
+import { onLanguageChange, t } from './i18n';
 // Phase K Wave 19 — Hicks (bundle-audit §3.4).  `matchmaking` (~7.7 KB
 // minified) is now lazy-loaded behind `loadMatchmaking()` /
 // `schedulePublicGamesPaneLazyMount()` / `scheduleMakePublicToggleLazy
@@ -54,6 +60,7 @@ import {
   hydrateProfileFromCacheIfAvailable,
   onProfile,
   getProfile,
+  initProfileHubBindings,
   type PlayerProfile,
 } from './profile';
 // Phase K Wave 21 — Hicks (bundle-audit §3.6).  `profile-drawer.ts`
@@ -77,7 +84,14 @@ import {
   bootstrapIdentity,
   onIdentity,
   refreshOnboardingVisibility,
+  getVerifiedIdentity,
 } from './identity';
+import { getGameState, getGameStateStatus, loadGameState, refreshGameState, subscribeGameState } from './game-state';
+import { hubIsConnected, onHubStatus } from './hub';
+import { getLobbyPresence, startLobbyPresence, subscribeLobbyPresence } from './lobby-presence';
+import { buildRoomJoinUrl, isJoinOnly } from './room-join-url';
+import { showToast } from './toast';
+import type * as ChatModule from './chat';
 // Phase K Wave 17 — bundle audit §3.2 (Hicks).  Three former eager
 // imports — leaderboard, settings-drawer, profile-page — are now lazy-
 // loaded behind `scheduleLeaderboardLazyMount` / `scheduleSettings
@@ -147,7 +161,7 @@ type Variant =
   | 'minefield';
 
 type DealMode = 'manual' | 'auto';
-type BotCount = 0 | 3 | 4;
+type BotCount = 0 | 1 | 2 | 3 | 4;
 // Phase J Wave 8 — Master tier joins the trio.  Bishop's Wave 8 bot
 // difficulty model accepts the new tier; older builds will treat
 // Master as Hard server-side (graceful degradation).
@@ -182,6 +196,7 @@ interface LobbyState {
   // V2); the param being present in the URL is the lobby contract so the
   // runtime can pick it up later without a frontend redeploy.
   handCount: HandCount;
+  baseUnit: number;
   // Phase I Wave 4 — seat selection (see SeatChoice).
   seat: SeatChoice;
 }
@@ -206,6 +221,7 @@ const DEFAULTS: LobbyState = {
   botDifficulty: 'Hard',
   seed: null,
   handCount: 4,
+  baseUnit: DEFAULT_BASE_UNIT,
   seat: null,
 };
 
@@ -239,7 +255,7 @@ function isVariant(v: string): v is Variant {
 }
 
 function isBotCount(n: number): n is BotCount {
-  return n === 0 || n === 3 || n === 4;
+  return n === 0 || n === 1 || n === 2 || n === 3 || n === 4;
 }
 
 function isHandCount(n: number): n is HandCount {
@@ -308,7 +324,9 @@ function parseUrlState(): Partial<LobbyState> {
 
   // Back-compat: ?bots=true aliases botCount=3 (Phase F game-ui.ts:99–103).
   const bcRaw = p.get('botCount');
-  if (bcRaw !== null) {
+  if (p.get('bots') === 'false') {
+    out.botCount = 0;
+  } else if (bcRaw !== null) {
     const n = parseInt(bcRaw, 10);
     if (!isNaN(n) && isBotCount(n)) out.botCount = n;
   } else if (p.get('bots') === 'true') {
@@ -337,6 +355,8 @@ function parseUrlState(): Partial<LobbyState> {
     const hc = parseInt(hcRaw, 10);
     if (!isNaN(hc) && isHandCount(hc)) out.handCount = hc;
   }
+  const baseUnit = parseBaseUnit(p.get('baseUnit'));
+  if (baseUnit !== null) out.baseUnit = baseUnit;
 
   // Phase I Wave 4 — seat selection.  Anything outside {-1, 0..3} is
   // ignored silently so a hand-typed URL doesn't crash the pre-population.
@@ -384,6 +404,8 @@ function parseLocalStorageState(): Partial<LobbyState> {
     if (typeof j.handCount === 'number' && isHandCount(j.handCount)) {
       out.handCount = j.handCount;
     }
+    const baseUnit = parseBaseUnit(j.baseUnit);
+    if (baseUnit !== null) out.baseUnit = baseUnit;
     if (typeof j.seat === 'number' && isSeatChoice(j.seat)) {
       out.seat = j.seat;
     } else if (j.seat === null) {
@@ -419,14 +441,7 @@ function parseLocalStorageState(): Partial<LobbyState> {
 function resolveInitialState(): LobbyState {
   const url = parseUrlState();
   const ls = parseLocalStorageState();
-  let seat = url.seat !== undefined ? url.seat : (ls.seat !== undefined ? ls.seat : DEFAULTS.seat);
-  // Phase K — promote a `?botCount=4` URL without an explicit seat to
-  // spectator (-1).  This mirrors AutotableWsEndpoint.cs's server-side
-  // promote rule and is the difference between "watch 4 bots play" and
-  // "play with 3 bots" in the lobby state.
-  if (url.botCount === 4 && url.seat === undefined) {
-    seat = -1;
-  }
+  const seat = url.seat !== undefined ? url.seat : (ls.seat !== undefined ? ls.seat : DEFAULTS.seat);
   const rawBotCount = url.botCount ?? ls.botCount ?? DEFAULTS.botCount;
   const botCount = clampBotCountForSeat(rawBotCount, seat);
   return {
@@ -436,6 +451,7 @@ function resolveInitialState(): LobbyState {
     botDifficulty: url.botDifficulty ?? ls.botDifficulty ?? DEFAULTS.botDifficulty,
     seed: url.seed !== undefined ? url.seed : (ls.seed !== undefined ? ls.seed : DEFAULTS.seed),
     handCount: url.handCount ?? ls.handCount ?? DEFAULTS.handCount,
+    baseUnit: url.baseUnit ?? ls.baseUnit ?? DEFAULT_BASE_UNIT,
     seat,
   };
 }
@@ -459,6 +475,7 @@ function writeLocalStorageDefaults(state: LobbyState): void {
       botDifficulty: state.botDifficulty,
       seed: state.seed,
       handCount: state.handCount,
+      baseUnit: state.baseUnit,
       seat: state.seat,
     }));
   } catch {
@@ -468,6 +485,7 @@ function writeLocalStorageDefaults(state: LobbyState): void {
 }
 
 function buildUrl(state: LobbyState, forceFreshGame = false): string {
+  forceFreshGame = forceFreshGame || isJoinOnly();
   const p = new URLSearchParams();
   // Phase I Wave 3 — preserve any ?gameId= already on the page URL so
   // a lobby Apply & Start doesn't silently switch the user back to the
@@ -492,19 +510,22 @@ function buildUrl(state: LobbyState, forceFreshGame = false): string {
   // deadlock).  `forceFreshGame` (Quick Match) always starts a new game so its
   // one-click "new quick game" never rejoins a stalled room even when the
   // config happens to match.  `resolveApplyGameId` encodes the rest.
-  p.set('gameId', forceFreshGame ? mintFreshGameId() : resolveApplyGameId(window.location.search, {
+  const gameId = forceFreshGame ? mintFreshGameId() : resolveApplyGameId(window.location.search, {
     variant: state.variant,
     dealMode: state.dealMode,
     botCount: state.botCount,
     botDifficulty: state.botDifficulty,
     handCount: state.handCount,
+    baseUnit: state.baseUnit,
     seed: state.seed,
-  }, mintFreshGameId));
+  }, mintFreshGameId);
+  p.set('gameId', gameId);
   p.set('variant', state.variant);
   // dealMode is Changsha-only — Riichi variants ignore it.  Emit only
   // when relevant so the URL stays tidy.
   if (state.variant === 'changsha') {
     p.set('dealMode', state.dealMode);
+    p.set('baseUnit', String(state.baseUnit));
   }
   p.set('botCount', String(state.botCount));
   // botDifficulty is irrelevant when there are no bots — skip it.
@@ -533,6 +554,8 @@ function buildUrl(state: LobbyState, forceFreshGame = false): string {
   // handshake honest. (The `mahjong.rule-preset.selected.v1` LS key still
   // drives the settings-panel preset *editor*, which is a real backend CRUD
   // surface — just not a game-config input.)
+  setNewGameIntent(p, forceFreshGame || gameId !== readConcreteGameId(window.location.search)
+    || hasNewGameIntent(window.location.search, gameId));
   return window.location.pathname + '?' + p.toString();
 }
 
@@ -588,6 +611,42 @@ function markSkipOpenOnLoadFlag(): void {
   }
 }
 
+let newGameControlsBound = false;
+let newGameNavigationPending = false;
+let newGameAction: (() => void) | null = null;
+
+// The header is usable before the renderer/ClientUi loads. Keep one listener
+// and navigation guard when ClientUi later supplies its owned-seat teardown.
+export function bindNewGameControls(action?: () => void): void {
+  if (action !== undefined) newGameAction = action;
+  if (newGameControlsBound) return;
+  newGameControlsBound = true;
+  document.addEventListener('click', (event: Event) => {
+    if (event.defaultPrevented || !isNewGameActivation(event.target)) return;
+    event.preventDefault();
+    const control = (event.target as Element).closest(NEW_GAME_ACTION_SELECTOR)!;
+    if (control.matches(':disabled, [aria-disabled="true"], [aria-busy="true"]')
+        || newGameNavigationPending) return;
+    newGameNavigationPending = true;
+    try {
+      if (newGameAction !== null) {
+        newGameAction();
+      } else {
+        // Retire pending entry directives instead of replaying them in the new document.
+        const params = new URLSearchParams(window.location.search);
+        params.delete('action');
+        params.delete('rejoin');
+        window.location.replace(
+          buildFreshGameUrl(window.location.pathname, params.toString()),
+        );
+      }
+    } catch (err) {
+      newGameNavigationPending = false;
+      throw err;
+    }
+  });
+}
+
 export function initLobby(client?: Client): void {
   if (client !== undefined) {
     _attachedClient = client;
@@ -629,10 +688,15 @@ export function initLobby(client?: Client): void {
     document.getElementById('lobby-seed') as HTMLInputElement | null;
   const seedError =
     document.getElementById('lobby-seed-error');
+  const baseUnitInput = document.getElementById('lobby-base-unit') as HTMLInputElement | null;
+  const baseUnitFieldset = document.getElementById('lobby-base-unit-fieldset');
+  const baseUnitError = document.getElementById('lobby-base-unit-error');
+  installBaseUnitLabels();
   const saveDefaultsInput =
     document.getElementById('lobby-save-defaults') as HTMLInputElement | null;
   const aboutLink =
     document.getElementById('lobby-about-link') as HTMLAnchorElement | null;
+  let configurationEdited = false;
 
   // Ensure the About link always targets the canonical Known Limitations
   // doc, even if the markup is edited later — keeps the source of truth
@@ -662,6 +726,14 @@ export function initLobby(client?: Client): void {
     return valid;
   }
 
+  function refreshBaseUnitValidity(): boolean {
+    if (baseUnitInput === null) return true;
+    const valid = baseUnitInput.disabled || parseBaseUnit(baseUnitInput.value) !== null;
+    baseUnitInput.setAttribute('aria-invalid', String(!valid));
+    if (baseUnitError !== null) setElHidden(baseUnitError, valid);
+    return valid;
+  }
+
   function readPickers(): LobbyState {
     const v = variantInputs.find(i => i.checked)?.value ?? DEFAULTS.variant;
     const dm = dealModeInputs.find(i => i.checked)?.value ?? DEFAULTS.dealMode;
@@ -688,6 +760,7 @@ export function initLobby(client?: Client): void {
       botCount: clampBotCountForSeat(botCount, seat),
       botDifficulty: (bd === 'Easy' || bd === 'Medium' || bd === 'Hard' || bd === 'Master') ? bd : 'Hard',
       handCount: isHandCount(hcNum) ? hcNum : DEFAULTS.handCount,
+      baseUnit: parseBaseUnit(baseUnitInput?.value) ?? DEFAULT_BASE_UNIT,
       seed,
       seat,
     };
@@ -699,6 +772,10 @@ export function initLobby(client?: Client): void {
     for (const i of botCountInputs) i.checked = (i.value === String(state.botCount));
     for (const i of botDifficultyInputs) i.checked = (i.value === state.botDifficulty);
     for (const i of handCountInputs) i.checked = (i.value === String(state.handCount));
+    if (baseUnitInput !== null) {
+      const raw = new URLSearchParams(window.location.search).get('baseUnit');
+      baseUnitInput.value = raw !== null && parseBaseUnit(raw) === null ? raw : String(state.baseUnit);
+    }
     // Phase I Wave 4 — seat radio.  Null serialises to "" (the Auto
     // radio's value); -1/0/1/2/3 select the corresponding explicit radio.
     const seatValue = state.seat === null ? '' : String(state.seat);
@@ -719,6 +796,9 @@ export function initLobby(client?: Client): void {
     const isChangsha = s.variant === 'changsha';
     dealModeFieldset!.classList.toggle('lobby-disabled', !isChangsha);
     for (const i of dealModeInputs) i.disabled = !isChangsha;
+    baseUnitFieldset?.classList.toggle('lobby-disabled', !isChangsha);
+    if (baseUnitInput !== null) baseUnitInput.disabled = !isChangsha;
+    refreshBaseUnitValidity();
 
     const hasBots = s.botCount > 0;
     botDifficultyFieldset!.classList.toggle('lobby-disabled', !hasBots);
@@ -740,6 +820,10 @@ export function initLobby(client?: Client): void {
   function showPanel(): void {
     panel!.classList.add('lobby-open');
     document.body.classList.add('lobby-active');
+    const gameId = currentGameId();
+    if (gameId !== null && (readUrlVariant() ?? 'changsha').toLowerCase() === 'changsha') {
+      void refreshGameState(gameId);
+    }
   }
 
   function hidePanel(): void {
@@ -749,6 +833,19 @@ export function initLobby(client?: Client): void {
 
   // Initial population from URL > localStorage > defaults.
   writePickers(resolveInitialState());
+  subscribeGameState(metadata => {
+    renderRoomConfiguration();
+    if (metadata === null || configurationEdited) return;
+    for (const input of botCountInputs) input.checked = input.value === String(metadata.botCount);
+    refreshDisabledStates();
+  });
+  onLanguageChange(renderRoomConfiguration);
+  for (const input of [...variantInputs, ...dealModeInputs, ...botCountInputs, ...botDifficultyInputs,
+    ...handCountInputs, ...seatInputs]) {
+    input.addEventListener('change', () => { configurationEdited = true; });
+  }
+  seedInput?.addEventListener('input', () => { configurationEdited = true; });
+  baseUnitInput?.addEventListener('input', () => { configurationEdited = true; });
 
   for (const i of variantInputs) i.addEventListener('change', refreshDisabledStates);
   for (const i of botCountInputs) i.addEventListener('change', refreshDisabledStates);
@@ -780,15 +877,23 @@ export function initLobby(client?: Client): void {
     seedInput.addEventListener('input', refreshSeedValidity);
     seedInput.addEventListener('blur', refreshSeedValidity);
   }
+  if (baseUnitInput !== null) {
+    baseUnitInput.oninput = refreshBaseUnitValidity;
+    baseUnitInput.onblur = refreshBaseUnitValidity;
+  }
 
   toggle.addEventListener('click', () => {
     if (panel.classList.contains('lobby-open')) {
       hidePanel();
     } else {
-      // Re-read URL+localStorage each time the user opens the lobby so the
-      // pickers reflect whatever the active game is running with (or the
-      // most recently saved defaults if no params).
-      writePickers(resolveInitialState());
+      if (!configurationEdited) {
+        writePickers(resolveInitialState());
+        const metadata = getGameState();
+        if (metadata !== null) {
+          for (const input of botCountInputs) input.checked = input.value === String(metadata.botCount);
+          refreshDisabledStates();
+        }
+      }
       showPanel();
     }
   });
@@ -800,6 +905,10 @@ export function initLobby(client?: Client): void {
     // silently dropped into a random seed without the user noticing.
     if (!refreshSeedValidity()) {
       seedInput?.focus();
+      return;
+    }
+    if (!refreshBaseUnitValidity()) {
+      baseUnitInput?.focus();
       return;
     }
     const state = readPickers();
@@ -845,6 +954,10 @@ export function initLobby(client?: Client): void {
     'lobby-quick-match') as HTMLButtonElement | null;
   if (quickMatchBtn !== null) {
     quickMatchBtn.addEventListener('click', () => {
+      if (!refreshBaseUnitValidity()) {
+        baseUnitInput?.focus();
+        return;
+      }
       const current = readPickers();
       const quick: LobbyState = {
         variant: current.variant,
@@ -853,6 +966,7 @@ export function initLobby(client?: Client): void {
         botDifficulty: 'Medium',
         seed: null,
         handCount: current.handCount,
+        baseUnit: current.baseUnit,
         // CONCRETE seat 0 for Changsha (not null "Auto"): the fresh room
         // guarantees seat 0 is open, so the authoritative URL-seat handoff can
         // claim it and start bot-fill + deal. Relay variants have NO server seat
@@ -972,15 +1086,17 @@ export function initLobby(client?: Client): void {
   hydrateProfileFromCacheIfAvailable();
   installLobbyOpenProfileChipUpdater();
   installLobbyTabs();
-  // Phase K Wave 19 — bundle audit §3.4: public-games pane + make-
-  // public toggle are now lazy-mounted behind tab/toggle activation.
-  // `matchmaking.ts` (~7.7 KB minified incl. polling loop + REST
-  // wrappers) is only pulled when the user activates the Public-
-  // Games tab OR touches the make-public toggle.  See
-  // `schedulePublicGamesPaneLazyMount` / `scheduleMakePublicToggle
-  // LazyMount` at the bottom of this file.
+  // Public eligibility is eager; only the matchmaking action/polling code is lazy.
   schedulePublicGamesPaneLazyMount();
-  scheduleMakePublicToggleLazyMount();
+  installMakePublicToggle();
+  installTableLink();
+  installSocialShell();
+  initProfileHubBindings();
+  void startLobbyPresence();
+  const roomId = currentGameId();
+  if (roomId !== null && (readUrlVariant() ?? 'changsha').toLowerCase() === 'changsha') {
+    void loadGameState(roomId);
+  }
   installLobbyStatsPanel();
 
   // Phase J Wave 6 — kick off the cookie-bound identity bootstrap +
@@ -1052,9 +1168,54 @@ let _attachedClient: Client | null = null;
 let _renderPlayerChips: ((client: Client) => void) | null = null;
 let _renderSeatPreview: ((client: Client) => void) | null = null;
 let _liveBound: boolean = false;
+let baseUnitLabelsBound = false;
+
+function installBaseUnitLabels(): void {
+  const render = (): void => {
+    const labels = [
+      ['lobby-base-unit-label', 'lobby.base_unit'],
+      ['lobby-base-unit-legend', 'lobby.base_unit_title'],
+      ['lobby-base-unit-hint', 'lobby.base_unit_hint'],
+    ];
+    for (const [id, key] of labels) {
+      const el = document.getElementById(id);
+      if (el !== null) el.textContent = t(key);
+    }
+    const error = document.getElementById('lobby-base-unit-error');
+    if (error !== null) error.textContent = t('lobby.base_unit_error', { max: MAX_BASE_UNIT });
+    if (_attachedClient !== null) renderConfiguredBaseUnit(_attachedClient);
+  };
+  render();
+  if (!baseUnitLabelsBound) {
+    baseUnitLabelsBound = true;
+    onLanguageChange(render);
+  }
+}
+
+function renderConfiguredBaseUnit(client: Client): void {
+  const display = document.getElementById('lobby-current-base-unit');
+  if (display === null) return;
+  const query = new URLSearchParams(window.location.search);
+  const gameId = query.get('gameId');
+  const unit = parseBaseUnit(client.match.get(0)?.conditions.baseUnit);
+  const authoritative = client.connected() && gameId !== null
+    && gameId === client.lastGameId && gameId === client.serverSnapshotGameId
+    // A never-bound room publishes only a placeholder match with unit 1.
+    && client.turn.get('current') !== null
+    && (query.get('variant') ?? 'changsha').toLowerCase() === 'changsha';
+  setElHidden(display, !authoritative || unit === null);
+  if (!authoritative || unit === null) return;
+  display.textContent = t('lobby.current_base_unit', { unit });
+  // Existing rooms retain their server configuration, even after an edited URL.
+  if (!isJoinOnly() && query.get('baseUnit') !== String(unit)) {
+    query.set('baseUnit', String(unit));
+    history.replaceState(history.state, '', `${location.pathname}?${query}${location.hash}`);
+  }
+}
 
 export function attachLobbyClient(client: Client): void {
   _attachedClient = client;
+  _chatMod?.installChatPanel(client);
   if (_renderPlayerChips !== null && _renderSeatPreview !== null) {
     bindLiveListeners(client);
   }
@@ -1069,6 +1230,8 @@ function bindLiveListeners(client: Client): void {
   };
   client.seats.on('update', renderAll);
   client.nicks.on('update', renderAll);
+  client.on('update', () => renderConfiguredBaseUnit(client));
+  client.on('disconnect', () => renderConfiguredBaseUnit(client));
   // Phase J Wave 5 — re-render chips + stats panel when the local
   // profile changes so the displayName + avatarColor override the
   // WS-broadcast nick / djb2 hue immediately.
@@ -1077,6 +1240,7 @@ function bindLiveListeners(client: Client): void {
     renderLobbyStatsPanel();
   });
   renderAll();
+  renderConfiguredBaseUnit(client);
 }
 
 // Render the lobby's player chip strip from the live `seats` + `nicks`
@@ -1388,7 +1552,7 @@ function installPublicGamesPane(mm: typeof MatchmakingModule): void {
     }
     listEl.replaceChildren();
     if (games.length === 0) {
-      showEl(emptyEl);
+      setElHidden(emptyEl, err !== null);
       return;
     }
     hideEl(emptyEl);
@@ -1410,7 +1574,7 @@ function installPublicGamesPane(mm: typeof MatchmakingModule): void {
       const variant = readUrlVariant();
       const result = await mm.joinRandom(variant);
       if (result !== null) {
-        mm.navigateToGame(result.gameId, result.seatIndex);
+        mm.navigateToGame(result.gameId);
       } else {
         showEl(errorEl);
         errorEl.textContent = 'No public games with free seats right now.';
@@ -1432,14 +1596,14 @@ function installPublicGamesPane(mm: typeof MatchmakingModule): void {
 function buildPublicGameCard(
   game: PublicGame,
   index: number,
-  navigate: (gameId: string, seatIndex?: number) => void,
+  navigate: (gameId: string) => void,
 ): HTMLElement {
   const card = document.createElement('div');
   card.className = 'public-game-card';
   card.setAttribute('role', 'listitem');
   card.setAttribute('data-testid', `lobby-public-game-${index}`);
   card.setAttribute('data-game-id', game.gameId);
-  const full = game.seatedCount >= game.maxSeats;
+  const full = game.openHumanSeats === 0;
   if (full) card.classList.add('public-game-card-full');
 
   const name = document.createElement('div');
@@ -1459,7 +1623,9 @@ function buildPublicGameCard(
   seats.className = 'public-game-card-meta-seats';
   seats.setAttribute('data-testid', `lobby-public-game-seats-${index}`);
   if (full) seats.classList.add('seats-full');
-  seats.textContent = `${game.seatedCount} / ${game.maxSeats}`;
+  seats.textContent = t('lobby.room_counts', {
+    humans: game.seatedCount, bots: game.botCount, open: game.openHumanSeats,
+  });
   meta.appendChild(creator);
   meta.appendChild(seats);
   if (game.variant !== null && game.variant !== '') {
@@ -1477,7 +1643,11 @@ function buildPublicGameCard(
   join.disabled = full;
   join.addEventListener('click', () => {
     if (full) return;
-    navigate(game.gameId);
+    try {
+      navigate(game.gameId);
+    } catch (error) {
+      showToast(t('room.navigation_failed', { reason: error instanceof Error ? error.message : String(error) }), 'error');
+    }
   });
 
   card.appendChild(name);
@@ -1504,7 +1674,7 @@ function readUrlVariant(): string | undefined {
 // every toggle-on (omitted when blank).
 // ---------------------------------------------------------------------
 
-function installMakePublicToggle(mm: typeof MatchmakingModule): void {
+function installMakePublicToggle(): void {
   const toggle = document.getElementById(
     'lobby-make-public-toggle') as HTMLInputElement | null;
   const nameInput = document.getElementById(
@@ -1512,77 +1682,194 @@ function installMakePublicToggle(mm: typeof MatchmakingModule): void {
   const statusEl = document.getElementById('lobby-make-public-status');
   if (toggle === null || nameInput === null || statusEl === null) return;
 
-  const setStatus = (msg: string, isError: boolean): void => {
-    statusEl.textContent = msg;
-    statusEl.classList.toggle('lobby-make-public-status-error', isError);
+  let pending: boolean | null = null;
+  let mutationError: string | null = null;
+  let nameEdited = false;
+  const permissionReason = (): string | null => {
+    const load = getGameStateStatus();
+    const metadata = getGameState();
+    if (currentGameId() === null) return t('lobby.public.no_room');
+    if (load.status === 'not-found') return t('lobby.public.unknown');
+    if (load.status === 'identity-required') return t('lobby.public.identity');
+    if (load.status === 'unavailable' || load.status === 'invalid') {
+      return t('lobby.public.unavailable', { reason: load.error ?? '' });
+    }
+    if (load.status === 'idle') return t('lobby.public.disconnected');
+    if (metadata === null || load.status !== 'ready') return t('lobby.public.loading');
+    if (!metadata.viewerIsOwner) return t('lobby.public.nonowner');
+    if (metadata.phase !== 'Seating') return t('lobby.public.started');
+    if (!load.connected || !hubIsConnected()) return t('lobby.public.disconnected');
+    if (!metadata.canMakePublic) return t('lobby.public.not_allowed');
+    return null;
   };
-
+  const render = (): void => {
+    const metadata = getGameState();
+    const reason = permissionReason();
+    toggle.checked = pending ?? metadata?.isPublic ?? false;
+    toggle.disabled = pending !== null || reason !== null;
+    nameInput.disabled = toggle.disabled;
+    if (!nameEdited && metadata !== null) nameInput.value = metadata.publicName ?? '';
+    statusEl.textContent = pending !== null ? t(pending ? 'lobby.public.publishing' : 'lobby.public.unlisting')
+      : reason ?? mutationError ?? t(metadata?.isPublic ? 'lobby.public.listed' : 'lobby.public.unlisted');
+    statusEl.classList.toggle('lobby-make-public-status-error', mutationError !== null);
+    toggle.setAttribute('aria-describedby', statusEl.id);
+    toggle.title = reason ?? '';
+    nameInput.title = reason ?? '';
+  };
   const sync = async (): Promise<void> => {
-    const gameId = currentGameId();
-    if (gameId === null) {
-      setStatus('Not in a live game.', true);
-      toggle.checked = false;
-      toggle.disabled = true;
-      nameInput.disabled = true;
+    const metadata = getGameState();
+    if (pending !== null || permissionReason() !== null || metadata === null) {
+      render();
       return;
     }
-    toggle.disabled = true;
-    nameInput.disabled = !toggle.checked;
-    const publicName = toggle.checked && nameInput.value.trim() !== ''
-      ? nameInput.value.trim()
-      : undefined;
-    setStatus(toggle.checked ? 'Publishing…' : 'Unlisting…', false);
+    const identityId = getVerifiedIdentity()?.playerId;
+    const requestedRoom = currentGameId();
+    const desired = toggle.checked;
+    const publicName = nameInput.value.trim() || undefined;
+    pending = desired;
+    mutationError = null;
+    render();
     try {
-      const result = await mm.setGamePublic(
-        { gameId, isPublic: toggle.checked, publicName });
-      if (result.success) {
-        setStatus(
-          result.isPublic
-            ? (result.publicName !== null && result.publicName !== ''
-                ? `Listed as "${result.publicName}".`
-                : 'Listed in the public lobby.')
-            : 'Unlisted from the public lobby.',
-          false);
-      } else {
-        setStatus('Server rejected the change.', true);
-        toggle.checked = !toggle.checked;
+      const mm = await loadMatchmaking();
+      if (identityId !== getVerifiedIdentity()?.playerId || requestedRoom !== currentGameId()
+          || permissionReason() !== null) return;
+      const result = await mm.setGamePublic({ gameId: metadata.gameId, isPublic: desired, publicName });
+      if (identityId !== getVerifiedIdentity()?.playerId || requestedRoom !== currentGameId()) return;
+      if (result.gameId !== metadata.gameId) throw new Error('Public listing response referred to a different table.');
+      nameEdited = false;
+      await refreshGameState(result.gameId);
+    } catch (failure) {
+      mutationError = t('lobby.public.failed', { reason: failure instanceof Error ? failure.message : String(failure) });
+      if (identityId === getVerifiedIdentity()?.playerId && requestedRoom === currentGameId()) {
+        await refreshGameState(metadata.gameId);
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setStatus(`Failed: ${msg}`, true);
-      toggle.checked = !toggle.checked;
     } finally {
-      toggle.disabled = false;
-      nameInput.disabled = !toggle.checked;
+      pending = null;
+      render();
     }
   };
 
   toggle.addEventListener('change', () => { void sync(); });
-  // Name changes only matter while the toggle is on; debounce-on-blur
-  // re-publishes so the new name lands without a UI ping-pong.
+  nameInput.addEventListener('input', () => { nameEdited = true; });
   nameInput.addEventListener('blur', () => {
-    if (toggle.checked) void sync();
+    if (nameEdited && toggle.checked) void sync();
   });
-
-  // Initial state — only enable if the URL has a game id; otherwise
-  // leave the controls disabled and the status descriptive.
-  if (currentGameId() === null) {
-    toggle.disabled = true;
-    nameInput.disabled = true;
-    setStatus('Start or join a game to publish it.', false);
-  } else {
-    nameInput.disabled = !toggle.checked;
-    setStatus('', false);
-  }
+  subscribeGameState(render);
+  onHubStatus(render);
+  onLanguageChange(render);
+  render();
 }
 
 // Pull the active game id from the URL.  Mirrors the logic in
 // index.ts that bootstraps the Client/Game lifecycle.
 function currentGameId(): string | null {
-  const params = new URLSearchParams(window.location.search);
-  const g = params.get('game');
-  if (g === null || g === '') return null;
-  return g;
+  return readConcreteGameId(window.location.search);
+}
+
+function renderRoomConfiguration(): void {
+  const display = document.getElementById('lobby-room-configuration');
+  if (display === null) return;
+  setElHidden(display, currentGameId() === null);
+  const metadata = getGameState();
+  const load = getGameStateStatus();
+  if (metadata === null) {
+    display.removeAttribute('data-bot-count');
+    display.removeAttribute('data-phase');
+    display.textContent = load.status === 'not-found' ? t('lobby.public.unknown')
+      : load.status === 'idle' ? t('lobby.public.disconnected')
+      : load.status === 'loading' ? t('lobby.public.loading')
+      : t('lobby.public.unavailable', { reason: load.error ?? '' });
+    return;
+  }
+  display.setAttribute('data-bot-count', String(metadata.botCount));
+  display.setAttribute('data-phase', metadata.phase);
+  display.textContent = t('lobby.current_room', { table: metadata.publicName ?? metadata.gameId, phase: metadata.phase })
+    + ' ' + t('lobby.room_counts', { humans: metadata.seatedCount, bots: metadata.botCount, open: metadata.openHumanSeats });
+}
+
+function installTableLink(): void {
+  const button = document.getElementById('copy-table-link') as HTMLButtonElement | null;
+  const output = document.getElementById('table-link-output') as HTMLInputElement | null;
+  if (button === null || output === null) return;
+  const render = (): void => {
+    button.textContent = t('lobby.copy_table_link');
+    button.disabled = getGameState() === null;
+    button.title = button.disabled ? t('lobby.public.loading') : t('lobby.table_link_hint');
+  };
+  subscribeGameState(render);
+  onLanguageChange(render);
+  button.addEventListener('click', async () => {
+    const metadata = getGameState();
+    if (metadata === null) return;
+    const url = buildRoomJoinUrl(metadata.gameId, true);
+    try {
+      if (navigator.clipboard?.writeText === undefined) throw new Error('Clipboard is unavailable.');
+      await navigator.clipboard.writeText(url);
+      showToast(t('lobby.table_link_copied'), 'success');
+    } catch {
+      output.value = url;
+      showEl(output);
+      output.focus();
+      output.select();
+      showToast(t('lobby.table_link_manual'), 'info');
+    }
+  });
+}
+
+let _chatMod: typeof ChatModule | null = null;
+let _chatLoading: Promise<typeof ChatModule> | null = null;
+
+export async function mountChatPanel(): Promise<typeof ChatModule> {
+  if (_chatMod !== null) {
+    _chatMod.installChatPanel(_attachedClient);
+    return _chatMod;
+  }
+  if (_chatLoading === null) _chatLoading = import('./chat');
+  try {
+    const mod = await _chatLoading;
+    mod.installChatPanel(_attachedClient);
+    _chatMod = mod;
+    return mod;
+  } catch (failure) {
+    _chatLoading = null;
+    throw failure;
+  }
+}
+
+function installSocialShell(): void {
+  const root = document.getElementById('chat-panel');
+  const toggle = document.getElementById('chat-toggle');
+  const open = document.getElementById('lobby-open-chat');
+  const summary = document.getElementById('lobby-online-summary');
+  if (root === null || toggle === null) return;
+  showEl(root);
+  const load = async (expand: boolean): Promise<void> => {
+    try {
+      const mod = await mountChatPanel();
+      if (expand) {
+        document.getElementById('lobby-panel')?.classList.remove('lobby-open');
+        document.body.classList.remove('lobby-active');
+        mod.openChatPanel();
+      }
+    } catch (failure) {
+      _chatLoading = null;
+      showToast(t('social.load_failed', { reason: failure instanceof Error ? failure.message : String(failure) }), 'error');
+    }
+  };
+  toggle.addEventListener('click', () => { if (_chatMod === null) void load(true); });
+  toggle.addEventListener('mouseenter', () => { void load(false); }, { once: true });
+  toggle.addEventListener('focus', () => { void load(false); }, { once: true });
+  open?.addEventListener('click', () => { void load(true); });
+  window.addEventListener('mahjong:open-chat', () => { void load(true); });
+  const renderSummary = (): void => {
+    const snapshot = getLobbyPresence();
+    if (summary === null) return;
+    summary.textContent = snapshot.status === 'ready'
+      ? t('social.online_count', { count: snapshot.players.length })
+      : t(snapshot.status === 'connecting' ? 'social.connecting' : 'social.unavailable');
+  };
+  subscribeLobbyPresence(renderSummary);
+  onLanguageChange(renderSummary);
 }
 
 // ---------------------------------------------------------------------
@@ -1842,44 +2129,25 @@ function scheduleSpectatorFollowLazyMount(): void {
 function scheduleSettingsDrawerLazyMount(): void {
   const btn = document.getElementById('settings-button');
   if (btn === null) return;
-  // First-click pre-warm: the module's own click handler is attached
-  // inside `installSettingsDrawerV2()`, so the very first click only
-  // triggers the load.  We re-fire `openDrawer()` post-import so the
-  // user's first click also opens the drawer (no double-tap).
-  //
-  // Race-fix (Ferro K-W27): keep the load promise sticky so the click
-  // handler can always `await` it before synthesising the post-install
-  // open click.  The previous shape early-returned from `load()` when
-  // the hover/focus pre-warm had already started the import, dropping
-  // the `openOnLoad` intent on the floor — so users who hovered the
-  // gear before clicking ended up with a closed drawer (and so did the
-  // Playwright `click()` action, which moves the mouse first and
-  // therefore fires `mouseenter` before `click`).
-  let loadPromise: Promise<void> | null = null;
-  const load = (): Promise<void> => {
+  // Consume the first click before a prewarmed toggle handler can see it.
+  // Replaying a synthetic click from a promise could open, then immediately
+  // close, the drawer when the original event continued through its listeners.
+  let loadPromise: Promise<typeof import('./settings-drawer')> | null = null;
+  const load = (): Promise<typeof import('./settings-drawer')> => {
     if (loadPromise !== null) return loadPromise;
-    loadPromise = (async (): Promise<void> => {
+    loadPromise = (async (): Promise<typeof import('./settings-drawer')> => {
       const mod = await import('./settings-drawer');
       mod.installSettingsDrawerV2();
+      return mod;
     })();
     return loadPromise;
   };
   btn.addEventListener('mouseenter', () => { void load(); }, { once: true });
   btn.addEventListener('focus', () => { void load(); }, { once: true });
-  btn.addEventListener('click', () => {
-    void load().then(() => {
-      // After install completes (or right away when the pre-warm
-      // already finished it), synth-click the button so the freshly
-      // bound install handler opens the drawer.  Skip when the drawer
-      // is already open (e.g. the install's own handler captured a
-      // queued click before us).
-      const drawer = document.getElementById('settings-drawer-v2');
-      const alreadyOpen = drawer?.classList.contains('settings-drawer-v2-open') ?? false;
-      if (alreadyOpen) return;
-      const reBtn = document.getElementById('settings-button') as HTMLButtonElement | null;
-      reBtn?.click();
-    });
-  }, { once: true });
+  btn.addEventListener('click', event => {
+    event.stopImmediatePropagation();
+    void load().then(mod => mod.openSettingsDrawerV2());
+  }, { once: true, capture: true });
 }
 
 function scheduleProfilePageLazyMount(): void {
@@ -2000,11 +2268,15 @@ let _matchmakingLoading: Promise<typeof MatchmakingModule> | null = null;
 async function loadMatchmaking(): Promise<typeof MatchmakingModule> {
   if (_matchmakingMod !== null) return _matchmakingMod;
   if (_matchmakingLoading !== null) return _matchmakingLoading;
-  _matchmakingLoading = import('./matchmaking').then((m) => {
+  const attempt = import('./matchmaking');
+  _matchmakingLoading = attempt;
+  try {
+    const m = await attempt;
     _matchmakingMod = m;
     return m;
-  });
-  return _matchmakingLoading;
+  } finally {
+    if (_matchmakingLoading === attempt) _matchmakingLoading = null;
+  }
 }
 
 function schedulePublicGamesPaneLazyMount(): void {
@@ -2021,36 +2293,6 @@ function schedulePublicGamesPaneLazyMount(): void {
   pubTab.addEventListener('mouseenter', () => { void install(); }, { once: true });
   pubTab.addEventListener('focus', () => { void install(); }, { once: true });
   pubTab.addEventListener('click', () => { void install(); }, { once: true });
-}
-
-function scheduleMakePublicToggleLazyMount(): void {
-  const toggle = document.getElementById(
-    'lobby-make-public-toggle') as HTMLInputElement | null;
-  const nameInput = document.getElementById(
-    'lobby-make-public-name') as HTMLInputElement | null;
-  if (toggle === null || nameInput === null) return;
-  let installed = false;
-  const install = async (replayChange: boolean): Promise<void> => {
-    if (installed) return;
-    installed = true;
-    const mm = await loadMatchmaking();
-    installMakePublicToggle(mm);
-    if (replayChange) {
-      // The user clicked the toggle BEFORE the module was loaded; the
-      // checked-state has already flipped (browser default), but the
-      // change listener installed by `installMakePublicToggle` did not
-      // fire.  Dispatch a synthetic change event so the make-public
-      // RPC is invoked exactly once on first activation.
-      toggle.dispatchEvent(new Event('change'));
-    }
-  };
-  // Activation surfaces — any hover/focus on the toggle or the name
-  // input warms the module; an actual change-click also replays the
-  // change event after install so the user's first click is honoured.
-  toggle.addEventListener('mouseenter', () => { void install(false); }, { once: true });
-  toggle.addEventListener('focus', () => { void install(false); }, { once: true });
-  toggle.addEventListener('change', () => { void install(true); }, { once: true });
-  nameInput.addEventListener('focus', () => { void install(false); }, { once: true });
 }
 
 let _rulePresetsMod: typeof RulePresetsModule | null = null;

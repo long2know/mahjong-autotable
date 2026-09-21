@@ -38,11 +38,8 @@ public sealed class AponeW22ChangelogW22ContractTests
         var p = Path.Combine(root!.FullName, "mobile", "package.json");
         if (!File.Exists(p)) return;
         var text = File.ReadAllText(p);
-        // W22 forward-broadening pattern from the outset (per
-        // §10.4 precedent): accept 0.31.0 OR any later 0.N.0 form.
-        var has = text.Contains("\"version\": \"0.31.0\"", StringComparison.Ordinal)
-                   || text.Contains("\"version\":\"0.31.0\"", StringComparison.Ordinal)
-                   || text.Contains("0.31.0", StringComparison.Ordinal);
-        Assert.True(has);
+        using var package = System.Text.Json.JsonDocument.Parse(text);
+        var version = package.RootElement.GetProperty("version").GetString();
+        Assert.True(Version.Parse(version!) >= new Version(0, 31, 0));
     }
 }

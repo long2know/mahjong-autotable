@@ -5,6 +5,7 @@ using System.Text.Json;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Players;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 
 namespace Mahjong.Autotable.Api.Autotable;
@@ -81,13 +82,7 @@ public static class AutotableWsEndpoint
             // immutable once the WS handshake completes). Mint+write gives
             // first-time visitors a one-year sliding cookie without forcing
             // the frontend to call POST /api/identity first.
-            var playerId = identity.ResolveFromCookie(context);
-            if (string.IsNullOrEmpty(playerId))
-            {
-                playerId = identity.Mint();
-                try { identity.WriteCookie(context, playerId); }
-                catch { /* response headers may already be flushed in test harnesses */ }
-            }
+            var playerId = identity.ResolveOrMint(context);
 
             using var ws = await context.WebSockets.AcceptWebSocketAsync();
             await manager.HandleConnectionAsync(ws, context.Request.Query, playerId, context.RequestAborted);
@@ -101,10 +96,10 @@ public static class AutotableWsEndpoint
 ///
 /// <para><b>Phase C-relay layering:</b></para>
 /// <list type="bullet">
-///   <item><b>Bundle → Server → Other bundles:</b> <c>UPDATE</c> is stored in
-///   <see cref="AutotableGameState"/> for the gameId and broadcast to every
-///   other connection in that gameId (sender is NOT echoed — already applied
-///   locally).</item>
+///   <item><b>Relay bundle → Server → All bundles:</b> <c>UPDATE</c> is stored in
+///   <see cref="AutotableGameState"/> for the gameId, broadcast to peers, and
+///   confirmed to the sender. Connected bundle collections apply changes only
+///   when the server echoes them, matching upstream <c>server/game.ts</c>.</item>
 ///   <item><b>Changsha runtime → Server → All bundles (legacy / Phase D):</b>
 ///   <see cref="IChangshaGameRuntime.StateChanged"/> still fires a full
 ///   translator snapshot to every connection in the affected gameId. Phase
@@ -112,12 +107,14 @@ public static class AutotableWsEndpoint
 ///   consistent.</item>
 /// </list>
 /// </summary>
-public sealed class AutotableConnectionManager : IDisposable
+public sealed partial class AutotableConnectionManager : IDisposable
 {
     private readonly IChangshaGameRuntime _runtime;
     private readonly ILogger<AutotableConnectionManager> _logger;
+    private readonly LobbyPresenceService? _presence;
     private readonly ConcurrentDictionary<Guid, AutotableConnection> _connections = new();
     private readonly ConcurrentDictionary<string, AutotableGameState> _games = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, AutotableGameState> _relayGames = new(StringComparer.Ordinal);
     // Relay gameId → Changsha runtime gameId. Lazily populated on first seat take.
     private readonly ConcurrentDictionary<string, string> _runtimeBinding = new(StringComparer.Ordinal);
     // Reverse map for OnStateChanged → relayGameId lookup.
@@ -139,10 +136,12 @@ public sealed class AutotableConnectionManager : IDisposable
         IChangshaGameRuntime runtime,
         ILogger<AutotableConnectionManager> logger,
         IOptions<ChangshaRuntimeOptions> runtimeOptions,
-        Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider jwtSigningKeys)
+        Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider jwtSigningKeys,
+        LobbyPresenceService? presence = null)
     {
         _runtime = runtime;
         _logger = logger;
+        _presence = presence;
         _claimWindowTimeoutMs = runtimeOptions?.Value?.ClaimWindowTimeoutMs ?? 0;
         _opaqueHiddenHandles = runtimeOptions?.Value?.OpaqueHiddenHandles ?? true;
         if (_opaqueHiddenHandles)
@@ -184,7 +183,10 @@ public sealed class AutotableConnectionManager : IDisposable
     }
 
     public int ConnectionCount => _connections.Count;
-    public int GameCount => _games.Count;
+    public int GameCount => _games.Count + _relayGames.Count;
+
+    private ConcurrentDictionary<string, AutotableGameState> StateStoreFor(AutotableConnection connection) =>
+        connection.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime ? _games : _relayGames;
 
     /// <summary>
     /// Test/diagnostic hook: returns the number of stored entries across all
@@ -194,7 +196,8 @@ public sealed class AutotableConnectionManager : IDisposable
     public int GetStoredEntryCount(string gameId)
     {
         if (string.IsNullOrEmpty(gameId)) return 0;
-        return _games.TryGetValue(gameId, out var state) ? state.Snapshot().Count : 0;
+        return (_games.TryGetValue(gameId, out var state) ? state.Snapshot().Count : 0)
+            + (_relayGames.TryGetValue(gameId, out var relayState) ? relayState.Snapshot().Count : 0);
     }
 
     /// <summary>
@@ -208,7 +211,8 @@ public sealed class AutotableConnectionManager : IDisposable
     public int GetStoredEntryCount(string gameId, string kind)
     {
         if (string.IsNullOrEmpty(gameId)) return 0;
-        return _games.TryGetValue(gameId, out var state) ? state.CountFor(kind) : 0;
+        return (_games.TryGetValue(gameId, out var state) ? state.CountFor(kind) : 0)
+            + (_relayGames.TryGetValue(gameId, out var relayState) ? relayState.CountFor(kind) : 0);
     }
 
     /// <summary>Test hook: reports the runtime gameId bound to a relay gameId, if any.</summary>
@@ -225,6 +229,7 @@ public sealed class AutotableConnectionManager : IDisposable
     {
         _runtimeBinding[relayGameId] = runtimeGameId;
         _relayBinding[runtimeGameId] = relayGameId;
+        QueueBindingAuthorityRefresh(relayGameId, runtimeGameId);
     }
 
     public async Task HandleConnectionAsync(WebSocket ws, IQueryCollection query, string playerId, CancellationToken serverShutdown)
@@ -272,7 +277,7 @@ public sealed class AutotableConnectionManager : IDisposable
                 // receive seat 2's real concealed hand — a confirmed leak of the foreign
                 // seat's real tile ids. ViewerSeat is now bound EXCLUSIVELY from
                 // runtime-confirmed ownership: TryGetSeatForPlayer on (re)connect
-                // (TryInferViewerSeatOnConnectAsync) or a successful TakeSeat. An unowned
+                // (RefreshViewerSeatOnJoin) or a successful TakeSeat. An unowned
                 // requester stays a spectator/opaque (foreign hands render as anonymous
                 // face-down handles). The requested seat is retained only as a hint (never
                 // consulted for projection) for telemetry / possible future auto-seat UX.
@@ -288,6 +293,22 @@ public sealed class AutotableConnectionManager : IDisposable
         if (query.TryGetValue("variant", out var v) && !string.IsNullOrEmpty(v.ToString()))
             variant = v.ToString();
 
+        var baseUnit = 1;
+        if (string.Equals(variant, "changsha", StringComparison.OrdinalIgnoreCase)
+            && query.TryGetValue("baseUnit", out var requestedBaseUnit))
+        {
+            if (requestedBaseUnit.Count != 1
+                || !int.TryParse(requestedBaseUnit.ToString(), System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out baseUnit)
+                || baseUnit < 1 || baseUnit > ChangshaBaseUnit.MaxValue)
+            {
+                _logger.LogWarning("Rejected WS creation configuration: invalid baseUnit.");
+                await ws.CloseAsync(WebSocketCloseStatus.PolicyViolation,
+                    $"baseUnit must be an integer from 1 to {ChangshaBaseUnit.MaxValue}.", serverShutdown);
+                return;
+            }
+        }
+
         var dealMode = "manual";
         if (query.TryGetValue("dealMode", out var dm) && !string.IsNullOrEmpty(dm.ToString()))
             dealMode = dm.ToString();
@@ -299,7 +320,7 @@ public sealed class AutotableConnectionManager : IDisposable
         // table self-plays. Callers that explicitly send `seat=0..3` with
         // `botCount=4` still hit the existing cap-to-3 clamp below (the
         // Seat0_BotCount_StillCapsAt3 acceptance test pins that behaviour).
-        if (!seatExplicitlyProvided
+        if (autoBotFill && !seatExplicitlyProvided
             && query.TryGetValue("botCount", out var bcSpec)
             && int.TryParse(bcSpec.ToString(), out var bcSpecParsed)
             && bcSpecParsed == 4)
@@ -314,6 +335,7 @@ public sealed class AutotableConnectionManager : IDisposable
         var botCount = 3;
         if (query.TryGetValue("botCount", out var bc) && int.TryParse(bc.ToString(), out var parsedBotCount) && parsedBotCount >= 0 && parsedBotCount <= botCountCap)
             botCount = parsedBotCount;
+        if (!autoBotFill) botCount = 0;
 
         var botDifficulty = "Medium";
         if (query.TryGetValue("botDifficulty", out var bd) && !string.IsNullOrEmpty(bd.ToString()))
@@ -356,6 +378,7 @@ public sealed class AutotableConnectionManager : IDisposable
             BotCount = botCount,
             BotDifficulty = botDifficulty,
             MaxHands = maxHands,
+            BaseUnit = baseUnit,
             IsSpectator = isSpectator,
             Seed = seed,
             // Blocker D (Bishop rev2) — non-authoritative `?seat=` hint. Retained for
@@ -367,8 +390,10 @@ public sealed class AutotableConnectionManager : IDisposable
             // Replaces the previous random per-connection token so career
             // stats and host-promotion key off the same id across reconnects.
             PlayerId = playerId,
+            JoinExistingOnly = query.TryGetValue("join", out var join) && join.ToString() == "1",
         };
         _connections[connection.Id] = connection;
+        using var authorityCancellation = serverShutdown.Register(connection.CloseAuthority);
         _logger.LogInformation(
             "Autotable WS connected (connectionId={ConnectionId}, gameId={GameId}, seat={Seat}, spectator={Spectator}, bots={Bots}, variant={Variant}, dealMode={DealMode}, botCount={BotCount}, botDifficulty={BotDifficulty}, seed={Seed}, maxHands={MaxHands}, runtimeMode={RuntimeMode})",
             connection.Id, queryGameId, viewerSeat, isSpectator, autoBotFill,
@@ -376,6 +401,8 @@ public sealed class AutotableConnectionManager : IDisposable
 
         try
         {
+            if (_presence is not null)
+                await _presence.RegisterVerifiedAsync(PresenceKey(connection), playerId, serverShutdown);
             await RunReadLoopAsync(connection, serverShutdown);
         }
         catch (OperationCanceledException) { /* normal shutdown */ }
@@ -385,7 +412,12 @@ public sealed class AutotableConnectionManager : IDisposable
         }
         finally
         {
-            await HandleDisconnectAsync(connection);
+            try { await HandleDisconnectAsync(connection); }
+            finally
+            {
+                if (_presence is not null)
+                    await _presence.UnregisterAsync(PresenceKey(connection), CancellationToken.None);
+            }
         }
     }
 
@@ -403,6 +435,7 @@ public sealed class AutotableConnectionManager : IDisposable
                 result = await connection.Socket.ReceiveAsync(buffer, serverShutdown);
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
+                    connection.CloseAuthority();
                     await connection.Socket.CloseAsync(
                         WebSocketCloseStatus.NormalClosure,
                         "client closed",
@@ -432,41 +465,92 @@ public sealed class AutotableConnectionManager : IDisposable
 
         if (message is null || string.IsNullOrEmpty(message.Type)) return;
 
-        switch (message.Type)
+        try
         {
-            case "NEW":
-                await HandleNewAsync(connection, ct);
-                break;
-            case "JOIN":
-                await HandleJoinAsync(connection, message.GameId, ct);
-                break;
-            case "UPDATE":
-                await HandleUpdateAsync(connection, message.Entries, ct);
-                break;
-            default:
-                _logger.LogDebug("Unknown autotable message type {Type}", message.Type);
-                break;
+            if (connection.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime
+                && message.Type is "NEW" or "JOIN")
+            {
+                await connection.SendLock.WaitAsync(ct);
+                try { connection.BeginAuthorityJoin(); }
+                finally { connection.SendLock.Release(); }
+            }
+            switch (message.Type)
+            {
+                case "NEW":
+                    await HandleNewAsync(connection, ct);
+                    break;
+                case "JOIN":
+                    await HandleJoinAsync(connection, message.GameId, ct);
+                    break;
+                case "UPDATE":
+                    await HandleUpdateAsync(connection, message.Entries, ct);
+                    break;
+                default:
+                    _logger.LogDebug("Unknown autotable message type {Type}", message.Type);
+                    break;
+            }
+        }
+        catch (PublicRoomRecoveryException ex)
+        {
+            _logger.LogWarning(ex, "Public room operation failed for connection {ConnectionId}: {Reason}",
+                connection.Id, ex.Reason);
+            await SendTerminalRejectionAsync(connection, new UpdateMessage
+            {
+                Entries = [new CollectionEntry(ActionRejectedKind, "current", new
+                {
+                    action = "room",
+                    reason = ex.Reason
+                })],
+                Full = false
+            }, WebSocketCloseStatus.InternalServerError, ex.Reason, ct);
         }
     }
 
     private async Task HandleNewAsync(AutotableConnection connection, CancellationToken ct)
     {
+        if (connection.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime)
+        {
+            if (connection.JoinExistingOnly)
+            {
+                await RejectJoinAsync(connection, "room-not-found", ct);
+                return;
+            }
+            var roomId = connection.GameId ?? AutotableWsEndpoint.DefaultGameId;
+            connection.ExplicitNewRoomId = roomId;
+            connection.CreatedRuntimeGameId = null;
+            var runtimeGameId = await EnsureRuntimeBoundAsync(
+                roomId, connection.IsSpectator ? null : connection.PlayerId, ct,
+                botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands,
+                baseUnit: connection.BaseUnit, dealMode: connection.DealMode, explicitNew: true,
+                creatorConnection: connection, creatorSeat: connection.IsSpectator ? null : connection.RequestedSeat ?? 0);
+            connection.ExplicitNewRoomId = null;
+            var canonicalRoomId = _relayBinding[runtimeGameId];
+            await CompleteChangshaJoinAsync(connection, canonicalRoomId, runtimeGameId,
+                mustTakeSeat: false,
+                isFirst: string.Equals(connection.CreatedRuntimeGameId, runtimeGameId, StringComparison.Ordinal), ct);
+            return;
+        }
+
         // Phase I Wave 3 — honor the connection's gameId (set from ?gameId=) for
         // multi-game routing; fall back to DefaultGameId for legacy clients that
         // don't supply one. NEW carries no gameId of its own.
         var gameId = !string.IsNullOrWhiteSpace(connection.GameId)
             ? connection.GameId!
             : AutotableWsEndpoint.DefaultGameId;
-        var state = _games.GetOrAdd(gameId, id => new AutotableGameState(id));
-        connection.GameId = gameId;
+        connection.ExplicitNewRoomId = gameId;
+        var recovered = await RestoreRoomBindingAsync(connection, gameId, ct);
+        var store = StateStoreFor(connection);
+        var state = store.GetOrAdd(gameId, id => new AutotableGameState(id));
+        RefreshViewerSeatOnJoin(connection, gameId);
 
-        var isFirst = ReferenceEquals(state, _games[gameId])
-            && ConnectionsInGame(gameId, except: connection.Id) == 0
+        var isFirst = !recovered && ReferenceEquals(state, store[gameId])
+            && ConnectionsInGame(gameId, except: connection.Id, connection.RuntimeMode) == 0
             && state.Snapshot().Count == 0;
         await SendJoinedAsync(connection, gameId, isFirst, ct);
         await SendFullSnapshotAsync(connection, gameId, ct);
-        await TryInferViewerSeatOnConnectAsync(connection, ct);
         await TryAutoDealForSpectatorAsync(connection, ct);
+        if (recovered)
+            await _runtime.ResumeRecoveredPublicRoomAsync(_runtimeBinding[gameId], ct);
     }
 
     private async Task HandleJoinAsync(AutotableConnection connection, string? gameId, CancellationToken ct)
@@ -498,43 +582,208 @@ public sealed class AutotableConnectionManager : IDisposable
                 ? connection.GameId!
                 : AutotableWsEndpoint.DefaultGameId;
 
-        var existedBefore = _games.ContainsKey(resolved);
-        var state = _games.GetOrAdd(resolved, id => new AutotableGameState(id));
-        connection.GameId = resolved;
+        if (connection.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime)
+        {
+            if (connection.JoinExistingOnly && messageGameId is null && string.IsNullOrEmpty(connection.GameId))
+            {
+                await RejectJoinAsync(connection, "room-not-found", ct);
+                return;
+            }
+            await HandleChangshaJoinAsync(connection, resolved, ct);
+            return;
+        }
 
-        var others = ConnectionsInGame(resolved, except: connection.Id);
-        var isFirst = !existedBefore || (others == 0 && state.Snapshot().Count == 0);
+        if (!string.Equals(connection.ExplicitNewRoomId, resolved, StringComparison.Ordinal))
+            connection.ExplicitNewRoomId = null;
+        var recovered = await RestoreRoomBindingAsync(connection, resolved, ct);
+        var store = StateStoreFor(connection);
+        var existedBefore = store.ContainsKey(resolved);
+        var state = store.GetOrAdd(resolved, id => new AutotableGameState(id));
+        RefreshViewerSeatOnJoin(connection, resolved);
+
+        var others = ConnectionsInGame(resolved, except: connection.Id, connection.RuntimeMode);
+        var isFirst = !recovered && (!existedBefore || (others == 0 && state.Snapshot().Count == 0));
         await SendJoinedAsync(connection, resolved, isFirst, ct);
         await SendFullSnapshotAsync(connection, resolved, ct);
-        await TryInferViewerSeatOnConnectAsync(connection, ct);
         await TryAutoDealForSpectatorAsync(connection, ct);
+        if (recovered)
+            await _runtime.ResumeRecoveredPublicRoomAsync(_runtimeBinding[resolved], ct);
+    }
+
+    private async Task<bool> RestoreRoomBindingAsync(
+        AutotableConnection connection, string roomId, CancellationToken ct)
+    {
+        if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime) return false;
+        await _bindingLock.WaitAsync(ct);
+        try
+        {
+            var restored = await RestoreRoomBindingCoreAsync(roomId, ct);
+            if (restored is null)
+                await _runtime.EnsurePublicRoomCreationAllowedAsync(connection.PlayerId,
+                    string.Equals(connection.ExplicitNewRoomId, roomId, StringComparison.Ordinal), ct);
+            return restored is not null;
+        }
+        finally { _bindingLock.Release(); }
+    }
+
+    private async Task<string?> RestoreRoomBindingCoreAsync(string roomId, CancellationToken ct)
+    {
+        var hadBinding = _runtimeBinding.TryGetValue(roomId, out var existing);
+        if (hadBinding && _runtime.TryGetSnapshot(existing!, out var state) && state is not null)
+        {
+            await _runtime.EnableHandResultAcknowledgementsAsync(existing!, ct);
+            return existing;
+        }
+        var room = await _runtime.ResolveExistingRoomAsync(roomId, ct);
+        if (room is null)
+        {
+            if (hadBinding) throw new PublicRoomRecoveryException("room-snapshot-unavailable");
+            return null;
+        }
+        await _runtime.EnableHandResultAcknowledgementsAsync(room.RuntimeGameId, ct);
+        _runtimeBinding[room.RoomId] = room.RuntimeGameId;
+        _relayBinding[room.RuntimeGameId] = room.RoomId;
+        QueueBindingAuthorityRefresh(room.RoomId, room.RuntimeGameId);
+        return room.RuntimeGameId;
+    }
+
+    private static string PresenceKey(AutotableConnection connection) =>
+        LobbyPresenceService.WebSocketConnection(connection.Id.ToString("N"));
+
+    private async Task HandleChangshaJoinAsync(AutotableConnection connection, string roomId, CancellationToken ct)
+    {
+        string? runtimeGameId;
+        await _bindingLock.WaitAsync(ct);
+        try
+        {
+            runtimeGameId = await RestoreRoomBindingCoreAsync(roomId, ct);
+            if (runtimeGameId is null && !connection.JoinExistingOnly)
+                await _runtime.EnsurePublicRoomCreationAllowedAsync(connection.PlayerId,
+                    string.Equals(connection.ExplicitNewRoomId, roomId, StringComparison.Ordinal), ct);
+        }
+        finally { _bindingLock.Release(); }
+
+        if (runtimeGameId is null && connection.JoinExistingOnly)
+        {
+            await RejectJoinAsync(connection, "room-not-found", ct);
+            return;
+        }
+
+        var canonicalRoomId = runtimeGameId is null ? roomId : _relayBinding[runtimeGameId];
+        if (!string.Equals(connection.ExplicitNewRoomId, canonicalRoomId, StringComparison.Ordinal))
+            connection.ExplicitNewRoomId = null;
+        if (runtimeGameId is null)
+        {
+            await LeavePreviousRoomAsync(connection, canonicalRoomId, ct);
+            var state = _games.GetOrAdd(canonicalRoomId, id => new AutotableGameState(id));
+            connection.GameId = canonicalRoomId;
+            var isFirst = ConnectionsInGame(canonicalRoomId, connection.Id, connection.RuntimeMode) == 0
+                && state.Snapshot().Count == 0;
+            await SendJoinedAsync(connection, canonicalRoomId, isFirst, ct);
+            await SendFullSnapshotAsync(connection, canonicalRoomId, ct);
+            await TryAutoDealForSpectatorAsync(connection, ct);
+            return;
+        }
+
+        await CompleteChangshaJoinAsync(connection, canonicalRoomId, runtimeGameId,
+            mustTakeSeat: connection.JoinExistingOnly, isFirst: false, ct);
+    }
+
+    private async Task CompleteChangshaJoinAsync(
+        AutotableConnection connection, string roomId, string runtimeGameId,
+        bool mustTakeSeat, bool isFirst, CancellationToken ct)
+    {
+        int? grantedSeat = null;
+        if (!connection.IsSpectator || mustTakeSeat)
+        {
+            var connectionId = connection.Id.ToString("N");
+            var seat = _runtime.TryGetSeatForConnection(runtimeGameId, connectionId);
+            if (seat is null)
+            {
+                var ownedSeat = _runtime.TryGetSeatForPlayer(runtimeGameId, connection.PlayerId);
+                if (ownedSeat is { } returningSeat)
+                {
+                    if (await _runtime.ReconnectAsync(runtimeGameId, returningSeat, connection.PlayerId, connectionId, ct))
+                        seat = returningSeat;
+                    // A still-connected same-identity tab keeps its binding; this tab observes.
+                }
+                else if (mustTakeSeat)
+                {
+                    try { seat = await _runtime.TakeSeatAsync(runtimeGameId, connection.PlayerId, connectionId, null, ct); }
+                    catch (RoomAdmissionException ex) when (ex.Reason == "player-already-connected")
+                    {
+                        _logger.LogDebug("Duplicate identity joined as an observer on {RoomId}.", roomId);
+                    }
+                    catch (RoomAdmissionException ex) when (ex.Reason is "room-full" or "room-not-seating")
+                    {
+                        await RejectJoinAsync(connection, ex.Reason, ct);
+                        return;
+                    }
+                    catch (HubException) when (!_runtime.TryGetSnapshot(runtimeGameId, out _))
+                    {
+                        await RejectJoinAsync(connection, "room-not-found", ct);
+                        return;
+                    }
+                }
+            }
+            grantedSeat = seat;
+        }
+
+        if (mustTakeSeat && !_runtime.TryGetSnapshot(runtimeGameId, out _))
+        {
+            await RejectJoinAsync(connection, "room-not-found", ct);
+            return;
+        }
+
+        await LeavePreviousRoomAsync(connection, roomId, ct);
+        connection.GameId = roomId;
+        _games.GetOrAdd(roomId, id => new AutotableGameState(id));
+        connection.JoinedRuntimeGameId = runtimeGameId;
+        _presence?.JoinRoom(PresenceKey(connection), runtimeGameId, grantedSeat);
+        await SendJoinedAsync(connection, roomId, isFirst, ct);
+        await SendFullSnapshotAsync(connection, roomId, ct);
+        await TryServerStartOnSeatFillAsync(connection, runtimeGameId, ct);
+        await TryAutoAckSeatedConnectionAsync(connection, runtimeGameId, ct);
+        await _runtime.ResumeRecoveredPublicRoomAsync(runtimeGameId, ct);
+    }
+
+    private async Task LeavePreviousRoomAsync(AutotableConnection connection, string nextRoomId, CancellationToken ct)
+    {
+        if (!connection.HasJoined || string.Equals(connection.GameId, nextRoomId, StringComparison.Ordinal)) return;
+        connection.HasJoined = false;
+        if (connection.JoinedRuntimeGameId is not null)
+            await _runtime.LeaveTableAsync(connection.JoinedRuntimeGameId,
+                connection.PlayerId, connection.Id.ToString("N"), ct);
+        connection.JoinedRuntimeGameId = null;
+        _presence?.LeaveRoom(PresenceKey(connection));
+    }
+
+    private async Task RejectJoinAsync(AutotableConnection connection, string reason, CancellationToken ct)
+    {
+        _logger.LogInformation("Existing-only join rejected for connection {ConnectionId}: {Reason}", connection.Id, reason);
+        await SendTerminalRejectionAsync(connection, new UpdateMessage
+        {
+            Entries = [new CollectionEntry(ActionRejectedKind, "current", new { action = "join", reason })],
+            Full = false
+        }, WebSocketCloseStatus.PolicyViolation, reason, ct);
     }
 
     /// <summary>
-    /// BE-5 (Ripley §9.1/§11.1) — reconnect owner inference. When a connection joins a
-    /// game its durable player already owns a seat in (a reconnect / a fresh tab), bind
-    /// <see cref="AutotableConnection.ViewerSeat"/> to that seat and re-project so the
-    /// owner's own hand renders FACE-UP immediately. Blocker D (Bishop rev2) — this
-    /// runtime-ownership lookup (TryGetSeatForPlayer) is now the ONLY connect-time source of
-    /// ViewerSeat: the raw <c>?seat=</c> query is a non-authoritative hint that no longer
-    /// seeds ViewerSeat, so a requester who owns no seat is a clean no-op (stays a
-    /// spectator/opaque viewer) instead of projecting a foreign hand.
+    /// Re-establish destination-room entitlement before any JOIN/NEW snapshot. A seat
+    /// from another room, a released seat, and the raw query hint confer no ownership.
+    /// Explicit spectators do not infer ownership; a successful same-room TakeSeat
+    /// grant is retained only if the runtime still confirms it.
     /// </summary>
-    private async Task TryInferViewerSeatOnConnectAsync(AutotableConnection connection, CancellationToken ct)
+    private void RefreshViewerSeatOnJoin(AutotableConnection connection, string gameId)
     {
-        try
-        {
-            if (connection.GameId is null || connection.ViewerSeat is not null) return;
-            if (!_runtimeBinding.TryGetValue(connection.GameId, out var runtimeGameId)) return;
-            var seat = _runtime.TryGetSeatForPlayer(runtimeGameId, connection.PlayerId);
-            if (seat is null) return;
-            connection.ViewerSeat = seat;
-            await SendFullSnapshotAsync(connection, connection.GameId, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Reconnect viewer-seat inference failed for {ConnectionId}", connection.Id);
-        }
+        var hadSameRoomGrant = string.Equals(connection.GameId, gameId, StringComparison.Ordinal)
+            && connection.ViewerSeat.HasValue;
+        connection.ViewerSeat = null;
+        connection.GameId = gameId;
+        if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime) return;
+        if (connection.IsSpectator && !hadSameRoomGrant) return;
+        if (!_runtimeBinding.TryGetValue(gameId, out var runtimeGameId)) return;
+        connection.ViewerSeat = _runtime.TryGetSeatForConnection(runtimeGameId, connection.Id.ToString("N"));
     }
 
     /// <summary>
@@ -560,16 +809,22 @@ public sealed class AutotableConnectionManager : IDisposable
             // an all-bots watch-mode table honours the URL difficulty.
             var runtimeGameId = await EnsureRuntimeBoundAsync(
                 connection.GameId!, hostPlayerId: null, ct,
-                botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands);
+                botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands,
+                baseUnit: connection.BaseUnit, dealMode: connection.DealMode,
+                explicitNew: string.Equals(connection.ExplicitNewRoomId, connection.GameId, StringComparison.Ordinal),
+                creatorConnection: connection);
+            connection.ExplicitNewRoomId = null;
+            connection.JoinedRuntimeGameId = runtimeGameId;
+            _presence?.JoinRoom(PresenceKey(connection), runtimeGameId, null);
+            await SendFullSnapshotAsync(connection, connection.GameId, ct);
             if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
             if (snap.Phase != ChangshaPhase.Seating) return;
 
-            // Fill every seat with a bot (the spectator never occupies one) then
-            // start the game; the runtime drives the deal from there.
-            await _runtime.FillEmptySeatsWithBotsAsync(runtimeGameId, ct);
-            await _runtime.StartGameAsync(runtimeGameId, ct);
+            await FillLegacyNativeRoomAsync(connection, runtimeGameId, ct);
+            if (snap.Seats.All(seat => seat.IsBot))
+                await TryServerStartOnSeatFillAsync(connection, runtimeGameId, ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PublicRoomRecoveryException)
         {
             _logger.LogDebug(ex, "Auto-deal for spectator connection {ConnectionId} failed", connection.Id);
         }
@@ -580,7 +835,10 @@ public sealed class AutotableConnectionManager : IDisposable
         List<CollectionEntry>? entries,
         CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(connection.GameId))
+        if (string.IsNullOrEmpty(connection.GameId)
+            || (connection.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime
+                && (!connection.HasJoined || connection.Authority.JoinPending
+                    || connection.Authority.Revoked || connection.Authority.Closed)))
         {
             // Pre-JOIN UPDATE — no game to route to. Drop quietly; the bundle
             // sends JOIN immediately after connect so this is rare.
@@ -592,7 +850,7 @@ public sealed class AutotableConnectionManager : IDisposable
 
         if (entries is null || entries.Count == 0) return;
 
-        var state = _games.GetOrAdd(connection.GameId, id => new AutotableGameState(id));
+        var state = StateStoreFor(connection).GetOrAdd(connection.GameId, id => new AutotableGameState(id));
 
         // Phase F §1.2 — Relay-mode connections forward every entry verbatim. The
         // backend never routes their UPDATEs into the Changsha runtime, and never
@@ -602,6 +860,10 @@ public sealed class AutotableConnectionManager : IDisposable
             var relayApplied = state.ApplyUpdate(entries, UpdateSource.Client);
             if (relayApplied.Count == 0) return;
             await BroadcastToOthersAsync(connection, relayApplied, full: false, ct);
+            // Confirm only accepted relay entries. The origin already supplied
+            // these values; applying Changsha's peer privacy filter to its echo
+            // would corrupt its own hand rotations after a local Setup.
+            await SendJsonAsync(connection, new UpdateMessage { Entries = relayApplied.ToList(), Full = false }, ct);
             return;
         }
 
@@ -628,12 +890,12 @@ public sealed class AutotableConnectionManager : IDisposable
                     // Hicks's "Take Seat" click — route to runtime.TakeSeatAsync,
                     // optionally auto-fill remaining seats with bots for solo play.
                     // The leave-seat path (Ripley L-10) owns its own peer broadcast
-                    // (per-player tombstones via RemovePlayerEntries) and signals
+                    // (per-player tombstones via RemovePlayerEntries), and the
+                    // occupied-seat/take path is runtime-owned too. Both signal
                     // back via the return value so we skip the raw passthrough that
-                    // would otherwise re-store a stale `seats[playerId]={seat:null}`
-                    // entry and undo the tombstone.
-                    var handledAsLeave = await TryHandleSeatTakeAsync(connection, entry, ct);
-                    if (!handledAsLeave)
+                    // would otherwise re-store a stale `seats[playerId]` entry.
+                    var handledBySeatAction = await TryHandleSeatTakeAsync(connection, entry, ct);
+                    if (!handledBySeatAction)
                     {
                         // Mirror upstream's perPlayer semantics so the seat shows up
                         // immediately for other clients; runtime will reconfirm on its
@@ -663,6 +925,14 @@ public sealed class AutotableConnectionManager : IDisposable
                     // standard things-collection broadcast so we don't relay
                     // this entry to other clients.
                     await TryHandleDiscardActionAsync(connection, entry, ct);
+                    break;
+
+                case ChangshaCollectionKinds.OwnTurn:
+                    await TryHandleOwnTurnActionAsync(connection, entry, ct);
+                    break;
+
+                case ChangshaCollectionKinds.HandResultAck:
+                    await TryHandleHandResultAckAsync(connection, entry, ct);
                     break;
 
                 case "match":
@@ -702,6 +972,11 @@ public sealed class AutotableConnectionManager : IDisposable
                     // Server-emitted only; never let a client forge a rejection for a peer.
                     break;
 
+                case "viewer":
+                    // Authority exists only on recipient-specific server envelopes.
+                    _logger.LogDebug("Dropped client viewer collection for {ConnectionId}.", connection.Id);
+                    break;
+
                 default:
                     // mouse, sound, nicks, ephemeral, unique, perPlayer — pure cosmetic /
                     // meta (peer cursors, nicknames, collection declarations). Pass through
@@ -738,12 +1013,9 @@ public sealed class AutotableConnectionManager : IDisposable
     private async Task<bool> TryHandleSeatTakeAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
     {
         // value shape: { seat: int } (per upstream Player.svelte). null = leave.
-        // Returns true ONLY when the entry has been fully handled as a "leave seat"
-        // action — in that case the caller skips the raw passthrough because this
-        // method already broadcast per-player tombstones (seats/nicks/mouse) that
-        // supersede the inbound `{seat: null}` payload. Returns false for the
-        // "take seat" path and for all guard / no-op exits so the existing
-        // passthrough behaviour is preserved verbatim.
+        // Returns true whenever the entry has been handled by the runtime seat
+        // path (leave or take). Returns false only for guard / no-op exits so the
+        // existing passthrough behaviour is preserved verbatim.
         if (entry.Value is null) return false;
         if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return false;
         if (!je.TryGetProperty("seat", out var seatEl)) return false;
@@ -762,8 +1034,27 @@ public sealed class AutotableConnectionManager : IDisposable
         {
             try
             {
-                var runtimeGameIdLeave = await EnsureRuntimeBoundAsync(connection.GameId!, connection.PlayerId, ct, seed: connection.Seed, maxHands: connection.MaxHands);
-                await _runtime.ReleaseSeatAsync(runtimeGameIdLeave, connection.PlayerId, connection.Id.ToString("N"), ct);
+                var roomIdLeave = connection.GameId!;
+                if (!_runtimeBinding.TryGetValue(roomIdLeave, out var runtimeGameIdLeave))
+                    return true;
+                IReadOnlyList<CollectionEntry> tombstones = Array.Empty<CollectionEntry>();
+                await connection.SendLock.WaitAsync(ct);
+                try
+                {
+                    if (connection.Authority.Closed || connection.Authority.JoinPending || connection.Authority.Revoked)
+                        return true;
+                    var ownedBefore = _runtime.TryGetSeatForConnection(runtimeGameIdLeave, connection.Id.ToString("N"));
+                    await _runtime.ReleaseSeatAsync(runtimeGameIdLeave, connection.PlayerId, connection.Id.ToString("N"), ct);
+                    QueueRemovedRoomAuthority(roomIdLeave, runtimeGameIdLeave);
+                    var ownedAfter = _runtime.TryGetSeatForConnection(runtimeGameIdLeave, connection.Id.ToString("N"));
+                    RefreshAuthorityUnderSendLock(connection);
+                    _presence?.JoinRoom(PresenceKey(connection), runtimeGameIdLeave, ownedAfter);
+                    if (ownedBefore is null || ownedAfter is not null) return true;
+                    if (_games.TryGetValue(connection.GameId!, out var sharedState))
+                        tombstones = sharedState.RemovePlayerEntries(connection.PlayerId);
+                    await SendFullSnapshotUnderSendLockAsync(connection, connection.GameId, ct);
+                }
+                finally { connection.SendLock.Release(); }
 
                 // Ripley prodready follow-up (L-10 part 2, 2026-06-03) — the
                 // runtime's ReleaseSeatAsync only broadcasts on SignalR
@@ -784,25 +1075,21 @@ public sealed class AutotableConnectionManager : IDisposable
                 // ReleaseSeatAsync above then refills seat 0 with the
                 // translator's placeholder identity (`seat-0`) so peers see
                 // the seat as available, not occupied by a ghost.
-                if (_games.TryGetValue(connection.GameId!, out var state))
+                if (tombstones.Count > 0)
                 {
-                    var tombstones = state.RemovePlayerEntries(connection.PlayerId);
-                    if (tombstones.Count > 0)
+                    try
                     {
-                        try
-                        {
-                            await BroadcastToOthersAsync(connection, tombstones, full: false, ct);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogDebug(ex,
-                                "Failed to broadcast leave-seat tombstones for {ConnectionId}",
-                                connection.Id);
-                        }
+                        await BroadcastToOthersAsync(connection, tombstones, full: false, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex,
+                            "Failed to broadcast leave-seat tombstones for {ConnectionId}",
+                            connection.Id);
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not PublicRoomRecoveryException)
             {
                 _logger.LogDebug(ex, "Seat release failed for connection {ConnectionId}", connection.Id);
             }
@@ -827,30 +1114,29 @@ public sealed class AutotableConnectionManager : IDisposable
             // meeting an abandoned, already-started `changsha-default` gets a fresh table instead of
             // inheriting its frozen seat/turn state; a deliberate reconnect and live co-play games
             // are untouched (see EnsureRuntimeBoundAsync / ShouldRetireStaleDefault).
-            var runtimeGameId = await EnsureRuntimeBoundAsync(
-                connection.GameId!, connection.PlayerId, ct,
-                botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands,
-                resettingConnection: connection);
-            // Phase J Wave 6 — pass the persistent player id alongside the
-            // per-connection transport id (the AutotableConnection.Id GUID
-            // serves as the connection-level routing key inside the runtime).
-            var grantedSeat = await _runtime.TakeSeatAsync(runtimeGameId, connection.PlayerId, connection.Id.ToString("N"), seatIndex, ct);
-
-            // BE-5 (Ripley §9.1/§11.1 / RC-3) + Blocker D hardening (Bishop rev2) — bind the
-            // per-viewer projection to the seat the runtime AUTHORITATIVELY granted, never the
-            // raw requested index. TakeSeatAsync throws HubException when the seat is owned by a
-            // different connection, so reaching this line means this player now owns
-            // `grantedSeat`; on the take path with an explicit index the two are equal, but
-            // using the return value keeps ViewerSeat provably tied to confirmed ownership
-            // (defense-in-depth alongside the removed `?seat=` projection grant). Setting it
-            // BEFORE the deal means every subsequent StateChanged broadcast is already correctly
-            // faced; the explicit re-projection below covers the transition.
-            connection.ViewerSeat = grantedSeat;
-
-            if (connection.AutoBotFill)
+            string runtimeGameId;
+            await connection.SendLock.WaitAsync(ct);
+            try
             {
-                await _runtime.FillEmptySeatsWithBotsAsync(runtimeGameId, ct);
+                if (connection.Authority.Closed || connection.Authority.JoinPending || connection.Authority.Revoked)
+                    return true;
+                runtimeGameId = await EnsureRuntimeBoundAsync(
+                    connection.GameId!, connection.PlayerId, ct,
+                    botDifficulty: connection.BotDifficulty, seed: connection.Seed, maxHands: connection.MaxHands,
+                    resettingConnection: connection, baseUnit: connection.BaseUnit, dealMode: connection.DealMode,
+                    explicitNew: string.Equals(connection.ExplicitNewRoomId, connection.GameId, StringComparison.Ordinal),
+                    creatorConnection: connection, creatorSeat: seatIndex);
+                connection.ExplicitNewRoomId = null;
+                var grantedSeat = await _runtime.TakeSeatAsync(
+                    runtimeGameId, connection.PlayerId, connection.Id.ToString("N"), seatIndex, ct);
+                connection.JoinedRuntimeGameId = runtimeGameId;
+                RefreshAuthorityUnderSendLock(connection);
+                _presence?.JoinRoom(PresenceKey(connection), runtimeGameId, grantedSeat);
+                await SendFullSnapshotUnderSendLockAsync(connection, connection.GameId, ct);
             }
+            finally { connection.SendLock.Release(); }
+
+            await FillLegacyNativeRoomAsync(connection, runtimeGameId, ct);
 
             // BE-3 (Ripley §9.1 / RC-5) — server-driven start. Once the human's seat
             // take plus configured bot-fill leaves every seat occupied, the SERVER
@@ -872,15 +1158,28 @@ public sealed class AutotableConnectionManager : IDisposable
             // transition, without waiting for the next mutation or a client reload.
             await SendFullSnapshotAsync(connection, connection.GameId, ct);
         }
-        catch (Exception ex)
+        catch (HubException ex)
+        {
+            _logger.LogInformation(ex, "Seat admission rejected for connection {ConnectionId}.", connection.Id);
+            await SendJsonAsync(connection, new UpdateMessage
+            {
+                Entries = [new CollectionEntry(ActionRejectedKind, "current", new
+                {
+                    action = "seat",
+                    reason = ex is RoomAdmissionException admission ? admission.Reason : ex.Message
+                })],
+                Full = false
+            }, ct);
+        }
+        catch (Exception ex) when (ex is not PublicRoomRecoveryException)
         {
             _logger.LogDebug(ex, "Seat take failed for connection {ConnectionId} seat {Seat}", connection.Id, seatIndex);
         }
 
-        // Take-seat path falls through to passthrough (caller relays the seats
-        // entry to peers as an optimistic mirror until the runtime's
-        // StateChanged push reconfirms the authoritative seat assignment).
-        return false;
+        // Take-seat path is fully owned by the runtime (the StateChanged push
+        // re-broadcasts the authoritative seat assignment). Do not passthrough
+        // the inbound client entry.
+        return true;
     }
 
     /// <summary>
@@ -976,20 +1275,9 @@ public sealed class AutotableConnectionManager : IDisposable
 
     private int? ResolveOwnedSeat(AutotableConnection connection, string runtimeGameId)
     {
-        var seat = _runtime.TryGetSeatForConnection(runtimeGameId, connection.Id.ToString("N"));
-        if (seat is not null)
-            return seat;
-
-        // A transport reconnect loses its connection binding but retains the runtime-owned
-        // persistent player binding. Creation placeholders are not durable identities.
-        if (string.IsNullOrEmpty(connection.PlayerId)
-            || connection.PlayerId.StartsWith("human-", StringComparison.OrdinalIgnoreCase)
-            || connection.PlayerId.StartsWith("bot-", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        return _runtime.TryGetSeatForPlayer(runtimeGameId, connection.PlayerId);
+        // JOIN now rebinds a signed returning owner. A duplicate observer must not
+        // inherit command authority from another tab's persistent player binding.
+        return _runtime.TryGetSeatForConnection(runtimeGameId, connection.Id.ToString("N"));
     }
 
     private async Task RejectSeatActionAsync(
@@ -1024,6 +1312,128 @@ public sealed class AutotableConnectionManager : IDisposable
             await SendFullSnapshotAsync(connection, connection.GameId, ct);
     }
 
+    private async Task TryHandleOwnTurnActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
+    {
+        int? requestedSeat = entry.Key switch
+        {
+            int seat when seat is >= 0 and <= 3 => seat,
+            long seat when seat is >= 0 and <= 3 => (int)seat,
+            double seat when seat is >= 0 and <= 3 && seat == Math.Truncate(seat) => (int)seat,
+            string text when int.TryParse(text, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var seat) && seat is >= 0 and <= 3 => seat,
+            _ => null
+        };
+        _runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId);
+        var authorization = AuthorizeSeatAction(connection, runtimeGameId, requestedSeat);
+        if (!authorization.IsAuthorized)
+        {
+            await RejectSeatActionAsync(connection, "ownTurn", requestedSeat, authorization, ct);
+            return;
+        }
+
+        if (requestedSeat is null || !TryReadOwnTurnCommand(entry.Value, out var command))
+        {
+            await RejectSeatActionAsync(connection, "ownTurn", requestedSeat,
+                authorization with { Failure = "invalid-own-turn-command" }, ct);
+            return;
+        }
+        if (!string.Equals(command.GameId, runtimeGameId, StringComparison.Ordinal))
+        {
+            await RejectSeatActionAsync(connection, command.Action, requestedSeat,
+                authorization with { Failure = "stale-game" }, ct);
+            return;
+        }
+
+        try
+        {
+            if (command.Action == "hu")
+            {
+                await _runtime.DeclareWinAsync(runtimeGameId!, authorization.Seat!.Value, ct,
+                    expectedVersion: command.ExpectedVersion, expectedPlayerId: connection.PlayerId);
+            }
+            else
+            {
+                await _runtime.DeclareKongAsync(runtimeGameId!, authorization.Seat!.Value, command.TileIds, ct,
+                    expectedVersion: command.ExpectedVersion, expectedPlayerId: connection.PlayerId,
+                    requestedKind: command.Action == "concealedKong" ? MeldKind.ConcealedKong : MeldKind.AddedKong);
+            }
+        }
+        catch (ChangshaConcurrencyException)
+        {
+            await RejectSeatActionAsync(connection, command.Action, requestedSeat,
+                authorization with { Failure = "stale-version" }, ct);
+        }
+        catch (OverflowException ex)
+        {
+            _logger.LogWarning(ex, "Own-turn settlement exceeds the supported score range");
+            await RejectSeatActionAsync(connection, command.Action, requestedSeat,
+                authorization with { Failure = "score-overflow" }, ct);
+        }
+        catch (HubException ex)
+        {
+            _logger.LogWarning(ex, "Own-turn actor validation rejected {Action}", command.Action);
+            await RejectSeatActionAsync(connection, command.Action, requestedSeat,
+                authorization with { Failure = "own-turn-actor-rejected" }, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Own-turn rules rejected {Action}", command.Action);
+            await RejectSeatActionAsync(connection, command.Action, requestedSeat,
+                authorization with { Failure = "own-turn-not-available" }, ct);
+        }
+    }
+
+    private sealed record OwnTurnCommand(string GameId, int ExpectedVersion, string Action, int[] TileIds);
+
+    private sealed record CommandContext(string GameId, int ExpectedVersion);
+
+    private static bool TryReadCommandContext(JsonElement body, out CommandContext? context)
+    {
+        context = null;
+        var hasGameId = body.TryGetProperty("gameId", out var gameId);
+        var hasVersion = body.TryGetProperty("expectedVersion", out var version);
+        if (!hasGameId && !hasVersion) return true;
+        if (!hasGameId || !hasVersion || gameId.ValueKind != JsonValueKind.String
+            || string.IsNullOrEmpty(gameId.GetString())
+            || version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out var expectedVersion)
+            || expectedVersion < 0)
+            return false;
+        context = new CommandContext(gameId.GetString()!, expectedVersion);
+        return true;
+    }
+
+    private static bool TryReadOwnTurnCommand(object? value,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out OwnTurnCommand? command)
+    {
+        command = null;
+        if (value is not JsonElement body || body.ValueKind != JsonValueKind.Object
+            || !TryReadCommandContext(body, out var context) || context is null
+            || !body.TryGetProperty("action", out var actionValue) || actionValue.ValueKind != JsonValueKind.String)
+            return false;
+
+        var action = actionValue.GetString();
+        var count = action switch { "hu" => 0, "concealedKong" => 4, "addedKong" => 1, _ => -1 };
+        if (count < 0) return false;
+        var tileIds = new int[count];
+        if (body.TryGetProperty("tileIds", out var tiles))
+        {
+            if (tiles.ValueKind != JsonValueKind.Array || tiles.GetArrayLength() != count) return false;
+            for (var index = 0; index < count; index++)
+            {
+                if (tiles[index].ValueKind != JsonValueKind.Number || !tiles[index].TryGetInt32(out tileIds[index])
+                    || tileIds[index] is < 0 or >= 108)
+                    return false;
+            }
+        }
+        else if (count > 0)
+        {
+            return false;
+        }
+        if (tileIds.Distinct().Count() != count) return false;
+        command = new OwnTurnCommand(context.GameId, context.ExpectedVersion, action!, tileIds);
+        return true;
+    }
+
     private async Task TryHandleClaimActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
     {
         if (entry.Value is null) return;
@@ -1055,15 +1465,6 @@ public sealed class AutotableConnectionManager : IDisposable
         string? type = null;
         if (je.TryGetProperty("type", out var typeEl) && typeEl.ValueKind == JsonValueKind.String)
             type = typeEl.GetString();
-
-        // The bundle never sends tileIds; accept them if a client does (Chow without tileIds falls
-        // back to the runtime's lowest-rank pattern, matching the bot path).
-        int[]? tileIds = null;
-        if (je.TryGetProperty("tileIds", out var tileIdsEl) && tileIdsEl.ValueKind == JsonValueKind.Array)
-        {
-            tileIds = new int[tileIdsEl.GetArrayLength()];
-            for (var i = 0; i < tileIds.Length; i++) tileIds[i] = tileIdsEl[i].GetInt32();
-        }
 
         // Resolve intent: `action == "pass"` declines; `action == "claim"` carries the meld/win type
         // in `type`; otherwise treat `action` itself as the type (legacy form).
@@ -1104,21 +1505,78 @@ public sealed class AutotableConnectionManager : IDisposable
             return;
         }
 
+        if (!TryReadCommandContext(je, out var context))
+        {
+            await RejectSeatActionAsync(connection, isPass ? "pass" : "claim", seatIndex,
+                authorization with { Failure = "invalid-claim-context" }, ct);
+            return;
+        }
+        if (context is not null && !string.Equals(context.GameId, runtimeGameId, StringComparison.Ordinal))
+        {
+            await RejectSeatActionAsync(connection, isPass ? "pass" : "claim", seatIndex,
+                authorization with { Failure = "stale-game" }, ct);
+            return;
+        }
+
+        int[]? tileIds = null;
+        if (je.TryGetProperty("tileIds", out var tileIdsEl) && tileIdsEl.ValueKind != JsonValueKind.Null)
+        {
+            if (tileIdsEl.ValueKind != JsonValueKind.Array)
+            {
+                await RejectSeatActionAsync(connection, isPass ? "pass" : "claim", seatIndex,
+                    authorization with { Failure = "invalid-claim-command" }, ct);
+                return;
+            }
+            tileIds = new int[tileIdsEl.GetArrayLength()];
+            for (var i = 0; i < tileIds.Length; i++)
+            {
+                if (tileIdsEl[i].ValueKind != JsonValueKind.Number || !tileIdsEl[i].TryGetInt32(out tileIds[i])
+                    || tileIds[i] is < 0 or >= 108)
+                {
+                    await RejectSeatActionAsync(connection, isPass ? "pass" : "claim", seatIndex,
+                        authorization with { Failure = "invalid-claim-command" }, ct);
+                    return;
+                }
+            }
+        }
+
         try
         {
             if (isPass)
             {
-                await _runtime.PassAsync(runtimeGameId!, authorization.Seat!.Value, ct);
+                await _runtime.PassAsync(runtimeGameId!, authorization.Seat!.Value, ct,
+                    expectedVersion: context?.ExpectedVersion, expectedPlayerId: connection.PlayerId);
             }
             else
             {
-                await _runtime.ClaimAsync(runtimeGameId!, authorization.Seat!.Value, claimType!, tileIds, ct);
+                await _runtime.ClaimAsync(runtimeGameId!, authorization.Seat!.Value, claimType!, tileIds, ct,
+                    expectedVersion: context?.ExpectedVersion, expectedPlayerId: connection.PlayerId);
             }
         }
-        catch (Exception ex)
+        catch (ChangshaConcurrencyException)
         {
-            _logger.LogDebug(ex, "Claim {Action}/{Type} for seat {Seat} was rejected by the runtime",
+            await RejectSeatActionAsync(connection, isPass ? "pass" : "claim", seatIndex,
+                authorization with { Failure = "stale-version" }, ct);
+        }
+        catch (OverflowException ex)
+        {
+            _logger.LogWarning(ex, "Claim settlement exceeds the supported score range");
+            await RejectSeatActionAsync(connection, isPass ? "pass" : "claim", seatIndex,
+                authorization with { Failure = "score-overflow" }, ct);
+        }
+        catch (HubException ex)
+        {
+            _logger.LogWarning(ex, "Claim {Action}/{Type} for seat {Seat} was rejected by the runtime",
                 action, claimType ?? "pass", authorization.Seat);
+            await RejectSeatActionAsync(connection, isPass ? "pass" : "claim", seatIndex,
+                authorization with { Failure = "claim-not-available" }, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Claim {Action}/{Type} for seat {Seat} failed rules validation",
+                action, claimType ?? "pass", authorization.Seat);
+            await RejectSeatActionAsync(connection, isPass ? "pass" : "claim", seatIndex,
+                authorization with { Failure = "invalid-claim-choice" }, ct);
         }
     }
 
@@ -1304,10 +1762,6 @@ public sealed class AutotableConnectionManager : IDisposable
             if (snap.Phase != ChangshaPhase.Seating) return;                       // already started
             if (!_runtime.AreAllSeatsOccupied(runtimeGameId)) return;              // wait for all seats
 
-            var requestedMode = string.Equals(connection.DealMode, "manual", StringComparison.OrdinalIgnoreCase)
-                ? DealMode.Manual
-                : DealMode.Auto;
-            await _runtime.ApplyDealModeAsync(runtimeGameId, requestedMode, ct);
             await _runtime.StartGameAsync(runtimeGameId, ct);
             // Auto: after-deal the runtime awaits an ack the WS transport never sends —
             // ack the caller's bound seat so the turn loop advances. No-op for Manual /
@@ -1318,6 +1772,15 @@ public sealed class AutotableConnectionManager : IDisposable
         {
             _logger.LogDebug(ex, "Server start-on-seat-fill failed for connection {ConnectionId}", connection.Id);
         }
+    }
+
+    private async Task FillLegacyNativeRoomAsync(
+        AutotableConnection connection, string runtimeGameId, CancellationToken ct)
+    {
+        if (!connection.AutoBotFill) return;
+        var access = await _runtime.GetRoomAccessAsync(runtimeGameId, connection.PlayerId, ct);
+        if (access is { BotQuotaLocked: false })
+            await _runtime.FillEmptySeatsWithBotsAsync(runtimeGameId, ct);
     }
 
     private async Task TryHandleMatchActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
@@ -1364,24 +1827,9 @@ public sealed class AutotableConnectionManager : IDisposable
             if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
             if (snap.Phase != ChangshaPhase.Seating) return;
 
-            // Ensure all four seats are filled (auto-fill bots before starting).
-            if (connection.AutoBotFill)
-            {
-                await _runtime.FillEmptySeatsWithBotsAsync(runtimeGameId, ct);
-            }
-
-            // W23 follow-up — propagate the connection's `?dealMode=` query into
-            // the runtime state BEFORE StartGameAsync branches on it. Without
-            // this hop, `?dealMode=manual` is silently a no-op (Vasquez's Gap 1
-            // — see .squad/decisions/inbox/vasquez-human-led-playtest.md). Phase
-            // guard inside ApplyDealModeAsync prevents accidental mid-hand
-            // flips when this path is re-entered on a reconnect.
-            var requestedMode = string.Equals(connection.DealMode, "manual", StringComparison.OrdinalIgnoreCase)
-                ? DealMode.Manual
-                : DealMode.Auto;
-            await _runtime.ApplyDealModeAsync(runtimeGameId, requestedMode, ct);
-
-            await _runtime.StartGameAsync(runtimeGameId, ct);
+            // Creation owns the bot quota; a later Deal push cannot expand it.
+            await FillLegacyNativeRoomAsync(connection, runtimeGameId, ct);
+            await TryServerStartOnSeatFillAsync(connection, runtimeGameId, ct);
 
             // W23 follow-up — auto-ack on the caller's bound seat (Gap 2). After
             // an auto-deal the runtime sits in AwaitingDiscard; the SignalR
@@ -1407,9 +1855,10 @@ public sealed class AutotableConnectionManager : IDisposable
     /// public via the matchmaking service (closes Vasquez's Wave-5 blind
     /// spot #4 where autotable games carried a null host id).
     /// </summary>
-    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct, string? botDifficulty = null, int? seed = null, int? maxHands = null, AutotableConnection? resettingConnection = null)
+    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct, string? botDifficulty = null, int? seed = null, int? maxHands = null, AutotableConnection? resettingConnection = null, int baseUnit = 1, string dealMode = "manual", bool explicitNew = false, AutotableConnection? creatorConnection = null, int? creatorSeat = null)
     {
         if (_runtimeBinding.TryGetValue(relayGameId, out var existing)
+            && _runtime.TryGetSnapshot(existing, out var boundState) && boundState is not null
             && !(resettingConnection is not null && string.Equals(relayGameId, AutotableWsEndpoint.DefaultGameId, StringComparison.Ordinal)))
         {
             // #121 (Lead decision) — first-creator-wins: a re-bind (late joiner / reconnect) must
@@ -1423,7 +1872,9 @@ public sealed class AutotableConnectionManager : IDisposable
         await _bindingLock.WaitAsync(ct);
         try
         {
-            if (_runtimeBinding.TryGetValue(relayGameId, out existing))
+            string? replacesRuntimeGameId = null;
+            existing = await RestoreRoomBindingCoreAsync(relayGameId, ct);
+            if (existing is not null)
             {
                 // #153 — stale default-game guard. The persistent DefaultGameId ("changsha-default")
                 // is the fallback binding for bare `?variant=changsha` connections that carry no
@@ -1437,22 +1888,14 @@ public sealed class AutotableConnectionManager : IDisposable
                 // playerId still owns a seat) reattaches; a still-joinable (Seating) or live game with
                 // other connected players is kept; and every non-default (explicit `?gameId=`) game
                 // keeps first-creator-wins + multi-human join semantics untouched.
-                if (resettingConnection is not null
+                if (resettingConnection is not null && !resettingConnection.JoinExistingOnly
                     && string.Equals(relayGameId, AutotableWsEndpoint.DefaultGameId, StringComparison.Ordinal)
                     && ShouldRetireStaleDefault(existing, hostPlayerId, resettingConnection))
                 {
+                    replacesRuntimeGameId = existing;
                     _runtimeBinding.TryRemove(relayGameId, out _);
                     _relayBinding.TryRemove(existing, out _);
-                    try
-                    {
-                        await _runtime.RemoveGameAsync(existing, ct);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex,
-                            "Retiring stale default runtime game {RuntimeGameId} failed; minting a fresh {DefaultGameId} anyway.",
-                            existing, relayGameId);
-                    }
+                    await _runtime.RemoveGameAsync(existing, ct);
                     // fall through to create a fresh default game below
                 }
                 else
@@ -1460,33 +1903,32 @@ public sealed class AutotableConnectionManager : IDisposable
                     return existing;
                 }
             }
-            // botSeatIndexes = empty so the runtime starts with all-human seats;
-            // we'll convert seats to bots on demand via FillEmptySeatsWithBotsAsync.
-            // Ferro WP-E/#120 — pass the URL-supplied seed (null ⇒ runtime randomizes).
+            if (creatorConnection?.JoinExistingOnly == true)
+                throw new RoomAdmissionException("room-not-found");
+            var botSeatIndexes = Enumerable.Range(0, 4)
+                .Where(index => index != creatorSeat)
+                .Take(creatorConnection?.BotCount ?? 0).ToArray();
             var runtimeGameId = await _runtime.CreateGameAsync(
                 seed: seed,
-                botSeatIndexes: Array.Empty<int>(),
+                botSeatIndexes: botSeatIndexes,
                 hostPlayerId: hostPlayerId,
-                hostConnectionId: null,
+                hostConnectionId: creatorSeat.HasValue ? creatorConnection?.Id.ToString("N") : null,
                 ct,
-                maxHands: maxHands);
+                maxHands: maxHands,
+                baseUnit: baseUnit,
+                publicRoom: new PublicRoomCreation(
+                    relayGameId,
+                    string.Equals(dealMode, "manual", StringComparison.OrdinalIgnoreCase) ? DealMode.Manual : DealMode.Auto,
+                    botDifficulty ?? "Medium",
+                    replacesRuntimeGameId,
+                    explicitNew) { CreatorSeatIndex = creatorSeat });
             _runtimeBinding[relayGameId] = runtimeGameId;
             _relayBinding[runtimeGameId] = relayGameId;
+            QueueBindingAuthorityRefresh(relayGameId, runtimeGameId);
+            if (creatorConnection is not null)
+                creatorConnection.CreatedRuntimeGameId = runtimeGameId;
 
-            // Bishop W25 — bind the URL-supplied `?botDifficulty=` to the
-            // freshly-created runtime game. Pre-W25 this was a silent
-            // drop (the WS endpoint captured BotDifficulty into the
-            // AutotableConnection but never forwarded it to the runtime,
-            // so every game played at the Medium default regardless of
-            // URL). Null / whitespace skips the call so the runtime
-            // default (Medium) applies, matching pre-W25 behaviour for
-            // clients that don't specify a difficulty. #121: this is now the
-            // ONLY place botDifficulty is applied — first-creator-wins.
-            if (!string.IsNullOrWhiteSpace(botDifficulty))
-            {
-                await _runtime.SetBotStrategyAsync(runtimeGameId, botDifficulty!, ct);
-            }
-
+            // Room configuration was latched and persisted before this binding was published.
             return runtimeGameId;
         }
         finally
@@ -1515,7 +1957,8 @@ public sealed class AutotableConnectionManager : IDisposable
         // Only a seat-seeking human (durable identity present) may trigger a reset.
         if (string.IsNullOrEmpty(hostPlayerId)) return false;
         // Never retire a game that other clients are still actively connected to.
-        if (ConnectionsInGame(AutotableWsEndpoint.DefaultGameId, except: resettingConnection.Id) > 0) return false;
+        if (ConnectionsInGame(AutotableWsEndpoint.DefaultGameId, except: resettingConnection.Id,
+            AutotableRuntimeMode.ChangshaRuntime) > 0) return false;
         if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return false;
         // A game still in Seating is freshly joinable — not stale.
         if (snap.Phase == ChangshaPhase.Seating) return false;
@@ -1530,6 +1973,7 @@ public sealed class AutotableConnectionManager : IDisposable
 
     private async Task HandleDisconnectAsync(AutotableConnection connection)
     {
+        connection.CloseAuthority();
         _connections.TryRemove(connection.Id, out _);
 
         var gameId = connection.GameId;
@@ -1551,7 +1995,11 @@ public sealed class AutotableConnectionManager : IDisposable
             // Upstream parity (server/game.ts:leave) — null out per-player
             // collection entries owned by this player and broadcast the
             // tombstones to remaining peers, so their seat/nick disappears.
-            if (_games.TryGetValue(gameId, out var state))
+            var store = StateStoreFor(connection);
+            if (store.TryGetValue(gameId, out var state) && !_connections.Values.Any(peer =>
+                peer.HasJoined && peer.RuntimeMode == connection.RuntimeMode
+                && string.Equals(peer.GameId, gameId, StringComparison.Ordinal)
+                && string.Equals(peer.PlayerId, connection.PlayerId, StringComparison.Ordinal)))
             {
                 var tombstones = state.RemovePlayerEntries(connection.PlayerId);
                 if (tombstones.Count > 0)
@@ -1571,9 +2019,9 @@ public sealed class AutotableConnectionManager : IDisposable
             // its state. Mirrors upstream's expiry behaviour without the 2h
             // grace window (Phase C-relay is per-session sandbox semantics —
             // if everyone leaves, the game is gone).
-            if (ConnectionsInGame(gameId, except: null) == 0)
+            if (ConnectionsInGame(gameId, except: null, connection.RuntimeMode) == 0)
             {
-                _games.TryRemove(gameId, out _);
+                store.TryRemove(gameId, out _);
             }
         }
 
@@ -1592,7 +2040,6 @@ public sealed class AutotableConnectionManager : IDisposable
     /// </summary>
     private async Task ReleaseRuntimeSeatAsync(AutotableConnection connection, string gameId)
     {
-        if (connection.IsSpectator) return;
         if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime) return;
         if (!_runtimeBinding.ContainsKey(gameId)) return;
 
@@ -1617,6 +2064,37 @@ public sealed class AutotableConnectionManager : IDisposable
 
     private async Task SendJoinedAsync(AutotableConnection connection, string gameId, bool isFirst, CancellationToken ct)
     {
+        if (connection.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime)
+        {
+            await connection.SendLock.WaitAsync(ct);
+            try
+            {
+                while (!connection.Authority.Closed && connection.Socket.State == WebSocketState.Open)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    _runtimeBinding.TryGetValue(gameId, out var runtimeGameId);
+                    if (runtimeGameId is not null && !_runtime.TryGetSnapshot(runtimeGameId, out _))
+                        throw new PublicRoomRecoveryException("room-snapshot-unavailable");
+                    var authority = connection.SetAuthority(gameId, runtimeGameId,
+                        ExactGrantedSeat(connection, runtimeGameId), forceRevision: true, joinPending: true);
+                    var joined = new JoinedMessage
+                    {
+                        GameId = gameId,
+                        PlayerId = connection.PlayerId,
+                        IsFirst = isFirst,
+                        Viewer = authority.ToWire()
+                    };
+                    if (!await WriteFrameUnderSendLockAsync(connection, joined, ct, authority, allowJoinPending: true))
+                        continue;
+                    connection.CompleteAuthorityJoin(authority);
+                    return;
+                }
+            }
+            finally { connection.SendLock.Release(); }
+            return;
+        }
+
+        connection.HasJoined = true;
         var msg = new JoinedMessage
         {
             GameId = gameId,
@@ -1626,18 +2104,87 @@ public sealed class AutotableConnectionManager : IDisposable
         await SendJsonAsync(connection, msg, ct);
     }
 
-    private async Task SendFullSnapshotAsync(AutotableConnection connection, string? gameId, CancellationToken ct, ChangshaGameState? capturedState = null)
+    private async Task SendFullSnapshotAsync(
+        AutotableConnection connection, string? gameId, CancellationToken ct,
+        ChangshaGameState? capturedState = null, AutotableAuthorityState? capturedAuthority = null)
     {
+        if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime)
+        {
+            var relayUpdate = await BuildSnapshotUpdateAsync(connection, gameId, ct, null, null);
+            if (relayUpdate is not null)
+                await SendJsonAsync(connection, relayUpdate, ct, expectedGameId: gameId);
+            return;
+        }
+
+        await connection.SendLock.WaitAsync(ct);
+        try
+        {
+            await SendFullSnapshotUnderSendLockAsync(connection, gameId, ct, capturedState, capturedAuthority);
+        }
+        finally { connection.SendLock.Release(); }
+    }
+
+    private async Task SendFullSnapshotUnderSendLockAsync(
+        AutotableConnection connection, string? gameId, CancellationToken ct,
+        ChangshaGameState? capturedState = null, AutotableAuthorityState? capturedAuthority = null)
+    {
+        while (connection.Socket.State == WebSocketState.Open)
+        {
+            ct.ThrowIfCancellationRequested();
+            var authority = RefreshAuthorityUnderSendLock(connection);
+            if (authority.Closed || authority.JoinPending) return;
+            if (authority.Revoked)
+            {
+                await WriteFrameUnderSendLockAsync(connection,
+                    new UpdateMessage { Viewer = authority.ToWire() }, ct, authority);
+                return;
+            }
+            if (authority.RoomId is null || authority.RoomId != gameId || connection.GameId != gameId) return;
+
+            // A changed grant, binding, or join revision invalidates the old projection.
+            // Regenerate from the runtime; never relabel an old private snapshot.
+            if (!ReferenceEquals(capturedAuthority, authority))
+                capturedState = null;
+            var update = await BuildSnapshotUpdateAsync(connection, gameId, ct, capturedState, authority);
+            var current = RefreshAuthorityUnderSendLock(connection);
+            if (!ReferenceEquals(authority, current))
+            {
+                capturedState = null;
+                capturedAuthority = null;
+                continue;
+            }
+            if (update is null)
+            {
+                if (authority.RuntimeGameId is { } unavailableRuntime)
+                    connection.RevokeRoomAuthority(unavailableRuntime);
+                else
+                    return;
+                continue;
+            }
+            if (await WriteFrameUnderSendLockAsync(connection, update, ct, authority)) return;
+            capturedState = null;
+            capturedAuthority = null;
+        }
+    }
+
+    private async Task<UpdateMessage?> BuildSnapshotUpdateAsync(
+        AutotableConnection connection, string? gameId, CancellationToken ct,
+        ChangshaGameState? capturedState, AutotableAuthorityState? authority)
+    {
+        if (!string.Equals(connection.GameId, gameId, StringComparison.Ordinal)) return null;
+
         if (string.IsNullOrEmpty(gameId))
         {
             // No game bound — ship only the translator's match[0] override
             // so the bundle creates tiles with fives='000'.
             var translatorEntriesNoGame = ChangshaToAutotableTranslator.Translate(state: null,
-                viewerSeat: connection.ViewerSeat, viewerPlayerId: connection.PlayerId,
+                viewerSeat: authority is null ? connection.ViewerSeat : authority.Seat,
+                viewerPlayerId: connection.PlayerId,
                 claimWindowTimeoutMs: _claimWindowTimeoutMs);
-            var msg = new UpdateMessage { Entries = translatorEntriesNoGame.ToList(), Full = true };
-            await SendJsonAsync(connection, msg, ct);
-            return;
+            return new UpdateMessage
+            {
+                Entries = translatorEntriesNoGame.ToList(), Full = true, Viewer = authority?.ToWire()
+            };
         }
 
         // #137 — StateChanged broadcasts pass the snapshot the runtime froze at the
@@ -1653,21 +2200,34 @@ public sealed class AutotableConnectionManager : IDisposable
         // worker thread — producing a snapshot that drops the most-recent
         // discard from the wire view (the runtime keeps it, but the broadcast
         // does not) and gaslights the client into rendering a stale board.
-        ChangshaGameState? runtimeState = capturedState;
-        if (runtimeState is null && _runtimeBinding.TryGetValue(gameId, out var runtimeGameId))
+        ChangshaGameState? runtimeState = connection.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime
+            ? capturedState : null;
+        if (runtimeState is not null && authority is not null
+            && !SnapshotMatchesAuthority(connection, runtimeState, authority))
+            runtimeState = null;
+        if (runtimeState is null && connection.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime
+            && authority?.RuntimeGameId is { } runtimeGameId)
         {
             runtimeState = await _runtime.TryGetSnapshotCopyAsync(runtimeGameId, ct);
         }
+        if (authority?.RuntimeGameId is not null
+            && (runtimeState is null || !SnapshotMatchesAuthority(connection, runtimeState, authority)))
+            return null;
+
+        // A queued snapshot can overlap a JOIN or seat release. Validate its viewer
+        // against this room's frozen ownership, and use that same entitlement throughout
+        // translation, neutral-seat storage and filtering.
+        var viewerSeat = authority is null ? connection.ViewerSeat : authority.Seat;
 
         var translatorEntries = ChangshaToAutotableTranslator.Translate(
             runtimeState,
-            viewerSeat: connection.ViewerSeat,
+            viewerSeat: viewerSeat,
             viewerPlayerId: connection.PlayerId,
             claimWindowTimeoutMs: _claimWindowTimeoutMs,
             privacy: ChangshaPrivacyProjector.Create(
                 _opaqueHiddenHandles ? _handleProvider : null, gameId, connection.PlayerId));
 
-        var gameState = _games.GetOrAdd(gameId, id => new AutotableGameState(id));
+        var gameState = StateStoreFor(connection).GetOrAdd(gameId, id => new AutotableGameState(id));
 
         // When a runtime game is backing the relay gameId, apply the translator
         // output with Runtime source so it OVERWRITES any client-pushed entries
@@ -1676,6 +2236,7 @@ public sealed class AutotableConnectionManager : IDisposable
         IReadOnlyList<CollectionEntry> snapshot;
         if (runtimeState is not null)
         {
+            connection.HasRuntimeSnapshot = true;
             // ── Multi-viewer shared-store privacy (SC-2 endpoint leak fix) ─────────
             // Apone 2026-08-10, independently confirmed (Ripley/Vasquez drafts
             // unverified): `translatorEntries` is a PER-VIEWER projection — this
@@ -1694,17 +2255,19 @@ public sealed class AutotableConnectionManager : IDisposable
             // reconstructs identity (typeIndex = key/4). That is the :18084 leak.
             //
             // Fix: NEVER persist the per-viewer `things` into the shared store. Store
-            // only the viewer-NEUTRAL runtime kinds (match/seats/nicks/dice/claim/
+            // only the viewer-NEUTRAL runtime kinds (match/seats/nicks/dice/
             // pickup/result/turn/gameComplete — none privacy-projected). Inbound client
             // `things` are already dropped in ChangshaRuntime mode (BE-2), so the store
             // legitimately holds no runtime `things`. This viewer's `things` are then
             // sourced straight from its own fresh translation for the outbound snapshot
             // only — so one viewer's keys can never enter another viewer's snapshot, and
             // no stale numeric/opaque key can accumulate across updates or reconnects.
+            // Claim choices and own-turn actions also contain private hand information;
+            // neither collection may enter this shared store.
             var neutralForStore = new List<CollectionEntry>(translatorEntries.Count);
             foreach (var entry in translatorEntries)
             {
-                if (!string.Equals(entry.Kind, ThingsKind, StringComparison.Ordinal))
+                if (!IsViewerPrivateCollection(entry.Kind))
                     neutralForStore.Add(entry);
             }
             gameState.ApplyUpdate(neutralForStore, UpdateSource.Runtime);
@@ -1718,20 +2281,65 @@ public sealed class AutotableConnectionManager : IDisposable
             // viewer-neutral runtime kinds plus any client-owned relay entries and
             // — by construction — no runtime `things`.
             var withEphemerals = MergeRuntimeEphemerals(stored, translatorEntries, gameState);
-            // Re-attach ONLY this viewer's own `things` projection. Because these
+            // Re-attach ONLY this viewer's things and private action metadata. Because these
             // never touch the shared store, one viewer's keys can never leak into
             // another viewer's snapshot.
-            snapshot = AttachViewerThings(withEphemerals, translatorEntries);
+            snapshot = AttachViewerEntries(withEphemerals, translatorEntries);
         }
         else
         {
             var stored = gameState.Snapshot();
             snapshot = MergeSnapshots(translatorEntries, stored);
+            if (connection.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime && connection.HasRuntimeSnapshot)
+            {
+                // Retract a previous room's cached actions even when the destination
+                // has no runtime yet. Unbound relay initialization remains unchanged.
+                snapshot = snapshot.Where(entry => entry.Kind != ChangshaCollectionKinds.OwnTurn)
+                    .Concat(Enumerable.Range(0, 4).Select(seat => ChangshaCollectionEncoder.EncodeOwnTurn(seat, null)))
+                    .ToList();
+            }
         }
 
-        var filtered = FilterEntriesForViewer(snapshot, connection.ViewerSeat);
-        var update = new UpdateMessage { Entries = filtered.ToList(), Full = true };
-        await SendJsonAsync(connection, update, ct);
+        var filtered = FilterEntriesForViewer(snapshot, viewerSeat);
+        return new UpdateMessage
+        {
+            Entries = authority is null ? filtered.ToList() : filtered.Where(entry => entry.Kind != "viewer").ToList(),
+            Full = true,
+            Viewer = authority?.ToWire()
+        };
+    }
+
+    private static bool SnapshotMatchesAuthority(
+        AutotableConnection connection, ChangshaGameState snapshot, AutotableAuthorityState authority) =>
+        snapshot.GameId == authority.RuntimeGameId
+        && (authority.Seat is null || snapshot.Seats.Any(seat =>
+            seat.SeatIndex == authority.Seat && !seat.IsBot
+            && string.Equals(seat.PlayerId, connection.PlayerId, StringComparison.Ordinal)));
+
+    private int? ExactGrantedSeat(AutotableConnection connection, string? runtimeGameId)
+    {
+        if (runtimeGameId is null || !_runtime.TryGetSnapshot(runtimeGameId, out var state) || state is null)
+            return null;
+        var granted = _runtime.TryGetSeatForConnection(runtimeGameId, connection.Id.ToString("N"));
+        return granted is >= 0 and <= 3 && state.Seats.Any(seat =>
+            seat.SeatIndex == granted && !seat.IsBot
+            && string.Equals(seat.PlayerId, connection.PlayerId, StringComparison.Ordinal)) ? granted : null;
+    }
+
+    private AutotableAuthorityState RefreshAuthorityUnderSendLock(AutotableConnection connection)
+    {
+        var current = connection.Authority;
+        if (current.Closed || current.JoinPending || current.Revoked || current.RoomId is null)
+            return current;
+        _runtimeBinding.TryGetValue(current.RoomId, out var runtimeGameId);
+        if ((runtimeGameId is null && current.RuntimeGameId is not null)
+            || (runtimeGameId is not null && !_runtime.TryGetSnapshot(runtimeGameId, out _)))
+        {
+            connection.HasJoined = false;
+            return connection.SetAuthority(null, null, null, revoked: true, expected: current);
+        }
+        return connection.SetAuthority(current.RoomId, runtimeGameId, ExactGrantedSeat(connection, runtimeGameId),
+            expected: current);
     }
 
     /// <summary>
@@ -1823,34 +2431,37 @@ public sealed class AutotableConnectionManager : IDisposable
 
     /// <summary>Upstream collection name for scene tiles. The only translator collection
     /// whose KEYS are per-viewer projected (real tileId when visible to the viewer, opaque
-    /// <c>h_</c> handle when hidden) — hence the only one that must never enter the shared
-    /// cross-connection store (see <see cref="SendFullSnapshotAsync"/>).</summary>
+    /// <c>h_</c> handle when hidden). Private action metadata is also excluded from the
+    /// shared cross-connection store (see <see cref="SendFullSnapshotAsync"/>).</summary>
     private const string ThingsKind = "things";
+
+    private static bool IsViewerPrivateCollection(string kind) =>
+        kind is ThingsKind or ChangshaCollectionKinds.Claim or ChangshaCollectionKinds.OwnTurn;
 
     /// <summary>
     /// Multi-viewer privacy (SC-2 endpoint leak fix) — builds the outbound snapshot's
-    /// <c>things</c> from THIS connection's own per-viewer projection only.
+    /// things, claim choices and own-turn actions from THIS connection's projection only.
     /// <paramref name="baseEntries"/> (the shared-store snapshot + re-attached runtime
-    /// ephemerals) is stripped of any <c>things</c> so a foreign viewer's / the seated
+    /// ephemerals) is stripped of all private collections so a foreign viewer's / the seated
     /// owner's real tileId keys can never ride along; <paramref name="viewerEntries"/>
-    /// then contributes exactly this viewer's <c>things</c>. The canonical store never
-    /// holds a per-viewer <c>things</c> projection, so no numeric real-id key is ever
+    /// then contributes exactly this viewer's entries, including explicit closed-action tombstones.
+    /// The canonical store never holds these per-viewer projections, so no numeric real-id key is ever
     /// shipped to a viewer not entitled to it, and no stale numeric/opaque key can
     /// accumulate across updates or reconnects.
     /// </summary>
-    private static IReadOnlyList<CollectionEntry> AttachViewerThings(
+    private static IReadOnlyList<CollectionEntry> AttachViewerEntries(
         IReadOnlyList<CollectionEntry> baseEntries,
         IReadOnlyList<CollectionEntry> viewerEntries)
     {
         var merged = new List<CollectionEntry>(baseEntries.Count + viewerEntries.Count);
         foreach (var e in baseEntries)
         {
-            if (!string.Equals(e.Kind, ThingsKind, StringComparison.Ordinal))
+            if (!IsViewerPrivateCollection(e.Kind))
                 merged.Add(e);
         }
         foreach (var e in viewerEntries)
         {
-            if (string.Equals(e.Kind, ThingsKind, StringComparison.Ordinal))
+            if (IsViewerPrivateCollection(e.Kind))
                 merged.Add(e);
         }
         return merged;
@@ -1983,18 +2594,22 @@ public sealed class AutotableConnectionManager : IDisposable
         bool full,
         CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(sender.GameId) || entries.Count == 0) return;
+        var gameId = sender.GameId;
+        if (string.IsNullOrEmpty(gameId) || entries.Count == 0) return;
 
         foreach (var peer in _connections.Values)
         {
             if (peer.Id == sender.Id) continue;
-            if (!string.Equals(peer.GameId, sender.GameId, StringComparison.Ordinal)) continue;
+            if (!peer.HasJoined) continue;
+            if (!string.Equals(peer.GameId, gameId, StringComparison.Ordinal)) continue;
+            if (peer.RuntimeMode != sender.RuntimeMode) continue;
             try
             {
-                var perViewer = FilterEntriesForViewer(entries, peer.ViewerSeat);
+                var perViewer = peer.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime
+                    ? entries : FilterEntriesForViewer(entries, peer.ViewerSeat);
                 if (perViewer.Count == 0) continue;
                 var message = new UpdateMessage { Entries = perViewer.ToList(), Full = full };
-                await SendJsonAsync(peer, message, ct);
+                await SendJsonAsync(peer, message, ct, expectedGameId: gameId);
             }
             catch (Exception ex)
             {
@@ -2017,13 +2632,15 @@ public sealed class AutotableConnectionManager : IDisposable
         if (entries.Count == 0) return;
         foreach (var peer in _connections.Values)
         {
+            if (!peer.HasJoined) continue;
             if (!string.Equals(peer.GameId, relayGameId, StringComparison.Ordinal)) continue;
             try
             {
-                var perViewer = FilterEntriesForViewer(entries, peer.ViewerSeat);
+                var perViewer = peer.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime
+                    ? entries : FilterEntriesForViewer(entries, peer.ViewerSeat);
                 if (perViewer.Count == 0) continue;
                 var message = new UpdateMessage { Entries = perViewer.ToList(), Full = full };
-                await SendJsonAsync(peer, message, ct);
+                await SendJsonAsync(peer, message, ct, expectedGameId: relayGameId);
             }
             catch (Exception ex)
             {
@@ -2032,16 +2649,45 @@ public sealed class AutotableConnectionManager : IDisposable
         }
     }
 
-    private async Task SendJsonAsync(AutotableConnection connection, object payload, CancellationToken ct)
+    private async Task SendJsonAsync(
+        AutotableConnection connection,
+        object payload,
+        CancellationToken ct,
+        string? expectedGameId = null)
     {
-        if (connection.Socket.State != WebSocketState.Open) return;
-
-        var json = JsonSerializer.Serialize(payload, payload.GetType(), AutotableJson.Options);
-        var bytes = Encoding.UTF8.GetBytes(json);
+        var capturedAuthority = connection.Authority;
         await connection.SendLock.WaitAsync(ct);
         try
         {
-            await connection.Socket.SendAsync(bytes, WebSocketMessageType.Text, endOfMessage: true, ct);
+            if (connection.Socket.State != WebSocketState.Open) return;
+            if (expectedGameId is not null
+                && !string.Equals(connection.GameId, expectedGameId, StringComparison.Ordinal)) return;
+            if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime)
+            {
+                await WriteFrameUnderSendLockAsync(connection, payload, ct, expectedGameId: expectedGameId);
+                return;
+            }
+
+            var authority = RefreshAuthorityUnderSendLock(connection);
+            if (authority.Closed || authority.JoinPending) return;
+            if (!ReferenceEquals(capturedAuthority, authority) || authority.Revoked)
+            {
+                await SendFullSnapshotUnderSendLockAsync(connection, authority.RoomId, ct);
+                return;
+            }
+            if (authority.RoomId is null) return;
+            if (payload is not UpdateMessage update)
+                throw new InvalidOperationException("Changsha data must use a validated UPDATE envelope.");
+
+            var outgoing = new UpdateMessage
+            {
+                Entries = FilterEntriesForViewer(update.Entries, authority.Seat)
+                    .Where(entry => entry.Kind != "viewer").ToList(),
+                Full = update.Full,
+                Viewer = authority.ToWire()
+            };
+            if (!await WriteFrameUnderSendLockAsync(connection, outgoing, ct, authority))
+                await SendFullSnapshotUnderSendLockAsync(connection, authority.RoomId, ct);
         }
         finally
         {
@@ -2049,13 +2695,68 @@ public sealed class AutotableConnectionManager : IDisposable
         }
     }
 
-    private int ConnectionsInGame(string? gameId, Guid? except)
+    private bool AuthorityIsCurrent(
+        AutotableConnection connection, AutotableAuthorityState authority, bool allowJoinPending)
+    {
+        if (authority.Closed || (!allowJoinPending && authority.JoinPending)
+            || !ReferenceEquals(connection.Authority, authority))
+            return false;
+        if (authority.RoomId is null) return authority.RuntimeGameId is null && authority.Seat is null;
+        if (connection.GameId != authority.RoomId) return false;
+        _runtimeBinding.TryGetValue(authority.RoomId, out var runtimeGameId);
+        return runtimeGameId == authority.RuntimeGameId
+            && (runtimeGameId is null || _runtime.TryGetSnapshot(runtimeGameId, out _))
+            && ExactGrantedSeat(connection, runtimeGameId) == authority.Seat;
+    }
+
+    // All callers hold SendLock. Serialization and the final authority check belong here,
+    // not before the semaphore, so a same-room seat epoch cannot relabel private bytes.
+    private async Task<bool> WriteFrameUnderSendLockAsync(
+        AutotableConnection connection, object payload, CancellationToken ct,
+        AutotableAuthorityState? authority = null, string? expectedGameId = null, bool allowJoinPending = false)
+    {
+        if (connection.Socket.State != WebSocketState.Open) return false;
+        if (expectedGameId is not null && connection.GameId != expectedGameId) return false;
+        if (connection.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime
+            && (authority is null || !AuthorityIsCurrent(connection, authority, allowJoinPending)))
+            return false;
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, payload.GetType(), AutotableJson.Options);
+        if (connection.Socket.State != WebSocketState.Open
+            || (authority is not null && !AuthorityIsCurrent(connection, authority, allowJoinPending)))
+            return false;
+        await connection.Socket.SendAsync(bytes, WebSocketMessageType.Text, endOfMessage: true, ct);
+        return true;
+    }
+
+    private async Task SendTerminalRejectionAsync(
+        AutotableConnection connection, UpdateMessage rejection, WebSocketCloseStatus status,
+        string reason, CancellationToken ct)
+    {
+        await connection.SendLock.WaitAsync(ct);
+        try
+        {
+            var authority = connection.SetAuthority(null, null, null, revoked: true);
+            connection.HasJoined = false;
+            await WriteFrameUnderSendLockAsync(connection, new UpdateMessage
+            {
+                Entries = rejection.Entries,
+                Full = rejection.Full,
+                Viewer = connection.RuntimeMode == AutotableRuntimeMode.ChangshaRuntime ? authority.ToWire() : null
+            }, ct, authority);
+            if (connection.Socket.State == WebSocketState.Open)
+                await connection.Socket.CloseOutputAsync(status, reason, ct);
+        }
+        finally { connection.SendLock.Release(); }
+    }
+
+    private int ConnectionsInGame(string? gameId, Guid? except, AutotableRuntimeMode? mode = null)
     {
         if (string.IsNullOrEmpty(gameId)) return 0;
         var count = 0;
         foreach (var c in _connections.Values)
         {
             if (!string.Equals(c.GameId, gameId, StringComparison.Ordinal)) continue;
+            if (mode.HasValue && c.RuntimeMode != mode.Value) continue;
             if (except.HasValue && c.Id == except.Value) continue;
             count++;
         }
@@ -2123,11 +2824,72 @@ public sealed class AutotableConnectionManager : IDisposable
         // BEFORE the next hand's RollingDice tombstone, or the client's hand-end
         // observer would collapse two hand-ends into one null→present flip.
         if (!_relayBinding.TryGetValue(runtimeGameId, out var relayGameId)) return;
+        var exists = _runtime.TryGetSnapshot(runtimeGameId, out _);
         foreach (var connection in _connections.Values)
         {
+            if (!connection.HasJoined) continue;
             if (!string.Equals(connection.GameId, relayGameId, StringComparison.Ordinal)) continue;
-            connection.BroadcastQueue.Enqueue(snapshot);
-            _ = DrainBroadcastQueueAsync(connection, relayGameId);
+            if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime) continue;
+            var authority = connection.Authority;
+            if (authority.Closed || authority.JoinPending || authority.RoomId != relayGameId) continue;
+            if (!exists)
+            {
+                var revoked = connection.RevokeRoomAuthority(runtimeGameId);
+                if (revoked is null) continue;
+                authority = revoked;
+            }
+            else if (authority.RuntimeGameId == runtimeGameId)
+            {
+                // Observe each runtime grant transition at capture time, including ABA
+                // changes while a prior send is blocked. Wire publication still uses SendLock.
+                authority = connection.SetAuthority(relayGameId, runtimeGameId,
+                    ExactGrantedSeat(connection, runtimeGameId), expected: authority);
+                if (authority.Closed || authority.JoinPending || authority.Revoked
+                    || authority.RoomId != relayGameId || authority.RuntimeGameId != runtimeGameId)
+                    continue;
+            }
+            connection.BroadcastQueue.Enqueue(new(relayGameId, runtimeGameId, exists ? snapshot : null, authority));
+            _ = DrainBroadcastQueueAsync(connection);
+        }
+    }
+
+    private void QueueBindingAuthorityRefresh(string roomId, string runtimeGameId)
+    {
+        foreach (var connection in _connections.Values)
+        {
+            if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime || !connection.HasJoined) continue;
+            var authority = connection.Authority;
+            if (authority.Closed || authority.JoinPending || authority.Revoked
+                || authority.RoomId != roomId || authority.RuntimeGameId == runtimeGameId)
+                continue;
+            authority = connection.SetAuthority(roomId, runtimeGameId,
+                ExactGrantedSeat(connection, runtimeGameId), expected: authority);
+            if (authority.Closed || authority.JoinPending || authority.Revoked || authority.RoomId != roomId)
+                continue;
+            connection.BroadcastQueue.Enqueue(new(roomId, runtimeGameId, null, authority));
+            _ = DrainBroadcastQueueAsync(connection);
+        }
+    }
+
+    private void QueueRemovedRoomAuthority(string roomId, string runtimeGameId)
+    {
+        if (_runtime.TryGetSnapshot(runtimeGameId, out _)) return;
+        _runtimeBinding.TryRemove(new KeyValuePair<string, string>(roomId, runtimeGameId));
+        _relayBinding.TryRemove(new KeyValuePair<string, string>(runtimeGameId, roomId));
+
+        // Removal emits no further runtime snapshot; idle recipients need their own terminal frame.
+        foreach (var connection in _connections.Values)
+        {
+            if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime || !connection.HasJoined
+                || !string.Equals(connection.GameId, roomId, StringComparison.Ordinal))
+                continue;
+            var authority = connection.Authority;
+            if (authority.RoomId != roomId || authority.RuntimeGameId != runtimeGameId)
+                continue;
+            var revoked = connection.RevokeRoomAuthority(runtimeGameId, expected: authority);
+            if (revoked is null) continue;
+            connection.BroadcastQueue.Enqueue(new(roomId, runtimeGameId, null, revoked));
+            _ = DrainBroadcastQueueAsync(connection);
         }
     }
 
@@ -2141,16 +2903,18 @@ public sealed class AutotableConnectionManager : IDisposable
     /// under the per-game lock). The re-check after releasing the gate closes the
     /// enqueue-after-drain race.
     /// </summary>
-    private async Task DrainBroadcastQueueAsync(AutotableConnection connection, string gameId)
+    private async Task DrainBroadcastQueueAsync(AutotableConnection connection)
     {
         if (Interlocked.CompareExchange(ref connection.BroadcastDrainerActive, 1, 0) != 0) return;
         try
         {
-            while (connection.BroadcastQueue.TryDequeue(out var snapshot))
+            while (connection.BroadcastQueue.TryDequeue(out var queued))
             {
+                if (connection.Authority.Closed) continue;
                 try
                 {
-                    await SendFullSnapshotAsync(connection, gameId, CancellationToken.None, snapshot);
+                    await SendFullSnapshotAsync(connection, queued.RoomId, CancellationToken.None,
+                        queued.RuntimeGameId == queued.Authority.RuntimeGameId ? queued.State : null, queued.Authority);
                 }
                 catch (Exception ex)
                 {
@@ -2164,12 +2928,13 @@ public sealed class AutotableConnectionManager : IDisposable
         }
         // An item may have been enqueued between our last dequeue and the reset.
         if (!connection.BroadcastQueue.IsEmpty)
-            _ = DrainBroadcastQueueAsync(connection, gameId);
+            _ = DrainBroadcastQueueAsync(connection);
     }
 
     public void Dispose()
     {
         _runtime.StateChanged -= _stateChangedHandler;
+        foreach (var connection in _connections.Values) connection.CloseAuthority();
         _bindingLock.Dispose();
     }
 }
@@ -2200,21 +2965,110 @@ public enum AutotableRuntimeMode
     ChangshaRuntime = 1,
 }
 
+internal sealed record AutotableAuthorityState(
+    string? RoomId, string? RuntimeGameId, long Revision, int? Seat,
+    bool JoinPending = false, bool Revoked = false, bool Closed = false)
+{
+    public AutotableViewerAuthority ToWire() => new(RoomId, Revision, Seat);
+}
+
+internal sealed record AutotableQueuedSnapshot(
+    string RoomId, string RuntimeGameId, ChangshaGameState? State, AutotableAuthorityState Authority);
+
 /// <summary>Single bundle connection — one per (WebSocket, gameId, viewerSeat).</summary>
 public sealed class AutotableConnection
 {
+    private readonly object _authorityGate = new();
+    private AutotableAuthorityState _authority = new(null, null, 0, null);
+    private int? _relayViewerSeat;
+
+    internal AutotableAuthorityState Authority => Volatile.Read(ref _authority);
+
+    internal void BeginAuthorityJoin()
+    {
+        lock (_authorityGate)
+        {
+            if (_authority.Closed) return;
+            Volatile.Write(ref _authority, _authority with { JoinPending = true });
+        }
+    }
+
+    internal AutotableAuthorityState SetAuthority(
+        string? roomId, string? runtimeGameId, int? seat,
+        bool forceRevision = false, bool joinPending = false, bool revoked = false,
+        AutotableAuthorityState? expected = null)
+    {
+        lock (_authorityGate)
+        {
+            var previous = _authority;
+            if (previous.Closed || (expected is not null && !ReferenceEquals(previous, expected))) return previous;
+            var changed = forceRevision || previous.RoomId != roomId
+                || previous.RuntimeGameId != runtimeGameId || previous.Seat != seat
+                || previous.Revoked != revoked;
+            var next = new AutotableAuthorityState(roomId, runtimeGameId,
+                changed ? checked(previous.Revision + 1) : previous.Revision,
+                seat, joinPending, revoked);
+            if (next == previous) return previous;
+            Volatile.Write(ref _authority, next);
+            return next;
+        }
+    }
+
+    internal void CompleteAuthorityJoin(AutotableAuthorityState acknowledged)
+    {
+        lock (_authorityGate)
+        {
+            if (!ReferenceEquals(_authority, acknowledged) || _authority.Closed) return;
+            Volatile.Write(ref _authority, _authority with { JoinPending = false });
+            HasJoined = true;
+        }
+    }
+
+    internal AutotableAuthorityState? RevokeRoomAuthority(
+        string runtimeGameId, AutotableAuthorityState? expected = null)
+    {
+        lock (_authorityGate)
+        {
+            if (_authority.Closed || _authority.JoinPending || _authority.RuntimeGameId != runtimeGameId
+                || (expected is not null && !ReferenceEquals(_authority, expected)))
+                return null;
+            var revoked = new AutotableAuthorityState(null, null, checked(_authority.Revision + 1),
+                null, Revoked: true);
+            Volatile.Write(ref _authority, revoked);
+            HasJoined = false;
+            return revoked;
+        }
+    }
+
+    internal void CloseAuthority()
+    {
+        if (RuntimeMode != AutotableRuntimeMode.ChangshaRuntime) return;
+        lock (_authorityGate)
+        {
+            if (_authority.Closed) return;
+            Volatile.Write(ref _authority, new(null, null, checked(_authority.Revision + 1),
+                null, Revoked: true, Closed: true));
+            HasJoined = false;
+        }
+    }
+
     public Guid Id { get; } = Guid.NewGuid();
     public WebSocket Socket { get; }
     public string? GameId { get; set; }
     /// <summary>
-    /// The seat this connection renders as (own hand face-up, others face-down / opaque).
-    /// MUTABLE and bound EXCLUSIVELY from runtime-confirmed ownership — BE-5 (Ripley
-    /// §9.1/§11.1) rebinds it on a successful <c>TakeSeat</c> and on reconnect owner
-    /// inference. Blocker D (Bishop rev2) — the raw <c>?seat=</c> query no longer seeds this
-    /// (that let an unowned requester project a foreign concealed hand); an unseated
-    /// connection stays null (spectator/opaque) until it actually owns a seat.
+    /// Changsha reads only the acknowledged, revisioned runtime grant.
+    /// The setter retains the legacy relay preference; it cannot grant Changsha authority.
     /// </summary>
-    public int? ViewerSeat { get; set; }
+    public int? ViewerSeat
+    {
+        get
+        {
+            if (RuntimeMode != AutotableRuntimeMode.ChangshaRuntime) return _relayViewerSeat;
+            var authority = Authority;
+            return authority.Closed || authority.Revoked || authority.JoinPending ? null : authority.Seat;
+        }
+        set => _relayViewerSeat = value;
+    }
     /// <summary>
     /// Blocker D (Bishop rev2) — the raw <c>?seat=N</c> query value captured as a
     /// NON-AUTHORITATIVE hint. Never consulted for per-viewer projection (see
@@ -2241,15 +3095,14 @@ public sealed class AutotableConnection
     /// <c>AutotableConnectionManager.DrainBroadcastQueueAsync</c>) so per-hand
     /// results are delivered in mutation order and never overlap on the socket.
     /// </summary>
-    public ConcurrentQueue<ChangshaGameState> BroadcastQueue { get; } = new();
+    internal ConcurrentQueue<AutotableQueuedSnapshot> BroadcastQueue { get; } = new();
 
     /// <summary>#137 — 0/1 Interlocked gate ensuring exactly one active broadcast drainer.</summary>
     public int BroadcastDrainerActive;
 
     /// <summary>
-    /// When true, taking a seat triggers auto-fill of remaining seats with bots
-    /// (Phase D-backend §7). Bundle clients default to true via the <c>?bots=true</c>
-    /// query param; the E2E test can disable it for deterministic seat-take tests.
+    /// Legacy creation preference. False forces a zero-bot quota; true permits
+    /// the explicit bot count or the default. Never reconfigures a bound room.
     /// </summary>
     public bool AutoBotFill { get; init; } = true;
 
@@ -2271,7 +3124,7 @@ public sealed class AutotableConnection
 
     /// <summary>
     /// Phase F §1.4 — desired number of bot opponents for solo play (0..3). The
-    /// runtime fills empty seats up to this count after the first seat-take.
+    /// requested seats are created atomically with the room and cannot expand later.
     /// </summary>
     public int BotCount { get; init; } = 3;
 
@@ -2291,6 +3144,16 @@ public sealed class AutotableConnection
     /// so a late joiner's differing <c>handCount</c> never re-caps a bound game.
     /// </summary>
     public int MaxHands { get; init; } = 4;
+
+    public int BaseUnit { get; init; } = 1;
+
+    /// <summary>Tracks whether a later unbound JOIN must retract prior private actions; grants no authority.</summary>
+    public bool HasRuntimeSnapshot { get; set; }
+    public string? ExplicitNewRoomId { get; set; }
+    public bool JoinExistingOnly { get; init; }
+    public bool HasJoined { get; set; }
+    public string? JoinedRuntimeGameId { get; set; }
+    public string? CreatedRuntimeGameId { get; set; }
 
     /// <summary>
     /// Phase I Wave 4 — true when the connection joined with <c>?seat=-1</c> (spectator

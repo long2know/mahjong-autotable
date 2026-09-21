@@ -3,6 +3,10 @@ import { Slot } from "./slot";
 import { Size, ThingType, GameType } from "./types";
 
 const WORLD_SIZE = 174;
+const CHANGSHA_WALL_STACKS = [14, 14, 13, 13];
+const CHANGSHA_WALL_RUN = (CHANGSHA_WALL_STACKS.reduce((sum, count) => sum + count, 0)
+  / CHANGSHA_WALL_STACKS.length - 1) * Size.TILE.x;
+const WALL_CORNER_CONTACT = (Size.TILE.x + Size.TILE.y) / 2;
 
 const Rotation = {
   FACE_UP: new Quaternion().setFromEuler(new Euler(0, 0, 0)),
@@ -98,6 +102,20 @@ function seats(which?: Array<number>): SlotOp {
   };
 }
 
+function addedKongSlots(slots: Array<Slot>): Array<Slot> {
+  const upper = slots.filter(slot => slot.indexes[1] === 1).map(base => {
+    const slot = base.copy('');
+    slot.name = `meld.${base.indexes[0]}.4`;
+    slot.indexes = [base.indexes[0], 4];
+    slot.origin = base.origin.clone().add(new Vector3(0, 0, Size.TILE.z));
+    // Do not give the base an up link: that would shade an ordinary Pung
+    // as an exposed wall bottom. The added tile is not in the flat push chain.
+    slot.linkDesc = { requires: base.name };
+    return slot;
+  });
+  return [...slots, ...upper];
+}
+
 const START: Record<string, Slot> = {
   'hand': new Slot({
     name: 'hand',
@@ -157,25 +175,19 @@ const START: Record<string, Slot> = {
     rotations: [Rotation.FACE_DOWN, Rotation.FACE_UP],
   }),
 
-  // Apone 2026-08-10 — Changsha-only wall anchor.  The upstream `wall` start
-  // (origin 30,20) is tuned for a symmetric 19-stack-per-seat edge wall; the
-  // Changsha wall is the asymmetric 14/14/13/13 split (`AutotableSlotMap`),
-  // so a 14-stack side spans only 13*TILE.x = 78 world units and CANNOT reach
-  // the corners of a wall sitting at the table edge — the four sides render as
-  // four detached segments with ~50-unit open corners (rejected candidate
-  // :18084, Ferro's top-down analysis).  Re-anchoring the ring so each side is
-  // CENTRED on the table (`WORLD_SIZE - 78`)/2 = 48 for the 14-side) makes the
-  // colMax of every side meet the col-0 of the next within half a tile pitch
-  // (3 world units) at all four corners → one continuous joined CCW perimeter.
-  // Name stays 'wall' so the backend slot map (`wall.<col>.<layer>@<seat>`) is
-  // unchanged; only the physical origin moves.  Seats 0,1 get 14 stacks and
-  // seats 2,3 get 13, so the single centred origin leaves a symmetric 3-unit
-  // half-tile miter at each corner (the unavoidable 14-vs-13 tile of slack,
-  // distributed evenly instead of piling into two corners).
+  // Centre anchoring makes origin and rendered-centre seam measurements agree.
+  // Rotating this start gives a constant mean side run and a perpendicular
+  // half-width + half-depth contact offset. Unequal side lengths contribute
+  // +/- half a pitch along the seam, without intersecting adjacent wall bodies.
   'wall.cs': new Slot({
     name: 'wall',
     group: 'wall',
-    origin: new Vector3(49.5, 49.5, 0),
+    origin: new Vector3(
+      (WORLD_SIZE - CHANGSHA_WALL_RUN + WALL_CORNER_CONTACT) / 2,
+      (WORLD_SIZE - CHANGSHA_WALL_RUN - WALL_CORNER_CONTACT) / 2,
+      0,
+    ),
+    direction: new Vector2(0, 0),
     rotations: [Rotation.FACE_DOWN, Rotation.FACE_UP],
   }),
 
@@ -204,15 +216,8 @@ const START: Record<string, Slot> = {
     drawShadow: true,
   }),
 
-  // Apone 2026-08-10 — Changsha discard tray, moved INSIDE the re-centred wall
-  // ring.  The upstream discard origin (y=60) sits where the Changsha wall now
-  // is (the ring shrank from the table edge to the centred 49.5..127.5 square),
-  // so the upstream tray would render on top of / straddling the wall — a
-  // spurious inner segment.  Shifting the whole 3×6 tray inward by 17.25 world
-  // units (to y=77.25) drops it cleanly between the wall inner face (y≈58.5)
-  // and table centre (y=87), leaving a symmetric ~0.75-unit gap at both edges
-  // and no collision with the opposite seat's tray.  Slot name stays 'discard'
-  // so `discard.{row}.{col}@{seat}` (AutotableSlotMap) is unchanged.
+  // Keep the existing Changsha discard tray inside the wall. Real-asset
+  // geometry tests check separation from every side and the opposite tray.
   'discard.cs': new Slot({
     name: `discard`,
     group: `discard`,
@@ -298,9 +303,9 @@ export const SLOT_GROUPS: Record<GameType, Array<SlotGroup>> = {
   CHANGSHA: [
     [start('hand'), row(14, undefined, {shift: true}), seats()],
     [start('hand.extra'), seats()],
-    [start('meld'), column(4), row(4, -Size.TILE.x, {push: true, shift: true}), seats()],
-    [start('wall.cs'), row(14), stack(), seats([0, 1])],
-    [start('wall.cs'), row(13), stack(), seats([2, 3])],
+    [start('meld'), column(4), row(4, -Size.TILE.x, {push: true, shift: true}), addedKongSlots, seats()],
+    ...CHANGSHA_WALL_STACKS.map((count, seat) =>
+      [start('wall.cs'), row(count), stack(), seats([seat])]),
     [start('discard.cs'), column(3, -Size.TILE.y), row(6, undefined, {push: true}), seats()],
     [start('discard.extra.cs'), row(4, undefined, {push: true}), seats()],
     [start('marker'), seats()],
@@ -385,7 +390,7 @@ function fixupSlots(slots: Array<Slot>, gameType: GameType): void {
         slot.drawShadow = true;
       }
     }
-    if (slot.group === 'meld' && slot.indexes[0] > 0) {
+    if (slot.group === 'meld' && slot.indexes[0] > 0 && slot.indexes[1] < 4) {
       slot.linkDesc.requires = `meld.${slot.indexes[0]-1}.1@${slot.seat}`;
     }
     if (slot.group === 'wall.open' && slot.indexes[0] === 1 && slot.indexes[1] === 16) {

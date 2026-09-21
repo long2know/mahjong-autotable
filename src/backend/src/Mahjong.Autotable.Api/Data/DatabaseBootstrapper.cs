@@ -115,6 +115,7 @@ public static class DatabaseBootstrapper
             // migrations (it relied on EnsureCreatedAsync + manual ALTERs).
             await DropLegacyTableSessionsAsync(db, cancellationToken);
             await EnsureSqliteChangshaTablesAsync(db, cancellationToken);
+            await EnsureSqliteRoomBindingsAsync(db, cancellationToken);
             // Phase J Wave 5 — defensive SQLite-only bootstrap for the new
             // PlayerProfiles + PlayerStats tables. The EF Core migration
             // (AddPlayerProfileAndStats) is the canonical schema source; this
@@ -218,6 +219,19 @@ public static class DatabaseBootstrapper
             }
         }
     }
+
+    private static Task EnsureSqliteRoomBindingsAsync(AppDbContext db, CancellationToken cancellationToken) =>
+        db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "AutotableRoomBindings" (
+                "RoomKey" TEXT NOT NULL CONSTRAINT "PK_AutotableRoomBindings" PRIMARY KEY,
+                "RoomId" TEXT NOT NULL,
+                "RuntimeGameId" TEXT NOT NULL,
+                "CreatedUtc" TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_AutotableRoomBindings_RuntimeGameId"
+                ON "AutotableRoomBindings" ("RuntimeGameId");
+            """, cancellationToken);
 
     private static async Task EnsureSqliteChangshaTablesAsync(AppDbContext db, CancellationToken cancellationToken)
     {

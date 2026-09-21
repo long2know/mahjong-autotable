@@ -97,7 +97,7 @@ public sealed class ClaimAdjudicator : IClaimAdjudicator
                 });
             }
             // Check Pung (2 matching in hand) — same tier as Kong
-            else if (matchingCount >= 2)
+            if (matchingCount >= 2)
             {
                 opportunities.Add(new ChangshaClaimOpportunity
                 {

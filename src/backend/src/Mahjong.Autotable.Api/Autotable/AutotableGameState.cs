@@ -7,12 +7,12 @@ namespace Mahjong.Autotable.Api.Autotable;
 /// Per-game collaborative state store for the autotable WS relay.
 ///
 /// <para><b>Phase C-relay role:</b> the .NET backend acts as a broadcast hub —
-/// each bundle mutates its local collections (<c>things</c>, <c>seats</c>,
-/// <c>nicks</c>, <c>match</c>, <c>mouse</c>, <c>sound</c>, <c>dice</c>) and ships
-/// the delta as an <c>UPDATE</c>. This class stores the latest value of each
+/// each connected bundle submits collection deltas (<c>things</c>, <c>seats</c>,
+/// <c>nicks</c>, <c>match</c>, <c>mouse</c>, <c>sound</c>, <c>dice</c>) as an
+/// <c>UPDATE</c> and applies the server's confirmation. This class stores the latest value of each
 /// (kind, key) pair so that a late-joining bundle can replay the full state
-/// on <c>JOINED</c>. The relay broadcasts deltas to other connections in the
-/// same gameId — see <see cref="AutotableConnectionManager"/>.</para>
+/// on <c>JOINED</c>. The relay confirms accepted deltas to the sender and broadcasts
+/// them to other connections in the same gameId — see <see cref="AutotableConnectionManager"/>.</para>
 ///
 /// <para><b>Upstream parity (server/game.ts):</b> mirrors upstream's
 /// <c>Map&lt;string, Map&lt;string|number, any&gt;&gt; collections</c> with the

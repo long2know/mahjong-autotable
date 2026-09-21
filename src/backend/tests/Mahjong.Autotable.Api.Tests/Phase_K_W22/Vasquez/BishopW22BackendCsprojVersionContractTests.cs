@@ -27,10 +27,8 @@ public sealed class BishopW22BackendCsprojVersionContractTests
             "Mahjong.Autotable.Api", "Mahjong.Autotable.Api.csproj");
         if (!File.Exists(p)) return;
         var text = File.ReadAllText(p);
-        // Accept W22 stamp 0.31.0 OR any later 0.N.0 form (per
-        // §10.4 mobile-pin forward-broadening precedent).
-        var has = text.Contains("<Version>0.31.0</Version>", StringComparison.Ordinal)
-                   || text.Contains("0.31.0", StringComparison.Ordinal);
-        Assert.True(has);
+        var version = System.Xml.Linq.XDocument.Parse(text)
+            .Descendants("Version").Single().Value;
+        Assert.True(Version.Parse(version) >= new Version(0, 31, 0));
     }
 }

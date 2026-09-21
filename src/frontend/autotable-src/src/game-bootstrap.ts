@@ -30,6 +30,9 @@
 
 import 'bootstrap/dist/js/bootstrap';
 import type { Client } from './client';
+import { mountChatPanel } from './lobby';
+import { showToast } from './toast';
+import { t } from './i18n';
 
 let booted = false;
 
@@ -54,13 +57,12 @@ export async function bootstrapGame(): Promise<void> {
   const sceneMod = await import('./scene-shell');
   const client = await sceneMod.mountScene();
 
-  // Phase K Wave 1 — Chat panel: only needed when the user is in a
-  // game.  Lazy-import it so the lobby-only path doesn't pay the
-  // bundle cost.  installChatPanel itself hides the panel when no
-  // gameId is on the URL, but the import alone is ~tens of kB —
-  // gate on URL inspection here to avoid loading at all.
+  // The lobby can mount the same widget before the renderer. Attach the
+  // room client without reinstalling its social handlers or resetting inboxes.
   if (/[?&]gameId=/.test(window.location.search)) {
-    void import('./chat').then(mod => mod.installChatPanel(client));
+    void mountChatPanel().catch(error => {
+      showToast(t('social.load_failed', { reason: error instanceof Error ? error.message : String(error) }), 'error');
+    });
   }
 
   // Phase K Wave 3 — Voice chat: gated by Bishop's per-game

@@ -23,17 +23,16 @@ export const DEALS: Record<GameType, Partial<Record<DealType, Array<DealPart>>>>
   // HANDS deals 13 to each seat + 1 extra to the dealer (hand.extra@0).
   // Dealer's 14th tile counts as the first draw.
   //
-  // Phase F note: when dealMode='manual', the bundle never invokes the
-  // Changsha DEALS path — the backend pushes tiles tile-by-tile via the
-  // pickup state machine.  This table is only consulted for dealMode='auto'
-  // local sandbox runs (no backend connected).
+  // INITIAL also supplies the local pre-snapshot wall in both deal modes.
+  // Its ranges must begin at canonical column0; server snapshots subsequently
+  // own all real dealing and pickup, rather than these local table recipes.
   // -------------------------------------------------------------------
   CHANGSHA: {
     INITIAL: [
       {
         ranges: [
-          ['wall.1.0', 0, 28],
-          ['wall.1.0', 1, 28],
+          ['wall.0.0', 0, 28],
+          ['wall.0.0', 1, 28],
           ['wall.0.0', 2, 26],
           ['wall.0.0', 3, 26],
         ],
@@ -62,8 +61,8 @@ export const DEALS: Record<GameType, Partial<Record<DealType, Array<DealPart>>>>
     UNSHUFFLED: [
       {
         ranges: [
-          ['wall.1.0', 0, 28],
-          ['wall.1.0', 1, 28],
+          ['wall.0.0', 0, 28],
+          ['wall.0.0', 1, 28],
           ['wall.0.0', 2, 26],
           ['wall.0.0', 3, 26],
         ],

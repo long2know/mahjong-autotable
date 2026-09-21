@@ -1,6 +1,8 @@
 import { AmbientLight, Camera, DirectionalLight, Group, Mesh, Object3D, OrthographicCamera, PerspectiveCamera, PlaneGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import { World } from './world';
 import { CustomOutline } from './render/custom-outline';
+import { Size } from './types';
+import { fitTableProjection, type ScreenArea } from './table-fit';
 
 // Phase K Wave 7 — OutlinePass + EffectComposer + RenderPass are
 // gone.  The renderer is now a single-pass `renderer.render(scene,
@@ -48,6 +50,8 @@ export class MainView {
 
   private width = 0;
   private height = 0;
+  private fitCorners: Vector3[] = [];
+  private viewportSignature = '';
 
   private dummyObject: Object3D;
 
@@ -71,6 +75,14 @@ export class MainView {
   constructor(mainGroup: Group) {
     this.mainGroup = mainGroup;
     this.main = document.getElementById('main')!;
+    // The authored table edge encloses walls, melds and all four hand rows.
+    // Include tile height: fitting only z=0 misses the near perspective corners.
+    const edge = Size.TILE.y / 2;
+    for (const x of [-edge, World.WIDTH + edge]) {
+      for (const y of [-edge, World.WIDTH + edge]) {
+        for (const z of [0, Size.TILE.y]) this.fitCorners.push(new Vector3(x, y, z));
+      }
+    }
 
     this.scene = new Scene();
     this.scene.matrixWorldAutoUpdate = false;
@@ -223,7 +235,7 @@ export class MainView {
     // const h = this.renderer.domElement.clientHeight;
 
     if (this.camera !== null) {
-      this.scene.remove(this.camera);
+      this.viewGroup.remove(this.camera);
     }
 
     this.camera = this.makeCamera(this.perspective);
@@ -261,15 +273,90 @@ export class MainView {
   }
 
   updateCamera(seat: number | null, lookDown: number, zoom: number, mouse2: Vector2 | null): void {
-    if (this.perspective) {
-      this.updatePespectiveCamera(seat === null, lookDown, zoom, mouse2);
-    } else {
-      this.updateOrthographicCamera(seat === null, lookDown, zoom, mouse2);
-    }
-
+    this.updateCameraProjection(this.width, this.height);
     const angle = (seat ?? 0) * Math.PI * 0.5;
     this.viewGroup.rotation.set(0, 0, angle);
+    if (document.body.classList.contains('variant-riichi')) {
+      if (this.perspective) this.updatePespectiveCamera(seat === null, lookDown, zoom, mouse2);
+      else this.updateOrthographicCamera(seat === null, lookDown, zoom, mouse2);
+      this.viewGroup.updateMatrixWorld();
+      return;
+    }
+    if (this.perspective) {
+      this.updatePespectiveCamera(seat === null, 0, 0, null);
+    } else {
+      this.updateOrthographicCamera(seat === null, 0, 0, null);
+    }
     this.viewGroup.updateMatrixWorld();
+    fitTableProjection(this.camera, this.fitCorners, this.width, this.height, this.playArea());
+
+    // Fit is the zero-zoom baseline. Do not auto-fit away an intentional zoom,
+    // pan or look-down; the existing controls remain independent of resizing.
+    const userZoom = Math.max(-1, Math.min(1, zoom));
+    if (this.perspective) this.updatePespectiveCamera(seat === null, lookDown, userZoom, mouse2);
+    else this.updateOrthographicCamera(seat === null, lookDown, userZoom, mouse2);
+    this.viewGroup.updateMatrixWorld();
+  }
+
+  private playArea(): ScreenArea {
+    const canvas = this.main.getBoundingClientRect();
+    const margin = 8;
+    const style = getComputedStyle(document.documentElement);
+    const safeLeft = parseFloat(style.getPropertyValue('--game-safe-left')) || 0;
+    const safeRight = parseFloat(style.getPropertyValue('--game-safe-right')) || 0;
+    const area = {
+      left: Math.max(margin, safeLeft), top: margin,
+      right: this.width - Math.max(margin, safeRight), bottom: this.height - margin,
+    };
+    const compact = this.width <= 900 || this.height <= 520;
+    const topChrome = ['new-game', 'turn-banner', 'variant-badge', 'settings-button', 'lobby-toggle'];
+    if (compact) topChrome.push('bot-banner');
+    for (const id of topChrome) {
+      const element = document.getElementById(id);
+      if (!element || !element.getClientRects().length) continue;
+      const bounds = element.getBoundingClientRect();
+      if (bounds.top - canvas.top < this.height * 0.45) {
+        area.top = Math.max(area.top, bounds.bottom - canvas.top + margin);
+      }
+    }
+    for (const id of ['own-hand-tray', 'pickup-hud']) {
+      const element = document.getElementById(id);
+      if (!element || !element.getClientRects().length) continue;
+      const bounds = element.getBoundingClientRect();
+      area.bottom = Math.min(area.bottom, bounds.top - canvas.top - margin);
+    }
+    const claim = document.querySelector('.ferro-claim-overlay-visible');
+    if (claim?.getClientRects().length) {
+      area.bottom = Math.min(area.bottom, claim.getBoundingClientRect().top - canvas.top - margin);
+    }
+    const tableStatus = document.getElementById('bot-banner');
+    if (!compact && tableStatus?.getClientRects().length) {
+      area.bottom = Math.min(area.bottom, tableStatus.getBoundingClientRect().top - canvas.top - margin);
+    }
+    // Keep a collapsed chat header below the rendered hand in desktop mode too.
+    const chat = document.querySelector('.chat-panel-collapsed');
+    if (chat?.getClientRects().length) {
+      const bounds = chat.getBoundingClientRect();
+      if (bounds.top - canvas.top > this.height / 2) area.bottom = Math.min(area.bottom, bounds.top - canvas.top - margin);
+    }
+    // Information panels must reserve screen space, not merely leave the hand
+    // clickable while covering walls/melds. Portrait uses a top band; wider
+    // layouts keep a side panel and fit the board beside it.
+    if (!document.body.classList.contains('lobby-active')) {
+      for (const panel of document.querySelectorAll<HTMLElement>('#move-log, #sidebar, .chat-panel:not(.chat-panel-collapsed)')) {
+        if (!panel.getClientRects().length || getComputedStyle(panel).visibility === 'hidden') continue;
+        const bounds = panel.getBoundingClientRect();
+        const left = bounds.left - canvas.left, right = bounds.right - canvas.left;
+        if (left >= this.width || right <= 0) continue;
+        if (bounds.width > this.width * 0.55) {
+          area.top = Math.max(area.top, bounds.bottom - canvas.top + margin);
+        } else if (left > this.width * 0.4) {
+          area.right = Math.min(area.right, left - margin);
+        }
+      }
+    }
+    area.bottom = Math.max(area.top + 1, area.bottom);
+    return area;
   }
 
   private updatePespectiveCamera(
@@ -351,6 +438,15 @@ export class MainView {
   }
 
   updateViewport(): void {
+    const visual = window.visualViewport;
+    const top = visual?.offsetTop ?? 0;
+    const bottom = Math.max(0, window.innerHeight - (visual?.height ?? window.innerHeight) - top);
+    const signature = `${top}:${bottom}`;
+    if (signature !== this.viewportSignature) {
+      this.viewportSignature = signature;
+      document.documentElement.style.setProperty('--game-viewport-top', `${top}px`);
+      document.documentElement.style.setProperty('--game-viewport-bottom', `${bottom}px`);
+    }
     if (this.main.parentElement!.clientWidth !== this.width ||
       this.main.parentElement!.clientHeight !== this.height) {
 

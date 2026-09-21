@@ -7,7 +7,14 @@ import { Sound } from './sound';
 import { Replay } from './replay';
 import { openReplayForGame } from './replay-launcher';
 import { World } from "./world";
+import { HandView } from './hand-view';
+import { getSettings as getAppSettings, onSettingsChange as onAppSettingsChange, setSettings as setAppSettings } from './settings-drawer';
+import { COMPACT_VIEW_QUERY, toggleMobilePanel } from './mobile-overlay-policy';
+import { HandResultState, type ResultPresentation } from './hand-result-state';
 import { setElHidden, showEl, hideEl } from './dom-utils';
+import { getGameState, getGameStateStatus, subscribeGameState } from './game-state';
+import { onLanguageChange, t } from './i18n';
+import { getRuleActionControls, type RuleActionControls } from './ui/rule-action-controls';
 import {
   DealType,
   Conditions,
@@ -431,6 +438,10 @@ export class GameUi {
   // array.  Cleared on every fresh JOIN (the gameComplete tombstone)
   // and on New Game from the modal.
   private handHistory: Array<HandResultEntry> = [];
+  private historyRoomId: string | null = null;
+  private handResultState!: HandResultState;
+  private lastPresentedResult: string | null = null;
+  private allowResultHide = false;
 
   // Phase J Wave 2 — guard so re-renders driven by collection updates
   // don't re-open the modal once the user has dismissed it via the
@@ -458,6 +469,7 @@ export class GameUi {
   // Phase F — last parsed Phase F params (URL > localStorage > defaults).
   // The picker UI keeps this in sync so subsequent deals see the latest.
   private phaseF: Required<PhaseFParams>;
+  private ruleActions!: RuleActionControls;
 
   constructor(client: Client, world: World) {
     this.client = client;
@@ -544,6 +556,11 @@ export class GameUi {
     // Phase F — resolve URL > localStorage > defaults BEFORE wiring the
     // picker so the initial select values match what we'll actually deal.
     this.phaseF = this.resolvePhaseFParams();
+    // A local relay table has neither a requested nor a remembered server room.
+    const offlineRelay = this.phaseF.variant !== GameType.CHANGSHA
+      && !new URLSearchParams(window.location.search).has('gameId')
+      && client.lastGameId === null;
+    this.connectionLost = !client.connected() && !offlineRelay;
     this.applyPhaseFToPickers();
     this.applyVariantBodyClass();
     this.updateVariantBadge();
@@ -555,6 +572,7 @@ export class GameUi {
     this.setupResultModal();
     this.setupDiceHud();
     this.setupBotBanner();
+    this.setupHandPresentation();
     this.setupPhaseFPickers();
     this.setupPickupHud();
     this.setupTurnBanner();
@@ -564,6 +582,8 @@ export class GameUi {
     this.setupSoundEffects();
     this.setupReplay();
     this.setupMobileDrawer();
+    // Seat/nick subscriptions do not replay a snapshot received before mount.
+    this.updateSeats();
   }
 
   private setupEvents(): void {
@@ -665,7 +685,9 @@ export class GameUi {
     // style.display = 'block' below would override a non-!important rule,
     // so we short-circuit here for belt-and-braces correctness.
     const spectating = readSpectatorFromUrl();
-    if (spectating) {
+    // Offline Changsha has no confirmed seat; preserve relay's local-table behavior.
+    const offlineChangsha = this.phaseF.variant === GameType.CHANGSHA && !this.client.connected();
+    if (spectating || offlineChangsha) {
       (document.querySelector('.seat-buttons')! as HTMLElement).style.display = 'none';
       // Seat/start deadlock fix (Ferro) — #leave-seat visibility tracks CONFIRMED
       // ownership, never the URL hint: a spectator owns no chair, so it is hidden.
@@ -854,6 +876,7 @@ export class GameUi {
   // ---------------------------------------------------------------------
 
   private setupClaimButtons(): void {
+    this.ruleActions = getRuleActionControls(this.client);
     const buttons: Array<['Pung'|'Chow'|'Kong'|'Hu', HTMLButtonElement]> = [
       ['Pung', this.elements.claim.Pung],
       ['Chow', this.elements.claim.Chow],
@@ -866,8 +889,7 @@ export class GameUi {
     this.elements.claim.Pass.onclick = () => this.sendClaim({ action: 'pass', type: null });
 
     this.client.claim.on('update', this.onClaimUpdate.bind(this));
-    // initial state
-    this.refreshClaimButtons();
+    this.ruleActions.onChange(() => this.refreshClaimButtons());
   }
 
   /**
@@ -909,6 +931,7 @@ export class GameUi {
   }
 
   private refreshClaimButtons(): void {
+    this.activeClaim = this.ruleActions.claim;
     // R-1 §D9 (FE-5) — suppress a STALE claim: if it is authoritatively my turn
     // to discard/pick up, any lingering `activeClaim` (a window the backend
     // closed without emitting `EncodeClaimWindowClosed`) is not actionable, so
@@ -976,10 +999,10 @@ export class GameUi {
     }
     const remainingMs = claim.deadline - Date.now();
     if (remainingMs <= 0) {
-      // Auto-pass on expiry.
+      // The server owns expiry; do not turn a stale chooser into a new command.
       this.elements.claimCountdownValue.textContent = '0.0';
       this.updateTurnBannerCountdown(0);
-      this.sendClaim({ action: 'pass', type: null });
+      this.refreshClaimButtons();
       return;
     }
     this.elements.claimCountdownValue.textContent = (remainingMs / 1000).toFixed(1);
@@ -987,75 +1010,124 @@ export class GameUi {
   }
 
   private sendClaim(action: ClaimAction): void {
-    const selfSeat = this.client.seat;
-    if (selfSeat === null) return;
-    if (!this.activeClaim) return;
-    if (action.action === 'claim'
-        && !(Array.isArray(this.activeClaim.available) && this.activeClaim.available.includes(action.type))) {
-      return; // defensive — should not happen because button is disabled
-    }
-    this.client.claim.set(String(selfSeat), action as any);
-    // Locally close the claim window — the server will push a definitive
-    // close, but we want immediate button-disable so a player can't
-    // double-click claim+pass.
-    this.activeClaim = null;
-    this.refreshClaimButtons();
+    this.ruleActions.requestClaim(action.action === 'pass' ? 'Pass' : action.type);
   }
 
   // ---------------------------------------------------------------------
   // Phase D — Scoring panel (result modal).
   //
   //   server pushes result.current = { winner, type, score, hand, nextBanker }
-  //   client renders modal, Next Hand button sends match[1] = { action: 'nextHand' }
+  //   Changsha Continue acknowledges the server's exact held-hand token.
+  //   The legacy nextHand sentinel remains relay-only.
   // ---------------------------------------------------------------------
 
   private setupResultModal(): void {
+    this.handResultState = new HandResultState();
+    document.getElementById('result-refresh')?.addEventListener('click', () => window.location.reload());
     this.elements.resultNext.onclick = () => {
-      // Bishop accepts a sentinel match entry to advance to the next hand.
-      // Use key 1 to avoid clobbering key 0 (the live MatchInfo).
-      this.client.match.set(1, { action: 'nextHand' } as unknown as MatchInfo);
-      // @ts-ignore
-      $('#result-modal').modal('hide');
+      this.refreshResultDialog();
+      const view = this.handResultState.presentation();
+      if (view.mode === 'relay') {
+        this.client.match.set(1, { action: 'nextHand' } as unknown as MatchInfo);
+      }
+      const command = this.handResultState.acknowledge();
+      if (command !== null) {
+        this.renderResultReadiness(this.handResultState.presentation());
+        try { this.client.handResultAck.set('current', command); }
+        catch { this.handResultState.reject('connection-unavailable'); }
+      } else {
+        this.handResultState.dismiss();
+      }
+      this.refreshResultDialog();
     };
     this.client.result.on('update', this.onResultUpdate.bind(this));
+    this.client.on('update', () => this.refreshResultDialog());
+    this.client.on('connect', () => this.refreshResultDialog());
+    this.client.on('disconnect', () => this.refreshResultDialog());
+    this.client.on('joining', () => this.refreshResultDialog());
+    this.client.actionRejected.on('update', entries => {
+      for (const [, rejection] of entries) {
+        if (rejection?.action === 'handResultAck') this.handResultState.reject(rejection.reason);
+      }
+      this.refreshResultDialog();
+    });
+    $('#result-modal').on('hide.bs.modal', event => {
+      if (!this.allowResultHide && this.handResultState.presentation().visible) event.preventDefault();
+    });
+    onLanguageChange(() => this.renderResultReadiness(this.handResultState.presentation()));
+    this.refreshResultDialog();
   }
 
   private onResultUpdate(entries: Array<[string, HandResultEntry | null]>): void {
-    for (const [key, value] of entries) {
-      if (key !== 'current') continue;
-      if (value === null) {
-        // @ts-ignore
-        $('#result-modal').modal('hide');
-        continue;
-      }
-      // Phase J Wave 2 — accumulate per-hand history client-side so the
-      // end-of-game modal can render a recap even when the runtime
-      // doesn't push a dedicated `handHistory` array.  Skip duplicates
-      // that arise from full-sync replays (key is "current" so we use
-      // a structural fingerprint instead of array length).
-      this.recordHandResult(value);
-      this.renderResult(value);
-      // Phase J Wave 3 — Fire the per-hand SFX off the same UPDATE that
-      // raised the result modal.  Hu → fanfare, Draw → washout, ZhaHu
-      // is left silent (no SFX defined; the modal already conveys it).
-      if (value.type === 'Hu') {
-        Sound.play('win');
-      } else if (value.type === 'Draw') {
-        Sound.play('washout');
-      }
-      // @ts-ignore
-      $('#result-modal').modal('show');
+    if (entries.some(([key]) => key === 'current')) this.refreshResultDialog();
+  }
+
+  private refreshResultDialog(): void {
+    const result = this.client.result.get('current');
+    const complete = this.client.gameComplete.get('current');
+    const view = this.handResultState.update(result, {
+      roomId: this.client.lastGameId,
+      connected: this.client.connected(),
+      freshSnapshot: this.client.lastGameId !== null && this.client.serverSnapshotGameId === this.client.lastGameId,
+      seat: this.client.seat,
+      changsha: this.client.connectionMode === 'changsha',
+      complete: complete?.isComplete ?? complete?.IsComplete ?? complete?.isGameComplete ?? complete?.IsGameComplete ?? false,
+    });
+    if (result === null && this.lastPresentedResult !== null) {
+      this.world.clearDrawnHandTile();
+      this.lastPresentedResult = null;
+    }
+    if (view.visible && result !== null && view.identity !== this.lastPresentedResult) {
+      this.lastPresentedResult = view.identity;
+      this.recordHandResult(result);
+      this.renderResult(result);
+      if (result.type === 'Hu') Sound.play('win');
+      else if (result.type === 'Draw') Sound.play('washout');
+    }
+    this.renderResultReadiness(view);
+    if (view.visible) {
+      // @ts-ignore Bootstrap's runtime plugin is already installed by the shell.
+      $('#result-modal').modal({ backdrop: 'static', keyboard: false, show: true });
+    } else {
+      this.allowResultHide = true;
+      // @ts-ignore Bootstrap runtime plugin.
+      $('#result-modal').modal('hide');
+      this.allowResultHide = false;
     }
   }
 
-  // Phase J Wave 2 — append the latest hand result to the client-side
-  // history buffer used by the end-of-game modal.  Deduplicated against
-  // the previous entry so connect-time full-syncs (which replay the
-  // current `result` entry) don't double-count.
+  private renderResultReadiness(view: ResultPresentation): void {
+    const status = document.getElementById('result-dialog-status');
+    const error = document.getElementById('result-dialog-error');
+    const refresh = document.getElementById('result-refresh');
+    if (refresh) {
+      refresh.hidden = !['reconnecting', 'invalid', 'pending'].includes(view.mode) && view.error === null;
+      refresh.textContent = t('result_dialog.refresh_button');
+    }
+    const waiting = view.waitingSeats.map(seat => this.nickForSeat(seat) ?? `Seat ${seat}`).join(', ');
+    if (status) status.textContent = view.mode === 'none' || view.mode === 'relay' ? ''
+      : t(`result_dialog.${view.mode}`, { players: waiting });
+    if (error) {
+      error.hidden = view.error === null;
+      error.textContent = view.error === null ? '' : t('result_dialog.rejected', { reason: view.error });
+    }
+    const button = this.elements.resultNext;
+    button.disabled = !['continue', 'observer', 'dismiss', 'relay'].includes(view.mode);
+    button.textContent = t(view.mode === 'relay' ? 'result_dialog.next_hand'
+      : view.mode === 'observer' || view.mode === 'dismiss' ? 'result_dialog.dismiss_button'
+        : view.mode === 'pending' ? 'result_dialog.sending_button'
+          : view.mode === 'waiting' || view.mode === 'advancing' ? 'result_dialog.waiting_button'
+            : 'result_dialog.continue_button');
+    button.setAttribute('aria-busy', String(view.mode === 'pending'));
+    this.elements.resultModal.dataset.resultIdentity = view.identity ?? '';
+    this.elements.resultModal.dataset.continuationState = view.mode;
+  }
+
+  // Called once per settlement identity; readiness updates are not score history.
   private recordHandResult(result: HandResultEntry): void {
-    const last = this.handHistory[this.handHistory.length - 1];
-    if (last && JSON.stringify(last) === JSON.stringify(result)) return;
-    this.handHistory.push(result);
+    const stable = { ...result };
+    delete stable.continuation;
+    this.handHistory.push(stable);
   }
 
   private renderResult(result: HandResultEntry): void {
@@ -1467,11 +1539,31 @@ export class GameUi {
   private setupBotBanner(): void {
     // Re-render whenever nick/seat membership changes.
     this.client.nicks.on('update', this.refreshBotBanner.bind(this));
+    subscribeGameState(() => this.refreshBotBanner());
+    onLanguageChange(() => this.refreshBotBanner());
     this.refreshBotBanner();
+  }
+
+  private setupHandPresentation(): void {
+    new HandView(this.client, this.world);
   }
 
   private refreshBotBanner(): void {
     const banner = this.elements.botBanner;
+    const serverManaged = this.client.connected() && this.phaseF.variant === GameType.CHANGSHA;
+    const metadata = serverManaged && getGameStateStatus().connected ? getGameState() : null;
+    this.elements.botCount.disabled = serverManaged;
+    this.elements.botDifficulty.disabled = serverManaged;
+    if (serverManaged) {
+      this.elements.botCount.value = metadata === null ? '' : String(metadata.botCount);
+      this.elements.botDifficulty.value = '';
+      this.elements.botCount.title = t('lobby.creation_settings_hint');
+      this.elements.botDifficulty.title = t('lobby.server_managed');
+    }
+    const difficultyPlaceholder = this.elements.botDifficulty.querySelector<HTMLOptionElement>('option[value=""]');
+    if (difficultyPlaceholder !== null) {
+      difficultyPlaceholder.textContent = t(serverManaged ? 'lobby.server_managed' : 'lobby.bot_difficulty');
+    }
     // Phase I Wave 4 — for spectators the bot banner IS the HUD: it
     // names which seats are bots and which difficulty.  For seated
     // players we keep the pre-Wave-4 behaviour (banner only shows once
@@ -1479,6 +1571,12 @@ export class GameUi {
     const spectating = readSpectatorFromUrl();
     if (!spectating && this.client.seat === null) {
       hideEl(banner);
+      return;
+    }
+    if (serverManaged && metadata === null) {
+      banner.textContent = getGameStateStatus().status === 'loading' ? t('lobby.public.loading')
+        : t('lobby.public.unavailable', { reason: getGameStateStatus().error ?? '' });
+      showEl(banner);
       return;
     }
     const bots: Array<{ seat: number; nick: string }> = [];
@@ -1491,22 +1589,26 @@ export class GameUi {
         bots.push({ seat: i, nick: nick! });
       }
     }
-    if (bots.length === 0) {
+    if (metadata === null && bots.length === 0) {
       hideEl(banner);
       return;
     }
     banner.innerHTML = '';
     const title = document.createElement('span');
     title.className = 'bot-banner-title';
-    // Phase F — appended difficulty annotation reads the picker, since the
-    // backend's bot engine hasn't shipped yet.  Once it has, this should
-    // prefer a server-pushed `botDifficulty` from a future seats field.
     const diff = this.phaseF?.botDifficulty ?? 'medium';
     const diffWord = diff.charAt(0).toUpperCase() + diff.slice(1);
-    title.textContent = `${bots.length} bot${bots.length === 1 ? '' : 's'} — ${diffWord} · `
-      + `seat${bots.length === 1 ? '' : 's'} `
-      + bots.map(b => b.seat).join(', ');
+    title.textContent = metadata !== null
+      ? t('lobby.room_counts', { humans: metadata.seatedCount, bots: metadata.botCount, open: metadata.openHumanSeats })
+      : `${bots.length} bot${bots.length === 1 ? '' : 's'} — ${diffWord} · `
+        + `seat${bots.length === 1 ? '' : 's'} ` + bots.map(b => b.seat).join(', ');
     banner.appendChild(title);
+    const summary = document.createElement('span');
+    summary.className = 'bot-banner-summary';
+    summary.textContent = metadata !== null
+      ? t('lobby.room_counts_compact', { humans: metadata.seatedCount, bots: metadata.botCount, open: metadata.openHumanSeats })
+      : title.textContent;
+    banner.appendChild(summary);
     const winds = ['E', 'S', 'W', 'N'];
     for (const { seat, nick } of bots) {
       const row = document.createElement('span');
@@ -1629,6 +1731,8 @@ export class GameUi {
       this.world.emitTakePickup();
     };
     this.client.pickup.on('update', this.onPickupUpdate.bind(this));
+    // The lazy UI can mount after the authoritative snapshot has already arrived.
+    this.onPickupUpdate();
   }
 
   private onPickupUpdate(): void {
@@ -2226,6 +2330,7 @@ export class GameUi {
   //                 the panel automatically (shouldShowOnLoad).
   // ---------------------------------------------------------------------
   private setupGameCompleteModal(): void {
+    this.historyRoomId = this.client.lastGameId;
     this.elements.gameCompleteNewGameBtn.onclick = () => {
       this.dismissGameCompleteModal();
       // New Game UX P0 — route through the ONE authoritative #new-game path
@@ -2275,9 +2380,12 @@ export class GameUi {
 
     // Also re-evaluate on every new JOIN: clear any stale history (we may
     // be reconnecting to a fresh game) and re-arm the modal-shown guard.
-    this.client.on('connect', () => {
-      // Drop client-side history on JOIN — full-sync replay will repopulate.
-      this.handHistory = [];
+    this.client.on('connect', game => {
+      if (game.gameId !== this.historyRoomId) {
+        this.handHistory = [];
+        this.lastPresentedResult = null;
+      }
+      this.historyRoomId = game.gameId;
       this.gameCompleteShown = false;
     });
   }
@@ -2299,6 +2407,7 @@ export class GameUi {
         value.isComplete ?? value.IsComplete ??
         value.isGameComplete ?? value.IsGameComplete ?? false;
       if (!isComplete) continue;
+      this.refreshResultDialog();
       if (this.gameCompleteShown) continue;
       this.gameCompleteShown = true;
       this.lastGameCompletePayload = value;
@@ -2652,13 +2761,28 @@ export class GameUi {
     const moveLog = document.getElementById('move-log');
     if (toggle === null || moveLog === null) return;
 
+    const compact = window.matchMedia(COMPACT_VIEW_QUERY);
     const isOpen = (): boolean =>
       document.body.classList.contains('move-log-open');
 
-    const setOpen = (open: boolean): void => {
+    const render = (): void => {
+      const settings = getAppSettings();
+      // This controller mounts before the lazy settings drawer is ever opened.
+      document.body.classList.toggle('mobile-table-status-visible', settings.mobileTableStatus);
+      const open = compact.matches && settings.mobileInfoPanel === 'move-log';
       document.body.classList.toggle('move-log-open', open);
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      moveLog.inert = compact.matches && !open;
+      if (compact.matches) moveLog.setAttribute('aria-hidden', String(!open));
+      else moveLog.removeAttribute('aria-hidden');
     };
+    const setOpen = (open: boolean): void => {
+      const current = getAppSettings().mobileInfoPanel;
+      setAppSettings({ mobileInfoPanel: toggleMobilePanel(current, 'move-log', open) });
+    };
+    onAppSettingsChange(render);
+    compact.addEventListener('change', render);
+    render();
 
     toggle.addEventListener('click', (event: MouseEvent) => {
       event.stopPropagation();
@@ -2671,6 +2795,8 @@ export class GameUi {
       if (!isOpen()) return;
       const target = event.target as Node | null;
       if (target === null) return;
+      if (target instanceof Element && target.closest('#lobby-panel')) return;
+      if (document.body.classList.contains('lobby-active')) return;
       if (moveLog.contains(target)) return;
       if (toggle.contains(target)) return;
       setOpen(false);

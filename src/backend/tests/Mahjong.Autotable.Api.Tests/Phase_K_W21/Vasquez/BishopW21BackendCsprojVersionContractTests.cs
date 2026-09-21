@@ -27,8 +27,8 @@ public sealed class BishopW21BackendCsprojVersionContractTests
             "Mahjong.Autotable.Api", "Mahjong.Autotable.Api.csproj");
         if (!File.Exists(p)) return;
         var text = File.ReadAllText(p);
-        var has = text.Contains("<Version>0.30.0</Version>", StringComparison.Ordinal)
-                   || text.Contains("0.30.0", StringComparison.Ordinal);
-        Assert.True(has);
+        var version = System.Xml.Linq.XDocument.Parse(text)
+            .Descendants("Version").Single().Value;
+        Assert.True(Version.Parse(version) >= new Version(0, 30, 0));
     }
 }

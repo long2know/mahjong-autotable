@@ -174,6 +174,14 @@ function apply(): void {
  * supply them.
  */
 export function t(key: string, params?: Record<string, string | number>): string {
+  if (key === 'lobby.room_counts' || key === 'lobby.room_counts_compact') {
+    params = {
+      ...params,
+      humanWord: t(params?.humans === 1 ? 'lobby.human_one' : 'lobby.human_other'),
+      botWord: t(params?.bots === 1 ? 'lobby.bot_one' : 'lobby.bot_other'),
+      openWord: t(params?.open === 1 ? 'lobby.open_one' : 'lobby.open_other'),
+    };
+  }
   const active = CATALOGS[activeLocale];
   let str = active === null ? undefined : active[key];
   if (str === undefined || str === null || str === '') {
@@ -222,6 +230,7 @@ export function onLanguageChange(handler: (locale: LocaleTag) => void): () => vo
 }
 
 function emit(): void {
+  translateElements();
   for (const fn of listeners) {
     try { fn(activeLocale); } catch { /* swallow */ }
   }
@@ -240,10 +249,20 @@ export function installI18n(): void {
   userPref = loadFromStorage();
   activeLocale = resolveLocale(userPref);
   apply();
+  translateElements();
   // If the resolved active locale isn't English, kick off the
   // catalog fetch so `t()` lookups graduate from English fallback
   // to localized strings as soon as the chunk lands.
   void ensureCatalog(activeLocale);
+}
+
+export function translateElements(root: ParentNode = document): void {
+  for (const element of root.querySelectorAll<HTMLElement>('[data-i18n]')) {
+    element.textContent = t(element.dataset.i18n!);
+  }
+  for (const element of root.querySelectorAll<HTMLElement>('[data-i18n-placeholder]')) {
+    element.setAttribute('placeholder', t(element.dataset.i18nPlaceholder!));
+  }
 }
 
 /**

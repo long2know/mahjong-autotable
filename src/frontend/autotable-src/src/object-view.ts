@@ -48,6 +48,8 @@ import { ThingType, Place, TileVariant, GameType } from "./types";
 export interface Render {
   type: ThingType;
   thingIndex: number;
+  hidden?: boolean;
+  drawn?: boolean;
   place: Place;
   selected: boolean;
   hovered: boolean;
@@ -192,6 +194,7 @@ export class ObjectView {
 
   private addStatic(): void {
     const tableMesh = this.assetLoader.makeTable();
+    tableMesh.name = 'table';
     tableMesh.position.set(World.WIDTH / 2, World.WIDTH / 2, 0);
     this.mainGroup.add(tableMesh);
     this.mainGroup.add(this.center.mesh);
@@ -262,7 +265,11 @@ export class ObjectView {
     this.highlightedObjects.splice(0);
     for (const thing of things) {
       const thingGroup = this.thingGroups.get(thing.type)!;
-      const custom = thing.hovered || thing.selected || thing.held || thing.bottom || thing.highlighted;
+      if (thing.hidden) {
+        thingGroup.hide(thing.thingIndex);
+        continue;
+      }
+      const custom = thing.hovered || thing.selected || thing.held || thing.bottom || thing.highlighted || thing.drawn;
       if (!custom && thingGroup.canSetSimple()) {
         thingGroup.setSimple(thing.thingIndex, thing.place.position, thing.place.rotation);
         continue;
@@ -283,6 +290,7 @@ export class ObjectView {
       if (thing.hovered) {
         material.emissive.set(0.05, 0.05, 0.05);
       }
+      if (thing.drawn) material.emissive.set(0.02, 0.14, 0.2);
 
       if (thing.bottom) {
         material.color.set(0.8, 0.8, 0.8);

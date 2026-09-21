@@ -4,6 +4,7 @@ using System.Text.Json;
 using Mahjong.Autotable.Api.Autotable;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Runtime;
+using Mahjong.Autotable.Api.Tests.TestInfrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -89,63 +90,40 @@ public class AutotableDisconnectSeatReleaseTests : IAsyncLifetime
     [Fact, Trait("Category", "Phase-J-2"), Trait("Wave", "Phase-J-2")]
     public async Task Disconnect_OfActiveSeat_ReleasesRuntimeBinding()
     {
-        const string gameId = "DISCONNECT-RELEASE";
-        var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
-        var runtime = _factory.Services.GetRequiredService<IChangshaGameRuntime>();
+        await using var fixture = new LobbyRepairFixture();
+        var alice = await fixture.PlayerAsync();
+        var room = await fixture.CreateRoomAsync(alice, 0);
+        var runtime = fixture.Runtime;
+        var before = await fixture.StateAsync(room);
+        Assert.False(before.IsPublic);
+        Assert.Equal(ChangshaPhase.Seating, before.Phase);
+        Assert.DoesNotContain(before.Seats, seat => seat.IsBot);
+        var original = ViewerAuthorityAssertions.GrantedConnection(fixture.Manager, runtime, room.RuntimeId, 0);
+        var oldConnectionId = original.Id.ToString("N");
+        Assert.Equal(0, runtime.TryGetSeatForConnection(room.RuntimeId, oldConnectionId));
+        Assert.Equal(alice.Id, before.Seats[0].PlayerId);
+        await room.Creator.DisposeAsync();
+        Assert.True(await WaitForAsync(() => runtime.TryGetSeatForConnection(room.RuntimeId, oldConnectionId) is null,
+            timeoutMs: 3000), "The disconnected exact transport must lose its runtime binding.");
+        Assert.True(runtime.TryGetSnapshot(room.RuntimeId, out var released));
+        Assert.Equal(ChangshaPhase.Seating, released!.Phase);
+        Assert.Equal(room.RuntimeId, fixture.Manager.GetRuntimeGameIdBoundTo(room.Alias));
 
-        // Alice joins as seat 0 and takes seat 0 (binds the runtime).
-        var alice = await OpenAndJoinAsync(seat: 0, gameId: gameId);
-        await alice.TakeSeatAsync(0);
-
-        var aliceSeated = await WaitForAsync(() =>
-        {
-            var rid = manager.GetRuntimeGameIdBoundTo(gameId);
-            if (string.IsNullOrEmpty(rid)) return false;
-            if (!runtime.TryGetSnapshot(rid!, out var s) || s is null) return false;
-            return string.Equals(s.Seats[0].PlayerId, alice.PlayerId, StringComparison.Ordinal)
-                && !s.Seats[0].IsBot;
-        }, timeoutMs: 2000);
-        Assert.True(aliceSeated,
-            "Alice's seat-take should bind state.Seats[0].PlayerId to her connectionId.");
-
-        var runtimeGameId = manager.GetRuntimeGameIdBoundTo(gameId)!;
-
-        // Close Alice's WS — server's disconnect handler must propagate the
-        // release into the Changsha runtime under Bishop's Phase J Wave 2 fix.
-        await alice.DisposeAsync();
-
-        // Probe release indirectly: a fresh connectionId tries to take seat 0
-        // directly through the runtime API. Currently throws "Seat 0 is
-        // already taken"; post-fix this should succeed because the seat
-        // binding for Alice's connectionId has been removed.
-        var probeConnectionId = $"probe-{Guid.NewGuid():N}".Substring(0, 12);
-
-        var releaseObserved = await WaitForAsync(() =>
-        {
-            try
-            {
-                runtime.TakeSeatAsync(runtimeGameId, probeConnectionId, probeConnectionId, 0, CancellationToken.None)
-                    .GetAwaiter().GetResult();
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }, timeoutMs: 3000);
-
-        Assert.True(releaseObserved,
-            "Bishop's Phase J Wave 2 fix should release the runtime seat-0 binding when " +
-            "Alice's autotable WS closes, so a fresh connectionId can take seat 0. " +
-            "If this assertion fails the seat-release wiring from " +
-            "AutotableConnectionManager.HandleDisconnectAsync into " +
-            "IChangshaGameRuntime.HandleDisconnectAsync is missing or incorrect.");
-
-        // And the new connectionId is now the seat-0 owner in the snapshot.
-        Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var postState));
-        Assert.NotNull(postState);
-        Assert.Equal(probeConnectionId, postState!.Seats[0].PlayerId);
+        var replacement = await fixture.PlayerAsync();
+        Assert.NotEqual(alice.Id, replacement.Id);
+        var replacementSocket = await fixture.JoinAsync(replacement, room);
+        var granted = ViewerAuthorityAssertions.GrantedConnection(fixture.Manager, runtime, room.RuntimeId, 0);
+        Assert.NotEqual(original.Id, granted.Id);
+        Assert.Equal(0, runtime.TryGetSeatForConnection(room.RuntimeId, granted.Id.ToString("N")));
+        Assert.Null(runtime.TryGetSeatForConnection(room.RuntimeId, oldConnectionId));
+        var postState = await fixture.StateAsync(room);
+        Assert.Equal(replacement.Id, postState.Seats[0].PlayerId);
         Assert.False(postState.Seats[0].IsBot);
+        Assert.Equal(ChangshaPhase.Seating, postState.Phase);
+        Assert.DoesNotContain(postState.Seats, seat => seat.IsBot);
+        ViewerAuthorityAssertions.Expect(replacementSocket.Frames.First(frame => LobbyRepairFixture.Type(frame) == "JOINED"),
+            room.Alias, 0);
+        Assert.Equal(room.RuntimeId, fixture.Manager.GetRuntimeGameIdBoundTo(room.Alias));
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -224,55 +202,59 @@ public class AutotableDisconnectSeatReleaseTests : IAsyncLifetime
     [Fact, Trait("Category", "Phase-J-2"), Trait("Wave", "Phase-J-2")]
     public async Task Disconnect_ThenReconnect_SameSeat_Rebinds()
     {
-        const string gameId = "DISCONNECT-REBIND";
-        var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
-        var runtime = _factory.Services.GetRequiredService<IChangshaGameRuntime>();
+        await using var fixture = new LobbyRepairFixture();
+        var owner = await fixture.PlayerAsync();
+        var room = await fixture.CreateRoomAsync(owner, 3, dealMode: "auto");
+        var runtime = fixture.Runtime;
+        Assert.True(await WaitForAsync(() => runtime.TryGetSnapshot(room.RuntimeId, out var state)
+            && state!.Phase == ChangshaPhase.AwaitingDiscard && state.ActiveSeatIndex == 0, timeoutMs: 2000));
+        var before = await fixture.StateAsync(room);
+        Assert.Equal(14, before.Hands[0].ConcealedTiles.Count);
+        var botSeatIndexes = before.Seats.Where(seat => seat.IsBot)
+            .Select(seat => seat.SeatIndex).Order().ToArray();
+        Assert.Equal(new[] { 1, 2, 3 }, botSeatIndexes);
+        var original = ViewerAuthorityAssertions.GrantedConnection(fixture.Manager, runtime, room.RuntimeId, 0);
+        var originalId = original.Id.ToString("N");
+        await room.Creator.DisposeAsync();
+        Assert.True(await WaitForAsync(() => runtime.TryGetSeatForConnection(room.RuntimeId, originalId) is null,
+            timeoutMs: 3000));
 
-        // First connection takes seat 0 and binds the runtime.
-        var alice1 = await OpenAndJoinAsync(seat: 0, gameId: gameId);
-        await alice1.TakeSeatAsync(0);
-        var alice1Seated = await WaitForAsync(() =>
-        {
-            var rid = manager.GetRuntimeGameIdBoundTo(gameId);
-            return !string.IsNullOrEmpty(rid)
-                && runtime.TryGetSnapshot(rid!, out var s) && s is not null
-                && string.Equals(s.Seats[0].PlayerId, alice1.PlayerId, StringComparison.Ordinal);
-        }, timeoutMs: 2000);
-        Assert.True(alice1Seated, "Alice1's seat-0 take should bind state.Seats[0].");
+        var stranger = await fixture.PlayerAsync();
+        Assert.NotEqual(owner.Id, stranger.Id);
+        var rejectedSocket = await fixture.SocketAsync(stranger, room.Alias, "join=1&seat=0");
+        var rejected = await rejectedSocket.WaitAsync(frame => LobbyRepairFixture.Entries(frame)
+            .Any(entry => entry[0].GetString() == "actionRejected"));
+        var denial = Assert.Single(LobbyRepairFixture.Entries(rejected),
+            entry => entry[0].GetString() == "actionRejected");
+        Assert.Equal("join", denial[2].GetProperty("action").GetString());
+        Assert.Equal("room-not-seating", denial[2].GetProperty("reason").GetString());
+        ViewerAuthorityAssertions.Expect(rejected, null, null);
+        Assert.Equal(owner.Id, (await fixture.StateAsync(room)).Seats[0].PlayerId);
 
-        var runtimeGameId = manager.GetRuntimeGameIdBoundTo(gameId)!;
-
-        // Disconnect Alice1 — under Bishop's fix, this releases the seat-0
-        // binding in the Changsha runtime.
-        await alice1.DisposeAsync();
-
-        // Wait for the release to be observable (poll the snapshot — under
-        // the fix, seat 0 either becomes free for re-take or still holds
-        // alice1's id transiently before HandleDisconnectAsync runs; we just
-        // need to observe that the next seat-take succeeds).
-        await using var alice2 = await OpenAndJoinAsync(seat: 0, gameId: gameId);
-
-        // Retry the seat-take — under the current bug this throws inside the
-        // backend (logged at Debug, not surfaced to the client) so the seat
-        // stays unbound for alice2. The wait loop polls for the post-fix
-        // success state where state.Seats[0] holds alice2's playerId.
-        await alice2.TakeSeatAsync(0);
-
-        var rebound = await WaitForAsync(() =>
-        {
-            if (!runtime.TryGetSnapshot(runtimeGameId, out var s) || s is null) return false;
-            return string.Equals(s.Seats[0].PlayerId, alice2.PlayerId, StringComparison.Ordinal)
-                && !s.Seats[0].IsBot;
-        }, timeoutMs: 3000);
-
-        Assert.True(rebound,
-            "After Alice1's disconnect, Alice2's seat-0 take should succeed and the runtime " +
-            "snapshot should report state.Seats[0].PlayerId == alice2.PlayerId. " +
-            "If the release-on-disconnect wiring is missing, the inner TakeSeatAsync throws " +
-            "'Seat 0 is already taken' and state.Seats[0].PlayerId remains alice1.PlayerId.");
-
-        // Runtime binding survives across the swap — same runtimeGameId.
-        Assert.Equal(runtimeGameId, manager.GetRuntimeGameIdBoundTo(gameId));
+        var resumed = await fixture.JoinAsync(owner, room, "&seat=3&botCount=0");
+        var current = ViewerAuthorityAssertions.GrantedConnection(fixture.Manager, runtime, room.RuntimeId, 0);
+        Assert.NotEqual(original.Id, current.Id);
+        Assert.Equal(0, runtime.TryGetSeatForConnection(room.RuntimeId, current.Id.ToString("N")));
+        Assert.Null(runtime.TryGetSeatForConnection(room.RuntimeId, originalId));
+        var joined = resumed.Frames.First(frame => LobbyRepairFixture.Type(frame) == "JOINED");
+        Assert.Equal(owner.Id, joined.GetProperty("playerId").GetString());
+        ViewerAuthorityAssertions.Expect(joined, room.Alias, 0);
+        var full = resumed.Frames.Last(LobbyRepairFixture.IsFull);
+        var hand = LobbyRepairFixture.Entries(full).Where(entry => entry[0].GetString() == "things"
+            && entry[2].ValueKind == JsonValueKind.Object && entry[2].TryGetProperty("slotName", out var slot)
+            && slot.GetString()!.StartsWith("hand.", StringComparison.Ordinal)
+            && slot.GetString()!.EndsWith("@0", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(before.Hands[0].ConcealedTiles.Order(), hand.Select(entry => entry[1].GetInt32()).Order());
+        Assert.All(hand, entry => Assert.Equal(1, entry[2].GetProperty("rotationIndex").GetInt32()));
+        Assert.Equal(room.RuntimeId, fixture.Manager.GetRuntimeGameIdBoundTo(room.Alias));
+        var tileId = before.Hands[0].ConcealedTiles[0];
+        var resumedState = await fixture.StateAsync(room);
+        Assert.Equal(botSeatIndexes, resumedState.Seats.Where(seat => seat.IsBot)
+            .Select(seat => seat.SeatIndex).Order().ToArray());
+        await resumed.UpdateAsync(["discard", 0, new { tileId }]);
+        Assert.True(await WaitForAsync(() => runtime.TryGetSnapshot(room.RuntimeId, out var state)
+            && state!.StateVersion > resumedState.StateVersion
+            && state.DiscardPile.Any(discard => discard.SeatIndex == 0 && discard.TileId == tileId), timeoutMs: 3000));
     }
 
     // ────────────────────────────────────────────────────────────────────

@@ -22,6 +22,19 @@ rebuild are tracked here.
 Working branch: `stlong/phase-k-wave-22-bringup`. Phase K Wave 22
 in flight. Other lane deliverables outstanding.
 
+## [0.32.0] — 2026-09-20
+
+### Changed
+
+- Fit the table to phone portrait and landscape viewports, with compact,
+  collapsible status overlays that leave the player's hand unobstructed.
+- Offer automatic suit/rank and matching-tile hand grouping as local display
+  preferences without changing tile ownership or game rules.
+- Hold a completed hand's result for human acknowledgement before starting
+  the next hand.
+- Advance the backend and mobile release stamps together; the running version
+  remains visible in **Lobby > Build / Version** alongside the exact build ID.
+
 ## [0.31.0] — Phase K Wave 22 — 2027-02-26 (PR pending)
 
 **Theme:** Kyverno enforce-flip 3rd batch (W21 audit-mode pair

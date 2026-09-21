@@ -1,3 +1,5 @@
+using Mahjong.Autotable.Api.Changsha.Replay;
+
 namespace Mahjong.Autotable.Api.Changsha;
 
 /// <summary>
@@ -13,15 +15,22 @@ public sealed class ChangshaGameStateMachine
     private const int SeatCount = 4;
     private const int TotalHands = 16;
     private const int HandsPerRound = 4;
-    private const string RngAlgorithmId = "fisher-yates-changsha-v1";
+    internal const string RngAlgorithmId = "fisher-yates-changsha-v1";
 
     // ── Factory ────────────────────────────────────────────────────
 
     public static (ChangshaGameState State, List<ChangshaEvent> Events) CreateGame(
         int seed,
-        int[]? botSeatIndexes = null)
+        int[]? botSeatIndexes = null,
+        int baseUnit = 1)
+        => CreateGame(seed, botSeatIndexes, baseUnit, null, null);
+
+    internal static (ChangshaGameState State, List<ChangshaEvent> Events) CreateGame(
+        int seed, int[]? botSeatIndexes, int baseUnit, ChangshaReplayContext? replay, string? gameId)
     {
-        var state = new ChangshaGameState { Seed = seed };
+        ChangshaBaseUnit.Validate(baseUnit);
+        var state = new ChangshaGameState { Seed = seed, BaseUnit = baseUnit };
+        if (gameId is not null) state.GameId = gameId;
         var events = new List<ChangshaEvent>();
 
         var bots = botSeatIndexes ?? [1, 2, 3];
@@ -43,7 +52,7 @@ public sealed class ChangshaGameStateMachine
 
         state.DealerSeatIndex = 0;
         state.Phase = ChangshaPhase.Seating;
-        events.Add(CreateEvent(state, "game-created", -1, detail: $"seed:{seed}"));
+        events.Add(CreateEvent(state, "game-created", -1, detail: $"seed:{seed}", replay: replay));
 
         return (state, events);
     }
@@ -51,14 +60,20 @@ public sealed class ChangshaGameStateMachine
     // ── Commands ───────────────────────────────────────────────────
 
     public static List<ChangshaEvent> StartGame(ChangshaGameState state)
+        => StartGame(state, null);
+
+    internal static List<ChangshaEvent> StartGame(ChangshaGameState state, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.Seating);
         state.Phase = ChangshaPhase.RollingDice;
         return [CreateEvent(state, "game-started", state.DealerSeatIndex,
-            detail: $"dealer:{state.DealerSeatIndex},round:{state.RoundWind}")];
+            detail: $"dealer:{state.DealerSeatIndex},round:{state.RoundWind}", replay: replay)];
     }
 
     public static List<ChangshaEvent> RollDice(ChangshaGameState state, IDiceService diceService)
+        => RollDice(state, diceService, null);
+
+    internal static List<ChangshaEvent> RollDice(ChangshaGameState state, IDiceService diceService, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.RollingDice);
         var roll = diceService.Roll();
@@ -69,10 +84,13 @@ public sealed class ChangshaGameStateMachine
 
         state.Phase = ChangshaPhase.Dealing;
         return [CreateEvent(state, "dice-rolled", state.DealerSeatIndex,
-            detail: $"die1:{roll.Die1},die2:{roll.Die2},sum:{roll.Sum}")];
+            detail: $"die1:{roll.Die1},die2:{roll.Die2},sum:{roll.Sum}", replay: replay)];
     }
 
     public static List<ChangshaEvent> Deal(ChangshaGameState state)
+        => Deal(state, null);
+
+    internal static List<ChangshaEvent> Deal(ChangshaGameState state, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.Dealing);
 
@@ -109,6 +127,8 @@ public sealed class ChangshaGameStateMachine
         state.ActiveSeatIndex = state.DealerSeatIndex;
         state.TurnNumber = 1;
         state.DiscardPile.Clear();
+        state.DiscardsThisHand = 0;
+        state.LastDrawSeatIndex = state.DealerSeatIndex;
         state.ClaimWindow = null;
         state.CurrentWin = null;
         state.CurrentScore = null;
@@ -128,7 +148,7 @@ public sealed class ChangshaGameStateMachine
         var events = new List<ChangshaEvent>
         {
             CreateEvent(state, "tiles-dealt", state.DealerSeatIndex,
-                detail: $"wall-remaining:{state.Wall.Count}")
+                detail: $"wall-remaining:{state.Wall.Count}", replay: replay)
         };
 
         return events;
@@ -162,6 +182,9 @@ public sealed class ChangshaGameStateMachine
     /// </para>
     /// </remarks>
     public static List<ChangshaEvent> BeginManualDeal(ChangshaGameState state, DiceRoll roll)
+        => BeginManualDeal(state, roll, null);
+
+    internal static List<ChangshaEvent> BeginManualDeal(ChangshaGameState state, DiceRoll roll, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.RollingDice);
 
@@ -186,6 +209,8 @@ public sealed class ChangshaGameStateMachine
         state.ActiveSeatIndex = state.DealerSeatIndex;
         state.TurnNumber = 1;
         state.DiscardPile.Clear();
+        state.DiscardsThisHand = 0;
+        state.LastDrawSeatIndex = null;
         state.ClaimWindow = null;
         state.CurrentWin = null;
         state.CurrentScore = null;
@@ -204,9 +229,9 @@ public sealed class ChangshaGameStateMachine
         return new List<ChangshaEvent>
         {
             CreateEvent(state, "dice-rolled", state.DealerSeatIndex,
-                detail: $"die1:{roll.Die1},die2:{roll.Die2},sum:{roll.Sum}"),
+                detail: $"die1:{roll.Die1},die2:{roll.Die2},sum:{roll.Sum}", replay: replay),
             CreateEvent(state, "manual-deal-begun", state.DealerSeatIndex,
-                detail: $"wall:{state.Wall.Count},dealer:{state.DealerSeatIndex}")
+                detail: $"wall:{state.Wall.Count},dealer:{state.DealerSeatIndex}", replay: replay)
         };
     }
 
@@ -221,6 +246,10 @@ public sealed class ChangshaGameStateMachine
         ChangshaGameState state,
         int seatIndex,
         int requestedCount)
+        => TakeTilesFromWall(state, seatIndex, requestedCount, null);
+
+    internal static List<ChangshaEvent> TakeTilesFromWall(
+        ChangshaGameState state, int seatIndex, int requestedCount, ChangshaReplayContext? replay)
     {
         if (!IsPickupPhase(state.Phase))
         {
@@ -251,7 +280,7 @@ public sealed class ChangshaGameStateMachine
 
         var prePhase = state.Phase;
         var pickupEvent = CreateEvent(state, "tiles-picked-up", seatIndex,
-            detail: $"phase:{prePhase},count:{expected},wall-remaining:{state.Wall.Count}");
+            detail: $"phase:{prePhase},count:{expected},wall-remaining:{state.Wall.Count}", replay: replay);
 
         AdvancePickupCursor(state);
 
@@ -259,7 +288,7 @@ public sealed class ChangshaGameStateMachine
         if (state.Phase == ChangshaPhase.AwaitingDiscard)
         {
             events.Add(CreateEvent(state, "tiles-dealt", state.DealerSeatIndex,
-                detail: $"wall-remaining:{state.Wall.Count}"));
+                detail: $"wall-remaining:{state.Wall.Count}", replay: replay));
         }
         return events;
     }
@@ -342,6 +371,7 @@ public sealed class ChangshaGameStateMachine
             // Manual deal complete — clear pickup cursor and hand off to the discard loop.
             state.PickupSeatIndex = null;
             state.ActiveSeatIndex = state.DealerSeatIndex;
+            state.LastDrawSeatIndex = state.DealerSeatIndex;
             state.TurnNumber = 1;
         }
         else
@@ -368,18 +398,23 @@ public sealed class ChangshaGameStateMachine
     }
 
     public static List<ChangshaEvent> DrawTile(ChangshaGameState state)
+        => DrawTile(state, null);
+
+    internal static List<ChangshaEvent> DrawTile(ChangshaGameState state, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.AwaitingDiscard);
 
         if (state.Wall.Count == 0)
         {
+            state.LastDrawSeatIndex = null;
             state.Phase = ChangshaPhase.WallExhausted;
-            return [CreateEvent(state, "wall-exhausted", state.ActiveSeatIndex)];
+            return [CreateEvent(state, "wall-exhausted", state.ActiveSeatIndex, replay: replay)];
         }
 
         var tileId = DrawFromFront(state);
         var hand = GetHand(state, state.ActiveSeatIndex);
         hand.ConcealedTiles.Add(tileId);
+        state.LastDrawSeatIndex = state.ActiveSeatIndex;
 
         // §3.6 missed-win (过胡) decay: per Baidu §过水 — the lockout is "until your next draw."
         // Drawing a tile clears the active seat's lockout, restoring their ability to declare Hu
@@ -391,18 +426,24 @@ public sealed class ChangshaGameStateMachine
         state.LastDrawWasKongReplacement = false;
 
         return [CreateEvent(state, "tile-drawn", state.ActiveSeatIndex, tileId: tileId,
-            detail: $"wall-remaining:{state.Wall.Count}")];
+            detail: $"wall-remaining:{state.Wall.Count}", replay: replay)];
     }
 
     public static List<ChangshaEvent> Discard(ChangshaGameState state, int seatIndex, int tileId)
+        => Discard(state, seatIndex, tileId, null);
+
+    internal static List<ChangshaEvent> Discard(ChangshaGameState state, int seatIndex, int tileId, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.AwaitingDiscard);
         RequireActiveSeat(state, seatIndex);
 
         var hand = GetHand(state, seatIndex);
+        var discardCount = checked(state.DiscardsThisHand + 1);
         if (!hand.ConcealedTiles.Remove(tileId))
             throw new InvalidOperationException($"Tile {tileId} not in seat {seatIndex}'s hand.");
 
+        state.DiscardsThisHand = discardCount;
+        state.LastDrawSeatIndex = null;
         // Phase I Wave 1 — discarding always breaks the kong-replacement chain; even
         // a discard immediately following a kong-replacement draw makes a subsequent
         // self-draw NOT a 杠上开花. Cleared here so the next draw or claim sees a
@@ -418,7 +459,7 @@ public sealed class ChangshaGameStateMachine
 
         var events = new List<ChangshaEvent>
         {
-            CreateEvent(state, "tile-discarded", seatIndex, tileId: tileId)
+            CreateEvent(state, "tile-discarded", seatIndex, tileId: tileId, replay: replay)
         };
 
         // Check for claims
@@ -443,11 +484,11 @@ public sealed class ChangshaGameStateMachine
                 DiscardSeatIndex = seatIndex,
                 DiscardTileId = tileId,
                 Opportunities = opportunities,
-                OpenedAtUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                OpenedAtUnixMs = replay?.ClaimOpenedUnixMs() ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
             state.Phase = ChangshaPhase.AwaitingClaim;
             events.Add(CreateEvent(state, "claim-window-open", seatIndex, tileId: tileId,
-                detail: $"opportunities:{opportunities.Count}"));
+                detail: $"opportunities:{opportunities.Count}", replay: replay));
         }
         else
         {
@@ -475,6 +516,11 @@ public sealed class ChangshaGameStateMachine
         int claimingSeatIndex,
         Tables.TableClaimType claimType,
         int[]? chosenTileIds)
+        => ResolveClaim(state, claimingSeatIndex, claimType, chosenTileIds, null);
+
+    internal static List<ChangshaEvent> ResolveClaim(
+        ChangshaGameState state, int claimingSeatIndex, Tables.TableClaimType claimType,
+        int[]? chosenTileIds, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.AwaitingClaim);
         var claimWindow = state.ClaimWindow
@@ -492,52 +538,34 @@ public sealed class ChangshaGameStateMachine
 
         if (claimType == Tables.TableClaimType.Hu)
         {
-            return ResolveHuClaim(state, claimingSeatIndex, claimWindow);
+            return ResolveHuClaim(state, claimingSeatIndex, claimWindow, replay);
         }
-
-        // Remove tile from discard pile
-        RemoveLastDiscard(state, claimWindow);
 
         var hand = GetHand(state, claimingSeatIndex);
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(claimWindow.DiscardTileId);
-
-        if (claimType == Tables.TableClaimType.Pung)
+        // Resolve and validate the complete choice before consuming either hand or river.
+        var (kind, consumed) = claimType switch
         {
-            var consumed = RemoveMatchingTiles(hand, discardLogical, 2);
-            var meldTiles = consumed.Append(claimWindow.DiscardTileId).OrderBy(t => t).ToList();
-            hand.Melds.Add(new Meld
-            {
-                Kind = MeldKind.Pung,
-                TileIds = meldTiles,
-                ClaimedFromSeatIndex = claimWindow.DiscardSeatIndex
-            });
-        }
-        else if (claimType == Tables.TableClaimType.Kong)
+            Tables.TableClaimType.Pung => (MeldKind.Pung, SelectMatchingTiles(hand, discardLogical, 2)),
+            Tables.TableClaimType.Kong => (MeldKind.ExposedKong, SelectMatchingTiles(hand, discardLogical, 3)),
+            Tables.TableClaimType.Chow => (MeldKind.Chow, SelectChowTiles(hand, claimWindow.DiscardTileId, chosenTileIds)),
+            _ => throw new InvalidOperationException($"Unsupported meld claim {claimType}.")
+        };
+        if (claimType == Tables.TableClaimType.Chow) replay?.ObserveChowPartners(consumed);
+        var meldTiles = consumed.Append(claimWindow.DiscardTileId).OrderBy(t => t).ToList();
+        RemoveLastDiscard(state, claimWindow);
+        foreach (var tile in consumed)
+            hand.ConcealedTiles.Remove(tile);
+        hand.Melds.Add(new Meld
         {
-            var consumed = RemoveMatchingTiles(hand, discardLogical, 3);
-            var meldTiles = consumed.Append(claimWindow.DiscardTileId).OrderBy(t => t).ToList();
-            hand.Melds.Add(new Meld
-            {
-                Kind = MeldKind.ExposedKong,
-                TileIds = meldTiles,
-                ClaimedFromSeatIndex = claimWindow.DiscardSeatIndex
-            });
-        }
-        else if (claimType == Tables.TableClaimType.Chow)
-        {
-            var consumed = RemoveChowTiles(hand, claimWindow.DiscardTileId, chosenTileIds);
-            var meldTiles = consumed.Append(claimWindow.DiscardTileId).OrderBy(t => t).ToList();
-            hand.Melds.Add(new Meld
-            {
-                Kind = MeldKind.Chow,
-                TileIds = meldTiles,
-                ClaimedFromSeatIndex = claimWindow.DiscardSeatIndex
-            });
-        }
+            Kind = kind,
+            TileIds = meldTiles,
+            ClaimedFromSeatIndex = claimWindow.DiscardSeatIndex
+        });
 
         events.Add(CreateEvent(state, "claim-resolved", claimingSeatIndex,
             tileId: claimWindow.DiscardTileId,
-            detail: $"type:{claimType}"));
+            detail: $"type:{claimType}", replay: replay));
 
         // §3.6 missed-win: this claim was NOT a Hu. Any seat that had a Hu opportunity in
         // this window but didn't take it is now blocked from winning on subsequent discards
@@ -546,6 +574,8 @@ public sealed class ChangshaGameStateMachine
 
         state.ClaimWindow = null;
         state.ActiveSeatIndex = claimingSeatIndex;
+        state.LastDrawSeatIndex = null;
+        state.LastDrawWasKongReplacement = false;
 
         if (claimType == Tables.TableClaimType.Kong)
         {
@@ -554,17 +584,18 @@ public sealed class ChangshaGameStateMachine
             {
                 var replacementTile = DrawFromBack(state);
                 hand.ConcealedTiles.Add(replacementTile);
+                state.LastDrawSeatIndex = claimingSeatIndex;
                 // Phase I Wave 1 — exposed-kong (claimed-from-discard) replacement
                 // also arms 杠上开花. The 4-tile claim is mechanically identical to
                 // a concealed kong from the replacement-draw perspective.
                 state.LastDrawWasKongReplacement = true;
                 events.Add(CreateEvent(state, "kong-replacement-drawn", claimingSeatIndex,
-                    tileId: replacementTile));
+                    tileId: replacementTile, replay: replay));
             }
             else
             {
                 state.Phase = ChangshaPhase.WallExhausted;
-                events.Add(CreateEvent(state, "wall-exhausted", claimingSeatIndex));
+                events.Add(CreateEvent(state, "wall-exhausted", claimingSeatIndex, replay: replay));
                 return events;
             }
         }
@@ -574,6 +605,9 @@ public sealed class ChangshaGameStateMachine
     }
 
     public static List<ChangshaEvent> PassClaim(ChangshaGameState state)
+        => PassClaim(state, null);
+
+    internal static List<ChangshaEvent> PassClaim(ChangshaGameState state, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.AwaitingClaim);
         var claimWindow = state.ClaimWindow
@@ -583,7 +617,7 @@ public sealed class ChangshaGameStateMachine
         // so complete the kong on the original declarer's behalf and resume their turn.
         if (claimWindow.IsKongRobbing)
         {
-            return ResolveAddedKongPassed(state, claimWindow);
+            return ResolveAddedKongPassed(state, claimWindow, replay);
         }
 
         // §3.6 missed-win: every seat that had a Hu opportunity in this window has now passed
@@ -594,48 +628,81 @@ public sealed class ChangshaGameStateMachine
         AdvanceToNextPlayer(state, claimWindow.DiscardSeatIndex);
 
         return [CreateEvent(state, "claim-passed", claimWindow.DiscardSeatIndex,
-            tileId: claimWindow.DiscardTileId)];
+            tileId: claimWindow.DiscardTileId, replay: replay)];
     }
 
-    public static List<ChangshaEvent> DeclareSelfDrawWin(ChangshaGameState state, int seatIndex)
-    {
-        RequirePhase(state, ChangshaPhase.AwaitingDiscard);
-        RequireActiveSeat(state, seatIndex);
+    public static bool CanDeclareSelfDrawWin(ChangshaGameState state, int seatIndex) =>
+        HasOwnDrawForTurn(state, seatIndex) && DetectSelfDrawWin(state, seatIndex).IsWin;
 
+    public static IReadOnlyList<int> GetConcealedKongCandidates(ChangshaGameState state, int seatIndex)
+    {
+        if (!IsOwnDiscardTurn(state, seatIndex)) return [];
+        return GetHand(state, seatIndex).ConcealedTiles
+            .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
+            .Where(group => group.Count() >= 4)
+            .Select(group => group.Key)
+            .Order()
+            .ToArray();
+    }
+
+    public static IReadOnlyList<int> GetAddedKongCandidates(ChangshaGameState state, int seatIndex)
+    {
+        if (!IsOwnDiscardTurn(state, seatIndex)) return [];
+        var hand = GetHand(state, seatIndex);
+        return hand.ConcealedTiles
+            .Where(tile => FindAddedKongPung(hand, ChangshaDeckBuilder.GetLogicalTile(tile)) is not null)
+            .Distinct()
+            .Order()
+            .ToArray();
+    }
+
+    public static bool CanDeclareConcealedKong(ChangshaGameState state, int seatIndex, int logicalTile) =>
+        GetConcealedKongCandidates(state, seatIndex).Contains(logicalTile);
+
+    public static bool CanDeclareAddedKong(ChangshaGameState state, int seatIndex, int tileId) =>
+        GetAddedKongCandidates(state, seatIndex).Contains(tileId);
+
+    private static bool IsOwnDiscardTurn(ChangshaGameState state, int seatIndex) =>
+        seatIndex is >= 0 and < SeatCount
+        && state.Phase == ChangshaPhase.AwaitingDiscard
+        && state.ClaimWindow is null
+        && state.ActiveSeatIndex == seatIndex
+        && GetHand(state, seatIndex) is var hand
+        && hand.ConcealedTiles.Count + 3 * hand.Melds.Count == 14;
+
+    private static bool HasOwnDrawForTurn(ChangshaGameState state, int seatIndex) =>
+        IsOwnDiscardTurn(state, seatIndex) && state.LastDrawSeatIndex == seatIndex;
+
+    private static WinDetectionResult DetectSelfDrawWin(ChangshaGameState state, int seatIndex)
+    {
         var hand = GetHand(state, seatIndex);
         var detector = new ChangshaWinDetector();
 
-        // Phase I Wave 1 — construct contextual bonuses for the detector. State machine
-        // owns the gating logic so the detector only has to consult the flags. Read these
-        // BEFORE any mutation (DeclareSelfDrawWin doesn't mutate the hand, so order is
-        // for documentation parity with ResolveHuClaim).
-        //
-        // HeavenlyHand (天和): dealer's initial 14-tile hand wins without any intervening
-        //   action. The dealer-deal path leaves DiscardPile empty, no melds in hand, and
-        //   LastDrawWasKongReplacement false — those three together prove "first action
-        //   after deal". A dealer who declares a concealed kong before declaring Hu has
-        //   Melds.Count > 0 AND LastDrawWasKongReplacement true → falls through to
-        //   KongReplacementWin instead.
-        //
-        // LastTileFromWall (海底捞月): the most recent draw exhausted the wall. Wall.Count
-        //   is post-draw at this point because DeclareSelfDrawWin is always called AFTER
-        //   the active seat has acquired their 14th tile.
-        //
-        // KongReplacementWin (杠上开花): set whenever the last hand mutation was a
-        //   kong-replacement draw. Mutually compatible with LastTileFromWall when the
-        //   replacement came from the very last tile of the wall.
         var context = new WinContext
         {
-            IsHeavenlyHand = state.DiscardPile.Count == 0
+            IsHeavenlyHand = state.DiscardsThisHand == 0
+                && state.DiscardPile.Count == 0
                 && seatIndex == state.DealerSeatIndex
-                && hand.Melds.Count == 0
-                && !state.LastDrawWasKongReplacement,
+                && state.Hands.All(candidate => candidate.Melds.Count == 0)
+                && HasUninterruptedOpening(state, allowedDiscards: 0),
             IsLastTileFromWall = state.Wall.Count == 0,
             IsKongReplacementWin = state.LastDrawWasKongReplacement
         };
+        return detector.Detect(hand, method: WinMethod.SelfDraw, context: context);
+    }
 
-        var result = detector.Detect(hand, method: WinMethod.SelfDraw, context: context);
+    public static List<ChangshaEvent> DeclareSelfDrawWin(ChangshaGameState state, int seatIndex)
+        => DeclareSelfDrawWin(state, seatIndex, null);
 
+    internal static List<ChangshaEvent> DeclareSelfDrawWin(ChangshaGameState state, int seatIndex, ChangshaReplayContext? replay)
+    {
+        RequirePhase(state, ChangshaPhase.AwaitingDiscard);
+        RequireActiveSeat(state, seatIndex);
+        if (!HasOwnDrawForTurn(state, seatIndex))
+            throw new InvalidOperationException("Self-draw requires an actual own draw on the current turn.");
+
+        var hand = GetHand(state, seatIndex);
+        var result = DetectSelfDrawWin(state, seatIndex);
         if (!result.IsWin)
             throw new InvalidOperationException("Hand is not a winning hand.");
 
@@ -662,10 +729,14 @@ public sealed class ChangshaGameStateMachine
 
         state.Phase = ChangshaPhase.Scoring;
         return [CreateEvent(state, "win-declared", seatIndex,
-            detail: $"method:selfDraw,pattern:{result.Pattern}")];
+            detail: $"method:selfDraw,pattern:{result.Pattern}", replay: replay)];
     }
 
     public static List<ChangshaEvent> DeclareConcealedKong(ChangshaGameState state, int seatIndex, int logicalTile)
+        => DeclareConcealedKong(state, seatIndex, logicalTile, null);
+
+    internal static List<ChangshaEvent> DeclareConcealedKong(
+        ChangshaGameState state, int seatIndex, int logicalTile, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.AwaitingDiscard);
         RequireActiveSeat(state, seatIndex);
@@ -676,7 +747,7 @@ public sealed class ChangshaGameStateMachine
             .OrderBy(t => t)
             .ToList();
 
-        if (matching.Count < 4)
+        if (!CanDeclareConcealedKong(state, seatIndex, logicalTile))
             throw new InvalidOperationException("Not enough tiles for concealed kong.");
 
         var kongTiles = matching.Take(4).ToList();
@@ -688,10 +759,12 @@ public sealed class ChangshaGameStateMachine
             Kind = MeldKind.ConcealedKong,
             TileIds = kongTiles
         });
+        state.LastDrawSeatIndex = null;
+        state.LastDrawWasKongReplacement = false;
 
         var events = new List<ChangshaEvent>
         {
-            CreateEvent(state, "concealed-kong", seatIndex, detail: $"logical:{logicalTile}")
+            CreateEvent(state, "concealed-kong", seatIndex, detail: $"logical:{logicalTile}", replay: replay)
         };
 
         // Replacement draw from back of wall
@@ -699,22 +772,27 @@ public sealed class ChangshaGameStateMachine
         {
             var replacementTile = DrawFromBack(state);
             hand.ConcealedTiles.Add(replacementTile);
+            state.LastDrawSeatIndex = seatIndex;
             // Phase I Wave 1 — concealed-kong replacement: arms the 杠上开花 flag.
             // Cleared on the next Discard / regular DrawTile.
             state.LastDrawWasKongReplacement = true;
             events.Add(CreateEvent(state, "kong-replacement-drawn", seatIndex,
-                tileId: replacementTile));
+                tileId: replacementTile, replay: replay));
         }
         else
         {
             state.Phase = ChangshaPhase.WallExhausted;
-            events.Add(CreateEvent(state, "wall-exhausted", seatIndex));
+            events.Add(CreateEvent(state, "wall-exhausted", seatIndex, replay: replay));
         }
 
         return events;
     }
 
     public static List<ChangshaEvent> DeclareAddedKong(ChangshaGameState state, int seatIndex, int tileId)
+        => DeclareAddedKong(state, seatIndex, tileId, null);
+
+    internal static List<ChangshaEvent> DeclareAddedKong(
+        ChangshaGameState state, int seatIndex, int tileId, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.AwaitingDiscard);
         RequireActiveSeat(state, seatIndex);
@@ -724,11 +802,9 @@ public sealed class ChangshaGameStateMachine
             throw new InvalidOperationException($"Tile {tileId} not in hand.");
 
         var logicalTile = ChangshaDeckBuilder.GetLogicalTile(tileId);
-        var existingPung = hand.Melds.FirstOrDefault(m =>
-            m.Kind == MeldKind.Pung &&
-            m.TileIds.All(t => ChangshaDeckBuilder.GetLogicalTile(t) == logicalTile));
+        var existingPung = FindAddedKongPung(hand, logicalTile);
 
-        if (existingPung is null)
+        if (existingPung is null || !CanDeclareAddedKong(state, seatIndex, tileId))
             throw new InvalidOperationException("No existing pung to extend.");
 
         // Phase H Wave 2 §2.2 — 抢杠胡 (Robbing the Added Kong) opportunity scan.
@@ -746,6 +822,8 @@ public sealed class ChangshaGameStateMachine
 
         if (huOpportunities.Count > 0)
         {
+            state.LastDrawSeatIndex = null;
+            state.LastDrawWasKongReplacement = false;
             // Open a kong-robbing claim window — DO NOT yet upgrade the meld. The
             // declarer's hand is mutated only when the window resolves (CompleteAddedKongAfterPass).
             state.ClaimWindow = new ChangshaClaimWindow
@@ -755,20 +833,20 @@ public sealed class ChangshaGameStateMachine
                 Opportunities = huOpportunities,
                 IsKongRobbing = true,
                 KongDeclarerSeatIndex = seatIndex,
-                OpenedAtUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                OpenedAtUnixMs = replay?.ClaimOpenedUnixMs() ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
             state.Phase = ChangshaPhase.AwaitingClaim;
             return [
                 CreateEvent(state, "added-kong-declared", seatIndex, tileId: tileId,
-                    detail: $"logical:{logicalTile}"),
+                    detail: $"logical:{logicalTile}", replay: replay),
                 CreateEvent(state, "claim-window-open", seatIndex, tileId: tileId,
-                    detail: $"kongRobbing:true,opportunities:{huOpportunities.Count}")
+                    detail: $"kongRobbing:true,opportunities:{huOpportunities.Count}", replay: replay)
             ];
         }
 
         // No Hu opportunities — fast path. Complete the kong exactly as the pre-Wave-2
         // implementation did.
-        return CompleteAddedKong(state, hand, existingPung, tileId, seatIndex);
+        return CompleteAddedKong(state, hand, existingPung, tileId, seatIndex, replay);
     }
 
     /// <summary>
@@ -783,8 +861,13 @@ public sealed class ChangshaGameStateMachine
         ChangshaHandState hand,
         Meld existingPung,
         int tileId,
-        int seatIndex)
+        int seatIndex,
+        ChangshaReplayContext? replay)
     {
+        state.ActiveSeatIndex = seatIndex;
+        state.Phase = ChangshaPhase.AwaitingDiscard;
+        state.LastDrawSeatIndex = null;
+        state.LastDrawWasKongReplacement = false;
         hand.ConcealedTiles.Remove(tileId);
         existingPung.TileIds.Add(tileId);
         existingPung.TileIds.Sort();
@@ -799,7 +882,7 @@ public sealed class ChangshaGameStateMachine
 
         var events = new List<ChangshaEvent>
         {
-            CreateEvent(state, "added-kong", seatIndex, tileId: tileId)
+            CreateEvent(state, "added-kong", seatIndex, tileId: tileId, replay: replay)
         };
 
         // Replacement draw from back of wall
@@ -807,17 +890,18 @@ public sealed class ChangshaGameStateMachine
         {
             var replacementTile = DrawFromBack(state);
             hand.ConcealedTiles.Add(replacementTile);
+            state.LastDrawSeatIndex = seatIndex;
             // Phase I Wave 1 — added-kong replacement (also reached from the
             // robbing-the-added-kong pass-through via ResolveAddedKongPassed) — arms
             // the 杠上开花 flag. Cleared on the next Discard / regular DrawTile.
             state.LastDrawWasKongReplacement = true;
             events.Add(CreateEvent(state, "kong-replacement-drawn", seatIndex,
-                tileId: replacementTile));
+                tileId: replacementTile, replay: replay));
         }
         else
         {
             state.Phase = ChangshaPhase.WallExhausted;
-            events.Add(CreateEvent(state, "wall-exhausted", seatIndex));
+            events.Add(CreateEvent(state, "wall-exhausted", seatIndex, replay: replay));
         }
 
         return events;
@@ -828,7 +912,8 @@ public sealed class ChangshaGameStateMachine
     /// Completes the added kong on the original declarer's behalf. <see cref="ChangshaClaimWindow.IsKongRobbing"/>
     /// must be true; called by <see cref="PassAddedKongClaim"/>.
     /// </summary>
-    private static List<ChangshaEvent> ResolveAddedKongPassed(ChangshaGameState state, ChangshaClaimWindow window)
+    private static List<ChangshaEvent> ResolveAddedKongPassed(
+        ChangshaGameState state, ChangshaClaimWindow window, ChangshaReplayContext? replay)
     {
         var declarerSeat = window.KongDeclarerSeatIndex
             ?? throw new InvalidOperationException("KongDeclarerSeatIndex is required for a kong-robbing window.");
@@ -852,15 +937,19 @@ public sealed class ChangshaGameStateMachine
         var events = new List<ChangshaEvent>
         {
             CreateEvent(state, "claim-passed", declarerSeat, tileId: tileId,
-                detail: "kongRobbing:true")
+                detail: "kongRobbing:true", replay: replay)
         };
-        events.AddRange(CompleteAddedKong(state, hand, existingPung, tileId, declarerSeat));
+        events.AddRange(CompleteAddedKong(state, hand, existingPung, tileId, declarerSeat, replay));
         return events;
     }
 
     public static List<ChangshaEvent> Score(
         ChangshaGameState state,
         Scoring.ChangshaScoringOptions? scoringOptions = null)
+        => Score(state, scoringOptions, null);
+
+    internal static List<ChangshaEvent> Score(
+        ChangshaGameState state, Scoring.ChangshaScoringOptions? scoringOptions, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.Scoring);
         if (state.CurrentWin is null)
@@ -893,7 +982,9 @@ public sealed class ChangshaGameStateMachine
         var payments = options.ApplyFanBonuses
             ? ApplyFanBonusesToPayments(baseScore.Payments, fanResult)
             : baseScore.Payments;
+        payments = ScoringService.ScalePayments(payments, state.BaseUnit);
         var totalBasePoints = payments.Sum(p => p.Amount);
+        var cumulativeScores = ScoringService.ApplyPayments(state.CumulativeScores, payments);
 
         state.CurrentScore = new ScoreResult
         {
@@ -904,17 +995,11 @@ public sealed class ChangshaGameStateMachine
             FanPoints = fanResult.TotalPoints,
         };
 
-        // Apply payments to cumulative scores. Zero-sum is preserved because every
-        // payment (base, and any house-rule fan-bonus) is a (from, to, amount) triple.
-        foreach (var payment in state.CurrentScore.Payments)
-        {
-            state.CumulativeScores[payment.ToSeatIndex] += payment.Amount;
-            state.CumulativeScores[payment.FromSeatIndex] -= payment.Amount;
-        }
+        state.CumulativeScores = cumulativeScores;
 
         state.Phase = ChangshaPhase.EndHand;
         return [CreateEvent(state, "scoring-complete", state.CurrentWin.WinningSeatIndex,
-            detail: $"category:{state.CurrentScore.Category},fans:{fanResult.Detected.Count},fanPoints:{fanResult.TotalPoints}")];
+            detail: $"category:{state.CurrentScore.Category},fans:{fanResult.Detected.Count},fanPoints:{fanResult.TotalPoints}", replay: replay)];
     }
 
     /// <summary>
@@ -999,10 +1084,13 @@ public sealed class ChangshaGameStateMachine
     }
 
     public static List<ChangshaEvent> HandleWallExhausted(ChangshaGameState state)
+        => HandleWallExhausted(state, null);
+
+    internal static List<ChangshaEvent> HandleWallExhausted(ChangshaGameState state, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.WallExhausted);
         state.Phase = ChangshaPhase.EndHand;
-        return [CreateEvent(state, "draw-hand", -1, detail: "wall-exhausted")];
+        return [CreateEvent(state, "draw-hand", -1, detail: "wall-exhausted", replay: replay)];
     }
 
     /// <summary>
@@ -1017,18 +1105,13 @@ public sealed class ChangshaGameStateMachine
         if (seatIndex is < 0 or > 3)
             throw new ArgumentOutOfRangeException(nameof(seatIndex));
 
-        var penalty = new ScoringService().CalculateFalseHuPenalty(seatIndex);
+        var penalty = new ScoringService().CalculateFalseHuPenalty(seatIndex, state.BaseUnit);
+        var initializedScores = new Dictionary<int, int>(state.CumulativeScores);
+        for (var seat = 0; seat < SeatCount; seat++)
+            initializedScores.TryAdd(seat, 0);
+        var cumulativeScores = ScoringService.ApplyPayments(initializedScores, penalty.Payments);
 
-        foreach (var payment in penalty.Payments)
-        {
-            if (!state.CumulativeScores.ContainsKey(payment.FromSeatIndex))
-                state.CumulativeScores[payment.FromSeatIndex] = 0;
-            if (!state.CumulativeScores.ContainsKey(payment.ToSeatIndex))
-                state.CumulativeScores[payment.ToSeatIndex] = 0;
-            state.CumulativeScores[payment.FromSeatIndex] -= payment.Amount;
-            state.CumulativeScores[payment.ToSeatIndex] += payment.Amount;
-        }
-
+        state.CumulativeScores = cumulativeScores;
         state.FalseHuPenalties.Add(penalty);
         CreateEvent(state, "false-hu-penalty", seatIndex,
             detail: $"perOpponent:{penalty.PenaltyPerOpponent}");
@@ -1037,6 +1120,9 @@ public sealed class ChangshaGameStateMachine
     }
 
     public static List<ChangshaEvent> RotateBanker(ChangshaGameState state)
+        => RotateBanker(state, null);
+
+    internal static List<ChangshaEvent> RotateBanker(ChangshaGameState state, ChangshaReplayContext? replay)
     {
         RequirePhase(state, ChangshaPhase.EndHand);
 
@@ -1066,7 +1152,7 @@ public sealed class ChangshaGameStateMachine
             seat.IsDealer = seat.SeatIndex == state.DealerSeatIndex;
 
         events.Add(CreateEvent(state, "banker-rotated", state.DealerSeatIndex,
-            detail: $"previous:{previousDealer},reason:{reason}"));
+            detail: $"previous:{previousDealer},reason:{reason}", replay: replay));
 
         // Advance hand/round counters
         state.HandNumber++;
@@ -1084,7 +1170,7 @@ public sealed class ChangshaGameStateMachine
             state.Phase = ChangshaPhase.GameComplete;
             state.IsGameComplete = true;
             events.Add(CreateEvent(state, "game-ended", -1,
-                detail: $"hands:{state.MaxHands},reason:maxHandsReached"));
+                detail: $"hands:{state.MaxHands},reason:maxHandsReached", replay: replay));
             return events;
         }
 
@@ -1106,18 +1192,21 @@ public sealed class ChangshaGameStateMachine
                 state.Phase = ChangshaPhase.EndGame;
                 state.IsGameComplete = true;
                 events.Add(CreateEvent(state, "game-ended", -1,
-                    detail: $"hands:{state.HandNumber - 1}"));
+                    detail: $"hands:{state.HandNumber - 1}", replay: replay));
                 return events;
             }
 
             state.RoundWind = (Wind)(state.RoundNumber - 1);
             events.Add(CreateEvent(state, "round-changed", -1,
-                detail: $"round:{state.RoundNumber},wind:{state.RoundWind}"));
+                detail: $"round:{state.RoundNumber},wind:{state.RoundWind}", replay: replay));
         }
 
         // Reset for next hand
         state.CurrentWin = null;
         state.CurrentScore = null;
+        state.LastDrawSeatIndex = null;
+        state.LastDrawWasKongReplacement = false;
+        state.DiscardsThisHand = 0;
         state.Phase = ChangshaPhase.RollingDice;
 
         return events;
@@ -1128,7 +1217,8 @@ public sealed class ChangshaGameStateMachine
     private static List<ChangshaEvent> ResolveHuClaim(
         ChangshaGameState state,
         int claimingSeatIndex,
-        ChangshaClaimWindow claimWindow)
+        ChangshaClaimWindow claimWindow,
+        ChangshaReplayContext? replay)
     {
         // Phase H Wave 2 — kong-robbing wins (抢杠胡) take the same hand-mutation path
         // (add the winning tile to concealed for detection / display) but DO NOT touch
@@ -1138,43 +1228,44 @@ public sealed class ChangshaGameStateMachine
         var hand = GetHand(state, claimingSeatIndex);
         var isKongRobbing = claimWindow.IsKongRobbing;
 
-        // Phase I Wave 1 — capture contextual flags BEFORE the discard pile / hand
-        // mutations below, so EarthlyHand can read DiscardPile.Count == 1 and the
-        // hand's pre-claim meld state. State machine owns gating:
-        //
-        // EarthlyHand (地和): non-dealer claims Hu on the dealer's very first discard.
-        //   At this call site the dealer's discard is still in the pile (about to be
-        //   removed via RemoveLastDiscard), so DiscardPile.Count == 1 IS the canonical
-        //   signal. Source seat is checked via DiscardPile[0].SeatIndex == dealer. The
-        //   claimant must have no melds (otherwise they'd already taken some prior
-        //   action). Kong-robbing wins are excluded — the kong target tile isn't a
-        //   discard.
-        //
-        // LastDiscardCatch (河底捞鱼): regular discard Hu when the wall is already
-        //   exhausted (Wall.Count == 0 at claim time). Robbing-kong wins are excluded
-        //   per spec — the kong-target tile was never in the river.
+        // Claimed discards leave the river, so its size alone cannot establish the
+        // first-discard condition. Require uninterrupted, current-hand history too.
         var context = new WinContext
         {
             IsEarthlyHand = !isKongRobbing
+                && state.DiscardsThisHand == 1
                 && state.DiscardPile.Count == 1
                 && state.DiscardPile[0].SeatIndex == state.DealerSeatIndex
                 && claimingSeatIndex != state.DealerSeatIndex
-                && hand.Melds.Count == 0,
+                && state.Hands.All(candidate => candidate.Melds.Count == 0)
+                && HasUninterruptedOpening(state, allowedDiscards: 1),
             IsLastDiscardCatch = !isKongRobbing && state.Wall.Count == 0
         };
 
-        if (!isKongRobbing)
-        {
-            RemoveLastDiscard(state, claimWindow);
-        }
-        hand.ConcealedTiles.Add(claimWindow.DiscardTileId);
+        var kongDeclarer = isKongRobbing
+            ? GetHand(state, claimWindow.KongDeclarerSeatIndex ?? claimWindow.DiscardSeatIndex)
+            : null;
+        if (kongDeclarer is not null && !kongDeclarer.ConcealedTiles.Contains(claimWindow.DiscardTileId))
+            throw new InvalidOperationException("The robbed tile is no longer held by the kong declarer.");
 
         var detector = new ChangshaWinDetector();
         var method = isKongRobbing ? WinMethod.RobbingKong : WinMethod.Discard;
-        var result = detector.Detect(hand, claimWindow.DiscardTileId, method, context);
+        var winningHand = new ChangshaHandState
+        {
+            SeatIndex = hand.SeatIndex,
+            ConcealedTiles = [.. hand.ConcealedTiles, claimWindow.DiscardTileId],
+            Melds = hand.Melds
+        };
+        var result = detector.Detect(winningHand, claimWindow.DiscardTileId, method, context);
 
         if (!result.IsWin)
             throw new InvalidOperationException("Claimed Hu but hand is not winning.");
+
+        if (kongDeclarer is not null)
+            kongDeclarer.ConcealedTiles.Remove(claimWindow.DiscardTileId);
+        else
+            RemoveLastDiscard(state, claimWindow);
+        hand.ConcealedTiles.Add(claimWindow.DiscardTileId);
 
         state.CurrentWin = new WinResult
         {
@@ -1210,11 +1301,13 @@ public sealed class ChangshaGameStateMachine
 
         state.ClaimWindow = null;
         state.ActiveSeatIndex = claimingSeatIndex;
+        state.LastDrawSeatIndex = null;
+        state.LastDrawWasKongReplacement = false;
         state.Phase = ChangshaPhase.Scoring;
 
         return [CreateEvent(state, "win-declared", claimingSeatIndex,
             tileId: claimWindow.DiscardTileId,
-            detail: $"method:{(isKongRobbing ? "robbingKong" : "discard")},pattern:{result.Pattern}")];
+            detail: $"method:{(isKongRobbing ? "robbingKong" : "discard")},pattern:{result.Pattern}", replay: replay)];
     }
 
     /// <summary>
@@ -1247,6 +1340,36 @@ public sealed class ChangshaGameStateMachine
             state.Phase = ChangshaPhase.AwaitingDiscard;
         }
     }
+
+    private static bool HasUninterruptedOpening(ChangshaGameState state, int allowedDiscards)
+    {
+        var discards = 0;
+        for (var index = state.EventLog.Count - 1; index >= 0; index--)
+        {
+            switch (state.EventLog[index].EventType)
+            {
+                case "tiles-dealt":
+                    return discards == allowedDiscards;
+                case "tile-discarded":
+                    if (++discards > allowedDiscards) return false;
+                    break;
+                case "game-created":
+                case "banker-rotated":
+                case "tile-drawn":
+                case "claim-resolved":
+                case "concealed-kong":
+                case "added-kong-declared":
+                case "added-kong":
+                case "kong-replacement-drawn":
+                    return false;
+            }
+        }
+        return false;
+    }
+
+    private static Meld? FindAddedKongPung(ChangshaHandState hand, int logicalTile) =>
+        hand.Melds.FirstOrDefault(meld => meld.Kind == MeldKind.Pung && meld.TileIds.Count == 3
+            && meld.TileIds.All(tile => ChangshaDeckBuilder.GetLogicalTile(tile) == logicalTile));
 
     private static int DrawFromFront(ChangshaGameState state)
     {
@@ -1297,7 +1420,7 @@ public sealed class ChangshaGameStateMachine
             state.DiscardPile.RemoveAt(idx);
     }
 
-    private static List<int> RemoveMatchingTiles(ChangshaHandState hand, int logicalTile, int count)
+    private static List<int> SelectMatchingTiles(ChangshaHandState hand, int logicalTile, int count)
     {
         var matches = hand.ConcealedTiles
             .Where(t => ChangshaDeckBuilder.GetLogicalTile(t) == logicalTile)
@@ -1308,37 +1431,34 @@ public sealed class ChangshaGameStateMachine
         if (matches.Count < count)
             throw new InvalidOperationException($"Not enough matching tiles for claim.");
 
-        foreach (var t in matches)
-            hand.ConcealedTiles.Remove(t);
-
         return matches;
     }
 
     /// <summary>
-    /// Removes the 2 concealed tiles that complete a chow with <paramref name="discardTileId"/>.
+    /// Selects the 2 concealed tiles that complete a chow with <paramref name="discardTileId"/>.
     /// When <paramref name="chosenTileIds"/> is supplied (the modern client contract), those exact
-    /// tiles are validated and removed. When null/empty (legacy clients), falls back to the
+    /// tiles are validated without mutation. When null/empty (legacy clients), falls back to the
     /// lowest-rank valid pattern. Throws <see cref="Tables.TableRuleException"/> with code
     /// <c>CHOW_TILES_INVALID</c> when supplied IDs fail validation.
+    /// Runtime callers can validate here before recording a pending claim or stopping its timer.
     /// </summary>
-    private static List<int> RemoveChowTiles(
+    public static List<int> SelectChowTiles(
         ChangshaHandState hand,
         int discardTileId,
-        int[]? chosenTileIds)
+        int[]? chosenTileIds = null)
     {
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
 
         if (chosenTileIds is { Length: > 0 })
         {
-            return RemoveChowTilesByChoice(hand, discardTileId, discardLogical, chosenTileIds);
+            return SelectChowTilesByChoice(hand, discardLogical, chosenTileIds);
         }
 
-        return RemoveChowTilesByLowestPattern(hand, discardLogical);
+        return SelectChowTilesByLowestPattern(hand, discardLogical);
     }
 
-    private static List<int> RemoveChowTilesByChoice(
+    private static List<int> SelectChowTilesByChoice(
         ChangshaHandState hand,
-        int discardTileId,
         int discardLogical,
         int[] chosenTileIds)
     {
@@ -1383,13 +1503,10 @@ public sealed class ChangshaGameStateMachine
                 $"Chow tiles must be three consecutive ranks; got logicals [{sorted[0]},{sorted[1]},{sorted[2]}].",
                 stateVersion: 0, actionSequence: 0);
 
-        // All checks pass — consume the two chosen tiles from the hand.
-        hand.ConcealedTiles.Remove(a);
-        hand.ConcealedTiles.Remove(b);
         return [a, b];
     }
 
-    private static List<int> RemoveChowTilesByLowestPattern(ChangshaHandState hand, int discardLogical)
+    private static List<int> SelectChowTilesByLowestPattern(ChangshaHandState hand, int discardLogical)
     {
         var rank = discardLogical % 9;
 
@@ -1406,8 +1523,6 @@ public sealed class ChangshaGameStateMachine
 
             if (tileA >= 0 && tileB >= 0)
             {
-                hand.ConcealedTiles.Remove(tileA);
-                hand.ConcealedTiles.Remove(tileB);
                 return [tileA, tileB];
             }
         }
@@ -1432,7 +1547,8 @@ public sealed class ChangshaGameStateMachine
         string eventType,
         int seatIndex,
         int? tileId = null,
-        string detail = "")
+        string detail = "",
+        ChangshaReplayContext? replay = null)
     {
         state.EventSequence++;
         state.StateVersion++;
@@ -1444,9 +1560,10 @@ public sealed class ChangshaGameStateMachine
             TurnNumber = state.TurnNumber,
             TileId = tileId,
             Detail = detail,
-            OccurredUtc = DateTime.UtcNow
+            OccurredUtc = replay?.EventUtc() ?? DateTime.UtcNow
         };
         state.EventLog.Add(evt);
+        replay?.ObserveEvent(state, evt);
         return evt;
     }
 }

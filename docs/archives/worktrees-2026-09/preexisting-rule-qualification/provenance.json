@@ -1,0 +1,151 @@
+{
+  "status": "preserved untouched pre-existing untracked experiments; not active release regressions",
+  "reason": "This directory was already untracked before the September17 application repair. Preserve it in main as historical test sources rather than silently deleting it or treating unrelated experimental fixtures as newly authored release tests. The shared HudsonOwnTurnWsFixture.cs remains active because current hand-result/added-kong tests import it.",
+  "files": [
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/CanonicalEngineRepairTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/CanonicalEngineRepairTests.cs",
+      "bytes": 21928,
+      "sha256": "cef9d332206b0883d890ec741c209837dd0af4fdfa887157edf341dbbb4398b3"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/CanonicalRuleQualificationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/CanonicalRuleQualificationTests.cs",
+      "bytes": 15549,
+      "sha256": "f0ebf41a518b1b7374bbd9e0254adc37259feaf1fdfee2c670377f7bc4e4dde4"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/CurrentProfileKongGateParityTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/CurrentProfileKongGateParityTests.cs",
+      "bytes": 5426,
+      "sha256": "81fdd8905fb079c7078fbd649cc042cde04931ed779120ebacd8f1c5205764f4"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/DrakeCorruptPublicRoomRecoveryTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/DrakeCorruptPublicRoomRecoveryTests.cs",
+      "bytes": 24112,
+      "sha256": "1ed1f7e7b31ca53f9ef426b8b8514d683d34e8f243d5875ea2e9f363df6333e3"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/DrakeKongEffectiveHandEligibilityTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/DrakeKongEffectiveHandEligibilityTests.cs",
+      "bytes": 14994,
+      "sha256": "f3baa997d38e166a0248bbd1f7ff262104390a33082b3dad50d8cf0addc2747d"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/FrostRecoveredSnapshotPreconditionsTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/FrostRecoveredSnapshotPreconditionsTests.cs",
+      "bytes": 38231,
+      "sha256": "b16ef83e76570be84641dd9db655d164c80c7c4be96e497bfa86a53210a25646"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/GormanRobbingWindowRecoveryTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/GormanRobbingWindowRecoveryTests.cs",
+      "bytes": 25702,
+      "sha256": "5e1516b06862ed265525a2ad69997f030a0645e71df3bd706c28cf935a017ece"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonBaseUnitIntegrationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonBaseUnitIntegrationTests.cs",
+      "bytes": 29618,
+      "sha256": "a580e419ce033f2ad3cb63fa554900b87e1bcc8f6e13776b96abae08a8620c95"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonBotDrawGateIntegrationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonBotDrawGateIntegrationTests.cs",
+      "bytes": 23821,
+      "sha256": "c1f38423b1bf5463fbac9d03a9fadc7985c75abef79748b961983f261b2a3ff4"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonBotInvalidProposalIntegrationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonBotInvalidProposalIntegrationTests.cs",
+      "bytes": 16868,
+      "sha256": "e534345d09b4c8234c7d9045018efbdeea8e6fbeb7b47f7e22b0873387421cd7"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonBotMeldContinuationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonBotMeldContinuationTests.cs",
+      "bytes": 16981,
+      "sha256": "7c1571434ecf26ae556089fbaa3d1f537356b0503a4c15a7f988eae032756971"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonClaimContextWsIntegrationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonClaimContextWsIntegrationTests.cs",
+      "bytes": 33516,
+      "sha256": "2722b7305de17947e29a6b0e2497b3af19d1c630727f0d7bc6b145db16b1466a"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonClaimSettlementOverflowIntegrationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonClaimSettlementOverflowIntegrationTests.cs",
+      "bytes": 27641,
+      "sha256": "bb298df9019420a5ffccc41706183a95559e9bafb827f938c4a5737af1a21903"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonFreshEntryCreationIntegrationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonFreshEntryCreationIntegrationTests.cs",
+      "bytes": 13029,
+      "sha256": "2d6d48805779ecc4329c04a624c7f5eb6857184014205477b7c082bf0a8b86b9"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonLegacyHubOwnTurnIntegrationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonLegacyHubOwnTurnIntegrationTests.cs",
+      "bytes": 7600,
+      "sha256": "853aed9daadc40762b2a754153c50f2dfd0101938a8aa997bb7fc39b69d7761f"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonLegacyNewRetryIntegrationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonLegacyNewRetryIntegrationTests.cs",
+      "bytes": 40722,
+      "sha256": "432c59d1b8a7e9ee1d5c0ad49d969ec717d8ebc987281f46010f6431f26da57f"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonOwnTurnWsIntegrationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonOwnTurnWsIntegrationTests.cs",
+      "bytes": 36744,
+      "sha256": "b3aa25bdf2104d648902620bc375303897a72f990d52bac708d506dcccec0195"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonPublicRoomBindingBoundaryTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonPublicRoomBindingBoundaryTests.cs",
+      "bytes": 33762,
+      "sha256": "5ec392d0cb63b7b3e6efb1e8cffac7e534ec7ad6b7d59ed0e29739700e228618"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonPublicRoomIsolationIntegrationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonPublicRoomIsolationIntegrationTests.cs",
+      "bytes": 28029,
+      "sha256": "ec0d745abc420e1778951806e548086dc9b139dcfa8bed3770380d8ff0c153af"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/HudsonPublicRoomRestartIntegrationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/HudsonPublicRoomRestartIntegrationTests.cs",
+      "bytes": 22271,
+      "sha256": "b2d14d342b316f36f5ba5a8b726635a27ccab83c3d61d03a8e1c4e0cb1d704d5"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/OwnTurnActionAvailabilityQualificationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/OwnTurnActionAvailabilityQualificationTests.cs",
+      "bytes": 15272,
+      "sha256": "dc5401e73240727bb95b6bed1efc8a39feb68de4caa3c9649f3d430395f04a5e"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/RendererSettingsNoninterferenceTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/RendererSettingsNoninterferenceTests.cs",
+      "bytes": 18571,
+      "sha256": "030e0748b6ba584920c8d328126ff9afadcb7efb4f782bc760fe74ae4d4cb1dd"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/RuleBoundaryQualificationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/RuleBoundaryQualificationTests.cs",
+      "bytes": 10357,
+      "sha256": "7175e9a5e04ce8605a49d2e8e569013c6b416742083aafc0359078a93bb422f4"
+    },
+    {
+      "originalPath": "src/backend/tests/Mahjong.Autotable.Api.Tests/RulesQualification/RuntimeRulePartialsQualificationTests.cs",
+      "archivePath": "docs/archives/worktrees-2026-09/preexisting-rule-qualification/RuntimeRulePartialsQualificationTests.cs",
+      "bytes": 18349,
+      "sha256": "d684761ec21d8623c77b3b491a420dd7a4a93ed7d0e6a07ddfb7f363823e9997"
+    }
+  ],
+  "sourceFilesDeleted": false
+}

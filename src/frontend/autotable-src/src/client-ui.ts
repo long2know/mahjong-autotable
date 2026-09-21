@@ -17,10 +17,17 @@ import { formatStats, formatStatsDelta } from './stats';
 import { showEl, hideEl, setElHidden } from './dom-utils';
 import {
   buildFreshGameUrl,
+  hasNewGameIntent,
+  NEW_GAME_INTENT_PARAM,
   readConcreteGameId,
   resolveHandoffSeat,
 } from './session-url';
-import { isNewGameActivation } from './new-game-action';
+import { bindNewGameControls } from './lobby';
+import { MAX_BASE_UNIT, parseBaseUnit } from './base-unit';
+import { t } from './i18n';
+import { getRuleActionControls } from './ui/rule-action-controls';
+import { bootstrapIdentity, getIdentityBootstrapState } from './identity';
+import { isJoinOnly } from './room-join-url';
 
 
 const TITLE_DISCONNECTED = 'Autotable';
@@ -78,6 +85,7 @@ function validateGameId(raw: string): GameIdValidation {
 // take-seat affordances based on the same URL flag we use to drive the
 // body class and the Spectating pill.
 export function readSpectatorFromUrl(): boolean {
+  if (isJoinOnly()) return false;
   const q = new URLSearchParams(window.location.search);
   const raw = q.get('seat');
   if (raw === null) return false;
@@ -92,6 +100,7 @@ export function readSpectatorFromUrl(): boolean {
 // (the server acks via the seats snapshot). Kept separate from
 // readSpectatorFromUrl so a `-1` spectator never reads as a real chair.
 export function readPlayerSeatFromUrl(): number | null {
+  if (isJoinOnly()) return null;
   try {
     const raw = new URLSearchParams(window.location.search).get('seat');
     if (raw === null) return null;
@@ -108,6 +117,7 @@ export function readPlayerSeatFromUrl(): number | null {
 // URL param is authoritative because it's what's forwarded to the WS
 // connection and what the backend uses to drive the runtime's DealMode.
 export function readDealModeFromUrl(): 'manual' | 'auto' | null {
+  if (isJoinOnly()) return null;
   try {
     const q = new URLSearchParams(window.location.search);
     const raw = q.get('dealMode');
@@ -193,6 +203,10 @@ export class ClientUi {
   private urlSeatHandoffBound: boolean = false;
   // New Game UX P0 — debounce guard: one activation ⇒ exactly one navigation.
   private newGameInFlight: boolean = false;
+  private creatingGameId: string | null = null;
+  private terminalJoinRejection: string | null = null;
+  private identityConnectPending = false;
+  private connectEpoch = 0;
   // Phase I Wave 4 — true while the active page URL declares ?seat=-1.
   // Spectator state is page-URL-driven (set on init, refreshed on each
   // connect attempt) so a refresh that lands on the same URL re-joins as
@@ -212,21 +226,16 @@ export class ClientUi {
 
     this.client.on('connect', this.onConnect.bind(this));
     this.client.on('disconnect', this.onDisconnect.bind(this));
+    this.client.on('protocol-unavailable', this.showProtocolUnavailable.bind(this));
     this.onNickChange();
 
     const connectButton = document.getElementById('connect')!;
     connectButton.onclick = () => this.connect();
     const disconnectButton = document.getElementById('disconnect')!;
     disconnectButton.onclick = this.disconnect.bind(this);
-    // New Game UX P0 (persistent control, RC-9) — wire the ONE authoritative
-    // fresh-game action to EVERY New Game control by the `data-action="new-game"`
-    // convention (event delegation on document), NOT just the legacy in-sidebar
-    // `#new-game`. This covers Ferro's PERSISTENT outside-sidebar button (same
-    // data-action) the instant it mounts — no id coupling, no relay/local-reset
-    // fallback — plus programmatic `.click()` from action-router, the
-    // GameComplete modal, and the stale-game banner (all bubble here). Bound
-    // once; the debounce in newGame() makes any redundant delivery idempotent.
-    this.bindNewGameControls();
+    // Upgrade the eager New Game action with live ownership/teardown without
+    // adding a second listener or dropping an activation during lazy startup.
+    bindNewGameControls(() => this.newGame());
 
     this.statusElement = document.getElementById('status') as HTMLElement;
     this.statusTextElement = document.getElementById('status-text') as HTMLElement;
@@ -304,6 +313,38 @@ export class ClientUi {
     // whenever the gameComplete singleton flips to complete, reading
     // the pre-game snapshot from profile.ts to build the delta.
     this.setupPostGameStatsPanel();
+    this.client.on('update', (_entries, full) => {
+      if (full) this.confirmNewGameCreation();
+    });
+    this.client.actionRejected.on('update', (entries) => {
+      for (const [key, rejection] of entries) {
+        if (key === 'current' && rejection?.action === 'join' && isJoinOnly()
+            && ['room-not-found', 'room-full', 'room-not-seating'].includes(rejection.reason)) {
+          this.rejectJoin(rejection.reason);
+          continue;
+        }
+        if (key !== 'current' || rejection?.action !== 'room') continue;
+        const message = t('actions.rejected', { reason: rejection.reason });
+        this.setStatus(message);
+        this.showBannerFailed();
+        if (this.connectionBannerText !== null) this.connectionBannerText.textContent = message;
+        this.showToast(message, 'error', 8000);
+      }
+    });
+    getRuleActionControls(client);
+  }
+
+  private confirmNewGameCreation(): void {
+    const gameId = this.creatingGameId;
+    // JOINED may describe an unbound placeholder. Consume only after runtime binding.
+    if (gameId === null || !this.client.connected()
+        || this.client.lastGameId !== gameId || this.client.serverSnapshotGameId !== gameId
+        || this.client.turn.get('current') === null
+        || !hasNewGameIntent(window.location.search, gameId)) return;
+    const query = new URLSearchParams(window.location.search);
+    query.delete(NEW_GAME_INTENT_PARAM);
+    history.replaceState(history.state, '', `${location.pathname}?${query}${location.hash}`);
+    this.creatingGameId = null;
   }
 
   // Phase J Wave 5 — Post-game stats delta panel.
@@ -476,6 +517,12 @@ export class ClientUi {
     const params = new URLSearchParams();
     params.set('gameId', gameId);
     const pageQuery = new URLSearchParams(window.location.search);
+    if (isJoinOnly()) {
+      params.set('variant', 'changsha');
+      params.set('join', '1');
+      const separator = this.url.indexOf('?') >= 0 ? '&' : '?';
+      return `${this.url}${separator}${params.toString()}`;
+    }
     const seatRaw = pageQuery.get('seat');
     if (seatRaw !== null) {
       const seatNum = parseInt(seatRaw, 10);
@@ -490,6 +537,8 @@ export class ClientUi {
         params.set('botCount', String(bc));
       }
     }
+    const botsRaw = pageQuery.get('bots');
+    if (botsRaw === 'true' || botsRaw === 'false') params.set('bots', botsRaw);
     const variantRaw = pageQuery.get('variant');
     if (variantRaw !== null && variantRaw.length > 0 && variantRaw.length <= 32) {
       params.set('variant', variantRaw);
@@ -526,6 +575,11 @@ export class ClientUi {
     const handCountRaw = pageQuery.get('handCount');
     if (handCountRaw !== null && ['1', '4', '8', '16'].includes(handCountRaw)) {
       params.set('handCount', handCountRaw);
+    }
+    const baseUnitRaw = pageQuery.get('baseUnit');
+    if (baseUnitRaw !== null && (variantRaw ?? 'changsha').toLowerCase() === 'changsha') {
+      const unit = parseBaseUnit(baseUnitRaw);
+      params.set('baseUnit', unit === null ? baseUnitRaw : String(unit));
     }
     const separator = this.url.indexOf('?') >= 0 ? '&' : '?';
     return `${this.url}${separator}${params.toString()}`;
@@ -589,6 +643,7 @@ export class ClientUi {
   }
 
   onConnect(game: Game): void {
+    this.connectionBannerText?.removeAttribute('data-testid');
     this.setStatus(null);
     document.getElementById('server')!.classList.add('connected');
     // Phase I Wave 3 — mirror the .connected toggle onto the lobby Game
@@ -623,8 +678,10 @@ export class ClientUi {
     // capture is always null (no seat was taken), but we belt-and-brace
     // it here so a stray reconnectSeat from a prior seated session
     // doesn't accidentally seat the spectator.
-    if (this.spectating) {
+    if (this.spectating || isJoinOnly()) {
       this.reconnectSeat = null;
+      this.urlSeatHandoff = null;
+      this.urlSeatHandoffDecided = true;
     } else if (this.reconnectSeat !== null) {
       this.client.seats.set(this.client.playerId(), { seat: this.reconnectSeat });
     } else {
@@ -684,6 +741,7 @@ export class ClientUi {
   }
 
   private maybeClaimUrlSeat(): void {
+    if (isJoinOnly()) return;
     if (this.urlSeatHandoffDecided) return;
     const urlSeat = this.urlSeatHandoff;
     if (urlSeat === null) return;
@@ -711,6 +769,14 @@ export class ClientUi {
     document.getElementById('lobby-gameId-row')?.classList.remove('connected');
     document.getElementsByTagName('title')[0].innerText = TITLE_DISCONNECTED;
 
+    if (this.terminalJoinRejection !== null) {
+      this.rejectJoin(this.terminalJoinRejection);
+      return;
+    }
+    if (this.client.protocolUnavailableReason !== null) {
+      this.showProtocolUnavailable(this.client.protocolUnavailableReason);
+      return;
+    }
     if (this.disconnecting) {
       // User-initiated disconnect (Disconnect button, hot-seat swap,
       // Apply & Start).  Don't auto-reconnect or surface a banner — the
@@ -747,6 +813,8 @@ export class ClientUi {
   // the next-attempt timer.  Attempts run 1..RECONNECT_MAX_ATTEMPTS;
   // beyond that onDisconnect surfaces the failure banner.
   private scheduleReconnect(): void {
+    if (this.terminalJoinRejection !== null) return;
+    if (this.client.protocolUnavailableReason !== null) return;
     if (this.reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
       this.showBannerFailed();
       return;
@@ -766,6 +834,13 @@ export class ClientUi {
   // Resets the chain and starts again from delay #1, so a "ladder
   // exhausted" state is recoverable without a page reload.
   private manualRetry(): void {
+    if (this.terminalJoinRejection !== null) return;
+    if (this.client.protocolUnavailableReason !== null) {
+      this.wasDisconnected = false;
+      this.reconnectAttempts = 0;
+      this.connect();
+      return;
+    }
     this.wasDisconnected = true;
     this.reconnectAttempts = 0;
     this.scheduleReconnect();
@@ -776,6 +851,40 @@ export class ClientUi {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+  }
+
+  private rejectJoin(reason: string): void {
+    this.terminalJoinRejection = reason;
+    this.creatingGameId = null;
+    this.wasDisconnected = false;
+    this.reconnectSeat = null;
+    this.clearReconnectTimer();
+    const message = t(`room.join.${reason}`);
+    this.setStatus(message);
+    this.showBannerFailed();
+    if (this.connectionBannerText !== null) {
+      this.connectionBannerText.textContent = message;
+      this.connectionBannerText.setAttribute('data-testid', 'room-join-error');
+    }
+    if (this.connectionBannerRetry !== null) hideEl(this.connectionBannerRetry);
+    if (this.connectionBannerCopyLink !== null) hideEl(this.connectionBannerCopyLink);
+    (document.getElementById('connect') as HTMLButtonElement).disabled = true;
+  }
+
+  private showProtocolUnavailable(reason: string): void {
+    this.reconnectSeat = null;
+    this.wasDisconnected = false;
+    this.clearReconnectTimer();
+    const message = t('room.connection_failed', { reason: `protocol-unavailable: ${reason}` });
+    this.setStatus(message);
+    this.showBannerFailed();
+    if (this.connectionBannerText !== null) {
+      this.connectionBannerText.textContent = message;
+      this.connectionBannerText.setAttribute('data-testid', 'protocol-unavailable');
+    }
+    if (this.connectionBannerCopyLink !== null) hideEl(this.connectionBannerCopyLink);
+    if (this.connectionBannerRetry !== null) showEl(this.connectionBannerRetry);
+    (document.getElementById('connect') as HTMLButtonElement).disabled = false;
   }
 
   private showBannerReconnecting(attempt: number, max: number): void {
@@ -1005,7 +1114,17 @@ export class ClientUi {
   // `reconnectSeat` is still passed by the reconnect loop so the seat is
   // re-taken after JOIN.
   connect(_legacy?: undefined, reconnectSeat?: number): void {
-    if (this.client.connected()) {
+    if (this.client.connected() || this.identityConnectPending || this.terminalJoinRejection !== null) {
+      return;
+    }
+    const query = new URLSearchParams(window.location.search);
+    const baseUnit = query.get('baseUnit');
+    if (!isJoinOnly() && (query.get('variant') ?? 'changsha').toLowerCase() === 'changsha'
+        && baseUnit !== null && (parseBaseUnit(baseUnit) === null || query.getAll('baseUnit').length !== 1)) {
+      const message = t('lobby.base_unit_error', { max: MAX_BASE_UNIT });
+      this.setStatus(message);
+      this.showToast(message, 'error', 8000);
+      (document.getElementById('connect') as HTMLButtonElement).disabled = false;
       return;
     }
 
@@ -1036,11 +1155,16 @@ export class ClientUi {
     // shared-room join) never reaches this branch, so creator-wins semantics
     // and reconnect are preserved.
     if (gameId === '') {
+      if (isJoinOnly()) {
+        this.rejectJoin('room-not-found');
+        return;
+      }
       window.location.replace(
         buildFreshGameUrl(window.location.pathname, window.location.search),
       );
       return;
     }
+    this.creatingGameId = !isJoinOnly() && hasNewGameIntent(window.location.search, gameId) ? gameId : null;
     this.setUrlState(gameId);
 
     // Phase I Wave 4 — re-evaluate spectator mode every connect attempt
@@ -1059,15 +1183,42 @@ export class ClientUi {
       this.reconnectSeat = null;
     }
     const wsUrl = this.buildWsUrl(gameId);
-    const existing = this.getUrlState();
-    if (existing !== null) {
-      this.client.join(wsUrl, gameId);
-    } else {
-      this.client.new(wsUrl);
+    void this.connectWithVerifiedIdentity(wsUrl, gameId);
+  }
+
+  private async connectWithVerifiedIdentity(wsUrl: string, gameId: string): Promise<void> {
+    const epoch = ++this.connectEpoch;
+    this.identityConnectPending = true;
+    this.setStatus(t('room.identity_loading'));
+    try {
+      const identity = await bootstrapIdentity();
+      if (epoch !== this.connectEpoch) return;
+      if (identity === null) {
+        const message = t('room.identity_failed', { reason: getIdentityBootstrapState().error ?? '' });
+        this.setStatus(message);
+        this.showBannerFailed();
+        if (this.connectionBannerText !== null) this.connectionBannerText.textContent = message;
+        (document.getElementById('connect') as HTMLButtonElement).disabled = false;
+        return;
+      }
+      this.setStatus(t('room.connecting'));
+      if (this.creatingGameId === gameId && !isJoinOnly()) this.client.new(wsUrl);
+      else this.client.join(wsUrl, gameId);
+    } catch (failure) {
+      if (epoch !== this.connectEpoch) return;
+      const message = t('room.connection_failed', { reason: failure instanceof Error ? failure.message : String(failure) });
+      this.setStatus(message);
+      this.showBannerFailed();
+      if (this.connectionBannerText !== null) this.connectionBannerText.textContent = message;
+      (document.getElementById('connect') as HTMLButtonElement).disabled = false;
+    } finally {
+      if (epoch === this.connectEpoch) this.identityConnectPending = false;
     }
   }
 
   disconnect(): void {
+    this.connectEpoch++;
+    this.identityConnectPending = false;
     this.disconnecting = true;
     // Phase J Wave 2 — cancel any in-flight reconnect timer so the
     // user-initiated disconnect doesn't race against a pending retry.
@@ -1105,6 +1256,8 @@ export class ClientUi {
     // GameComplete (pure URL compute + navigate).
     if (this.newGameInFlight) return;
     this.newGameInFlight = true;
+    this.connectEpoch++;
+    this.identityConnectPending = false;
     try {
       // Capture the handoff seat FIRST — from the LIVE game (client.seat) while
       // it's still intact, else the pre-disconnect reconnectSeat — so the
@@ -1138,20 +1291,6 @@ export class ClientUi {
       this.newGameInFlight = false;
       throw err;
     }
-  }
-
-  // New Game UX P0 (persistent control) — single delegated click handler that
-  // maps ANY `[data-action="new-game"]` control to the authoritative newGame().
-  // Delegation on document (rather than a per-element onclick) means the
-  // persistent OUTSIDE-sidebar button binds automatically whenever Ferro mounts
-  // it, static or dynamic, without id coupling; programmatic `.click()` bubbles
-  // here too. A New Game control is never a relay/link action ⇒ preventDefault.
-  private bindNewGameControls(): void {
-    document.addEventListener('click', (ev: Event) => {
-      if (!isNewGameActivation(ev.target)) return;
-      ev.preventDefault();   // a New Game control is never a relay/link action
-      this.newGame();
-    });
   }
 }
 
