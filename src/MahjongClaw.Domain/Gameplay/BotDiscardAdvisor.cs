@@ -3263,17 +3263,36 @@ public static class BotDiscardAdvisor
             }
             else if (overallMaxSmallWinOuts > 0)
             {
-                prioritizedCandidates = allCandidates
-                    .Where(candidate => candidate.SmallWinningDrawOuts == overallMaxSmallWinOuts)
-                    .ToList();
-                maxSmallWinOuts = overallMaxSmallWinOuts;
+                var allowSmallWinOutsOverride = !(filteredByNearDeadOffRankPair
+                    || filteredByNearDeadSmallWinSingleton
+                    || filteredByIsolatedOffRankPair
+                    || filteredByDeadPair
+                    || filteredByDeadOffRankPair
+                    || filteredByDeadSingleton
+                    || filteredByDeadSuitedSingleton
+                    || filteredByKongThreatAvoidance);
 
-                var maxSmallWinCopies = prioritizedCandidates.Max(candidate => candidate.SmallWinningDrawOutCopies);
-                if (maxSmallWinCopies > 0)
+                if (filteredByPureSuit)
                 {
-                    prioritizedCandidates = prioritizedCandidates
-                        .Where(candidate => candidate.SmallWinningDrawOutCopies == maxSmallWinCopies)
+                    allowSmallWinOutsOverride = allowSmallWinOutsOverride
+                        && (!hasChangshaPureSuitLean
+                            || prioritizedCandidates.All(candidate => candidate.RemainingCopies <= 0));
+                }
+
+                if (allowSmallWinOutsOverride)
+                {
+                    prioritizedCandidates = allCandidates
+                        .Where(candidate => candidate.SmallWinningDrawOuts == overallMaxSmallWinOuts)
                         .ToList();
+                    maxSmallWinOuts = overallMaxSmallWinOuts;
+
+                    var maxSmallWinCopies = prioritizedCandidates.Max(candidate => candidate.SmallWinningDrawOutCopies);
+                    if (maxSmallWinCopies > 0)
+                    {
+                        prioritizedCandidates = prioritizedCandidates
+                            .Where(candidate => candidate.SmallWinningDrawOutCopies == maxSmallWinCopies)
+                            .ToList();
+                    }
                 }
             }
         }
