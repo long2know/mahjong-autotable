@@ -22,7 +22,10 @@
 
 // The legacy shared sentinel.  A default navigation must never silently
 // resolve to this; only an explicit user-typed / deep-linked gameId may.
+import { DEFAULT_BASE_UNIT } from './base-unit';
+
 export const DEFAULT_GAME_ID = 'changsha-default';
+export const NEW_GAME_INTENT_PARAM = 'createGame';
 
 // New-game defaults — kept in lock-step with lobby.ts DEFAULTS so the bare
 // Connect path and the lobby's Apply & Start land on identical config.
@@ -32,7 +35,27 @@ export const NEW_GAME_DEFAULTS = {
   botCount: 3,
   botDifficulty: 'Hard',
   handCount: 4,
+  baseUnit: DEFAULT_BASE_UNIT,
 } as const;
+
+export function hasNewGameIntent(search: string, gameId: string): boolean {
+  const params = new URLSearchParams(search);
+  return (params.get('variant') ?? NEW_GAME_DEFAULTS.variant).toLowerCase() === 'changsha'
+    && readConcreteGameId(search) === gameId
+    && params.getAll(NEW_GAME_INTENT_PARAM).length === 1
+    && params.get(NEW_GAME_INTENT_PARAM) === gameId;
+}
+
+// Frontend-only intent, bound to the minted alias. The WS still uses normal NEW.
+export function setNewGameIntent(params: URLSearchParams, fresh: boolean): void {
+  const gameId = params.get('gameId');
+  if (fresh && gameId !== null && gameId !== ''
+      && (params.get('variant') ?? NEW_GAME_DEFAULTS.variant).toLowerCase() === 'changsha') {
+    params.set(NEW_GAME_INTENT_PARAM, gameId);
+  } else {
+    params.delete(NEW_GAME_INTENT_PARAM);
+  }
+}
 
 // Mint a fresh `changsha-<8 hex>` game id.  Prefers crypto.randomUUID, then
 // crypto.getRandomValues, then Math.random — never throws on legacy / non-
@@ -94,6 +117,7 @@ export interface GameDefiningConfig {
   botDifficulty?: string;   // only meaningful when botCount > 0
   handCount: number;
   seed?: number | null;
+  baseUnit?: number;
 }
 
 interface CanonicalConfig {
@@ -103,6 +127,7 @@ interface CanonicalConfig {
   botDifficulty: string;
   handCount: number;
   seed: number | null;
+  baseUnit: number;
 }
 
 function canonicalizeConfig(src: GameDefiningConfig): CanonicalConfig {
@@ -117,13 +142,14 @@ function canonicalizeConfig(src: GameDefiningConfig): CanonicalConfig {
     botDifficulty: botCount > 0 ? (src.botDifficulty || NEW_GAME_DEFAULTS.botDifficulty) : '',
     handCount: src.handCount,
     seed: src.seed ?? null,
+    baseUnit: variant === 'changsha' ? (src.baseUnit ?? DEFAULT_BASE_UNIT) : DEFAULT_BASE_UNIT,
   };
 }
 
 function canonicalConfigFromSearch(search: string): CanonicalConfig {
   const p = new URLSearchParams(search);
   const variant = p.get('variant') || NEW_GAME_DEFAULTS.variant;
-  const botCount = p.has('botCount')
+  const botCount = p.get('bots') === 'false' ? 0 : p.has('botCount')
     ? Number(p.get('botCount'))
     : NEW_GAME_DEFAULTS.botCount;
   const handCount = p.has('handCount')
@@ -137,6 +163,7 @@ function canonicalConfigFromSearch(search: string): CanonicalConfig {
     botDifficulty: p.get('botDifficulty') ?? undefined,
     handCount,
     seed: seedRaw === null || seedRaw.trim() === '' ? null : Number(seedRaw),
+    baseUnit: p.has('baseUnit') ? Number(p.get('baseUnit')) : DEFAULT_BASE_UNIT,
   });
 }
 
@@ -152,7 +179,8 @@ export function gameConfigDiffersFromUrl(search: string, cfg: GameDefiningConfig
     a.botCount !== b.botCount ||
     a.botDifficulty !== b.botDifficulty ||
     a.handCount !== b.handCount ||
-    a.seed !== b.seed
+    a.seed !== b.seed ||
+    a.baseUnit !== b.baseUnit
   );
 }
 
@@ -186,12 +214,16 @@ export function buildFreshGameUrl(
   seat?: number | null,
 ): string {
   const p = new URLSearchParams(search);
+  p.delete('join');
   p.set('gameId', gameId);
   if (!p.has('variant')) p.set('variant', NEW_GAME_DEFAULTS.variant);
   // dealMode is Changsha-only; only stamp it for the Changsha variant so
   // Riichi deep-links stay tidy (they ignore dealMode server-side).
   if (p.get('variant') === 'changsha' && !p.has('dealMode')) {
     p.set('dealMode', NEW_GAME_DEFAULTS.dealMode);
+  }
+  if (p.get('variant') === 'changsha' && !p.has('baseUnit')) {
+    p.set('baseUnit', String(DEFAULT_BASE_UNIT));
   }
   if (!p.has('botCount')) p.set('botCount', String(NEW_GAME_DEFAULTS.botCount));
   // botDifficulty is meaningless with zero bots — only stamp it when bots
@@ -210,6 +242,7 @@ export function buildFreshGameUrl(
   if (seat !== undefined && seat !== null && (seat >= 0 || seat === -1)) {
     p.set('seat', String(seat));
   }
+  setNewGameIntent(p, true);
   return `${pathname}?${p.toString()}`;
 }
 

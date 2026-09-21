@@ -3,7 +3,7 @@
 // Polls Bishop's `GET /api/matchmaking/lobby` endpoint every 5 s while
 // the "Public Games" tab is visible.  Each entry renders as a card
 // with a Join button.  The "Join Random" button invokes the SignalR
-// hub's `JoinRandom` RPC; the host's "Make public" toggle invokes
+// hub's non-seating `FindJoinableGame` RPC; the host's "Make public" toggle invokes
 // `SetGamePublic`.
 //
 // Tab activation / deactivation is driven by lobby.ts (Public Games
@@ -25,8 +25,8 @@
 //     createdAt: string;       // ISO-8601 UTC
 //   }
 //
-//   SignalR invoke 'JoinRandom'(variant?)
-//     → { matched: true, gameId, seatIndex }
+//   SignalR invoke 'FindJoinableGame'(variant?)
+//     → { matched: true, gameId }
 //     → { matched: false }
 //
 //   SignalR invoke 'SetGamePublic'(gameId, isPublic, publicName?)
@@ -37,12 +37,15 @@
 import { EventEmitter } from 'events';
 
 import { invokeHub } from './hub';
+import { buildRoomJoinUrl } from './room-join-url';
 
 export interface PublicGame {
   gameId: string;
   publicName: string | null;
   creatorDisplayName: string;
   seatedCount: number;
+  botCount: number;
+  openHumanSeats: number;
   maxSeats: number;
   variant: string;
   createdAt: string;
@@ -62,17 +65,28 @@ function emitState(): void {
   events.emit('update', { games: cache, error: lastError });
 }
 
-function normalizePublicGame(g: unknown): PublicGame | null {
-  if (g === null || typeof g !== 'object') return null;
+function normalizePublicGame(g: unknown): PublicGame {
+  if (g === null || typeof g !== 'object') throw new Error('Invalid public table response.');
   const o = g as Record<string, unknown>;
-  if (typeof o.gameId !== 'string') return null;
+  if (typeof o.gameId !== 'string' || o.gameId === ''
+      || typeof o.seatedCount !== 'number' || !Number.isInteger(o.seatedCount)
+      || typeof o.botCount !== 'number' || !Number.isInteger(o.botCount)
+      || typeof o.openHumanSeats !== 'number' || !Number.isInteger(o.openHumanSeats)
+      || o.seatedCount < 0 || o.botCount < 0 || o.openHumanSeats < 0
+      || o.seatedCount > 4 || o.botCount > 4 || o.openHumanSeats > 4) {
+    throw new Error('Public table availability does not match the multiplayer contract.');
+  }
+  buildRoomJoinUrl(o.gameId);
   const publicName = typeof o.publicName === 'string' ? o.publicName : null;
   const creatorDisplayName = typeof o.creatorDisplayName === 'string' ? o.creatorDisplayName : 'Unknown';
-  const seatedCount = typeof o.seatedCount === 'number' ? o.seatedCount : 0;
+  const seatedCount = o.seatedCount;
   const maxSeats = typeof o.maxSeats === 'number' ? o.maxSeats : 4;
   const variant = typeof o.variant === 'string' ? o.variant : 'changsha';
   const createdAt = typeof o.createdAt === 'string' ? o.createdAt : new Date().toISOString();
-  return { gameId: o.gameId, publicName, creatorDisplayName, seatedCount, maxSeats, variant, createdAt };
+  return {
+    gameId: o.gameId, publicName, creatorDisplayName, seatedCount,
+    botCount: o.botCount, openHumanSeats: o.openHumanSeats, maxSeats, variant, createdAt,
+  };
 }
 
 async function pollOnce(): Promise<void> {
@@ -92,17 +106,13 @@ async function pollOnce(): Promise<void> {
       return;
     }
     const body = (await resp.json()) as unknown;
+    const raw = body !== null && typeof body === 'object' ? (body as { games?: unknown }).games : null;
+    if (!Array.isArray(raw)) throw new Error('Public table response omitted games.');
     const games: Array<PublicGame> = [];
-    if (body !== null && typeof body === 'object') {
-      const raw = (body as { games?: unknown }).games;
-      if (Array.isArray(raw)) {
-        for (const g of raw) {
-          const n = normalizePublicGame(g);
-          if (n !== null) games.push(n);
-          if (games.length >= MAX_PUBLIC_GAMES_RENDERED) break;
-        }
-      }
+    for (const g of raw.slice(0, MAX_PUBLIC_GAMES_RENDERED)) {
+      games.push(normalizePublicGame(g));
     }
+    if (ctrl.signal.aborted) return;
     cache = games;
     lastError = null;
     emitState();
@@ -166,7 +176,6 @@ export function refresh(): Promise<void> {
 
 export interface JoinRandomResult {
   gameId: string;
-  seatIndex: number;
 }
 
 /**
@@ -175,13 +184,13 @@ export interface JoinRandomResult {
  * errors so the caller can surface an inline error toast.
  */
 export async function joinRandom(variant?: string): Promise<JoinRandomResult | null> {
-  const result = await invokeHub<unknown>('JoinRandom', variant ?? null);
-  if (result === null || typeof result !== 'object') return null;
+  const result = await invokeHub<unknown>('FindJoinableGame', variant ?? null);
+  if (result === null || typeof result !== 'object') throw new Error('Invalid matchmaking response.');
   const o = result as Record<string, unknown>;
-  if (o.matched !== true) return null;
-  if (typeof o.gameId !== 'string') return null;
-  const seatIndex = typeof o.seatIndex === 'number' ? o.seatIndex : 0;
-  return { gameId: o.gameId, seatIndex };
+  if (o.matched === false) return null;
+  if (o.matched !== true || typeof o.gameId !== 'string') throw new Error('Invalid matchmaking response.');
+  buildRoomJoinUrl(o.gameId);
+  return { gameId: o.gameId };
 }
 
 /**
@@ -193,7 +202,8 @@ export async function joinRandom(variant?: string): Promise<JoinRandomResult | n
  * Bishop's hub rejects unauthorised flips with a HubException.
  */
 export interface SetGamePublicResult {
-  success: boolean;
+  success: true;
+  gameId: string;
   isPublic: boolean;
   publicName: string | null;
 }
@@ -209,36 +219,29 @@ export async function setGamePublic(args: {
     args.isPublic,
     args.publicName ?? null,
   );
-  // Trigger an immediate poll so the host sees their game appear (or
-  // disappear) from the public list right away.
-  if (active) void pollOnce();
   if (result === null || typeof result !== 'object') {
-    return { success: false, isPublic: args.isPublic, publicName: null };
+    throw new Error('Invalid SetGamePublic response.');
   }
   const o = result as Record<string, unknown>;
+  if (o.success !== true || typeof o.gameId !== 'string' || typeof o.isPublic !== 'boolean'
+      || (o.publicName !== null && typeof o.publicName !== 'string')) {
+    throw new Error(typeof o.reason === 'string' ? o.reason : 'Server did not confirm the public-table change.');
+  }
+  if (active) void pollOnce();
   return {
-    success: o.success === true,
-    isPublic: o.isPublic === true,
-    publicName: typeof o.publicName === 'string' ? o.publicName : null,
+    success: true,
+    gameId: o.gameId,
+    isPublic: o.isPublic,
+    publicName: o.publicName,
   };
 }
 
 // ── Navigation helper ──────────────────────────────────────────────
 
 /**
- * Navigate to the indicated game.  Preserves the current variant and
- * any handCount/dealMode/seed query params so the join lands the user
- * in the lobby's chosen configuration.  Used by both the Join card
- * button and the Join Random button.
+ * Cards and random selection use existing-only admission, never a hub seat
+ * that would be discarded during navigation.
  */
-export function navigateToGame(gameId: string, seatIndex?: number): void {
-  const params = new URLSearchParams(window.location.search);
-  params.set('gameId', gameId);
-  if (seatIndex !== undefined && seatIndex >= 0 && seatIndex <= 3) {
-    params.set('seat', String(seatIndex));
-  } else {
-    params.delete('seat');
-  }
-  const url = window.location.pathname + '?' + params.toString();
-  window.location.replace(url);
+export function navigateToGame(gameId: string): void {
+  window.location.replace(buildRoomJoinUrl(gameId));
 }

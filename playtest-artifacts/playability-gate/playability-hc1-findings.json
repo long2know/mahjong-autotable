@@ -7,16 +7,16 @@
         "ok": true,
         "entryShaMatches": true
       },
-      "at": 41
+      "at": 54
     },
     {
       "step": "boot.game-object",
       "ok": true,
       "detail": {
-        "url": "http://127.0.0.1:18122/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=1&seat=0&seed=12345&gameId=playability-hc1-hudson128fix-r0",
+        "url": "http://127.0.0.1:8221/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=1&seat=0&seed=12345&gameId=playability-hc1-local-mobile-chrome-w0-r0",
         "handCount": 1
       },
-      "at": 694
+      "at": 744
     },
     {
       "step": "connect.ws",
@@ -25,7 +25,7 @@
         "connected": true,
         "humanPlays": true
       },
-      "at": 1162
+      "at": 1431
     },
     {
       "step": "observer.hand-end.install",
@@ -33,7 +33,7 @@
       "detail": {
         "installed": true
       },
-      "at": 1190
+      "at": 1512
     },
     {
       "step": "seat.take",
@@ -41,13 +41,13 @@
       "detail": {
         "assigned": 0
       },
-      "at": 3490
+      "at": 3524
     },
     {
-      "step": "deal.press",
+      "step": "deal.trigger",
       "ok": true,
       "detail": null,
-      "at": 4430
+      "at": 4427
     },
     {
       "step": "deal.playable-hand",
@@ -56,45 +56,16 @@
         "myHandCount": 14,
         "lastPickup": null
       },
-      "at": 10954
-    },
-    {
-      "step": "discard.pointer",
-      "ok": true,
-      "detail": {
-        "tileId": 65,
-        "discardAfter": 4
-      },
-      "at": 15169
-    },
-    {
-      "step": "claim.click",
-      "ok": true,
-      "detail": {
-        "available": [
-          "Chow"
-        ],
-        "clicked": "Pass"
-      },
-      "at": 16935
-    },
-    {
-      "step": "discard.pointer",
-      "ok": true,
-      "detail": {
-        "tileId": 50,
-        "discardAfter": 5
-      },
-      "at": 23313
+      "at": 17045
     },
     {
       "step": "discard.pointer",
       "ok": true,
       "detail": {
         "tileId": 54,
-        "discardAfter": 9
+        "discardAfter": 4
       },
-      "at": 27758
+      "at": 19327
     },
     {
       "step": "claim.click",
@@ -105,25 +76,87 @@
         ],
         "clicked": "Pass"
       },
-      "at": 29514
+      "at": 23618
     },
     {
       "step": "discard.pointer",
       "ok": true,
       "detail": {
-        "tileId": 26,
+        "tileId": 53,
+        "discardAfter": 6
+      },
+      "at": 26314
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 65,
+        "discardAfter": 9
+      },
+      "at": 30636
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 34921
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 39204
+    },
+    {
+      "step": "discard.pointer",
+      "ok": true,
+      "detail": {
+        "tileId": 67,
         "discardAfter": 12
       },
-      "at": 39352
+      "at": 43608
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Chow"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 48749
     },
     {
       "step": "discard.pointer",
       "ok": true,
       "detail": {
-        "tileId": 23,
-        "discardAfter": 19
+        "tileId": 42,
+        "discardAfter": 17
       },
-      "at": 49974
+      "at": 51437
+    },
+    {
+      "step": "claim.click",
+      "ok": true,
+      "detail": {
+        "available": [
+          "Pung"
+        ],
+        "clicked": "Pass"
+      },
+      "at": 55746
     },
     {
       "step": "hand.end.observed",
@@ -135,12 +168,12 @@
             "winner": 2,
             "type": "Hu",
             "nextBanker": 2,
-            "at": 1785128789617
+            "at": 1786573467963
           }
         ],
         "clears": 1
       },
-      "at": 50799
+      "at": 57463
     },
     {
       "step": "gate.summary",
@@ -164,7 +197,7 @@
           2
         ],
         "discardsFired": 5,
-        "claimsHandled": 2,
+        "claimsHandled": 5,
         "huByHuman": false,
         "gcComplete": true,
         "gcMaxHands": 1,
@@ -187,13 +220,16 @@
         },
         "timedOut": false,
         "modalStorm": false,
-        "redismissCount": 0
+        "redismissCount": 0,
+        "stalled": false,
+        "stallReason": null,
+        "realClaimsAttempted": 0
       },
-      "at": 51359
+      "at": 57928
     }
   ],
   "config": {
-    "gameId": "playability-hc1-hudson128fix-r0",
+    "gameId": "playability-hc1-local-mobile-chrome-w0-r0",
     "seat": 0,
     "botCount": 3,
     "botDifficulty": "Hard",
@@ -221,7 +257,7 @@
       2
     ],
     "discardsFired": 5,
-    "claimsHandled": 2,
+    "claimsHandled": 5,
     "huByHuman": false,
     "gcComplete": true,
     "gcMaxHands": 1,
@@ -244,6 +280,9 @@
     },
     "timedOut": false,
     "modalStorm": false,
-    "redismissCount": 0
+    "redismissCount": 0,
+    "stalled": false,
+    "stallReason": null,
+    "realClaimsAttempted": 0
   }
 }

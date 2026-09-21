@@ -158,6 +158,7 @@ builder.Services.AddSingleton<AutotableConnectionManager>();
 // Phase J Wave 5 — player profile + matchmaking services. Singleton-scoped so
 // they share the runtime's lifetime and use IServiceScopeFactory for DB scopes.
 builder.Services.AddSingleton<PlayerProfileService>();
+builder.Services.AddSingleton<LobbyPresenceService>();
 builder.Services.AddSingleton<MatchmakingService>();
 
 // Phase J Wave 6 — identity + leaderboard services. PlayerIdentityService
@@ -602,6 +603,7 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.MagicLinkService>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Changsha.Reconnect.ReconnectTokenService>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Changsha.Chat.ChatContentFilter>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Changsha.Chat.ChatService>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Changsha.Chat.ChatInvitationService>();
 
 // Phase J Wave 10 — audit-table pruning. Default retention: 30 days for
 // ReconnectAuditEntries, 90 days for CspViolations, sweeping daily.
@@ -1714,9 +1716,10 @@ app.MapPost("/api/turn/credentials", async (
 // reads this column, so flipping false immediately closes the door
 // (new joiners get rejected; in-flight peers stay connected until
 // they next call JoinVoice).
-app.MapPost("/api/games/{id:guid}/settings/voice", async (
+app.MapPost("/api/games/{id}/settings/voice", async (
     HttpContext ctx,
-    Guid id,
+    string id,
+    IChangshaGameRuntime runtime,
     Mahjong.Autotable.Api.Auth.AuthCookieService cookies,
     Mahjong.Autotable.Api.Data.AppDbContext db,
     Mahjong.Autotable.Api.Voice.VoiceSettingsBody? body,
@@ -1733,8 +1736,19 @@ app.MapPost("/api/games/{id:guid}/settings/voice", async (
         return Results.Json(new { error = "Body must include `enabled`." },
             statusCode: StatusCodes.Status400BadRequest);
     }
+    RoomReference? room;
+    try { room = await runtime.ResolveExistingRoomAsync(id, ct); }
+    catch (PublicRoomRecoveryException ex)
+    {
+        return Results.Json(new { error = ex.Reason },
+            statusCode: ex.Reason == "invalid-public-room" ? 400 : 503);
+    }
+    if (room is null)
+        return Results.Json(new { error = "Game not found.", gameId = id },
+            statusCode: StatusCodes.Status404NotFound);
+    var runtimeId = Guid.Parse(room.RuntimeGameId);
     var row = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
-        .FirstOrDefaultAsync(db.ChangshaGames, g => g.Id == id, ct);
+        .FirstOrDefaultAsync(db.ChangshaGames, g => g.Id == runtimeId, ct);
     if (row is null)
     {
         return Results.Json(new { error = "Game not found.", gameId = id },
@@ -1755,7 +1769,7 @@ app.MapPost("/api/games/{id:guid}/settings/voice", async (
     row.VoiceEnabled = body.Enabled;
     row.UpdatedUtc = DateTime.UtcNow;
     await db.SaveChangesAsync(ct);
-    return Results.Ok(new { gameId = id, voiceEnabled = row.VoiceEnabled });
+    return Results.Ok(new { gameId = room.RoomId, voiceEnabled = row.VoiceEnabled });
 }).RequireRateLimiting(RateLimitingExtensions.ApiPolicy);
 
 // Phase K Wave 2 — Bishop (Backend). Spectator livestream stub. The HLS

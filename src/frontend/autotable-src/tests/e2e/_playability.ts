@@ -641,6 +641,10 @@ export async function readClaimWindow(page: Page): Promise<ClaimView> {
 /** OBSERVE — id list of the local seat's own concealed hand tiles. */
 export async function readMyHandTiles(page: Page): Promise<number[]> {
   return page.evaluate(() => {
+    const tray = document.getElementById('own-hand-tray');
+    if (tray?.getClientRects().length) {
+      return [...tray.querySelectorAll<HTMLButtonElement>('[data-tile-id]')].map(tile => Number(tile.dataset.tileId));
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = (window as any).game?.world;
     if (!w || typeof w.toSelect !== 'function') return [];
@@ -746,6 +750,18 @@ export interface TileScreenPos {
  */
 export async function projectTileToCanvas(page: Page, tileId: number): Promise<TileScreenPos> {
   return page.evaluate((id: number) => {
+    // Compact Changsha replaces its tiny 3D row with a touch-sized local view.
+    // Observe that visible tile body; the existing real pointer press is unchanged.
+    const tile = document.querySelector<HTMLElement>(`#own-hand-tray [data-tile-id="${id}"]`);
+    if (tile?.getClientRects().length) {
+      const r = tile.getBoundingClientRect();
+      const clientX = (r.left + r.right) / 2, clientY = (r.top + r.bottom) / 2;
+      const hit = document.elementFromPoint(clientX, clientY);
+      // A held result now persists over the table. Never misroute a discard
+      // coordinate to its Continue button or another foreground control.
+      if (hit !== tile && !tile.contains(hit)) return { ok: false, reason: 'hand tile is covered', clientX, clientY };
+      return { ok: true, clientX, clientY };
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const g = (window as any).game;
     const w = g?.world;
@@ -779,10 +795,15 @@ export async function projectTileToCanvas(page: Page, tileId: number): Promise<T
     const main = document.getElementById('main');
     if (!main) return { ok: false, reason: 'no #main canvas', clientX: 0, clientY: 0 };
     const rect = main.getBoundingClientRect();
+    const clientX = rect.left + (ndcX + 1) * 0.5 * rect.width;
+    const clientY = rect.top + (1 - ndcY) * 0.5 * rect.height;
+    if (!main.contains(document.elementFromPoint(clientX, clientY))) {
+      return { ok: false, reason: 'projected tile is covered', clientX, clientY };
+    }
     return {
       ok: true,
-      clientX: rect.left + (ndcX + 1) * 0.5 * rect.width,
-      clientY: rect.top + (1 - ndcY) * 0.5 * rect.height,
+      clientX,
+      clientY,
     };
   }, tileId);
 }
@@ -1331,8 +1352,8 @@ export async function isResultModalVisible(page: Page): Promise<boolean> {
 
 /**
  * ADVANCE — click the real "Next Hand" (#result-next) button in the per-hand
- * result modal to proceed to the next hand (sends match[1]={action:'nextHand'}
- * through the normal UI path — NOT a backdoor). Waits for it to be actionable.
+ * result modal to acknowledge the settled hand through the normal UI.
+ * The server advances after all required humans acknowledge.
  */
 export async function clickNextHand(page: Page, timeoutMs = 8000): Promise<boolean> {
   const btn = page.locator('#result-next');

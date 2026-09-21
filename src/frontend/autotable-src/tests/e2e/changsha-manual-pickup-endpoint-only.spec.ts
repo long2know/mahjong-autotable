@@ -594,9 +594,18 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     const cfg = makeConfig({ gameId: `g17-failclosed-${Date.now()}`, seat: 0, dealMode: 'manual', botCount: 3, botDifficulty: 'Medium', handCount: 4 });
     const takes = installTakeRecorder(page);
     await page.goto(buildGameUrl(base, cfg), { waitUntil: 'domcontentloaded' });
+    // takePickup catches click failures; a successful outcome + an automatic
+    // outbound take alone must not impersonate a genuine human gesture.
+    const pickupClicks = await page.evaluateHandle(() => {
+      const observed = { count: 0 };
+      document.addEventListener('click', (event) => {
+        if (event.isTrusted && event.target instanceof Element && event.target.closest('#pickup-take-btn')) observed.count++;
+      }, true);
+      return observed;
+    });
     await page.waitForTimeout(1200); await dismissLobbyAndTour(page); await ensureConnected(page);
     await takeSeatByClick(page, 0); await clickDeal(page).catch(() => {});
-    // ── S11 STALE-PRECONDITION ADJUDICATION (Ripley, independent revision owner) ──
+    // ── S11 STABLE-TOMBSTONE PRECONDITION (preserved) ──
     // The ORIGINAL setup sampled the designation 1.5 s after the deal trigger and
     // required "no exact-1 targetSlots". That only held because the RED build shipped
     // NO designation at all: on a build where Bishop's targetSlots is present, the
@@ -627,16 +636,30 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     let observedOwnWindow = false;
     let vacuousBlockedPolls = 0;
     let ownBatchesPressed = 0;
+    const ownPickupActions: Array<{ targetSlot: string; trustedClicks: number; outcome: Awaited<ReturnType<typeof takePickup>>; frames: TakeFrame[] }> = [];
     let foreignLiveBlockedPolls = 0;
     let d = await readDesignation(page);
     const conv = await pollWithStallGuard(page, async () => {
       const myTurnNow = await readIsMyPickupTurn(page);
-      const dSeen = await readDesignation(page);
-      // Non-vacuity milestone: latch once this viewer has genuinely HELD its own single-trigger
-      // window, so we never converge before the seat-0 window has synced/parked.
-      if (myTurnNow || (dSeen && dSeen.gate && dSeen.gateLen === 1)) observedOwnWindow = true;
-      // Drive EVERY owned pickup batch with a real press on the rendered take control.
-      if (myTurnNow) { await takePickup(page); ownBatchesPressed++; }
+      const frontier = await readStackDesignation(page);
+      // Observe an OWNED rendered reachable frontier, not merely a turn flag.
+      // A helper no-op (including ownership lost before its recheck) is not a human take.
+      if (myTurnNow && frontier?.targetLen === 1 && frontier.targetFound && frontier.targetReachable) {
+        observedOwnWindow = true;
+        const takeMark = takes.length;
+        const clicksBefore = await pickupClicks.evaluate((observed) => observed.count);
+        const outcome = await takePickup(page);
+        const trustedClicks = await pickupClicks.evaluate((observed) => observed.count) - clicksBefore;
+        const frames = takes.slice(takeMark);
+        expect(outcome.ok, `S11 confirmed pickup: the real owned take must be successful; frontier=${JSON.stringify(frontier)}, outcome=${JSON.stringify(outcome)}`).toBe(true);
+        expect(trustedClicks, `S11 confirmed pickup: require exactly one trusted take-button click, not an automatic take after a swallowed click failure; outcome=${JSON.stringify(outcome)}`).toBe(1);
+        expect(frames, `S11 confirmed pickup: a successful real take must emit exactly one actor-scoped pickup.take; outcome=${JSON.stringify(outcome)}, frames=${JSON.stringify(frames)}`).toHaveLength(1);
+        expect({ ...frames[0], keys: [...frames[0].keys].sort() }, `S11 confirmed pickup: payload must match the observed owner and batch, with no client tile authority; frontier=${JSON.stringify(frontier)}`).toEqual({
+          seatIndex: frontier.seatIndex, count: frontier.count, keys: ['count', 'seatIndex'],
+        });
+        ownPickupActions.push({ targetSlot: frontier.targetName, trustedClicks, outcome, frames });
+        ownBatchesPressed++;
+      }
       d = await readDesignation(page);
       const myTurn = await readIsMyPickupTurn(page);
       const stillMine = myTurn || !!(d && d.gate && d.gateLen === 1);
@@ -688,16 +711,19 @@ test.describe('G17 manual pickup endpoint-only (§D10/§B/§E2)', () => {
     const handAfter = await myHandCount(page);
     const emitted = takes.slice(mark);
     const anyWallActed = (handAfter > handBefore) || emitted.length > 0 || !!(drag.held && drag.held.isHolding) || ((drag.held?.dragOffsetWorld ?? 0) > 5);
-    recordEvidence('g17-fail-closed.json', { noValidDesignation, designationLen: d ? d.gateLen : null, reached, handBefore, handAfter, emittedTakes: emitted, held: drag.held, anyWallActed,
+    recordEvidence('g17-fail-closed.json', { noValidDesignation, designationLen: d ? d.gateLen : null, reached, handBefore, handAfter, emittedTakes: emitted, pick: drag.pick, held: drag.held, anyWallActed,
       convGuard: { done: conv.done, stalled: conv.stalled, capped: conv.capped, elapsedMs: conv.elapsedMs, keyChanges: conv.keyChanges, maxIdleMs: conv.maxIdleMs },
-      milestone: { observedOwnWindow, vacuousBlockedPolls, ownBatchesPressed, foreignLiveBlockedPolls },
-      note: 'Fail-closed (actor-scoped, Hudson): inert ⟺ zero outbound pickup.take AND unchanged `hand.*@0` AND no local hold/drag. Shared-wall deltas are NOT used — bots take concurrently. S11 converges ONLY on the STABLE same-hand ceremony-complete TOMBSTONE (reached.pickupLive=false + hasExtraHandTile/awaitingDiscard); the transient foreignLive (a bot turn) is NOT accepted — `foreignLiveBlockedPolls`>0 counts polls where the prior fix would have converged on a fleeting bot turn (now blocked, killing the gate-4 re-read race). `observedOwnWindow` must be true and `ownBatchesPressed`>0 (we drove every owned batch); `vacuousBlockedPolls`>0 means the old bare predicate would have converged vacuously pre-window.' });
+      milestone: { observedOwnWindow, vacuousBlockedPolls, ownBatchesPressed, ownPickupActions, foreignLiveBlockedPolls },
+      note: 'Fail-closed (actor-scoped, Hudson): inert ⟺ zero outbound pickup.take AND unchanged `hand.*@0` AND no local hold/drag. Shared-wall deltas are NOT used — bots take concurrently. S11 converges ONLY on the STABLE same-hand ceremony-complete TOMBSTONE (reached.pickupLive=false + hasExtraHandTile/awaitingDiscard); the transient foreignLive (a bot turn) is NOT accepted — `foreignLiveBlockedPolls`>0 counts polls where the prior fix would have converged on a fleeting bot turn (now blocked, killing the gate-4 re-read race). `observedOwnWindow` requires a rendered reachable owned single trigger; `ownBatchesPressed`>0 counts only successful takes with one trusted button click and exactly one matching {seatIndex,count} frame. Non-null `pick` and `held` prove the wall helper exercised its real mouse-down/drag/up branch. `vacuousBlockedPolls`>0 means the old bare predicate would have converged vacuously pre-window.' });
     // PRECONDITION at the STABLE tombstone: the ceremony has completed this hand, so the viewer
     // holds no single-trigger designation and no owned window will reopen. The convergence is
     // NON-VACUOUS (we observed and drove our own windows) and STABLE (no transient foreignLive).
     expect(observedOwnWindow, `S11 non-vacuity: must have HELD this viewer's own single-trigger pickup window before converging (guards the DPR1 first-poll vacuous case); observedOwnWindow=${observedOwnWindow}, reached=${JSON.stringify(reached)}, drive done=${conv.done} stalled=${conv.stalled} capped=${conv.capped} elapsedMs=${conv.elapsedMs}`).toBe(true);
+    expect(ownBatchesPressed, `S11 non-vacuity: must confirm at least one successful real owned pickup with matching outbound take evidence; actions=${JSON.stringify(ownPickupActions)}`).toBeGreaterThan(0);
     expect(reached.pickupLive === false && (reached.hasExtraHandTile || reached.awaitingDiscard), `S11 stable terminal: must converge on the same-hand ceremony-complete TOMBSTONE (pickup["current"]==null AND dealer hasExtraHandTile/AwaitingDiscard), never a transient live pickup; reached=${JSON.stringify(reached)}, drive done=${conv.done} stalled=${conv.stalled} capped=${conv.capped} elapsedMs=${conv.elapsedMs} ownBatchesPressed=${ownBatchesPressed} foreignLiveBlockedPolls=${foreignLiveBlockedPolls}`).toBe(true);
     expect(noValidDesignation, `precondition: this viewer holds no exact-1 targetSlots designation (converged state: ${JSON.stringify(reached)}; drive: done=${conv.done} stalled=${conv.stalled} capped=${conv.capped} elapsedMs=${conv.elapsedMs} maxIdleMs=${conv.maxIdleMs}; vacuousBlockedPolls=${vacuousBlockedPolls})`).toBe(true);
+    expect(drag.pick, 'S11 wall probe: must find a rendered reachable wall candidate, not pass without a pointer target').not.toBeNull();
+    expect(drag.held, 'S11 wall probe: must sample hold/drag state after the real pointer press').not.toBeNull();
     expect(anyWallActed, `FAIL-CLOSED: with no valid targetSlots, pressing ANY wall tile must be inert — zero pickup.take (emitted=${emitted.length}), unchanged hand (${handBefore}→${handAfter}), no hold/drag`).toBe(false);
   });
 

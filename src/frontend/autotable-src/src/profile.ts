@@ -48,9 +48,8 @@ import { EventEmitter } from 'events';
 
 import {
   getHubConnection,
-  hubIsConnected,
   invokeHub,
-  onHubConnected,
+  onHubConnectionCreated,
 } from './hub';
 
 // ── Public types ─────────────────────────────────────────────────────
@@ -308,22 +307,8 @@ export async function loadProfile(playerId: string): Promise<PlayerProfile> {
 let profileLoadedInstalled = false;
 function installProfileLoadedListener(): void {
   if (profileLoadedInstalled) return;
-  if (!hubIsConnected()) {
-    // Defer until the hub is up.  onHubConnected fires immediately
-    // if already connected.
-    onHubConnected((c) => {
-      if (profileLoadedInstalled) return;
-      profileLoadedInstalled = true;
-      c.on('ProfileLoaded', (dto: unknown) => {
-        const p = normalizeProfile(dto, current?.playerId ?? '');
-        setCurrent(p);
-      });
-    });
-    return;
-  }
-  void getHubConnection().then((c) => {
-    if (profileLoadedInstalled) return;
-    profileLoadedInstalled = true;
+  profileLoadedInstalled = true;
+  onHubConnectionCreated((c) => {
     c.on('ProfileLoaded', (dto: unknown) => {
       const p = normalizeProfile(dto, current?.playerId ?? '');
       setCurrent(p);
@@ -490,11 +475,6 @@ export function flushPendingDisplayName(): void {
  */
 export function initProfileHubBindings(): void {
   installProfileLoadedListener();
-  onHubConnected(() => {
-    // Re-install on every reconnect (the listener tracker handles
-    // duplicates).
-    installProfileLoadedListener();
-  });
 }
 
 // Private helper used by sendUpdateProfile to canonicalize 3-char hex

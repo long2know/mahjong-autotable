@@ -250,6 +250,7 @@ public class EdgeCaseTests
             Tid(Suit.Wan, 2, 0), Tid(Suit.Wan, 2, 1),
         });
 
+        CompleteScoringDraw(state);
         ChangshaGameStateMachine.DeclareSelfDrawWin(state, seatIndex: 1);
         ChangshaGameStateMachine.Score(state, options);
         return state.CurrentScore!;
@@ -272,9 +273,24 @@ public class EdgeCaseTests
             Tid(Suit.Tiao, 3, 0), Tid(Suit.Tiao, 3, 1),
         });
 
+        CompleteScoringDraw(state);
         ChangshaGameStateMachine.DeclareSelfDrawWin(state, seatIndex: 1);
         ChangshaGameStateMachine.Score(state, options);
         return state.CurrentScore!;
+    }
+
+    private static void CompleteScoringDraw(ChangshaGameState state)
+    {
+        var hand = state.Hands[1].ConcealedTiles;
+        var drawnTile = hand[^1];
+        hand.RemoveAt(hand.Count - 1);
+        state.Wall.RemoveAll(tile => tile == drawnTile);
+        state.Wall.Insert(0, drawnTile);
+        state.WallBackIndex = state.Wall.Count - 1;
+        Assert.Equal(13, hand.Count);
+        ChangshaGameStateMachine.DrawTile(state);
+        Assert.Equal(1, state.LastDrawSeatIndex);
+        Assert.Equal(drawnTile, hand[^1]);
     }
 
     private static ChangshaGameState BuildScoringScenario()

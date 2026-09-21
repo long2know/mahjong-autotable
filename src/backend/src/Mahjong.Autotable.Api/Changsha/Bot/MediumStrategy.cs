@@ -36,9 +36,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
     {
         var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
 
-        var detector = new ChangshaWinDetector();
-        var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
-        if (winResult.IsWin)
+        if (ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, botSeatIndex))
             return BotAction.DeclareWin();
 
         var kongLogical = HandEvaluator.FindConcealedKongCandidate(hand);
@@ -87,9 +85,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (state.Phase == ChangshaPhase.AwaitingDiscard && state.ActiveSeatIndex == botSeatIndex)
         {
             var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
-            var detector = new ChangshaWinDetector();
-            var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
-            if (winResult.IsWin)
+            if (ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, botSeatIndex))
             {
                 reasoning.Add("winning hand detected on self-draw");
                 return new BotDecision(BotAction.DeclareWin(), null, Score: 0, reasoning);
@@ -145,9 +141,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
     private static BotAction DecideDiscardPhase(ChangshaGameState state, ChangshaHandState hand)
     {
-        var detector = new ChangshaWinDetector();
-        var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
-        if (winResult.IsWin)
+        if (ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, hand.SeatIndex))
             return BotAction.DeclareWin();
 
         var kongLogical = HandEvaluator.FindConcealedKongCandidate(hand);

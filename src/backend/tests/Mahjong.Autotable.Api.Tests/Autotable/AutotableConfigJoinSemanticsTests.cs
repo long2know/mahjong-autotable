@@ -4,6 +4,7 @@ using System.Text.Json;
 using Mahjong.Autotable.Api.Autotable;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Runtime;
+using Mahjong.Autotable.Api.Players;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -47,6 +48,7 @@ public sealed class AutotableConfigJoinSemanticsTests : IAsyncLifetime
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Development");
+            b.UseSetting("Persistence:Provider", "Sqlite");
             b.UseSetting("ConnectionStrings:Sqlite", $"Data Source={_tempDb}");
             b.ConfigureServices(s => s.Configure<ChangshaRuntimeOptions>(o =>
             {
@@ -130,15 +132,15 @@ public sealed class AutotableConfigJoinSemanticsTests : IAsyncLifetime
         var runtime = _factory!.Services.GetRequiredService<IChangshaGameRuntime>();
 
         // Creator A binds the game with handCount=8.
-        await using var creator = await ConnectAsync("seat=0&botCount=3&handCount=8", gameId);
+        await using var creator = await ConnectAsync("seat=0&botCount=1&handCount=8", gameId);
         var runtimeGameIdA = await SeatTakeAndBindAsync(creator, seat: 0, gameId);
         Assert.True(runtime.TryGetSnapshot(runtimeGameIdA, out var afterCreate) && afterCreate is not null);
         Assert.Equal(8, afterCreate!.MaxHands);
         var seedAtCreate = afterCreate.Seed;
 
         // Late joiner B on the SAME relay gameId requests handCount=16 — must be ignored.
-        await using var joiner = await ConnectAsync("seat=1&botCount=3&handCount=16", gameId);
-        var runtimeGameIdB = await SeatTakeAndBindAsync(joiner, seat: 1, gameId);
+        await using var joiner = await ConnectAsync("seat=2&botCount=3&handCount=16", gameId);
+        var runtimeGameIdB = await SeatTakeAndBindAsync(joiner, seat: 2, gameId);
 
         Assert.Equal(runtimeGameIdA, runtimeGameIdB); // same bound game, not re-created
         Assert.True(runtime.TryGetSnapshot(runtimeGameIdB, out var afterJoin) && afterJoin is not null);
@@ -155,15 +157,15 @@ public sealed class AutotableConfigJoinSemanticsTests : IAsyncLifetime
         var runtime = _factory!.Services.GetRequiredService<IChangshaGameRuntime>();
 
         // Creator A binds the game with botDifficulty=Easy.
-        await using var creator = await ConnectAsync("seat=0&botCount=3&botDifficulty=Easy", gameId);
+        await using var creator = await ConnectAsync("seat=0&botCount=1&botDifficulty=Easy", gameId);
         var runtimeGameId = await SeatTakeAndBindAsync(creator, seat: 0, gameId);
         await WaitForAsync(() => runtime.GetActiveBotDifficulty(runtimeGameId) == "easy", 2000);
         Assert.Equal("easy", runtime.GetActiveBotDifficulty(runtimeGameId));
 
         // Late joiner B requests botDifficulty=Hard on the SAME game. Pre-#121 this re-applied
         // SetBotStrategyAsync and silently re-skinned the bots; now it is a no-op (first-creator-wins).
-        await using var joiner = await ConnectAsync("seat=1&botCount=3&botDifficulty=Hard", gameId);
-        _ = await SeatTakeAndBindAsync(joiner, seat: 1, gameId);
+        await using var joiner = await ConnectAsync("seat=2&botCount=3&botDifficulty=Hard", gameId);
+        _ = await SeatTakeAndBindAsync(joiner, seat: 2, gameId);
 
         // Give any (incorrect) re-apply time to land, then assert the difficulty is unchanged.
         await Task.Delay(300);
@@ -204,11 +206,20 @@ public sealed class AutotableConfigJoinSemanticsTests : IAsyncLifetime
 
     private async Task<WsSession> ConnectAsync(string query, string gameId)
     {
+        using var http = _factory!.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false });
+        using var response = await http.PostAsync("/api/identity", null);
+        response.EnsureSuccessStatusCode();
+        using var identity = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var playerId = identity.RootElement.GetProperty("playerId").GetString()!;
+        var cookie = response.Headers.GetValues("Set-Cookie")
+            .Single(value => value.StartsWith(PlayerIdentityService.CookieName + "=", StringComparison.Ordinal))
+            .Split(';')[0];
         var server = _factory!.Server;
         var wsClient = server.CreateWebSocketClient();
+        wsClient.ConfigureRequest = request => request.Headers["Cookie"] = cookie;
         var uri = new Uri(server.BaseAddress, $"autotable/ws?{query}&gameId={Uri.EscapeDataString(gameId)}");
         var ws = await wsClient.ConnectAsync(uri, CancellationToken.None);
-        var session = new WsSession(ws);
+        var session = new WsSession(ws, playerId);
         await session.SendJoinAsync(gameId);
         _ = await session.ReadEnvelopeAsync(); // JOINED
         _ = await session.ReadEnvelopeAsync(); // initial UPDATE
@@ -217,10 +228,13 @@ public sealed class AutotableConfigJoinSemanticsTests : IAsyncLifetime
 
     private async Task<string> SeatTakeAndBindAsync(WsSession session, int seat, string gameId)
     {
-        await session.SendUpdateAsync(new object[] { new object[] { "seats", seat, new { seat } } });
+        await session.SendUpdateAsync(new object[] { new object[] { "seats", session.PlayerId, new { seat } } });
         var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
         var runtimeGameId = await WaitForBindingAsync(manager, gameId, timeoutMs: 3000);
         Assert.NotNull(runtimeGameId);
+        var runtime = _factory.Services.GetRequiredService<IChangshaGameRuntime>();
+        await WaitForAsync(() => runtime.TryGetSeatForPlayer(runtimeGameId!, session.PlayerId) == seat, 3000);
+        Assert.Equal(seat, runtime.TryGetSeatForPlayer(runtimeGameId!, session.PlayerId));
         return runtimeGameId!;
     }
 
@@ -323,7 +337,8 @@ public sealed class AutotableConfigJoinSemanticsTests : IAsyncLifetime
     private sealed class WsSession : IAsyncDisposable
     {
         private readonly WebSocket _ws;
-        public WsSession(WebSocket ws) { _ws = ws; }
+        public string PlayerId { get; }
+        public WsSession(WebSocket ws, string playerId) { _ws = ws; PlayerId = playerId; }
 
         public async Task SendJoinAsync(string gameId)
         {

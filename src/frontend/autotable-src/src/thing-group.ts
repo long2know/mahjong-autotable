@@ -11,6 +11,7 @@ export interface ThingParams {
   type: ThingType;
   typeIndex: number;
   index: number;
+  hidden?: boolean;
 }
 
 export abstract class ThingGroup {
@@ -18,6 +19,7 @@ export abstract class ThingGroup {
   protected startIndex: number = 0;
   protected meshes: Array<Mesh> = [];
   protected group: Group;
+  protected params: Array<ThingParams> = [];
 
   abstract createMesh(typeIndex: number): Mesh;
 
@@ -32,8 +34,17 @@ export abstract class ThingGroup {
 
   setSimple(index: number, position: Vector3, rotation: Quaternion): void {}
 
+  hide(index: number): void {
+    this.meshes[index - this.startIndex].visible = false;
+  }
+
   setCustom(index: number, position: Vector3, rotation: Quaternion): Mesh {
-    const mesh = this.meshes[index - this.startIndex];
+    const i = index - this.startIndex;
+    const mesh = this.meshes[i];
+    mesh.visible = !this.params[i].hidden;
+    if (!mesh.visible) {
+      return mesh;
+    }
     mesh.position.copy(position);
     mesh.setRotationFromQuaternion(rotation);
     return mesh;
@@ -50,10 +61,12 @@ export abstract class ThingGroup {
     for (const p of params) {
       const mesh = this.createMesh(p.typeIndex);
       mesh.matrixAutoUpdate = false;
+      mesh.visible = false;
       this.meshes.push(mesh);
       this.group.add(mesh);
     }
     this.startIndex = startIndex;
+    this.params = params;
   }
 }
 
@@ -66,6 +79,7 @@ export class MarkerThingGroup extends ThingGroup {
 abstract class InstancedThingGroup extends ThingGroup {
   protected instancedMesh: InstancedMesh = null!;
   private zero: Matrix4 = new Matrix4().makeScale(0, 0, 0);
+  private hiddenInstances: Set<number> = new Set();
 
   abstract getOriginalMesh(): Mesh;
   abstract getUvChunk(): string;
@@ -113,8 +127,8 @@ attribute vec3 offset;
     geometry.setAttribute('offset', new InstancedBufferAttribute(data, 3));
     const instancedMesh = new InstancedMesh(geometry, material, params.length + extra);
     instancedMesh.frustumCulled = false;
-    for (let i = 0; i < extra; i++) {
-      instancedMesh.setMatrixAt(params.length + i, this.zero);
+    for (let i = 0; i < params.length + extra; i++) {
+      instancedMesh.setMatrixAt(i, this.zero);
     }
     instancedMesh.instanceMatrix.needsUpdate = true;
     return instancedMesh;
@@ -129,13 +143,32 @@ attribute vec3 offset;
       this.group.remove(this.instancedMesh);
     }
     this.instancedMesh = this.createInstancedMesh(params);
+    this.hiddenInstances = new Set(params.map((_, i) => i));
     this.group.add(this.instancedMesh);
+  }
+
+  override hide(index: number): void {
+    const i = index - this.startIndex;
+    if (this.hiddenInstances.has(i)) {
+      return;
+    }
+    this.meshes[i].visible = false;
+    this.instancedMesh.setMatrixAt(i, this.zero);
+    this.instancedMesh.instanceMatrix.needsUpdate = true;
+    this.hiddenInstances.add(i);
   }
 
   override setSimple(index: number, position: Vector3, rotation: Quaternion): void {
     const i = index - this.startIndex;
     const mesh = this.meshes[i];
-    if (!mesh.visible && mesh.position.equals(position) && rotEquals(mesh.quaternion, rotation)) {
+    if (this.params[i].hidden) {
+      this.hide(index);
+      return;
+    }
+    // Hiding clears the instance, not its cached transform; revealing at the
+    // same position must restore that instance instead of taking the fast path.
+    const wasHidden = this.hiddenInstances.delete(i);
+    if (!wasHidden && !mesh.visible && mesh.position.equals(position) && rotEquals(mesh.quaternion, rotation)) {
       return;
     }
     mesh.position.copy(position);
@@ -149,6 +182,11 @@ attribute vec3 offset;
   override setCustom(index: number, position: Vector3, rotation: Quaternion): Mesh {
     const i = index - this.startIndex;
     const mesh = this.meshes[i];
+    if (this.params[i].hidden) {
+      this.hide(index);
+      return mesh;
+    }
+    this.hiddenInstances.delete(i);
     mesh.position.copy(position);
     mesh.setRotationFromQuaternion(rotation);
     mesh.visible = true;

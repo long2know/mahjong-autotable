@@ -1,13 +1,14 @@
 # Mahjong Autotable — local-dev compose file.
 #
 # Builds the single image defined in ./Dockerfile and exposes it on host
-# port 8080. SQLite persistence lives on the `mahjong-data` named volume so
+# loopback port 8950 by default (container port 8080 stays fixed). SQLite
+# persistence lives on a project-scoped `mahjong-data` named volume so
 # data survives `docker compose down` (use `docker compose down -v` to wipe).
 #
 # Quickstart (first run provisions a stable JWT key into a gitignored .env):
 #   ./scripts/compose-bootstrap.sh        # idempotent — safe to re-run
 #   docker compose up -d --build
-#   open http://localhost:8080/autotable/
+#   open http://127.0.0.1:8950/autotable/
 #
 # WHY the bootstrap step: the image bakes ASPNETCORE_ENVIRONMENT=Production, and
 # the API refuses to boot without a stable HMAC signing key (a per-process
@@ -27,10 +28,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: mahjong-autotable:local
-    container_name: mahjong-autotable
+      args:
+        BUILD_SHA: ${BUILD_SHA:-local}
+    image: ${MAHJONG_IMAGE:-mahjong-autotable:local}
+    platform: ${MAHJONG_PLATFORM:-linux/amd64}
     ports:
-      - "8080:8080"
+      - target: 8080
+        published: "${MAHJONG_HOST_PORT:-8950}"
+        host_ip: "${MAHJONG_BIND_ADDRESS:-127.0.0.1}"
+        protocol: tcp
     volumes:
       - mahjong-data:/data
     environment:

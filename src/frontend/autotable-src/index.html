@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <title>Autotable</title>
     <meta name="viewport"
-          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <!-- Phase J Wave 8 — Sentry DSN injection point.  Empty content
          keeps Sentry as a no-op; ops can swap the value in via
          envsubst / k8s ConfigMap mount without rebuilding the bundle. -->
@@ -362,7 +362,9 @@
     </div>
 
     <!-- Phase D — Hand result modal (rendered on `result.current` UPDATE). -->
-    <div class="modal" id="result-modal" tabindex="-1" aria-hidden="true"
+    <div class="modal" id="result-modal" tabindex="-1" aria-hidden="true" role="dialog"
+         aria-labelledby="result-headline" aria-describedby="result-dialog-status"
+         data-testid="hand-result-dialog"
          data-backdrop="static" data-keyboard="false">
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content result-modal-content">
@@ -387,8 +389,13 @@
                     </div>
                 </div>
                 <div class="modal-footer justify-content-center">
-                    <button type="button" class="btn btn-warning" id="result-next">
-                        下一局 <small>Next Hand</small>
+                    <div id="result-dialog-status" role="status" aria-live="polite" data-testid="hand-result-status"></div>
+                    <div id="result-dialog-error" role="alert" data-testid="hand-result-error" hidden></div>
+                    <button type="button" class="btn btn-secondary" id="result-refresh" data-testid="hand-result-refresh" hidden>
+                        Refresh status
+                    </button>
+                    <button type="button" class="btn btn-warning" id="result-next" data-testid="hand-result-continue">
+                        Continue
                     </button>
                 </div>
             </div>
@@ -444,6 +451,38 @@
     <!-- Phase F — Break marker overlay.  Painted at the per-seat wall position
          indicated by pickup.breakPoint after the dice roll resolves. -->
     <div id="break-marker" hidden>▼</div>
+
+    <section id="own-turn-actions" class="rule-action-panel" hidden
+             aria-labelledby="own-turn-actions-title" data-testid="own-turn-actions">
+        <h2 id="own-turn-actions-title">Own-turn declarations</h2>
+        <div class="rule-action-buttons">
+            <button id="own-turn-hu" type="button" class="btn btn-warning" disabled
+                    data-testid="own-turn-hu">Self-draw Hu</button>
+            <button id="own-turn-concealed-kong" type="button" class="btn btn-warning" disabled
+                    data-testid="own-turn-concealed-kong">Concealed Kong</button>
+            <button id="own-turn-added-kong" type="button" class="btn btn-warning" disabled
+                    data-testid="own-turn-added-kong">Added Kong</button>
+        </div>
+        <p id="own-turn-action-status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="rule-action-recovery" class="rule-action-panel" hidden role="alert"
+             aria-labelledby="rule-action-recovery-title" data-testid="rule-action-recovery">
+        <h2 id="rule-action-recovery-title">Server confirmation unavailable</h2>
+        <p id="rule-action-recovery-message"></p>
+        <div class="rule-action-buttons">
+            <button id="rule-action-reload" type="button" class="btn btn-secondary"
+                    data-testid="rule-action-reload">Reload table</button>
+        </div>
+    </section>
+
+    <dialog id="rule-action-choice-dialog" class="rule-action-dialog"
+            aria-labelledby="rule-action-choice-title" aria-describedby="rule-action-choice-hint">
+        <h2 id="rule-action-choice-title">Choose tiles</h2>
+        <p id="rule-action-choice-hint"></p>
+        <div id="rule-action-choices" class="rule-action-choices"></div>
+        <button id="rule-action-choice-cancel" type="button" class="btn btn-secondary">Cancel</button>
+    </dialog>
 
     <!-- Phase G — Lobby toggle (top-left).  Opens the lobby panel so users
          can pick variant / dealMode / botCount / botDifficulty without
@@ -927,16 +966,12 @@
         </div>
     </div>
 
-    <!-- Phase J Wave 9 — Table chat panel.  Bottom-right docked,
-         collapsible.  Hidden when no gameId is on the URL (lobby only).
-         All channels share a single message buffer; the channel /
-         recipient selectors filter at render time.  280-char composer
-         with /commands intercepted client-side. -->
+    <!-- One widget for server-wide presence/invitations and room-scoped chat. -->
     <div id="chat-panel"
          class="chat-panel chat-panel-collapsed"
          data-testid="chat-panel"
          hidden
-         aria-label="Table chat">
+         aria-label="Chat, online players and invitations">
         <div class="chat-header">
             <button id="chat-toggle"
                     type="button"
@@ -944,9 +979,11 @@
                     data-testid="chat-toggle"
                     aria-controls="chat-panel-body"
                     aria-expanded="false">
-                <span class="chat-toggle-label">💬 Chat</span>
+                <span class="chat-toggle-label" data-i18n="chat.toggle">Chat</span>
+                <span id="chat-invite-unread" class="chat-invite-unread"
+                      data-testid="chat-invite-unread" hidden>0</span>
             </button>
-            <div class="chat-header-selectors">
+            <div id="chat-room-selectors" class="chat-header-selectors" hidden>
                 <label class="chat-channel-label sr-only" for="chat-channel-select">
                     Channel
                 </label>
@@ -970,12 +1007,31 @@
             </div>
         </div>
         <div id="chat-panel-body" class="chat-panel-body">
+            <section id="chat-online" class="chat-social-section"
+                     data-testid="online-players" aria-labelledby="chat-online-title">
+                <h3 id="chat-online-title" class="chat-section-title" data-i18n="social.online">Online</h3>
+                <p id="online-players-status" class="chat-social-status"
+                   role="status" aria-live="polite" data-testid="online-players-status">Connecting to the online lobby...</p>
+                <button id="online-players-retry" type="button" class="btn btn-sm btn-secondary"
+                        data-testid="online-players-retry" data-i18n="common.retry" hidden>Retry</button>
+                <div id="online-players-list" class="online-players-list" role="list"></div>
+                <p id="online-invite-status" class="chat-social-status" role="status" aria-live="polite"
+                   data-testid="online-invite-status"></p>
+            </section>
+            <section class="chat-social-section" aria-labelledby="chat-invites-title">
+                <h3 id="chat-invites-title" class="chat-section-title" data-i18n="social.invitations">Invitations</h3>
+                <div id="incoming-invites" class="incoming-invites" data-testid="incoming-invites"></div>
+                <p id="incoming-invites-empty" class="chat-social-status" data-i18n="social.no_invites">No invitations yet.</p>
+                <p class="chat-social-status" data-i18n="social.invite_hint">Invitations expire after five minutes and do not reserve seats.</p>
+            </section>
             <div id="chat-unavailable"
                  class="chat-unavailable"
                  role="status"
                  aria-live="polite"
                  data-testid="chat-unavailable"
                  hidden></div>
+            <section id="chat-room-content" aria-label="Chat in this table">
+            <h3 class="chat-section-title chat-room-title" data-i18n="chat.room_chat">This table</h3>
             <div id="chat-messages"
                  class="chat-messages"
                  role="log"
@@ -1001,9 +1057,10 @@
                     <button id="chat-send"
                             type="button"
                             class="btn btn-sm btn-primary chat-send"
-                            data-testid="chat-send">Send</button>
+                            data-testid="chat-send" data-i18n="chat.send">Send</button>
                 </div>
             </div>
+            </section>
         </div>
     </div>
 
@@ -1162,6 +1219,12 @@
                 </div>
             </section>
 
+            <p id="lobby-room-configuration" class="lobby-room-configuration"
+               role="status" aria-live="polite" data-testid="lobby-room-configuration" hidden></p>
+            <h3 class="lobby-section-title" data-i18n="lobby.new_table_settings">New table settings</h3>
+            <p class="lobby-hint" data-i18n="lobby.creation_settings_hint">
+                These choices configure a new table. Joining a table keeps its server settings.
+            </p>
             <fieldset class="lobby-fieldset" id="lobby-variant-fieldset" data-testid="lobby-variant-fieldset">
                 <legend>Variant</legend>
                 <label><input type="radio" name="lobby-variant" value="changsha" checked> Changsha</label>
@@ -1199,9 +1262,11 @@
 
             <fieldset class="lobby-fieldset" id="lobby-bot-count-fieldset">
                 <legend>Bots</legend>
-                <label><input type="radio" name="lobby-bot-count" value="0"> 0 bots</label>
-                <label><input type="radio" name="lobby-bot-count" value="3" checked> 3 bots</label>
-                <label><input type="radio" name="lobby-bot-count" value="4"> 4 bots <small class="lobby-hint">(spectator only)</small></label>
+                <label><input type="radio" name="lobby-bot-count" value="0"> <span data-i18n="lobby.bots_0">0 bots</span></label>
+                <label><input type="radio" name="lobby-bot-count" value="1"> <span data-i18n="lobby.bots_1">1 bot</span></label>
+                <label><input type="radio" name="lobby-bot-count" value="2"> <span data-i18n="lobby.bots_2">2 bots</span></label>
+                <label><input type="radio" name="lobby-bot-count" value="3" checked> <span data-i18n="lobby.bots_3">3 bots</span></label>
+                <label><input type="radio" name="lobby-bot-count" value="4" disabled> <span data-i18n="lobby.bots_4">4 bots (spectator only)</span></label>
             </fieldset>
 
             <!-- Phase I Wave 4 — seat picker.  Pairs with botCount: Spectate
@@ -1273,6 +1338,20 @@
                 </label>
             </fieldset>
 
+            <fieldset class="lobby-fieldset" id="lobby-base-unit-fieldset">
+                <legend id="lobby-base-unit-legend">Scoring base unit</legend>
+                <label class="lobby-seed-label" for="lobby-base-unit" id="lobby-base-unit-label">Base unit</label>
+                <input id="lobby-base-unit" type="text" inputmode="numeric" pattern="[0-9]+"
+                       autocomplete="off" spellcheck="false" value="1"
+                       aria-describedby="lobby-base-unit-hint lobby-base-unit-error"
+                       data-testid="lobby-base-unit">
+                <div id="lobby-base-unit-error" class="lobby-seed-error" role="alert" hidden></div>
+                <p id="lobby-base-unit-hint" class="lobby-advanced-hint">
+                    Creation only. Changing this value starts a new table.
+                </p>
+                <p id="lobby-current-base-unit" class="lobby-hint" role="status" hidden></p>
+            </fieldset>
+
             <!-- Phase H Wave 1 — Advanced section: optional seed override.
                  <details> collapses by default so the input doesn't clutter
                  the main lobby.  Empty/blank → server picks a random seed
@@ -1303,19 +1382,26 @@
                  optional (server falls back to "<host>'s game"). -->
             <section class="lobby-make-public"
                      aria-label="Make this game public">
-                <h3 class="lobby-section-title">Make public</h3>
+                <h3 class="lobby-section-title" data-i18n="lobby.make_public">Make public</h3>
                 <label class="lobby-make-public-row">
                     <input id="lobby-make-public-toggle" type="checkbox"
-                           data-testid="lobby-set-public-toggle">
-                    <span>List this game in the public lobby</span>
+                           data-testid="lobby-set-public-toggle" disabled
+                           aria-describedby="lobby-make-public-status">
+                    <span data-i18n="lobby.public_toggle_label">List this game in the public lobby</span>
                 </label>
                 <input id="lobby-make-public-name" type="text"
                        class="lobby-make-public-name"
                        data-testid="lobby-public-name-input"
                        placeholder="Friendly name (optional)"
-                       maxlength="64" autocomplete="off">
+                       maxlength="64" autocomplete="off" disabled
+                       data-i18n-placeholder="lobby.public_name">
                 <div id="lobby-make-public-status"
-                     class="lobby-make-public-status" aria-live="polite"></div>
+                     class="lobby-make-public-status" role="status" aria-live="polite"
+                     data-testid="lobby-public-status">Loading table metadata...</div>
+                <button id="copy-table-link" type="button" class="btn btn-sm btn-secondary"
+                        data-testid="copy-table-link" data-i18n="lobby.copy_table_link" disabled>Copy table link</button>
+                <input id="table-link-output" class="lobby-table-link-output" type="text"
+                       readonly hidden aria-label="Table join link">
             </section>
 
             <!-- Phase J Wave 5 — Stats panel.  Renders the local
@@ -1553,6 +1639,11 @@
              that opens the profile drawer for display-name + avatar
              colour editing. -->
         <div class="lobby-settings-shortcut">
+            <button id="lobby-open-chat" type="button" class="lobby-settings-link"
+                    data-testid="lobby-open-chat" aria-controls="chat-panel">
+                <span data-i18n="social.open">Online players and invitations</span><span id="lobby-invite-unread"></span>
+            </button>
+            <span id="lobby-online-summary" class="lobby-hint" role="status" aria-live="polite"></span>
             <button id="lobby-open-profile" type="button"
                     class="lobby-settings-link profile-toggle"
                     data-testid="lobby-open-profile"
@@ -1568,6 +1659,27 @@
                     title="Open the per-game settings drawer">
                 ⚙ Open game settings…
             </button>
+        </div>
+        <div id="lobby-build-info" class="lobby-build-info" data-testid="lobby-build-info">
+            <details>
+                <summary id="build-summary">Build / Version · UI: dev / unidentified</summary>
+                <dl>
+                    <dt data-i18n="build.ui">Loaded UI build</dt>
+                    <dd><code id="build-ui-full" dir="ltr">dev / unidentified</code></dd>
+                    <dt data-i18n="build.server_build">Actual server build</dt>
+                    <dd><code id="build-server-full" dir="ltr">—</code></dd>
+                    <dt data-i18n="build.version">Server assembly version</dt>
+                    <dd><code id="build-server-version" dir="ltr">—</code></dd>
+                </dl>
+            </details>
+            <p id="build-status" role="status" aria-live="polite">Checking server build…</p>
+            <button id="build-retry" type="button" class="btn btn-secondary btn-sm"
+                    data-i18n="common.retry" hidden>Retry</button>
+            <div id="build-mismatch" role="status" aria-live="polite" hidden>
+                <p data-i18n="build.mismatch">This page and server are different builds. Reload to update when you are ready; this will reconnect your game.</p>
+                <button id="build-reload" type="button" class="btn btn-secondary btn-sm"
+                        data-i18n="build.reload">Reload page</button>
+            </div>
         </div>
         <div class="lobby-about">
             <a id="lobby-about-link"

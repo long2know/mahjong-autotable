@@ -170,8 +170,9 @@ public class EndToEndPlayableTests
                 _ = await ReadEnvelopeAsync(ws, 5000);
                 _ = await ReadEnvelopeAsync(ws, 5000);
 
-                // Drive the hand to completion.
-                await runtime.StartGameAsync(runtimeGameId);
+                // JOIN starts an occupied table; this connection observes the all-bot hand.
+                Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var joined));
+                Assert.All(joined!.Seats, seat => Assert.True(seat.IsBot));
 
                 // Listen up to ~5s for the result entry.
                 var deadline = DateTime.UtcNow.AddSeconds(5);
@@ -191,6 +192,13 @@ public class EndToEndPlayableTests
                             observedResultType = typeProp.GetString();
                             break;
                         }
+                    }
+                    if (observedResultType is not null)
+                    {
+                        var completed = (await runtime.TryGetSnapshotCopyAsync(runtimeGameId))!;
+                        Assert.Single(completed.EventLog, entry => entry.EventType == "game-started");
+                        Assert.Contains(completed.EventLog, entry => entry.EventType == "tiles-dealt");
+                        Assert.Contains(completed.EventLog, entry => entry.EventType is "win-declared" or "draw-hand");
                     }
                 }
 

@@ -69,7 +69,7 @@ Logical tile = `tileId / 4` (0–26). Suit = `logicalTile / 9` (0=Char, 1=Dot, 2
 - **Per player:** 54 / 4 = 13.5 → not evenly divisible
 - **Practical arrangement:** Two players build walls of **14 stacks** (28 tiles) and two build walls of **13 stacks** (26 tiles), for a total of 54 stacks = 108 tiles.
 
-> **Note for digital implementation:** The wall is an ordered list of 108 tile IDs. Physical wall dimensions are a rendering concern only — the autotable frontend can distribute stacks visually as needed.
+> **Note for digital implementation:** The wall is an ordered list of 108 tile IDs. The engine and renderer share the fixed seat-absolute `[14, 14, 13, 13]` stack frame in §2.4.1; the frontend must preserve its perimeter order rather than redistribute the remaining tiles across seats.
 
 ### 2.4 Dice Roll (Breaking the Wall) — CRITICAL
 
@@ -80,7 +80,7 @@ Logical tile = `tileId / 4` (0–26). Suit = `logicalTile / 9` (0=Char, 1=Dot, 2
    - Sum 3, 7, 11: Opposite player's wall
    - Sum 4, 8, 12: Left of dealer's wall
    - (Equivalently: `(sum - 1) % 4` maps to seat index offset from dealer.)
-3. **Determine the break point:** From the right end of the identified wall, count stacks equal to the dice sum. The break point is **after** that stack (tiles to the left of the break become the start of the draw wall).
+3. **Determine the break point:** From the right end of the identified wall, count stacks equal to the dice sum. The counted stack's **top tile is the first draw tile**; §2.4.1 pins its zero-based column and the subsequent draw direction.
 4. **Draw wall direction:** Drawing proceeds counterclockwise from the break point.
 
 #### 2.4.1 Canonical wall-index mapping (pinned)

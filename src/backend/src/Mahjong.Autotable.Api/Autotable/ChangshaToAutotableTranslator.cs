@@ -88,6 +88,10 @@ public static class ChangshaToAutotableTranslator
             return entries;
         }
 
+        var ownsViewerSeat = viewerSeat.HasValue && viewerPlayerId is not null
+            && state.Seats.Any(seat => seat.SeatIndex == viewerSeat.Value
+                && !seat.IsBot && string.Equals(seat.PlayerId, viewerPlayerId, StringComparison.Ordinal));
+
         // seats — one entry per Changsha seat. Keys are synthetic player ids.
         // The viewer's playerId (if known) maps to viewerSeat; other seats use
         // their bot/human PlayerId from the Changsha state.
@@ -167,13 +171,31 @@ public static class ChangshaToAutotableTranslator
                     available,
                     window.DiscardSeatIndex,
                     window.DiscardTileId,
-                    deadlineUnixMs: deadlineUnixMs));
+                    deadlineUnixMs: deadlineUnixMs,
+                    chowOptions: ownsViewerSeat && seatGroup.Key == viewerSeat
+                        && available.Contains("Chow")
+                        ? BuildChowOptions(state.Hands.Single(hand => hand.SeatIndex == seatGroup.Key),
+                            window.DiscardTileId)
+                        : null,
+                    gameId: state.GameId,
+                    stateVersion: state.StateVersion));
             }
         }
         for (var seat = 0; seat < state.Seats.Count; seat++)
         {
             if (!opportunitySeats.Contains(seat))
                 entries.Add(ChangshaCollectionEncoder.EncodeClaimWindowClosed(seat));
+
+            var actions = ownsViewerSeat && seat == viewerSeat
+                ? ChangshaOwnTurnActions.Available(state, seat) : null;
+            entries.Add(ChangshaCollectionEncoder.EncodeOwnTurn(seat, actions is null ? null : new OwnTurnEntry
+            {
+                GameId = state.GameId,
+                StateVersion = state.StateVersion,
+                Hu = actions.Hu,
+                ConcealedKongs = actions.ConcealedKongs,
+                AddedKongs = actions.AddedKongs
+            }));
         }
 
         // result — populated while the completed hand is on screen (EndHand), and explicitly
@@ -242,6 +264,28 @@ public static class ChangshaToAutotableTranslator
             awaitingDiscard: awaitingDiscard));
 
         return entries;
+    }
+
+    private static List<int[]> BuildChowOptions(ChangshaHandState hand, int discardedTileId)
+    {
+        var discarded = ChangshaDeckBuilder.GetLogicalTile(discardedTileId);
+        var suitStart = discarded / 9 * 9;
+        var held = hand.ConcealedTiles.GroupBy(ChangshaDeckBuilder.GetLogicalTile)
+            .ToDictionary(group => group.Key, group => group.OrderBy(tile => tile).ToArray());
+        var options = new List<int[]>();
+        for (var start = Math.Max(suitStart, discarded - 2);
+            start <= Math.Min(suitStart + 6, discarded); start++)
+        {
+            var partners = Enumerable.Range(start, 3).Where(logical => logical != discarded).ToArray();
+            if (!held.TryGetValue(partners[0], out var first)
+                || !held.TryGetValue(partners[1], out var second))
+                continue;
+
+            // Copies of one rank are interchangeable for the choice UI. Keep one
+            // deterministic physical pair per distinct legal sequence.
+            options.Add([first[0], second[0]]);
+        }
+        return options;
     }
 
     private static PickupEntry BuildPickupEntry(ChangshaGameState state, List<string> wallFrontSlots)
@@ -408,7 +452,24 @@ public static class ChangshaToAutotableTranslator
             Hand = winningHand,
             NextBanker = nextBanker,
             WinResult = winResult,
-            ScoreResult = scoreResult
+            ScoreResult = scoreResult,
+            Continuation = BuildHandResultContinuation(state)
+        };
+    }
+
+    private static HandResultContinuationEntry? BuildHandResultContinuation(ChangshaGameState state)
+    {
+        if (state.HandResultContinuation is not { } continuation || state.Phase != ChangshaPhase.EndHand)
+            return null;
+        var required = continuation.RequiredSeats(state);
+        return new()
+        {
+            GameId = state.GameId,
+            HandNumber = continuation.HandNumber,
+            ResultToken = continuation.ResultToken,
+            RequiredSeats = required,
+            AcknowledgedSeats = required.Where(continuation.AcknowledgedSeats.Contains).ToArray(),
+            WaitingSeats = continuation.WaitingSeats(state)
         };
     }
 
@@ -495,6 +556,7 @@ public static class ChangshaToAutotableTranslator
             back = 0,
             fives = "000",
             points = "25",
+            baseUnit = state?.BaseUnit ?? 1,
             dealMode = mode == DealMode.Manual ? "manual" : "auto",
             dealType = mode == DealMode.Manual ? "INITIAL" : "HANDS"
         };
@@ -577,11 +639,17 @@ public static class ChangshaToAutotableTranslator
                 // SC-2/G19 entitlement: exposed melds (chow/pung/exposed+added kong) are public;
                 // a concealed kong is visible only to its OWNER, hidden from everyone else.
                 var meldHidden = isConcealedKong && seat != viewerSeat;
+                int? addedTileId = meld.Kind == MeldKind.AddedKong
+                    ? AddedKongTileId(state, seat, meld)
+                    : null;
+                var flatIndex = 0;
 
                 for (var t = 0; t < meld.TileIds.Count; t++)
                 {
                     var tileId = meld.TileIds[t];
-                    var slot = AutotableSlotMap.MeldSlot(seat, m, t);
+                    var slot = tileId == addedTileId
+                        ? AutotableSlotMap.AddedKongSlot(seat, m)
+                        : AutotableSlotMap.MeldSlot(seat, m, flatIndex++);
                     placedTiles.Add(tileId);
                     yield return BuildThingEntry(tileId, slot, rotation, meldHidden, privacy);
                 }
@@ -674,6 +742,28 @@ public static class ChangshaToAutotableTranslator
                 yield return BuildThingEntry(state.Wall[i], wallFrontSlots[i], WallRotFaceDown, hidden: true, privacy);
             }
         }
+    }
+
+    private static int AddedKongTileId(ChangshaGameState state, int seat, Meld meld)
+    {
+        if (meld.TileIds.Count != 4 || meld.TileIds.Distinct().Count() != 4)
+            throw new InvalidOperationException("An added-Kong layout requires four distinct physical tiles.");
+
+        // TileIds are sorted by the rules engine. The committed event, retained
+        // in snapshots, identifies the added copy without moving the old Pung.
+        for (var index = state.EventLog.Count - 1; index >= 0; index--)
+        {
+            var entry = state.EventLog[index];
+            if (entry.EventType is "tiles-dealt" or "manual-deal-begun" or "game-created")
+                break;
+            if (entry.EventType == "added-kong" && entry.SeatIndex == seat
+                && entry.TileId is int tileId && meld.TileIds.Contains(tileId))
+                return tileId;
+        }
+
+        // Legacy/imported snapshots may omit event history. Keep all four IDs
+        // and choose a stable display copy; no rule or ownership state changes.
+        return meld.TileIds.Max();
     }
 
     /// <summary>

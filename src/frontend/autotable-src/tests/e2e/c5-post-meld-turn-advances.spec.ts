@@ -37,17 +37,24 @@ async function readMeldCount(page: Page): Promise<number> {
 async function claimMeldByClick(page: Page, type: 'Pung' | 'Chow' | 'Kong'): Promise<string | null> {
   const claim = await H.readClaimWindow(page);
   if (!claim.open || !claim.available.includes(type)) return null;
-  const btn = page.locator(`#claim-${type.toLowerCase()}`);
-  if (!(await btn.first().isEnabled().catch(() => false))) return null;
-  await btn.first().click({ timeout: 3000 });
+  const btn = page.locator(`.ferro-claim-overlay-visible .ferro-claim-badge-${type.toLowerCase()}`).first();
+  if (!await btn.isVisible() || !await btn.isEnabled()) return null;
+  await btn.click({ timeout: 3000 });
+  const choices = page.locator('#rule-action-choice-dialog[open][data-kind="chow"]');
+  if (type === 'Chow' && await choices.isVisible()) {
+    const option = choices.locator('.rule-action-choice').first();
+    await expect(option).toBeVisible();
+    await expect(option).toBeEnabled();
+    await option.click({ timeout: 3000 });
+  }
   await page.waitForTimeout(500);
   return type;
 }
 
 async function passClaimByClick(page: Page): Promise<void> {
-  const pass = page.locator('#claim-pass');
-  if (await pass.first().isEnabled().catch(() => false)) {
-    await pass.first().click({ timeout: 2000 }).catch(() => undefined);
+  const pass = page.locator('.ferro-claim-overlay-visible .ferro-claim-pass').first();
+  if (await pass.isVisible() && await pass.isEnabled()) {
+    await pass.click({ timeout: 2000 }).catch(() => undefined);
     await page.waitForTimeout(300);
   }
 }
@@ -66,9 +73,15 @@ test.describe('#C-5 post-meld TURN — real Chow, real-pointer discard, then the
       handCount: 4,
     });
 
-    await H.defangOverlays(page);
+    await page.addInitScript(() => {
+      localStorage.setItem('mahjong.tour.completed.v1', 'true');
+      localStorage.setItem('mahjong.identity.onboarded.v1', 'true');
+    });
     await page.goto(H.buildGameUrl(testInfo.project.use.baseURL as string, cfg), { waitUntil: 'domcontentloaded' });
-    await H.dismissLobbyAndTour(page);
+    for (const selector of ['#tour-skip', '#onboarding-skip', '#lobby-close']) {
+      const control = page.locator(selector);
+      if (await control.isVisible()) await control.click({ timeout: 3000 });
+    }
     expect(await H.ensureConnected(page), 'must reach a connected session').toBe(true);
     expect(await H.takeSeatByClick(page, 0), 'must take seat 0 by real click').toBe(0);
     expect(await H.waitForGameObject(page), 'renderer must publish window.game').toBe(true);

@@ -30,6 +30,9 @@
 // shape of the `client` accessor + the `claim` collection.
 
 import './claim-window-overlay.css';
+import type { Client } from '../client';
+import type { ClaimWindowEntry } from '../types';
+import { getRuleActionControls, type RuleActionControls } from './rule-action-controls';
 
 // #137 — keys the always-on game view/navigation handler (game.ts onKeyDown)
 // owns. The claim overlay's global keydown listener must never turn one of
@@ -40,26 +43,10 @@ const RESERVED_GAME_KEYS = new Set<string>(['f', 'r', ' ', 'z', 'x', 'q', 'p', '
 
 type ClaimType = 'Pung' | 'Chow' | 'Kong' | 'Hu';
 
-interface ClaimEntry {
-  available: ClaimType[];
-  deadline: number;
-  source: number;
-  tile: number;
-}
-
-interface ClaimCollectionLike {
-  on(event: 'update', handler: (entries: Array<[string, ClaimEntry | null]>, full: boolean) => void): void;
-  get(key: string): ClaimEntry | null | undefined;
-  set(key: string, value: unknown): void;
-}
-
-interface ClientLike {
-  claim: ClaimCollectionLike;
-  seat: number | null;
-}
+type ClaimEntry = ClaimWindowEntry;
 
 interface GameLike {
-  client?: ClientLike;
+  client?: Client;
 }
 
 const TICK_MS = 100;
@@ -110,6 +97,8 @@ export class ClaimWindowOverlay {
   private windowMs: number = 5000;
   private tickHandle: number | null = null;
   private keyboardBound: boolean = false;
+  private actions!: RuleActionControls;
+  private unsubscribeActions: (() => void) | null = null;
 
   constructor(game: GameLike) {
     this.game = game;
@@ -123,7 +112,8 @@ export class ClaimWindowOverlay {
     this.root = this.buildDom();
     document.body.appendChild(this.root);
 
-    client.claim.on('update', this.onClaimUpdate);
+    this.actions = getRuleActionControls(client);
+    this.unsubscribeActions = this.actions.onChange(() => this.syncFromCollection());
     this.bindKeyboard();
     // Reflect any pre-existing claim (reconnect path).
     this.syncFromCollection();
@@ -134,6 +124,9 @@ export class ClaimWindowOverlay {
     this.stopTicker();
     this.root.remove();
     this.root = null;
+    this.activeClaim = null;
+    this.unsubscribeActions?.();
+    this.unsubscribeActions = null;
     if (this.keyboardBound) {
       window.removeEventListener('keydown', this.onKeyDown);
       this.keyboardBound = false;
@@ -271,56 +264,8 @@ export class ClaimWindowOverlay {
   // Subscriptions.
   // ---------------------------------------------------------------------
 
-  private readonly onClaimUpdate = (
-    entries: Array<[string, ClaimEntry | null]>,
-  ): void => {
-    const client = this.game.client;
-    if (client === undefined) return;
-    const selfSeat = client.seat;
-    if (selfSeat === null) {
-      this.activeClaim = null;
-      this.refresh();
-      return;
-    }
-    const selfKey = String(selfSeat);
-    let touched = false;
-    for (const [key, value] of entries) {
-      if (key !== selfKey) continue;
-      touched = true;
-      // Guard against outbound echo: game-ui.ts:sendClaim() stores
-      // `{action, type}` into the same collection to commit a claim
-      // (the wire-out shape).  We only render entries that look like
-      // a real claim-window payload (have `available` + `deadline`).
-      this.activeClaim = this.isClaimEntry(value) ? value : null;
-    }
-    if (!touched && this.activeClaim === null) {
-      // Full-sync / reconnect fallback.
-      this.syncFromCollection();
-      return;
-    }
-    this.refresh();
-  };
-
-  private isClaimEntry(v: unknown): v is ClaimEntry {
-    if (v === null || typeof v !== 'object') return false;
-    const o = v as Record<string, unknown>;
-    return Array.isArray(o.available) && typeof o.deadline === 'number';
-  }
-
   private syncFromCollection(): void {
-    const client = this.game.client;
-    if (client === undefined) {
-      this.refresh();
-      return;
-    }
-    const selfSeat = client.seat;
-    if (selfSeat === null) {
-      this.activeClaim = null;
-      this.refresh();
-      return;
-    }
-    const current = client.claim.get(String(selfSeat));
-    this.activeClaim = this.isClaimEntry(current) ? current : null;
+    this.activeClaim = this.actions.claim;
     this.refresh();
   }
 
@@ -352,7 +297,7 @@ export class ClaimWindowOverlay {
 
     // Tile face + source seat.
     const face = this.tileEl.querySelector('.ferro-claim-tile-face') as HTMLDivElement | null;
-    if (face !== null) face.textContent = tileGlyph(claim.tile);
+    if (face !== null) face.textContent = tileGlyph(Math.floor(claim.tile / 4));
     const src = this.tileEl.querySelector('.ferro-claim-tile-source') as HTMLDivElement | null;
     if (src !== null) src.textContent = `Seat ${claim.source}`;
 
@@ -443,25 +388,13 @@ export class ClaimWindowOverlay {
     const claim = this.activeClaim;
     if (claim === null) return;
     if (!claim.available.includes(type)) return;
-    const client = this.game.client;
-    if (client === undefined) return;
-    const selfSeat = client.seat;
-    if (selfSeat === null) return;
-    client.claim.set(String(selfSeat), { action: 'claim', type });
-    this.activeClaim = null;
-    this.refresh();
+    this.actions.requestClaim(type);
   }
 
   private commitPass(): void {
     const claim = this.activeClaim;
     if (claim === null) return;
-    const client = this.game.client;
-    if (client === undefined) return;
-    const selfSeat = client.seat;
-    if (selfSeat === null) return;
-    client.claim.set(String(selfSeat), { action: 'pass', type: null });
-    this.activeClaim = null;
-    this.refresh();
+    this.actions.requestClaim('Pass');
   }
 
   // ---------------------------------------------------------------------

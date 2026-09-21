@@ -5,6 +5,7 @@ using Mahjong.Autotable.Api.Autotable;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Players;
+using Mahjong.Autotable.Api.Tests.TestInfrastructure;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -410,6 +411,318 @@ public sealed class AutotableWsSeatAuthorizationTests : IAsyncLifetime
             && state.DiscardPile.Any(discard => discard.SeatIndex == 0 && discard.TileId == ownerTileId)));
     }
 
+    [Theory, Trait("Category", "Authorization")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RoomViewer_CrossRoomJoin_DoesNotInheritSourceOwnersPrivateHand(bool visitUnboundRoom)
+    {
+        var attackerPlayerId = NewPlayerId("room-viewer");
+        await using var source = await CreateBoundGameAsync(DealMode.Auto, attackerPlayerId);
+        await using var destination = await CreateBoundGameAsync(DealMode.Auto);
+        var sourceBefore = await SnapshotAsync(source.RuntimeGameId);
+        var destinationBefore = await SnapshotAsync(destination.RuntimeGameId);
+
+        var sourceUpdates = await JoinWithRejectedDiscardBarrierAsync(source.Owner, source, ownedSeat: 0);
+        foreach (var update in sourceUpdates)
+            AssertOwnedHandProjection(update, sourceBefore, 0);
+
+        await using var freshSocket = await OpenSessionAsync(
+            destination.RelayGameId, "seat=0&bots=false&botCount=0&dealMode=auto", attackerPlayerId);
+        var freshUpdates = await JoinWithRejectedDiscardBarrierAsync(freshSocket, destination);
+        foreach (var update in freshUpdates)
+            AssertOpaqueHandProjection(update, 0, 14);
+
+        if (visitUnboundRoom)
+        {
+            var unboundRoom = NewGameId("room-viewer-unbound");
+            await source.Owner.JoinAsync(unboundRoom);
+            Assert.Null(Manager.GetRuntimeGameIdBoundTo(unboundRoom));
+        }
+
+        var switchedUpdates = await JoinWithRejectedDiscardBarrierAsync(source.Owner, destination);
+        foreach (var update in switchedUpdates)
+        {
+            AssertOpaqueHandProjection(update, 0, 14);
+            Assert.False(HasSeatOwnershipEntry(update, attackerPlayerId, 0));
+        }
+
+        var victimTileId = destinationBefore.Hands.Single(hand => hand.SeatIndex == 0).ConcealedTiles[0];
+        await destination.Owner.SendUpdateAsync(new object[] { "discard", 0, new { tileId = victimTileId } });
+        Assert.True(await WaitForAsync(() =>
+            Runtime.TryGetSnapshot(destination.RuntimeGameId, out var state)
+            && state is not null
+            && state.StateVersion > destinationBefore.StateVersion
+            && state.DiscardPile.Any(discard => discard.SeatIndex == 0 && discard.TileId == victimTileId)));
+        var broadcast = await source.Owner.ReadFullUpdateAsync();
+        AssertOpaqueHandProjection(broadcast, 0, 13);
+        Assert.False(HasSeatOwnershipEntry(broadcast, attackerPlayerId, 0));
+
+        Assert.True(StateFingerprint(sourceBefore) == StateFingerprint(await SnapshotAsync(source.RuntimeGameId)));
+        var returnedUpdates = await JoinWithRejectedDiscardBarrierAsync(source.Owner, source, ownedSeat: 0);
+        foreach (var update in returnedUpdates)
+            AssertOwnedHandProjection(update, sourceBefore, 0);
+        var repeatedUpdates = await JoinWithRejectedDiscardBarrierAsync(source.Owner, source, ownedSeat: 0);
+        foreach (var update in repeatedUpdates)
+            AssertOwnedHandProjection(update, sourceBefore, 0);
+    }
+
+    [Fact, Trait("Category", "Authorization")]
+    public async Task RoomViewer_CrossRoomOccupiedSeatTake_DoesNotPersistForgedSeatOnReconnect()
+    {
+        var attackerPlayerId = NewPlayerId("room-seat-attacker");
+        await using var source = await CreateBoundGameAsync(DealMode.Auto, attackerPlayerId);
+        await using var destination = await CreateBoundGameAsync(DealMode.Auto);
+        var before = await SnapshotAsync(destination.RuntimeGameId);
+
+        await source.Owner.JoinAsync(destination.RelayGameId);
+        var barrierKey = NewPlayerId("room-seat-barrier");
+        await source.Owner.SendUpdateAsync(
+            new object[] { "seats", attackerPlayerId, new { seat = 0 } },
+            new object[] { "mouse", barrierKey, new { x = 1, y = 2, z = 3 } });
+        var barrier = await destination.Owner.ReadNonFullUpdateAsync();
+        Assert.Single(barrier.GetProperty("entries").EnumerateArray(),
+            entry => entry[0].GetString() == "mouse" && entry[1].GetString() == barrierKey);
+        Assert.Null(Runtime.TryGetSeatForPlayer(destination.RuntimeGameId, attackerPlayerId));
+        Assert.True(StateFingerprint(before) == StateFingerprint(await SnapshotAsync(destination.RuntimeGameId)));
+
+        await using var reconnect = await OpenSessionAsync(
+            destination.RelayGameId, "seat=0&bots=false&botCount=0&dealMode=auto", attackerPlayerId);
+        var updates = await JoinWithRejectedDiscardBarrierAsync(reconnect, destination);
+        foreach (var update in updates)
+        {
+            Assert.False(HasSeatOwnershipEntry(update, attackerPlayerId, 0));
+            AssertOpaqueHandProjection(update, 0, 14);
+        }
+    }
+
+    [Theory, Trait("Category", "Authorization")]
+    [InlineData(0)]
+    [InlineData(2)]
+    public async Task RoomViewer_CrossRoomJoin_UsesActualDestinationOwnership(int destinationSeat)
+    {
+        var playerId = NewPlayerId("two-room-owner");
+        await using var source = await CreateBoundGameAsync(DealMode.Auto, playerId);
+        await using var destination = await CreateBoundGameAsync(DealMode.Auto, playerId, destinationSeat);
+        var before = await SnapshotAsync(destination.RuntimeGameId);
+        var sourceBefore = await SnapshotAsync(source.RuntimeGameId);
+        var destinationConnectionId = ViewerAuthorityAssertions.GrantedConnection(
+            Manager, Runtime, destination.RuntimeGameId, destinationSeat).Id.ToString("N");
+        var requestedSeat = (destinationSeat + 1) % 4;
+
+        var updates = await JoinWithRejectedDiscardBarrierAsync(
+            source.Owner, destination, ownedSeat: null, requestedSeat: requestedSeat);
+        foreach (var update in updates)
+        {
+            Assert.True(HasSeatOwnershipEntry(update, playerId, destinationSeat));
+            foreach (var hand in before.Hands)
+                AssertOpaqueHandProjection(update, hand.SeatIndex, hand.ConcealedTiles.Count);
+        }
+
+        await using var duplicate = await OpenSessionAsync(
+            destination.RelayGameId, "seat=3&bots=false&botCount=0&dealMode=auto", playerId);
+        var duplicateUpdates = await JoinWithRejectedDiscardBarrierAsync(
+            duplicate, destination, ownedSeat: null, requestedSeat: requestedSeat);
+        foreach (var update in duplicateUpdates)
+        {
+            Assert.True(HasSeatOwnershipEntry(update, playerId, destinationSeat));
+            foreach (var hand in before.Hands)
+                AssertOpaqueHandProjection(update, hand.SeatIndex, hand.ConcealedTiles.Count);
+        }
+        foreach (var update in await JoinWithRejectedDiscardBarrierAsync(destination.Owner, destination, destinationSeat))
+        {
+            AssertOwnedHandProjection(update, before, destinationSeat);
+            foreach (var hand in before.Hands.Where(hand => hand.SeatIndex != destinationSeat))
+                AssertOpaqueHandProjection(update, hand.SeatIndex, hand.ConcealedTiles.Count);
+        }
+
+        foreach (var update in await JoinWithRejectedDiscardBarrierAsync(source.Owner, source, ownedSeat: 0))
+            AssertOwnedHandProjection(update, sourceBefore, 0);
+        await destination.Owner.DisposeAsync();
+        Assert.True(await WaitForAsync(() =>
+            Runtime.TryGetSeatForConnection(destination.RuntimeGameId, destinationConnectionId) is null));
+        foreach (var update in await JoinWithRejectedDiscardBarrierAsync(source.Owner, destination, destinationSeat))
+        {
+            AssertOwnedHandProjection(update, before, destinationSeat);
+            Assert.True(HasSeatOwnershipEntry(update, playerId, destinationSeat));
+            foreach (var hand in before.Hands.Where(hand => hand.SeatIndex != destinationSeat))
+                AssertOpaqueHandProjection(update, hand.SeatIndex, hand.ConcealedTiles.Count);
+        }
+        foreach (var update in await JoinWithRejectedDiscardBarrierAsync(
+            duplicate, destination, ownedSeat: null, requestedSeat: requestedSeat))
+        {
+            Assert.True(HasSeatOwnershipEntry(update, playerId, destinationSeat));
+            foreach (var hand in before.Hands)
+                AssertOpaqueHandProjection(update, hand.SeatIndex, hand.ConcealedTiles.Count);
+        }
+
+        var resumedConnectionId = ViewerAuthorityAssertions.GrantedConnection(
+            Manager, Runtime, destination.RuntimeGameId, destinationSeat).Id.ToString("N");
+        await source.Owner.DisposeAsync();
+        Assert.True(await WaitForAsync(() =>
+            Runtime.TryGetSeatForConnection(destination.RuntimeGameId, resumedConnectionId) is null));
+        await using var reconnect = await OpenSessionAsync(
+            destination.RelayGameId, "seat=3&bots=false&botCount=0&dealMode=auto", playerId);
+        foreach (var update in await JoinWithRejectedDiscardBarrierAsync(reconnect, destination, destinationSeat))
+        {
+            AssertOwnedHandProjection(update, before, destinationSeat);
+            Assert.True(HasSeatOwnershipEntry(update, playerId, destinationSeat));
+            foreach (var hand in before.Hands.Where(hand => hand.SeatIndex != destinationSeat))
+                AssertOpaqueHandProjection(update, hand.SeatIndex, hand.ConcealedTiles.Count);
+        }
+        Assert.Equal(destination.RuntimeGameId, Manager.GetRuntimeGameIdBoundTo(destination.RelayGameId));
+        Assert.Single((await SnapshotAsync(destination.RuntimeGameId)).Seats,
+            seat => !seat.IsBot && seat.PlayerId == playerId);
+    }
+
+    [Fact, Trait("Category", "Authorization")]
+    public async Task RoomViewer_ExplicitSpectator_DoesNotInferOwnershipAcrossRooms()
+    {
+        var playerId = NewPlayerId("spectating-owner");
+        await using var source = await CreateBoundGameAsync(DealMode.Auto, playerId);
+        await using var destination = await CreateBoundGameAsync(DealMode.Auto, playerId);
+        await using var spectator = await OpenSessionAsync(
+            source.RelayGameId, "seat=-1&bots=false&botCount=0&dealMode=auto", playerId);
+
+        foreach (var game in new[] { source, destination, destination, source })
+        {
+            var before = await SnapshotAsync(game.RuntimeGameId);
+            var updates = await JoinWithRejectedDiscardBarrierAsync(spectator, game, ownedSeat: null,
+                expectedReason: "spectator-owns-no-seat", requestedSeat: 1);
+            foreach (var update in updates)
+            {
+                AssertOpaqueHandProjection(update, 0, 14);
+                foreach (var hand in before.Hands.Where(hand => hand.SeatIndex != 0))
+                    AssertOpaqueHandProjection(update, hand.SeatIndex, hand.ConcealedTiles.Count);
+            }
+            foreach (var update in await JoinWithRejectedDiscardBarrierAsync(game.Owner, game, ownedSeat: 0))
+            {
+                AssertOwnedHandProjection(update, before, 0);
+                foreach (var hand in before.Hands.Where(hand => hand.SeatIndex != 0))
+                    AssertOpaqueHandProjection(update, hand.SeatIndex, hand.ConcealedTiles.Count);
+            }
+        }
+    }
+
+    [Fact, Trait("Category", "Authorization")]
+    public async Task RoomViewer_SameRoomJoin_AfterLeaveDoesNotRestoreReleasedSeat()
+    {
+        var gameId = NewGameId("room-viewer-leave");
+        var formerPlayerId = NewPlayerId("former-owner");
+        var replacementPlayerId = NewPlayerId("replacement-owner");
+        await using var former = await OpenJoinedAsync(
+            gameId, "seat=0&bots=false&botCount=0&dealMode=auto", formerPlayerId);
+        await using var replacement = await OpenJoinedAsync(
+            gameId, "seat=0&botCount=3&dealMode=auto&seed=73", replacementPlayerId);
+
+        await former.SendUpdateAsync(
+            new object[] { "perPlayer", "seats", true },
+            new object[] { "perPlayer", "nicks", true },
+            new object[] { "seats", formerPlayerId, new { seat = 0 } });
+        _ = await replacement.ReadNonFullUpdateAsync();
+        string? runtimeGameId = null;
+        Assert.True(await WaitForAsync(() =>
+        {
+            runtimeGameId = Manager.GetRuntimeGameIdBoundTo(gameId);
+            return runtimeGameId is not null && Runtime.TryGetSeatForPlayer(runtimeGameId, formerPlayerId) == 0;
+        }));
+
+        var barrierKey = NewPlayerId("leave-processing-barrier");
+        await former.SendUpdateAsync(
+            new object[] { "seats", formerPlayerId, new { seat = (int?)null } },
+            new object[] { "mouse", barrierKey, new { x = 1, y = 2, z = 3 } });
+        var tombstones = await replacement.ReadNonFullUpdateAsync();
+        Assert.Contains(tombstones.GetProperty("entries").EnumerateArray(),
+            entry => entry[0].GetString() == "seats" && entry[1].GetString() == formerPlayerId
+                && entry[2].ValueKind == JsonValueKind.Null);
+        var barrier = await replacement.ReadNonFullUpdateAsync();
+        Assert.Single(barrier.GetProperty("entries").EnumerateArray(),
+            entry => entry[0].GetString() == "mouse" && entry[1].GetString() == barrierKey);
+        Assert.Null(Runtime.TryGetSeatForPlayer(runtimeGameId!, formerPlayerId));
+
+        await replacement.SendUpdateAsync(new object[] { "seats", replacementPlayerId, new { seat = 0 } });
+        Assert.True(await WaitForAsync(() =>
+            Runtime.TryGetSeatForPlayer(runtimeGameId!, replacementPlayerId) == 0));
+        var replacementSeated = await SnapshotAsync(runtimeGameId!);
+        Assert.Equal(ChangshaPhase.Seating, replacementSeated.Phase);
+        Assert.Empty(replacementSeated.Seats.Where(seat => seat.IsBot));
+        var humanIds = new[] { replacementPlayerId, NewPlayerId("second-human"),
+            NewPlayerId("third-human"), NewPlayerId("fourth-human") };
+        Assert.Equal(4, humanIds.Distinct(StringComparer.Ordinal).Count());
+        await using var secondHuman = await OpenJoinedAsync(gameId, "join=1", humanIds[1]);
+        Assert.Equal(1, Runtime.TryGetSeatForPlayer(runtimeGameId!, humanIds[1]));
+        Assert.Equal(ChangshaPhase.Seating, (await SnapshotAsync(runtimeGameId!)).Phase);
+        await using var thirdHuman = await OpenJoinedAsync(gameId, "join=1", humanIds[2]);
+        Assert.Equal(2, Runtime.TryGetSeatForPlayer(runtimeGameId!, humanIds[2]));
+        var waitingForFourth = await SnapshotAsync(runtimeGameId!);
+        Assert.Equal(ChangshaPhase.Seating, waitingForFourth.Phase);
+        Assert.Empty(waitingForFourth.Seats.Where(seat => seat.IsBot));
+        Assert.Equal(new[] { 0, 1, 2 }, humanIds.Take(3)
+            .Select(id => Runtime.TryGetSeatForPlayer(runtimeGameId!, id)!.Value));
+        await using var fourthHuman = await OpenJoinedAsync(gameId, "join=1", humanIds[3]);
+        Assert.True(await WaitForAsync(() =>
+            Runtime.TryGetSnapshot(runtimeGameId!, out var state)
+            && state?.Phase == ChangshaPhase.AwaitingDiscard
+            && Runtime.TryGetSeatForPlayer(runtimeGameId!, replacementPlayerId) == 0));
+        var dealt = await SnapshotAsync(runtimeGameId!);
+        Assert.Equal(runtimeGameId, Manager.GetRuntimeGameIdBoundTo(gameId));
+        Assert.Empty(dealt.Seats.Where(seat => seat.IsBot));
+        Assert.Equal(humanIds, dealt.Seats.OrderBy(seat => seat.SeatIndex).Select(seat => seat.PlayerId));
+        Assert.Equal(new[] { 14, 13, 13, 13 }, dealt.Hands.OrderBy(hand => hand.SeatIndex)
+            .Select(hand => hand.ConcealedTiles.Count));
+        await using var game = new BoundGame(gameId, runtimeGameId!, replacement);
+        var updates = await JoinWithRejectedDiscardBarrierAsync(former, game);
+        foreach (var update in updates)
+        {
+            AssertOpaqueHandProjection(update, 0, 14);
+            Assert.False(HasSeatOwnershipEntry(update, formerPlayerId, 0));
+            foreach (var hand in dealt.Hands.Where(hand => hand.SeatIndex != 0))
+                AssertOpaqueHandProjection(update, hand.SeatIndex, hand.ConcealedTiles.Count);
+        }
+        foreach (var update in await JoinWithRejectedDiscardBarrierAsync(replacement, game, ownedSeat: 0))
+        {
+            AssertOwnedHandProjection(update, dealt, 0);
+            foreach (var hand in dealt.Hands.Where(hand => hand.SeatIndex != 0))
+                AssertOpaqueHandProjection(update, hand.SeatIndex, hand.ConcealedTiles.Count);
+        }
+        await former.DrainAsync();
+        var tileId = dealt.Hands.Single(hand => hand.SeatIndex == 0).ConcealedTiles[0];
+        await replacement.SendUpdateAsync(new object[] { "discard", 0, new { tileId } });
+        Assert.True(await WaitForAsync(() =>
+            Runtime.TryGetSnapshot(runtimeGameId!, out var state) && state is not null
+            && state.StateVersion > dealt.StateVersion
+            && state.DiscardPile.Any(discard => discard.SeatIndex == 0 && discard.TileId == tileId)));
+        var broadcast = await former.ReadFullUpdateAsync();
+        AssertOpaqueHandProjection(broadcast, 0, 13);
+        Assert.False(HasSeatOwnershipEntry(broadcast, formerPlayerId, 0));
+        ViewerAuthorityAssertions.Expect(broadcast, gameId, null);
+    }
+
+    [Fact, Trait("Category", "Authorization")]
+    public async Task RoomViewer_RelayCrossRoomJoin_PreservesRoomScopedPassthrough()
+    {
+        var sourceId = NewGameId("relay-source");
+        var destinationId = NewGameId("relay-destination");
+        const string query = "variant=four_player&seat=-1&bots=false";
+        await using var sender = await OpenJoinedAsync(sourceId, query, NewPlayerId("relay-sender"));
+        await using var sourcePeer = await OpenJoinedAsync(sourceId, query, NewPlayerId("relay-source-peer"));
+        await using var destinationPeer = await OpenJoinedAsync(destinationId, query, NewPlayerId("relay-destination-peer"));
+
+        await sender.SendUpdateAsync(new object[] { "seats", "source-seat", new { seat = 0 } });
+        Assert.True(HasSeatOwnershipEntry(await sourcePeer.ReadNonFullUpdateAsync(), "source-seat", 0));
+        await sender.JoinAsync(destinationId);
+        await sender.SendUpdateAsync(new object[] { "seats", "destination-seat", new { seat = 2 } });
+        Assert.True(HasSeatOwnershipEntry(await destinationPeer.ReadNonFullUpdateAsync(), "destination-seat", 2));
+
+        var sourceSnapshot = await sourcePeer.JoinAndReadLatestAsync(sourceId);
+        Assert.True(HasSeatOwnershipEntry(sourceSnapshot, "source-seat", 0));
+        Assert.False(HasSeatOwnershipEntry(sourceSnapshot, "destination-seat", 2));
+        var destinationSnapshot = await sender.JoinAndReadLatestAsync(destinationId);
+        Assert.True(HasSeatOwnershipEntry(destinationSnapshot, "destination-seat", 2));
+        Assert.False(HasSeatOwnershipEntry(destinationSnapshot, "source-seat", 0));
+        Assert.Null(Manager.GetRuntimeGameIdBoundTo(sourceId));
+        Assert.Null(Manager.GetRuntimeGameIdBoundTo(destinationId));
+    }
+
     [Fact, Trait("Category", "Authorization")]
     public async Task SpectatorLeaveSeat_CannotReleaseAnotherConnectionsSeat()
     {
@@ -547,19 +860,20 @@ public sealed class AutotableWsSeatAuthorizationTests : IAsyncLifetime
 
     private async Task<BoundGame> CreateBoundGameAsync(
         DealMode dealMode,
-        string? ownerPlayerId = null)
+        string? ownerPlayerId = null,
+        int ownerSeatIndex = 0)
     {
         var relayGameId = NewGameId(dealMode == DealMode.Manual ? "manual" : "auto");
         ownerPlayerId ??= NewPlayerId("owner");
         var owner = await OpenJoinedAsync(
             relayGameId,
-            $"seat=0&botCount=3&dealMode={dealMode.ToString().ToLowerInvariant()}&seed=73",
+            $"seat={ownerSeatIndex}&botCount=3&dealMode={dealMode.ToString().ToLowerInvariant()}&seed=73",
             ownerPlayerId);
 
         try
         {
             await owner.SendUpdateAsync(
-                new object[] { "seats", "owner", new { seat = 0 } });
+                new object[] { "seats", "owner", new { seat = ownerSeatIndex } });
 
             string? runtimeGameId = null;
             Assert.True(await WaitForAsync(() =>
@@ -672,6 +986,84 @@ public sealed class AutotableWsSeatAuthorizationTests : IAsyncLifetime
         var after = await SnapshotAsync(runtimeGameId);
         Assert.Equal(before.StateVersion, after.StateVersion);
         Assert.Equal(StateFingerprint(before), StateFingerprint(after));
+    }
+
+    private async Task<IReadOnlyList<JsonElement>> JoinWithRejectedDiscardBarrierAsync(
+        WsSession connection,
+        BoundGame game,
+        int? ownedSeat = null,
+        string? expectedReason = null,
+        int? requestedSeat = null)
+    {
+        var before = await SnapshotAsync(game.RuntimeGameId);
+        var requested = requestedSeat ?? (ownedSeat.HasValue ? (ownedSeat.Value + 1) % 4 : 0);
+        var tileId = before.Hands.Single(hand => hand.SeatIndex == requested).ConcealedTiles[0];
+        var updates = new List<JsonElement>();
+        var joined = false;
+        long revision = 0;
+
+        await connection.SendRawAsync(JsonSerializer.Serialize(new { type = "JOIN", gameId = game.RelayGameId }));
+        // The rejected action fences JOIN processing, including every initial/re-inferred
+        // snapshot. Inspect the whole stream, not only a last snapshot after a quiet period.
+        await connection.SendUpdateAsync(new object[] { "discard", requested, new { tileId } });
+        var (rejection, _) = await connection.ReadRejectionAndResyncAsync(inspectEnvelope: envelope =>
+        {
+            if (envelope.GetProperty("type").GetString() == "JOINED")
+            {
+                Assert.True(envelope.GetProperty("gameId").GetString() == game.RelayGameId);
+                revision = ViewerAuthorityAssertions.Expect(envelope, game.RelayGameId, ownedSeat, revision);
+                joined = true;
+            }
+            else if (joined)
+            {
+                revision = ViewerAuthorityAssertions.Expect(envelope, game.RelayGameId, ownedSeat, revision);
+                if (envelope.TryGetProperty("full", out var full) && full.ValueKind == JsonValueKind.True)
+                    updates.Add(envelope);
+            }
+        });
+        Assert.True(joined);
+        Assert.True(updates.Count >= 2, "Expected a JOIN snapshot and the rejection resync.");
+        AssertRejection(rejection, "discard",
+            expectedReason ?? (ownedSeat.HasValue ? "seat-not-owned-by-connection" : "connection-owns-no-seat"),
+            requested, ownedSeat);
+        var after = await SnapshotAsync(game.RuntimeGameId);
+        Assert.Equal(before.StateVersion, after.StateVersion);
+        Assert.True(StateFingerprint(before) == StateFingerprint(after));
+        return updates;
+    }
+
+    private static JsonElement[] HandProjectionEntries(JsonElement update, int seatIndex) =>
+        update.GetProperty("entries").EnumerateArray()
+            .Where(entry => entry[0].GetString() == "things"
+                && entry[2].ValueKind == JsonValueKind.Object
+                && entry[2].TryGetProperty("slotName", out var slot)
+                && slot.ValueKind == JsonValueKind.String
+                && slot.GetString()!.StartsWith("hand.", StringComparison.Ordinal)
+                && slot.GetString()!.EndsWith($"@{seatIndex}", StringComparison.Ordinal))
+            .ToArray();
+
+    private static void AssertOpaqueHandProjection(JsonElement update, int seatIndex, int count)
+    {
+        var entries = HandProjectionEntries(update, seatIndex);
+        Assert.Equal(count, entries.Length);
+        Assert.True(HandProjectionIsOpaque(update, seatIndex), "Foreign hand must remain opaque in every snapshot.");
+        foreach (var entry in entries)
+            Assert.True(entry[1].ValueKind == JsonValueKind.String
+                && entry[1].GetString()!.StartsWith("h_", StringComparison.Ordinal));
+    }
+
+    private static void AssertOwnedHandProjection(JsonElement update, ChangshaGameState state, int seatIndex)
+    {
+        var expected = state.Hands.Single(hand => hand.SeatIndex == seatIndex).ConcealedTiles;
+        var entries = HandProjectionEntries(update, seatIndex);
+        Assert.Equal(expected.Count, entries.Length);
+        foreach (var entry in entries)
+        {
+            Assert.Equal(JsonValueKind.Number, entry[1].ValueKind);
+            Assert.Equal(1, entry[2].GetProperty("rotationIndex").GetInt32());
+        }
+        Assert.True(expected.Order().SequenceEqual(entries.Select(entry => entry[1].GetInt32()).Order()),
+            "The destination owner's projection must contain exactly its own hand.");
     }
 
     private static void AssertRejection(
@@ -901,7 +1293,8 @@ public sealed class AutotableWsSeatAuthorizationTests : IAsyncLifetime
         }
 
         public async Task<(JsonElement Rejection, JsonElement Resync)> ReadRejectionAndResyncAsync(
-            int timeoutMs = 5_000)
+            int timeoutMs = 5_000,
+            Action<JsonElement>? inspectEnvelope = null)
         {
             JsonElement? rejection = null;
             var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
@@ -909,6 +1302,7 @@ public sealed class AutotableWsSeatAuthorizationTests : IAsyncLifetime
             {
                 var envelope = await ReadEnvelopeAsync(
                     Math.Max(1, (int)(deadline - DateTime.UtcNow).TotalMilliseconds));
+                inspectEnvelope?.Invoke(envelope);
                 if (TryFindActionRejected(envelope, out _) && rejection is null)
                 {
                     rejection = envelope;
@@ -940,7 +1334,13 @@ public sealed class AutotableWsSeatAuthorizationTests : IAsyncLifetime
             throw new TimeoutException("Did not receive actionRejected.");
         }
 
-        public async Task<JsonElement> ReadNonFullUpdateAsync(int timeoutMs = 5_000)
+        public Task<JsonElement> ReadFullUpdateAsync(int timeoutMs = 5_000) =>
+            ReadUpdateAsync(isFull: true, timeoutMs);
+
+        public Task<JsonElement> ReadNonFullUpdateAsync(int timeoutMs = 5_000) =>
+            ReadUpdateAsync(isFull: false, timeoutMs);
+
+        private async Task<JsonElement> ReadUpdateAsync(bool isFull, int timeoutMs)
         {
             var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
             while (DateTime.UtcNow < deadline)
@@ -950,12 +1350,12 @@ public sealed class AutotableWsSeatAuthorizationTests : IAsyncLifetime
                 if (envelope.TryGetProperty("type", out var type)
                     && type.GetString() == "UPDATE"
                     && envelope.TryGetProperty("full", out var full)
-                    && full.ValueKind == JsonValueKind.False)
+                    && full.ValueKind == (isFull ? JsonValueKind.True : JsonValueKind.False))
                 {
                     return envelope;
                 }
             }
-            throw new TimeoutException("Did not receive a non-full UPDATE.");
+            throw new TimeoutException("Did not receive the requested UPDATE.");
         }
 
         public async Task<bool> ContainsActionRejectedAsync(int timeoutMs)

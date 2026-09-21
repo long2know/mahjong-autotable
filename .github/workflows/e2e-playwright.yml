@@ -21,6 +21,8 @@ on:
 
 jobs:
   e2e:
+    env:
+      BUILD_SHA: ${{ github.sha }}
     # Per-project isolation (Apone): chromium and mobile-chrome each get an
     # INDEPENDENT runner + container so neither inherits the other's runtime
     # saturation. Previously both projects ran serially in ONE job against ONE
@@ -62,6 +64,10 @@ jobs:
           npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium
 
+      - name: Build frontend with the container build identity
+        working-directory: src/frontend/autotable-src
+        run: npm run build
+
       - name: Build Docker image
         run: docker build --build-arg BUILD_SHA=${{ github.sha }} -t mahjong-autotable:e2e .
 
@@ -75,12 +81,17 @@ jobs:
         # CI is the "operator" for ephemeral test containers, so we
         # mint a per-run random HMAC key. The key never leaves the
         # runner.
+        # Hundreds of functional browser contexts share one runner IP.
+        # Isolate that artificial aggregate traffic from the generic HTTP
+        # limiter. Production defaults, the playability container below,
+        # and the backend Production RateLimitingTests retain enforcement.
         run: |
           set -euo pipefail
           JWT_KEY="$(openssl rand -base64 48)"
           docker run -d --name mahjong-e2e -p 8080:8080 \
             -e BUILD_SHA=${{ github.sha }} \
             -e Authentication__JwtSigningKeys__0="$JWT_KEY" \
+            -e RateLimiting__Enabled=false \
             mahjong-autotable:e2e
 
       - name: Wait for /health
@@ -147,6 +158,8 @@ jobs:
   playability-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      BUILD_SHA: ${{ github.sha }}
     permissions:
       contents: read
     steps:

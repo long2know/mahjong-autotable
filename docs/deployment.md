@@ -1,474 +1,248 @@
-# Deployment — Mahjong Autotable (Docker)
+# Deployment — source-built Docker image and Compose
 
-Single-image, single-port deployment of the Mahjong Autotable. The frontend
-bundle (Parcel) and the .NET 10 ASP.NET backend are baked into one image and
-served from the same Kestrel host on port `8080`.
+The root Dockerfile builds the Vite frontend and .NET10 API from source,
+then packages both into one Linux runtime image. One .NET process serves
+HTTP, `/autotable/`, `/autotable/ws`, `/api/*`, and SignalR. See
+[docker.md](docker.md) for the short Bash/PowerShell quickstart.
 
-Stephen's original ask:
+## Build and load locally
 
-> The frontend and backend should be packageable as a single docker image so
-> that I can run in a container on my Linux server that I already have.
-
-This runbook is the canonical answer.
-
----
-
-## 1. Prerequisites
-
-- A Linux host with Docker Engine **20.10+** (or any version that supports
-  multi-stage builds and the `HEALTHCHECK` directive).
-- ~1 GB free disk for the build cache; ~300 MB for the runtime image.
-- Outbound network access at build time so Docker can pull
-  `node:20-alpine`, `mcr.microsoft.com/dotnet/sdk:10.0`, and
-  `mcr.microsoft.com/dotnet/aspnet:10.0`.
-
-> **Note.** No host-side .NET SDK or Node toolchain is required at deploy
-> time. Everything is built inside the image.
-
----
-
-## 2. Image layout
-
-The image is produced by [`/Dockerfile`](../Dockerfile) using three stages:
-
-| Stage           | Base                                       | Produces                  |
-| --------------- | ------------------------------------------ | ------------------------- |
-| `frontend-build` | `node:20-alpine`                          | Parcel bundle at `/out/autotable/` |
-| `backend-build`  | `mcr.microsoft.com/dotnet/sdk:10.0`       | Published API at `/out/api/`       |
-| `runtime`        | `mcr.microsoft.com/dotnet/aspnet:10.0`    | Final image (`~300 MB`)            |
-
-At runtime the layout inside the container is:
-
-```
-/app/                       # published .NET API (Mahjong.Autotable.Api.dll)
-/frontend/autotable/        # Parcel-built bundle (served at /autotable/)
-/data/                      # SQLite database — mount a volume here
-```
-
-The frontend lives at `/frontend/autotable/` because `Program.cs` computes
-the static-files path as `Path.GetFullPath(Path.Combine(ContentRootPath,
-"../../../frontend/autotable"))`. With `WORKDIR=/app` that collapses to
-`/frontend/autotable`, so the in-container layout intentionally mirrors the
-source tree. This keeps the custom `.glb` / `.gltf` MIME-type registrations
-exercised on every request — no backend code change required for Docker.
-
----
-
-## 3. Build
+Requires Docker with Buildx; running Compose also requires Compose v2+.
+No host Node/.NET toolchain is needed. Use a builder capable of the selected
+Linux architecture and allow enough disk for SDK/dependency layers.
 
 ```bash
-# From the repo root:
-docker build -t mahjong-autotable:vX.Y.Z .
+./build.sh
+./build.sh --tag mahjong-autotable:my-build --platform linux/amd64
 ```
 
-Pass the current git SHA so `/health` can report it back:
-
-```bash
-docker build \
-    --build-arg BUILDKIT_INLINE_CACHE=1 \
-    -t mahjong-autotable:$(git rev-parse --short HEAD) \
-    .
+```powershell
+./build.ps1
+./build.ps1 -Tag mahjong-autotable:my-build -Platform linux/amd64
 ```
 
-> Tip — re-tag a `:latest` alias for the most recent build:
->
-> ```bash
-> docker tag mahjong-autotable:$(git rev-parse --short HEAD) mahjong-autotable:latest
-> ```
+Both scripts locate the repository from their own path, preserve the
+caller's working directory, propagate Docker failures, and load the image
+into the local engine. They never deploy or push. Set `BUILD_SHA` for public
+build metadata; this label is not a replacement for actual image/DLL/asset
+identity.
 
-### Build context
+`--archive FILE` / `-Archive FILE` optionally runs `docker image save` after
+a successful build; an existing file is never overwritten. On the Linux
+server, `docker load --input FILE` imports it. Keep the Compose image tag
+and platform aligned with the imported image.
 
-The `.dockerignore` aggressively trims the context: `node_modules/`, the
-checked-in `src/frontend/autotable/` pre-build, `**/bin`, `**/obj`,
-`src/backend/tests/`, `.git/`, `.squad/`, and assorted IDE / OS / log
-noise are excluded. The build context is small (a few MB) so iteration is
-fast.
+### Dockerfile stages
 
----
+| Stage | Base | Output |
+| --- | --- | --- |
+| frontend-build | node:20-alpine | Fresh Vite bundle at `/src/frontend/autotable/` |
+| backend-build | mcr.microsoft.com/dotnet/sdk:10.0 | Release API at `/out/api/` |
+| runtime | mcr.microsoft.com/dotnet/aspnet:10.0 | API `/app/`, bundle `/frontend/autotable/` |
 
-## 4. Run
+The context excludes host dist/bin/obj/node_modules, test execution output,
+`session-files/`, `playtest-artifacts/`, agent scratch, and local env files.
+It never substitutes a host-published DLL, host bundle, or cached application
+image for the source stages.
 
-> **Required:** the image runs `ASPNETCORE_ENVIRONMENT=Production`, which
-> refuses to boot without a **stable** JWT signing key
-> (`Authentication__JwtSigningKeys__0`, base64 ~48 bytes). Generate it once
-> and keep it stable across restarts/hosts — rotating it invalidates every
-> previously issued JWT. Source it from your secrets manager; never commit or
-> bake it into the image. See [`jwt-rotation.md`](jwt-rotation.md) §7.
+BuildKit transient memory mounts keep apt verification directories and
+.NET build/IPC working files out of persistent image layers. This is not a
+signature or sandbox bypass: apt uses its normal keyring and unprivileged
+verifier. Backend build servers are disabled for reproducible publication.
+Normal dependency/build caches remain optional accelerators; use
+`--no-cache` / `-NoCache` to execute uncached stages.
 
-### One-liner (`docker run`)
-
-`docker run` does not read `.env`, so pass the key explicitly:
-
-```bash
-docker run -d \
-    --name mahjong \
-    --restart unless-stopped \
-    -p 8080:8080 \
-    -v mahjong-data:/data \
-    -e BUILD_SHA="$(git rev-parse --short HEAD)" \
-    -e Authentication__JwtSigningKeys__0="$JWT_SIGNING_KEY" \
-    mahjong-autotable:vX.Y.Z
-```
-
-Then visit:
-
-- Lobby: <http://localhost:8080/autotable/>
-- Health: <http://localhost:8080/health>
-
-### docker compose (preferred for local dev parity)
-
-The one-time bootstrap writes a stable `JWT_SIGNING_KEY` into a gitignored
-`.env` (idempotent — safe to re-run; compose injects it as
-`Authentication__JwtSigningKeys__0`):
+## Configure and start
 
 ```bash
 ./scripts/compose-bootstrap.sh
-docker compose up -d --build
+docker compose up -d --no-build
 ```
 
-`docker-compose.yml` builds the same image as `mahjong-autotable:local` and
-mounts the `mahjong-data` named volume on `/data`. Without a key, compose
-fails fast with a one-line fix instruction instead of crash-looping. Override
-the host port or environment by adding a `docker-compose.override.yml` — it's
-gitignored.
+Alternatively, `docker compose up -d --build` builds from the Dockerfile.
+The bootstrap creates/preserves `JWT_SIGNING_KEY` in `.env`. A different
+file is supported with `--env-file PATH`; pass that same file explicitly
+to Compose. Do not regenerate the key on every deployment.
 
-### Build SHA stamping
+| Setting | Default | Scope |
+| --- | --- | --- |
+| MAHJONG_IMAGE | mahjong-autotable:local | Image tag shared by scripts/Compose |
+| MAHJONG_PLATFORM | linux/amd64 | One Linux platform |
+| MAHJONG_HOST_PORT | 8950 | Host publication, never changes container8080 |
+| MAHJONG_BIND_ADDRESS | 127.0.0.1 | Loopback; use0.0.0.0 only for intended direct exposure |
+| JWT_SIGNING_KEY | required | Runtime only; stable base64 signing material |
+| BUILD_SHA | local via scripts/Compose | Public health/build label |
 
-The image reads `BUILD_SHA` from the environment at request time, so a
-single image can be deployed with different SHAs without rebuilding:
+Builder scripts read exported environment variables/options, not `.env`.
+For a custom tag, either export `MAHJONG_IMAGE` for both commands or pass
+the tag to the script and set the matching Compose `.env` value.
+
+Inside the image: `ASPNETCORE_ENVIRONMENT=Production`,
+`ASPNETCORE_URLS=http://+:8080`, UID/GID1000:1000,
+`Persistence__Provider=Sqlite`, and
+`ConnectionStrings__Sqlite=Data Source=/data/mahjong-autotable.db`.
+`HOME` and runtime work files live under `/data`. Do not change the internal
+port merely to avoid a host-port conflict.
+
+Secrets must not enter source control, image build args, archives or logs.
+Store `.env` on a private, permission-preserving filesystem. Avoid printing
+resolved Compose/full container environment configuration. Runtime Docker
+environment is visible to Docker administrators; use a trusted host.
+
+## Isolate projects and remap ports
+
+Compose-generated names and project-scoped named volumes avoid fixed
+container-name collisions. Use distinct project/env/port combinations:
 
 ```bash
-docker run ... -e BUILD_SHA=2026-05-22-rc1 mahjong-autotable:vX.Y.Z
-curl http://localhost:8080/health
-# {"status":"healthy","buildSha":"2026-05-22-rc1", ...}
+./scripts/compose-bootstrap.sh --env-file ./.env.smoke.local
+MAHJONG_HOST_PORT=8951 docker compose --env-file ./.env.smoke.local \
+    -p mahjong-smoke up -d --no-build
 ```
 
-When unset, `/health` reports `"buildSha":"dev"`.
-
----
-
-## 5. Environment variables
-
-| Variable                            | Default                                       | Notes |
-| ----------------------------------- | --------------------------------------------- | ----- |
-| `ASPNETCORE_URLS`                   | `http://+:8080`                               | Listening URL inside the container. Change in tandem with `-p` if you remap the port. |
-| `ASPNETCORE_ENVIRONMENT`            | `Production`                                  | Set to `Development` to surface dev-only diagnostics. |
-| `ConnectionStrings__Sqlite`         | `Data Source=/data/mahjong-autotable.db`      | EF Core / SQLite connection string. Must point at a path inside a writable volume. |
-| `Persistence__Provider`             | `Sqlite`                                      | Switch to `PostgreSql` or `SqlServer` if you wire up an external DB (also set the matching connection string). |
-| `BUILD_SHA`                         | `""` (empty → `/health` reports `"dev"`)      | Stamped into `GET /health` so deploys are identifiable. |
-| `DOTNET_RUNNING_IN_CONTAINER`       | `true`                                        | Standard .NET container hint. Don't override. |
-| `DOTNET_EnableDiagnostics`          | `0`                                           | Disables the diagnostics IPC server (saves ~30 MB RSS). |
-
-PostgreSQL / SQL Server example:
+An external working directory can use absolute paths:
 
 ```bash
-docker run -d \
-    -p 8080:8080 \
-    -e Persistence__Provider=PostgreSql \
-    -e Authentication__JwtSigningKeys__0="$JWT_SIGNING_KEY" \
-    -e ConnectionStrings__PostgreSql="Host=db;Port=5432;Database=mahjong;Username=mahjong;Password=secret" \
-    mahjong-autotable:vX.Y.Z
+MAHJONG_HOST_PORT=8951 docker compose -f /srv/mahjong/docker-compose.yml \
+    --env-file /private/mahjong-smoke.env -p mahjong-smoke up -d --no-build
 ```
 
----
+Keep `-p` and `--env-file` stable across lifecycle commands. Never reuse
+another user's primary server port or data volume for a smoke run.
 
-## 6. Persistence
+## Nginx HTTP and WebSockets
 
-A single named volume holds the SQLite database:
+The default host-side upstream is `http://127.0.0.1:8950`, not container8080.
+[The HTTP example](../infra/nginx/mahjong-http.conf.example) preserves
+request paths and forwards HTTP/1.1 Upgrade/Connection headers for both
+raw WebSockets and SignalR. Its single `location /` also covers REST/static
+endpoints. Adapt it into an existing TLS server without changing that
+server's certificates. See [reverse-proxy.md](reverse-proxy.md).
+
+The app currently lacks general ASP.NET forwarded-header middleware.
+The IP rate limiter has its own X-Forwarded-For handling; other consumers of
+`Request.Scheme`/`RemoteIpAddress` do not thereby gain trusted proxy support.
+The sample edge proxy overwrites client-provided XFF. HTTP/WS routing
+qualification does not claim OAuth HTTPS callback/cookie behavior is
+fully qualified behind TLS; that application-level follow-up needs its
+own review, not an unrestricted trust-all proxy setting.
+
+## Persistence and lifecycle
+
+The project-scoped `mahjong-data` volume holds SQLite data; signing
+configuration is the persistent env file, not a key baked into the image.
+Using the same project/env preserves data and signed identities:
 
 ```bash
-docker volume create mahjong-data    # optional; `-v mahjong-data:/data` auto-creates
-docker volume inspect mahjong-data
-```
-
-The database file lives at `/data/mahjong-autotable.db`. EF Core auto-creates
-the schema on first launch via `DatabaseBootstrapper.InitializeAsync`.
-
-### Backup
-
-```bash
-docker run --rm \
-    -v mahjong-data:/data \
-    -v "$(pwd)":/backup \
-    alpine \
-    sh -c 'cp /data/mahjong-autotable.db /backup/mahjong-$(date +%Y%m%d-%H%M%S).db'
-```
-
-SQLite snapshots are safe to copy while the app runs because WAL mode
-ensures readers don't block writers; for a strictly-consistent dump, stop
-the container first.
-
-### Restore
-
-```bash
-docker stop mahjong
-docker run --rm \
-    -v mahjong-data:/data \
-    -v "$(pwd)":/backup \
-    alpine \
-    sh -c 'cp /backup/mahjong-20260522-180000.db /data/mahjong-autotable.db'
-docker start mahjong
-```
-
-### Wipe
-
-```bash
-docker compose down -v        # removes the named volume
-# or
-docker volume rm mahjong-data
-```
-
----
-
-## 7. Healthcheck
-
-The Dockerfile defines:
-
-```dockerfile
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:8080/health \
-      || curl -fsS http://127.0.0.1:8080/api/health \
-      || exit 1
-```
-
-Two probes for defence-in-depth:
-
-1. **`/health`** (Bishop, Phase J Wave 3 Task 3) — canonical JSON probe with
-   `status`, `buildSha`, `uptime`, `version`. This is the one Docker /
-   Kubernetes / load balancers should hit.
-2. **`/api/health`** — legacy short-form probe, kept for backwards
-   compatibility (frontend, older deploys).
-
-Inspect runtime health status:
-
-```bash
-docker inspect --format='{{.State.Health.Status}}' mahjong
-# starting | healthy | unhealthy
-```
-
-The first health probe runs after the `start-period` of 20 s. EF Core
-hydration on a populated DB plus Kestrel startup typically fits in ~3-5 s,
-so 20 s leaves comfortable slack.
-
----
-
-## 8. Day-2 operations
-
-```bash
-# Live logs
-docker logs -f mahjong
-
-# Last 200 lines
-docker logs --tail 200 mahjong
-
-# Open a shell
-docker exec -it mahjong /bin/bash
-
-# Inspect the SQLite DB inline (sqlite3 not installed in the image — use a sidecar)
-docker run --rm -it -v mahjong-data:/data nouchka/sqlite3 /data/mahjong-autotable.db
-
-# Restart
-docker restart mahjong
-```
-
----
-
-## 9. Updating
-
-```bash
-# Pull / build the new image
-git pull
-docker build -t mahjong-autotable:vX.Y.Z+1 .
-
-# Recreate with the new tag (volume preserved)
-docker stop mahjong && docker rm mahjong
-docker run -d \
-    --name mahjong \
-    --restart unless-stopped \
-    -p 8080:8080 \
-    -v mahjong-data:/data \
-    -e Authentication__JwtSigningKeys__0="$JWT_SIGNING_KEY" \
-    mahjong-autotable:vX.Y.Z+1
-
-# Or with compose (bootstrap is idempotent — reuses your existing .env key):
-./scripts/compose-bootstrap.sh && docker compose pull && docker compose up -d --build
-```
-
-EF Core's `DatabaseBootstrapper.InitializeAsync` upgrades the schema in
-place on first boot of the new image. Older non-terminal games are
-re-hydrated via `IChangshaGameRuntime.HydrateAsync` (Phase I Wave 2), so an
-update mid-hand is non-destructive.
-
----
-
-## 10. Troubleshooting
-
-| Symptom | Diagnosis | Fix |
-| ------- | --------- | --- |
-| `Error: bind: address already in use` | Host port 8080 already taken. | Remap: `-p 18080:8080` (then browse `http://host:18080/autotable/`). |
-| Container exits immediately, logs show `Permission denied` writing to `/data` | Bind-mounted host directory owned by a uid the container can't write to. | Prefer the named volume (`-v mahjong-data:/data`); or `chown` the host dir to uid `1654` (the .NET runtime user) before mounting. |
-| `/autotable/` returns 404 | Static-files binding skipped because `/frontend/autotable/` didn't get copied. Usually a `.dockerignore` over-match. | `docker run --rm --entrypoint sh mahjong-autotable:vX.Y.Z -c 'ls /frontend/autotable/'` should list `index.html`. If empty, check `.dockerignore`. |
-| `models.auto.*.glb` returns 404 or wrong content-type | The custom `.glb` / `.gltf` MIME registration in `Program.cs` only runs when the bundle is at `/frontend/autotable/`. | Confirm `WORKDIR /app` and the COPY destination match the Dockerfile shipped here. |
-| `HEALTHCHECK` reports `unhealthy` | App not yet listening, or `/health` not yet wired. | `docker logs mahjong` for boot errors; the start-period is 20 s so brief startup unhealthiness is normal. |
-| `Failed to bind to address http://[::]:8080: address already in use` *inside* the container | Two services contending for `+:8080`. | Should not happen with single-process container — check that nothing else is listening on `ASPNETCORE_URLS`. |
-| Image build pulls fail with `manifest unknown` for `dotnet/sdk:10.0` | .NET 10 image tag rotated or daily-build only. | Pin a specific tag, e.g. `mcr.microsoft.com/dotnet/sdk:10.0.100-preview` once GA tags are published. |
-
----
-
-## 11. Reference — quick commands
-
-```bash
-# Build
-docker build -t mahjong-autotable:latest .
-
-# Run
-docker run -d --name mahjong --restart unless-stopped \
-    -p 8080:8080 -v mahjong-data:/data \
-    -e Authentication__JwtSigningKeys__0="$JWT_SIGNING_KEY" \
-    mahjong-autotable:latest
-
-# Compose (bootstrap writes/keeps a stable JWT key in .env)
-./scripts/compose-bootstrap.sh && docker compose up -d --build
-docker compose logs -f
+docker compose restart mahjong
+docker compose up -d --no-build --force-recreate mahjong
 docker compose down
-
-# Health
-curl http://localhost:8080/health
-docker inspect --format='{{.State.Health.Status}}' mahjong
+docker compose up -d --no-build
 ```
 
-See also [`docs/docker.md`](docker.md) for the 5-minute quickstart.
+`down` retains named volumes. **`down -v` intentionally destroys data.**
+Changing the project name creates a different data volume; changing the
+key invalidates previously signed credentials. Coordinate production
+restarts with active players.
 
----
+### Known public-room reconnect limitation
 
-## 12. Production with reverse proxy
+The source-build hosting qualification reproduced an application-level
+gap after restart: existing runtime database rows and the signing key
+remain intact, but a same-identity JOIN of the same public room receives
+no prior board. The normal seat-reclaim command then creates another
+runtime row. A fixed-seed identical hand is not evidence of resumption.
+The public-room/runtime association needs a separately reviewed backend
+persistence/recovery correction. Build scripts and volume configuration
+cannot repair it; do not delete data, rotate keys, or claim seamless
+game continuation as a workaround.
 
-The container ships HTTP only on port 8080; TLS + WebSocket upgrade
-fidelity are deployment concerns. The repo carries ready-to-copy
-samples for the two most common fronts:
+For SQLite backups, use the existing online `.backup` script
+[`scripts/backup-sqlite.sh`](../scripts/backup-sqlite.sh) with a supported
+SQLite tool and approved data access, or stop only the intended instance
+before taking a complete database copy. Do not copy just a live `.db`
+while WAL writers are active. See [restore-sqlite.sh](../scripts/restore-sqlite.sh).
 
-- nginx — [`infra/nginx/mahjong.conf.example`](../infra/nginx/mahjong.conf.example)
-- Caddy — [`infra/caddy/Caddyfile.example`](../infra/caddy/Caddyfile.example)
-
-The full operator guide (TLS via Let's Encrypt, WebSocket upgrade
-headers for SignalR + `/autotable/ws`, 24-hour `proxy_read_timeout`,
-`X-Forwarded-For` propagation so the rate limiter sees real client
-IPs) lives in [`docs/reverse-proxy.md`](reverse-proxy.md).
-
----
-
-## 13. Production with systemd
-
-For deployments that prefer `systemctl restart mahjong-autotable` over
-`docker compose up -d`, the sample unit
-[`infra/systemd/mahjong-autotable.service.example`](../infra/systemd/mahjong-autotable.service.example)
-wraps the canonical `docker run` line in a hardened unit (`Type=simple`,
-`Restart=on-failure`, `LimitNOFILE=65536`, `NoNewPrivileges=true`,
-optional `EnvironmentFile=/etc/default/mahjong-autotable` override).
-The walk-through is in [`docs/systemd.md`](systemd.md).
-
----
-
-## 14. Log rotation
-
-The default `docker run` from § 4 lets `json-file` logs grow
-unboundedly. For self-hosted production, set the rotation opts on the
-log driver:
+## Provider overlays
 
 ```bash
-docker run -d \
-    --log-driver json-file \
-    --log-opt max-size=10m \
-    --log-opt max-file=5 \
-    ...
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.sqlserver.yml up -d --build
 ```
 
-Caps disk usage at `10m × 5 = 50 MiB` per container. The full guide
-(daemon-wide default in `/etc/docker/daemon.json`, alternative via
-`logrotate(8)` for bind-mounted log files) is in
-[`docs/log-rotation.md`](log-rotation.md). The systemd unit at
-[`infra/systemd/mahjong-autotable.service.example`](../infra/systemd/mahjong-autotable.service.example)
-already wires the recommended rotation opts.
+Both inherit the required JWT and app port settings. They use project-local
+service DNS/data volumes and wait for database health. Provider strings are
+`Postgres` / `SqlServer`; the PostgreSQL connection key is exactly
+`ConnectionStrings__PostgreSql`.
 
----
+Database host ports bind loopback and can be remapped with
+`POSTGRES_HOST_PORT` / `MSSQL_HOST_PORT`; internal5432/1433 stay unchanged.
+Set private database credentials instead of the documented development
+defaults. Separate Compose projects also need distinct published database
+ports. Provider engine tests/migrations are separate from the SQLite
+single-image hosting smoke.
 
-## 15. CORS
-
-The runtime CORS policy reads `Cors:AllowedOrigins` from
-configuration:
-
-| Environment                | Default                                                                                       |
-| -------------------------- | --------------------------------------------------------------------------------------------- |
-| `Development` / base       | `http://localhost:5114`, `https://localhost:7135`, `http://localhost:5173`, `http://localhost:8080` |
-| `Production` (override)    | `[]` — empty list, **no origins allowed by default**                                          |
-
-Production deployments MUST set the real public origin via env var so
-the browser can issue credentialled requests against the API:
+## Health and troubleshooting
 
 ```bash
-docker run ... \
-    -e Cors__AllowedOrigins__0=https://mahjong.example.com \
-    ...
+curl --fail http://127.0.0.1:8950/health
+docker compose ps
+docker compose logs --tail 100 mahjong
 ```
 
-Setting the same value via systemd's `EnvironmentFile` or compose's
-`environment:` block works identically. See
-[`docs/secrets.md`](secrets.md) § "CORS origins" for the secret-store
-patterns and rationale for why `AllowCredentials()` precludes
-`AllowAnyOrigin()`.
+`/health` exposes database connectivity, version/build metadata and uptime;
+`/api/health` is the legacy short-form fallback. Docker HEALTHCHECK uses
+in-image curl; tini propagates shutdown to the single .NET host.
 
----
+| Symptom | Action |
+| --- | --- |
+| Host port occupied | Set `MAHJONG_HOST_PORT`; leave container8080 unchanged. |
+| Missing JWT at Compose interpolation | Run bootstrap/use the same private env file; do not disable Production validation. |
+| `/data` permission error | Prefer a fresh project-scoped named volume. Check filesystem ownership support and UID1000; do not alter unrelated volumes. |
+| Apt reports invalid signatures | Preserve verification. Inspect actual verifier errors and build-storage permissions; never use trusted/unauthenticated flags. |
+| BuildKit extraction/permission failure | Retain exact command/log, Docker version/storage backend and context/source identities. Do not prune or change a shared daemon to conceal the failure. |
+| HTTP health works but Docker health/exec/start reports a missing `/sys/kernel/security/apparmor/profiles` | This can fail before the application command runs. Preserve the responding service and collect host/profile-interface evidence for the authorized host owner. Do not disable AppArmor, change the healthcheck to hide the fault, or restart unrelated containers. A successful image build/export does not prove that a new container can currently start. |
+| Image absent after a build | Use the entrypoints' `--load` path. A builder-cache result alone is not a runnable image. |
+| `/autotable/` missing | Confirm image includes `/frontend/autotable/index.html`; never paper over it with a host source mount. |
 
-## 16. Rate limiting
+On storage that cannot represent normal Unix permissions, Docker itself
+may still have limitations despite transient build mounts. Report that
+environment limitation if reproduced; an old cached application repack
+is not proof of this source-build path.
 
-The Phase J Wave 6 rate limiter (Apone, DevOps) wires two policies on
-top of `Microsoft.AspNetCore.RateLimiting`:
+Build/hosting proof and image identity do not assert gameplay qualification,
+100+ completed matches, all rules, canonical signed release or deployment
+approval. Those outcomes have separate owned evidence.
 
-| Policy name                  | Backing limiter                         | Quota               | Applied to                                                                       |
-| ---------------------------- | --------------------------------------- | ------------------- | -------------------------------------------------------------------------------- |
-| `fixed-window-anonymous`     | `FixedWindowRateLimiter`, partitioned by IP | 10 req / minute / IP | Reserved for future unauthenticated mutating endpoints (e.g. profile create). Apply via `.RequireRateLimiting(RateLimitingExtensions.AnonymousPolicy)`. |
-| `token-bucket-api`           | `TokenBucketRateLimiter`, partitioned by IP | 30-token bucket, 5 tokens/sec refill (≈300 req/min/IP with 30-burst) | Auto-applied to MapControllers + the per-endpoint minimal-API `/api/system/persistence` and `/api/changsha/pattern-ordering`. |
+## CORS and rate limiting
 
-Rejected requests get **HTTP 429** with body `{"error":"too_many_requests"}` and a
-`Retry-After` header.
+For a deliberately cross-origin frontend/API deployment, configure exact
+allowed origins with `Cors__AllowedOrigins__0` and subsequent indices; do
+not combine unrestricted origins with credentials. The normal single-image,
+same-origin proxy layout does not require a separate frontend origin.
+See [secrets.md](secrets.md) for operator configuration.
 
-**Not rate limited** (deliberately):
+### Rate limiting
 
-- `/health`, `/api/health` — probes need to hit hard during boot loops.
-- `/metrics` — Prometheus scrapes every 15–60 s; the limiter would
-  produce false alerts.
-- `/hubs/changsha` — SignalR persistent transport; the limiter only
-  sees the handshake.
-- `/autotable/ws` — raw WS transport; same reasoning as SignalR.
+Production configuration enables the API rate limiter. A rejected request
+returns HTTP429 and `Retry-After`; health/metrics and persistent WebSocket
+transports have separate probe/transport treatment. Do not disable the
+limiter merely to make a hosting smoke pass. Current quotas and endpoint
+assignments remain in `RateLimitingExtensions` and appsettings.
 
-### Toggle
+The limiter has its own X-Forwarded-For handling. Keep the backend private
+and have the trusted edge overwrite untrusted incoming forwarding headers;
+this is not general forwarded-proto middleware. See
+[reverse-proxy.md](reverse-proxy.md).
 
-The middleware is gated by `RateLimiting:Enabled`:
+## Existing operational references
 
-| File                         | Value        | Effect                                  |
-| ---------------------------- | ------------ | --------------------------------------- |
-| `appsettings.json`           | `false`      | Off in dev + test (xUnit boots `Development`). |
-| `appsettings.Production.json`| `true`       | On in production deploys.               |
+- [systemd.md](systemd.md): optional service-manager deployment. Its explicit
+  `docker run` port must be aligned with the chosen host publication.
+- [log-rotation.md](log-rotation.md): bounded Docker/container logs.
+- [observability.md](observability.md): metrics and proxy access controls.
+- [production-deployment-runbook.md](production-deployment-runbook.md):
+  separately authorized release, rollout and rollback procedures.
 
-Override with `RateLimiting__Enabled=false` (e.g. for a load / stress
-test):
-
-```bash
-docker run ... -e RateLimiting__Enabled=false ...
-```
-
-### Identifying the limit source
-
-When a client gets a 429, check the JSON log line for the failing
-endpoint. The structured log includes `RequestId` + `RequestPath` so
-operators can correlate. A custom `429` response counter can be added
-in a future wave (Phase K candidate).
-
-### IP attribution behind a reverse proxy
-
-The limiter partitions by the client IP, preferring `X-Forwarded-For`
-when set. Both [`infra/nginx/mahjong.conf.example`](../infra/nginx/mahjong.conf.example)
-and [`infra/caddy/Caddyfile.example`](../infra/caddy/Caddyfile.example)
-forward `X-Forwarded-For`, so the partition key matches reality
-without additional middleware. See
-[`docs/reverse-proxy.md`](reverse-proxy.md) for the full discussion.
+These guides do not authorize a local build script to change a host daemon,
+restart another deployment, install certificates or publish an image.

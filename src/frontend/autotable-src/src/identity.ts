@@ -1,17 +1,7 @@
-// Phase J Wave 6 — Auth-bootstrap identity module.
-//
-// On app boot we make a `POST /api/identity` call with
-// `credentials: 'include'` so Bishop's backend can stamp the
-// `mahjong_pid` cookie if it isn't already there.  The endpoint
-// returns the persistent profile shape `{ playerId, displayName,
-// avatarColor }` — that's the *cookie-bound* identity, which is
-// distinct from the SignalR `Context.ConnectionId` the existing
-// `profile.ts` module caches.  We treat the two as parallel:
-//
-//   • `profile.ts` (Wave 5) → SignalR profile, ProfileLoaded event,
-//     drives lobby chips + post-game stats.
-//   • `identity.ts` (Wave 6) → cookie-bound profile, drives the
-//     onboarding card + the leaderboard's "this is you" row match.
+// Establish the signed guest cookie before either transport opens.
+// Profile, chat and presence share the server's stable player ID,
+// not a per-tab connection ID. Cached identity is display-only;
+// a failed POST leaves verification unavailable and retryable.
 //
 // ── First-visit detection ──────────────────────────────────────────
 //
@@ -85,6 +75,14 @@ const events = new EventEmitter();
 let current: Identity | null = null;
 let cookieAtBoot: string | null = null;
 let bootPromise: Promise<Identity | null> | null = null;
+let verifiedPlayerId: string | null = null;
+
+export interface IdentityBootstrapState {
+  status: 'idle' | 'loading' | 'ready' | 'unavailable';
+  error: string | null;
+}
+
+let bootstrapState: IdentityBootstrapState = { status: 'idle', error: null };
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -167,10 +165,12 @@ function markOnboardingComplete(): void {
   }
 }
 
-function normalizeIdentity(raw: unknown, fallbackId: string, isFirstVisit: boolean): Identity {
+function normalizeIdentity(raw: unknown, isFirstVisit: boolean): Identity {
   const o = (raw !== null && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  const playerId =
-    typeof o.playerId === 'string' && o.playerId !== '' ? o.playerId : fallbackId;
+  if (typeof o.playerId !== 'string' || o.playerId.trim() === '') {
+    throw new Error('Identity endpoint returned an invalid player identity.');
+  }
+  const playerId = o.playerId;
   const displayName = typeof o.displayName === 'string' ? o.displayName : '';
   const avatarColor =
     typeof o.avatarColor === 'string' && validateAvatarColor(o.avatarColor)
@@ -206,6 +206,27 @@ export function getIdentity(): Identity | null {
   return current;
 }
 
+/** A display cache is never evidence that the signed cookie was established. */
+export function getVerifiedIdentity(): Identity | null {
+  return bootstrapState.status === 'ready' && current?.playerId === verifiedPlayerId
+    ? current : null;
+}
+
+export function getIdentityBootstrapState(): IdentityBootstrapState {
+  return bootstrapState;
+}
+
+export function onIdentityBootstrap(handler: (value: IdentityBootstrapState) => void): () => void {
+  events.on('bootstrap', handler);
+  handler(bootstrapState);
+  return () => events.off('bootstrap', handler);
+}
+
+function setBootstrapState(status: IdentityBootstrapState['status'], error: string | null = null): void {
+  bootstrapState = { status, error };
+  events.emit('bootstrap', bootstrapState);
+}
+
 export function onIdentity(handler: (id: Identity) => void): () => void {
   events.on('identity', handler);
   if (current !== null) handler(current);
@@ -214,18 +235,22 @@ export function onIdentity(handler: (id: Identity) => void): () => void {
 
 /**
  * Bootstrap the identity.  Idempotent — concurrent callers share the
- * same in-flight POST.  Returns the resolved identity, or null when
- * the endpoint is unreachable (offline / 5xx).
+ * same in-flight POST. Failed attempts return null and can be retried.
+ * Cached identity remains available for display, never for transport bootstrap.
  *
  * The "first-visit" decision is made *before* the POST: if the
  * `mahjong_pid` cookie isn't on the jar at boot, the Set-Cookie
  * response we receive is the very first issue of the identity.
  */
 export async function bootstrapIdentity(): Promise<Identity | null> {
+  const verified = getVerifiedIdentity();
+  if (verified !== null) return verified;
   if (bootPromise !== null) return bootPromise;
   cookieAtBoot = readCookie(IDENTITY_COOKIE_NAME);
   const firstVisitGuess = cookieAtBoot === null || cookieAtBoot === '';
-  bootPromise = (async () => {
+  // Install the flight before publishing any synchronous subscriber event.
+  // A loading/identity listener may re-enter bootstrapIdentity immediately.
+  const attempt = Promise.resolve().then(async (): Promise<Identity | null> => {
     try {
       const resp = await fetch(IDENTITY_ENDPOINT, {
         method: 'POST',
@@ -233,28 +258,31 @@ export async function bootstrapIdentity(): Promise<Identity | null> {
         headers: { 'Accept': 'application/json' },
       });
       if (!resp.ok) {
-        // Fall back to cache so the UI isn't blocked behind a 5xx.
-        const cached = loadCache();
-        if (cached !== null) {
-          setCurrent({ ...cached, isFirstVisit: false });
-          return current;
-        }
-        return null;
+        throw new Error(`Identity bootstrap failed (HTTP ${resp.status}).`);
       }
       const body = (await resp.json()) as unknown;
-      const id = normalizeIdentity(body, cookieAtBoot ?? '', firstVisitGuess);
+      const id = normalizeIdentity(body, firstVisitGuess);
+      verifiedPlayerId = id.playerId;
       setCurrent(id);
+      setBootstrapState('ready');
       return id;
-    } catch {
+    } catch (error) {
+      verifiedPlayerId = null;
       const cached = loadCache();
-      if (cached !== null) {
+      if (current === null && cached !== null) {
         setCurrent({ ...cached, isFirstVisit: false });
-        return current;
       }
+      setBootstrapState('unavailable', error instanceof Error ? error.message : String(error));
       return null;
     }
-  })();
-  return bootPromise;
+  });
+  bootPromise = attempt;
+  setBootstrapState('loading');
+  try {
+    return await attempt;
+  } finally {
+    if (bootPromise === attempt) bootPromise = null;
+  }
 }
 
 /** Pre-boot cookie sniff (null if bootstrapIdentity hasn't started yet). */

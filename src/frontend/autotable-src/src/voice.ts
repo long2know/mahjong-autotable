@@ -35,7 +35,7 @@
 import type { Client } from './client';
 import { setElHidden } from './dom-utils';
 import { showVoiceToast } from './toast';
-import { getGameState, loadGameState, subscribeGameState } from './game-state';
+import { getGameState, getGameStateStatus, loadGameState, subscribeGameState } from './game-state';
 
 const FALLBACK_ICE: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -266,8 +266,9 @@ export async function installVoicePanel(_client: Client): Promise<void> {
   // a SignalR `GameJoined` push that flips `voiceEnabled` updates
   // the mic button without the user touching the URL.
   stateUnsub = subscribeGameState((s) => {
+    if (s === null && getGameStateStatus().status === 'loading') return;
     const url = VOICE_ENABLED_URL_OVERRIDE_RE.test(window.location.search);
-    const next = url || s.voiceEnabled === true;
+    const next = url || s?.voiceEnabled === true;
     if (next === voiceEnabledForGame) return;
     voiceEnabledForGame = next;
     setVoiceEnabled(next);

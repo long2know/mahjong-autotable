@@ -9,16 +9,15 @@
 // BotDifficulty) never resolved and resolvePhaseFParams fell back to its
 // 'medium' default.  Both display surfaces read that fallback.
 //
-// This spec loads the spectator URL for every tier and asserts the DISPLAYED
-// difficulty equals the EFFECTIVE (URL) difficulty on both surfaces:
+// Controlled offline display fixture (not a server bot-game acceptance test).
+// It loads the spectator URL for every tier and asserts URL parsing on both surfaces:
 //   1. the legacy `#bot-difficulty` <select> (deterministic — applyPhaseFTo
 //      Pickers sets its value straight from phaseF.botDifficulty), and
-//   2. the `#bot-banner` spectator HUD (the element Vasquez saw).  The banner
-//      only renders once seats hold bots, so we seat four bots through the
-//      live Client exactly as the backend's spectator auto-fill would.  The
-//      difficulty word the banner prints is NOT derived from those nicks — it
-//      comes from the URL-resolved phaseF.botDifficulty — so this faithfully
-//      exercises the display path under test.
+//   2. the `#bot-banner` display fixture, with four bot-labelled offline
+//      participants. This is deliberately not a room/server difficulty claim:
+//      live room metadata does not expose difficulty and its selector is
+//      labelled server-managed. The existing offline URL-derived display
+//      still regression-tests case normalization for every supported tier.
 //
 // Run against the Production-CSP backend that serves the built bundle, e.g.:
 //   E2E_BASE_URL=http://127.0.0.1:8093/autotable/ npm run e2e -- \
@@ -54,7 +53,7 @@ async function mountSpectator(page: Page, difficulty: string): Promise<void> {
   for (const sel of ['#tour-skip', '#onboarding-skip']) {
     const el = page.locator(sel);
     if (await el.isVisible().catch(() => false)) {
-      await el.click({ force: true, timeout: 3000 }).catch(() => undefined);
+      await el.click({ timeout: 3000 });
     }
   }
 
@@ -65,28 +64,51 @@ async function mountSpectator(page: Page, difficulty: string): Promise<void> {
     undefined,
     { timeout: 90_000 },
   );
+  if (await page.locator('#lobby-close').isVisible()) await page.locator('#lobby-close').click();
 }
 
 /**
- * Seat four bots the way the backend's spectator auto-fill does so the HUD
- * banner renders.  Client.nicks.set() fires the 'update' the banner subscribes
- * to (setupBotBanner), re-rendering it from the live state.
+ * Populate only the explicitly offline UI fixture. The assertion prevents
+ * accidental use against a connected room; no server game is seeded here.
  */
 async function seatFourBots(page: Page): Promise<void> {
   const status = await page.evaluate(() => {
     const c = (window as unknown as {
       __mahjongClient?: {
+        connected(): boolean;
         seatPlayers: Array<string | null>;
         nicks: { set: (id: string, nick: string) => void };
       };
     }).__mahjongClient;
     if (c === undefined || typeof c.nicks?.set !== 'function') return 'no-client';
+    if (c.connected()) return 'unexpected-live-room';
     c.seatPlayers = ['bot-0', 'bot-1', 'bot-2', 'bot-3'];
     const winds = ['A', 'B', 'C', 'D'];
     for (let i = 0; i < 4; i++) c.nicks.set(`bot-${i}`, `Bot ${winds[i]}`);
     return 'seated';
   });
   expect(status, 'window.__mahjongClient should expose nicks.set for the banner seed').toBe('seated');
+}
+
+async function displayedDifficulty(page: Page, tier: Tier): Promise<void> {
+  const compact = await page.evaluate(() => matchMedia('(max-width: 900px), (max-height: 520px)').matches);
+  const banner = page.locator('#bot-banner');
+  if (compact) {
+    await expect(banner, 'nonessential status defaults hidden on compact screens').toBeHidden();
+    await page.getByTestId('settings-button').click();
+    await page.getByTestId('settings-tab-display').click();
+    await page.getByTestId('settings-mobile-table-status').check();
+    await page.getByTestId('settings-close').click();
+    await expect(page.locator('#bot-banner .bot-banner-title')).toBeHidden();
+  } else {
+    await expect(page.locator('#bot-banner .bot-banner-title')).toBeVisible();
+  }
+  const text = page.locator(compact ? '#bot-banner .bot-banner-summary' : '#bot-banner .bot-banner-title');
+  await expect(text).toBeVisible();
+  await expect(text).toContainText('4 bots');
+  await expect(text).toContainText(tier.word);
+  await expect(page.locator('#bot-difficulty')).toHaveValue(tier.value);
+  if (tier.word === 'Hard') await expect(text).not.toContainText('Medium');
 }
 
 test.describe('Bot-difficulty display reflects the effective (URL) difficulty', () => {
@@ -102,10 +124,7 @@ test.describe('Bot-difficulty display reflects the effective (URL) difficulty', 
 
       // (2) Spectator HUD banner — the surface Vasquez saw.
       await seatFourBots(page);
-      const title = page.locator('#bot-banner .bot-banner-title');
-      await expect(title).toBeVisible();
-      await expect(title).toContainText('4 bots');
-      await expect(title).toContainText(tier.word);
+      await displayedDifficulty(page, tier);
     });
   }
 
@@ -113,8 +132,6 @@ test.describe('Bot-difficulty display reflects the effective (URL) difficulty', 
     test.setTimeout(120_000);
     await mountSpectator(page, 'Hard');
     await seatFourBots(page);
-    const title = page.locator('#bot-banner .bot-banner-title');
-    await expect(title).toContainText('Hard');
-    await expect(title).not.toContainText('Medium');
+    await displayedDifficulty(page, TIERS[0]);
   });
 });

@@ -1,170 +1,215 @@
-// Phase K Wave 4 — Per-table reactive game state.
-//
-// Wave 3 voice / settings-drawer each performed an independent `GET
-// /api/games/{id}/settings` fetch to discover `voiceEnabled` and
-// `viewerIsOwner`.  Wave 4 unifies those probes into a single source
-// of truth so:
-//
-//   • Only one round-trip per page load — voice + settings-drawer +
-//     any future surface (owner-only HUD chip, kick-player button)
-//     consume the same cached snapshot.
-//   • Bishop's `GameJoined` SignalR broadcast (Wave-3 backend) can
-//     push a refreshed snapshot without surfaces refetching, by
-//     calling `updateGameState({ ownerId, voiceEnabled })`.
-//   • Subscribers receive callbacks the moment the state is
-//     populated; late mounters (e.g. the settings drawer opened only
-//     after the user clicks the gear icon) get the cached value
-//     synchronously via `getGameState()`.
-//
-// Surface:
-//   • `getGameState()` — snapshot or `null` if not yet populated.
-//   • `subscribeGameState(cb)` — fires once on subscribe (if state
-//     is populated) and again on every update.  Returns an unsubscribe.
-//   • `loadGameState(gameId)` — fetches `/api/games/{id}` once;
-//     idempotent per `gameId` for the lifetime of the page.
-//   • `updateGameState(partial)` — apply a partial update (used by
-//     the SignalR `GameJoined` handler or settings-drawer write
-//     callbacks).  Triggers subscriber callbacks.
+import {
+  bootstrapIdentity, getVerifiedIdentity, getIdentityBootstrapState, onIdentityBootstrap,
+} from './identity';
+import { onHubConnected } from './hub';
+import { buildRoomJoinUrl } from './room-join-url';
 
 export interface GameState {
   gameId: string;
   ownerId: string | null;
-  voiceEnabled: boolean;
   viewerIsOwner: boolean;
+  phase: string;
+  isPublic: boolean;
+  publicName: string | null;
+  voiceEnabled: boolean;
+  viewerCanManageVoice: boolean;
+  botCount: number;
+  seatedCount: number;
+  openHumanSeats: number;
+  canMakePublic: boolean;
+  canInvite: boolean;
 }
 
-type Listener = (state: GameState) => void;
+export interface GameStateStatus {
+  status: 'idle' | 'loading' | 'ready' | 'not-found' | 'identity-required' | 'invalid' | 'unavailable';
+  roomId: string | null;
+  playerId: string | null;
+  connected: boolean;
+  error: string | null;
+}
 
+type Listener = (state: GameState | null) => void;
 let state: GameState | null = null;
-const listeners: Set<Listener> = new Set();
-const inflight: Map<string, Promise<GameState | null>> = new Map();
+let roomId: string | null = null;
+let playerId: string | null = null;
+let joinedRoomId: string | null = null;
+let status: GameStateStatus['status'] = 'idle';
+let error: string | null = null;
+let generation = 0;
+let controller: AbortController | null = null;
+let inflight: Promise<GameState | null> | null = null;
+const listeners = new Set<Listener>();
 
 export function getGameState(): GameState | null {
-  return state;
+  return playerId === getVerifiedIdentity()?.playerId ? state : null;
+}
+
+export function getGameStateStatus(): GameStateStatus {
+  return {
+    status, roomId, playerId, error,
+    connected: joinedRoomId !== null && (joinedRoomId === roomId || joinedRoomId === state?.gameId),
+  };
+}
+
+function emit(): void {
+  for (const cb of listeners) cb(getGameState());
 }
 
 export function subscribeGameState(cb: Listener): () => void {
   listeners.add(cb);
-  if (state !== null) {
-    try { cb(state); } catch { /* ignore listener errors */ }
-  }
+  cb(getGameState());
   return () => { listeners.delete(cb); };
 }
 
-export function updateGameState(patch: Partial<GameState>): GameState {
-  const next: GameState = {
-    gameId: patch.gameId ?? state?.gameId ?? '',
-    ownerId: patch.ownerId ?? state?.ownerId ?? null,
-    voiceEnabled: patch.voiceEnabled ?? state?.voiceEnabled ?? false,
-    viewerIsOwner: patch.viewerIsOwner ?? state?.viewerIsOwner ?? false,
-  };
-  state = next;
-  for (const l of listeners) {
-    try { l(next); } catch { /* ignore */ }
+export function setGameRoomConnected(gameId: string | null): void {
+  if (joinedRoomId === gameId) return;
+  // This edge comes from a bound runtime snapshot, not a URL or JOINED ack.
+  // Revoke pending old-room work immediately on disconnect/switch/reconnect.
+  invalidate();
+  joinedRoomId = gameId;
+  roomId = gameId;
+  playerId = getVerifiedIdentity()?.playerId ?? null;
+  status = 'idle';
+  emit();
+}
+
+function invalidate(): void {
+  generation++;
+  controller?.abort();
+  controller = null;
+  inflight = null;
+  state = null;
+  error = null;
+}
+
+function parseGamePayload(raw: unknown): GameState {
+  if (raw === null || typeof raw !== 'object') throw new Error('Invalid room metadata response.');
+  const o = raw as Record<string, unknown>;
+  const booleans = ['viewerIsOwner', 'isPublic', 'voiceEnabled', 'viewerCanManageVoice', 'canMakePublic', 'canInvite'];
+  const counts = ['botCount', 'seatedCount', 'openHumanSeats'];
+  if (typeof o.gameId !== 'string' || o.gameId === ''
+      || typeof o.phase !== 'string' || o.phase === ''
+      || (o.ownerId !== null && typeof o.ownerId !== 'string')
+      || (o.publicName !== null && typeof o.publicName !== 'string')
+      || booleans.some(key => typeof o[key] !== 'boolean')
+      || counts.some(key => typeof o[key] !== 'number'
+        || !Number.isInteger(o[key]) || (o[key] as number) < 0 || (o[key] as number) > 4)) {
+    throw new Error('Room metadata does not match the multiplayer contract.');
   }
-  return next;
+  buildRoomJoinUrl(o.gameId);
+  return {
+    gameId: o.gameId,
+    ownerId: o.ownerId as string | null,
+    viewerIsOwner: o.viewerIsOwner as boolean,
+    phase: o.phase,
+    isPublic: o.isPublic as boolean,
+    publicName: o.publicName as string | null,
+    voiceEnabled: o.voiceEnabled as boolean,
+    viewerCanManageVoice: o.viewerCanManageVoice as boolean,
+    botCount: o.botCount as number,
+    seatedCount: o.seatedCount as number,
+    openHumanSeats: o.openHumanSeats as number,
+    canMakePublic: o.canMakePublic as boolean,
+    canInvite: o.canInvite as boolean,
+  };
 }
 
-interface RawGamePayload {
-  id?: string;
-  Id?: string;
-  gameId?: string;
-  GameId?: string;
-  ownerId?: string;
-  OwnerId?: string;
-  owner?: { id?: string; OwnerId?: string };
-  voiceEnabled?: boolean;
-  VoiceEnabled?: boolean;
-  viewerIsOwner?: boolean;
-  ViewerIsOwner?: boolean;
-}
+/** One active room + verified-identity cache; refreshes invalidate older async responses. */
+export function loadGameState(gameId: string, refresh = false): Promise<GameState | null> {
+  if (joinedRoomId === null || (gameId !== joinedRoomId
+    && !(roomId === joinedRoomId && state?.gameId === gameId))) return Promise.resolve(null);
+  const identityId = getVerifiedIdentity()?.playerId ?? null;
+  const sameRoom = roomId === gameId || state?.gameId === gameId;
+  if (!sameRoom || playerId !== identityId) {
+    invalidate();
+    roomId = gameId;
+    playerId = identityId;
+    status = 'idle';
+  }
+  if (!refresh && status === 'ready') return Promise.resolve(getGameState());
+  if (!refresh && inflight !== null) return inflight;
+  invalidate();
+  status = 'loading';
+  const epoch = generation;
+  const ctrl = new AbortController();
+  controller = ctrl;
+  emit();
 
-function parseGamePayload(raw: unknown, fallbackGameId: string): GameState | null {
-  if (raw === null || typeof raw !== 'object') return null;
-  const o = raw as RawGamePayload;
-  const ownerId =
-    typeof o.ownerId === 'string' ? o.ownerId
-    : (typeof o.OwnerId === 'string' ? o.OwnerId
-      : (o.owner !== undefined && typeof o.owner.id === 'string' ? o.owner.id : null));
-  const voiceEnabled = o.voiceEnabled === true || o.VoiceEnabled === true;
-  const viewerIsOwner = o.viewerIsOwner === true || o.ViewerIsOwner === true;
-  const gameId =
-    typeof o.gameId === 'string' && o.gameId !== '' ? o.gameId
-    : (typeof o.GameId === 'string' && o.GameId !== '' ? o.GameId
-      : (typeof o.id === 'string' && o.id !== '' ? o.id
-        : (typeof o.Id === 'string' && o.Id !== '' ? o.Id : fallbackGameId)));
-  return { gameId, ownerId, voiceEnabled, viewerIsOwner };
-}
-
-/**
- * Fetches `/api/games/{id}` for the per-game metadata and merges it
- * into the reactive state.  Concurrent callers share one in-flight
- * request keyed by `gameId`.
- *
- * Falls back to `/api/games/{id}/settings` (Wave-3 endpoint) when the
- * Wave-4 `/api/games/{id}` route returns 404 — Bishop is shipping the
- * richer endpoint in a separate PR but Wave-3 still works for
- * `voiceEnabled` + `viewerIsOwner`.  `ownerId` will be null in that
- * degraded path; the settings-drawer + voice surfaces tolerate it.
- */
-export async function loadGameState(gameId: string): Promise<GameState | null> {
-  if (state !== null && state.gameId === gameId) return state;
-  const existing = inflight.get(gameId);
-  if (existing !== undefined) return existing;
-
-  const promise = (async (): Promise<GameState | null> => {
+  const attempt = (async (): Promise<GameState | null> => {
     try {
-      let parsed = await fetchGameMeta(gameId);
-      if (parsed === null) {
-        parsed = await fetchGameSettings(gameId);
+      const identity = await bootstrapIdentity();
+      if (epoch !== generation || joinedRoomId === null) return null;
+      if (identity === null) {
+        status = 'identity-required';
+        error = getIdentityBootstrapState().error;
+        emit();
+        return null;
       }
-      if (parsed !== null) {
-        updateGameState(parsed);
+      playerId = identity.playerId;
+      const response = await fetch(`/api/games/${encodeURIComponent(gameId)}`, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        signal: ctrl.signal,
+      });
+      if (epoch !== generation || getVerifiedIdentity()?.playerId !== identity.playerId) return null;
+      if (!response.ok) {
+        status = response.status === 404 ? 'not-found'
+          : response.status === 401 ? 'identity-required'
+          : response.status === 400 ? 'invalid' : 'unavailable';
+        error = `HTTP ${response.status}`;
+        emit();
+        return null;
       }
-      return parsed;
+      const payload: unknown = await response.json();
+      if (epoch !== generation || getVerifiedIdentity()?.playerId !== identity.playerId) return null;
+      state = parseGamePayload(payload);
+      status = 'ready';
+      emit();
+      return state;
+    } catch (failure) {
+      if (ctrl.signal.aborted || epoch !== generation) return null;
+      status = 'unavailable';
+      error = failure instanceof Error ? failure.message : String(failure);
+      emit();
+      return null;
     } finally {
-      inflight.delete(gameId);
+      if (epoch === generation) {
+        inflight = null;
+        controller = null;
+      }
     }
   })();
-
-  inflight.set(gameId, promise);
-  return promise;
+  inflight = attempt;
+  return attempt;
 }
 
-async function fetchGameMeta(gameId: string): Promise<GameState | null> {
-  try {
-    const r = await fetch(`/api/games/${encodeURIComponent(gameId)}`, {
-      credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
-    });
-    if (!r.ok) return null;
-    const body = (await r.json()) as unknown;
-    return parseGamePayload(body, gameId);
-  } catch {
-    return null;
-  }
+export function refreshGameState(gameId = state?.gameId ?? roomId): Promise<GameState | null> {
+  return gameId === null ? Promise.resolve(null) : loadGameState(gameId, true);
 }
 
-async function fetchGameSettings(gameId: string): Promise<GameState | null> {
-  try {
-    const r = await fetch(`/api/games/${encodeURIComponent(gameId)}/settings`, {
-      credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
-    });
-    if (!r.ok) return null;
-    const body = (await r.json()) as unknown;
-    return parseGamePayload(body, gameId);
-  } catch {
-    return null;
-  }
+export function clearGameState(): void {
+  invalidate();
+  roomId = null;
+  playerId = null;
+  joinedRoomId = null;
+  status = 'idle';
+  emit();
 }
 
-/**
- * Tear-down for tests / page-transition cleanup.  Clears the cached
- * snapshot + listener set so the next `loadGameState()` starts fresh.
- */
 export function resetGameState(): void {
-  state = null;
+  clearGameState();
   listeners.clear();
-  inflight.clear();
 }
+
+onIdentityBootstrap(value => {
+  if (playerId !== null && (value.status !== 'ready' || getVerifiedIdentity()?.playerId !== playerId)) {
+    invalidate();
+    playerId = null;
+    status = 'identity-required';
+    emit();
+  }
+});
+
+onHubConnected(() => {
+  if (roomId !== null) void refreshGameState();
+});

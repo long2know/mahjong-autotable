@@ -9,6 +9,7 @@
 .github/
 .vscode/
 .idea/
+.mcp.json
 *.swp
 *.swo
 
@@ -16,6 +17,21 @@
 .squad/
 .copilot/
 .copilot-instructions/
+
+# Qualification/playtest outputs and agent-local work are never build inputs.
+session-files/
+playtest-artifacts/
+.work/
+.apone_uat_scratch/
+.frost_uat_scratch/
+.drake/
+.dtb-out/
+Phase_K_W*/
+**/artifacts/
+**/test-results*/
+**/playwright-report/
+**/.cache/
+**/.fuse_hidden*
 
 # Node / Vite build artefacts — Stage 1 rebuilds these from scratch
 **/node_modules/
@@ -36,6 +52,10 @@ src/frontend/autotable/
 
 # Test projects are not part of the runtime image
 src/backend/tests/
+src/frontend/autotable-src/tests/
+tests/
+mobile/
+helm/
 
 # Existing scaffold Dockerfile (kept for legacy compose references). The
 # canonical Dockerfile is at the repo root.
@@ -59,6 +79,9 @@ data/
 logs/
 tmp/
 coverage/
+*.tar
+*.tar.gz
+*.tgz
 
 # Compose overrides + env files (developer-local)
 docker-compose.override.yml
@@ -66,6 +89,12 @@ compose.override.yml
 .env
 .env.*
 !.env.example
+**/.env
+**/.env.*
+**/*.env
+**/*.env.*
+**/appsettings.*.local.json
+**/appsettings.*.Local.json
 
 # OS junk
 .DS_Store

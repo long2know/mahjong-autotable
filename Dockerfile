@@ -30,6 +30,9 @@ RUN --mount=type=cache,id=mahjong-npm,target=/root/.npm \
 # rebuilds (CI on a small source change) cheap. The cache is content-
 # keyed so we don't need to invalidate manually.
 COPY src/frontend/autotable-src/ ./
+# The same public identity is embedded in the loaded UI and runtime /health.
+# Keep this after dependency installation to preserve the npm ci cache.
+ARG BUILD_SHA=""
 RUN --mount=type=cache,id=mahjong-vite,target=/src/frontend/autotable-src/node_modules/.vite \
     npm run build \
     && test -f /src/frontend/autotable/index.html
@@ -39,17 +42,27 @@ RUN --mount=type=cache,id=mahjong-vite,target=/src/frontend/autotable-src/node_m
 ############################
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend-build
 WORKDIR /src
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1 \
+    DOTNET_EnableDiagnostics=0
 
 # Bring in the whole backend tree so the .slnx + .csproj references resolve
 # without hand-curated file lists. Tests are excluded via .dockerignore, so
 # the restore stays scoped to the Api project.
 COPY src/backend/ ./backend/
 
-RUN dotnet restore backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj
-RUN dotnet publish backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj \
+# Keep transient compiler/NuGet state out of image layers and off the backing
+# filesystem; build servers and their sockets must not survive publication.
+RUN --mount=type=tmpfs,target=/build-work \
+    TMPDIR=/build-work dotnet restore backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj \
+    --disable-build-servers
+RUN --mount=type=tmpfs,target=/build-work \
+    TMPDIR=/build-work dotnet publish backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj \
     -c Release \
     -o /out/api \
     --no-restore \
+    --disable-build-servers \
+    /p:UseSharedCompilation=false \
     /p:UseAppHost=false
 
 ############################
@@ -59,9 +72,15 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
 # `curl` powers the HEALTHCHECK directive. tini gives PID 1 a proper signal
 # handler so `docker stop` shuts the dotnet host down cleanly.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl tini \
-    && rm -rf /var/lib/apt/lists/*
+# apt's unprivileged verifier needs private directories with real POSIX modes.
+# tmpfs supplies those even when Docker's backing storage cannot preserve chmod.
+# Signature verification, the shipped keyring and apt's sandbox stay enabled.
+RUN --mount=type=tmpfs,target=/build-work \
+    --mount=type=tmpfs,target=/var/lib/apt/lists \
+    --mount=type=tmpfs,target=/var/cache/apt \
+    chmod 1777 /build-work \
+    && TMPDIR=/build-work apt-get update \
+    && TMPDIR=/build-work apt-get install -y --no-install-recommends curl tini
 
 WORKDIR /app
 
@@ -100,10 +119,13 @@ RUN if ! getent group 1000 >/dev/null; then groupadd -g 1000 mahjong; fi \
     && chown -R 1000:1000 /data /app \
     && chmod 755 /data
 
+# Inherited /data volumes need not contain any new image-created subdirectory.
 ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_EnableDiagnostics=0 \
+    HOME=/data \
+    TMPDIR=/data \
     ConnectionStrings__Sqlite="Data Source=/data/mahjong-autotable.db" \
     Persistence__Provider=Sqlite
 

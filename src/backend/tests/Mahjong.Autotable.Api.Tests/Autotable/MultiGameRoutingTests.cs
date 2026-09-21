@@ -146,8 +146,8 @@ public class MultiGameRoutingTests : IAsyncLifetime
     {
         // Open both sockets in parallel; each sends NEW with the query-string
         // gameId honored by Bishop's HandleNewAsync fallback.
-        var openA = OpenWithQueryAsync(gameId: "NEW-A", seat: 0);
-        var openB = OpenWithQueryAsync(gameId: "NEW-B", seat: 0);
+        var openA = OpenWithQueryAsync(gameId: "NEW-A", seat: 0, variant: "four_player");
+        var openB = OpenWithQueryAsync(gameId: "NEW-B", seat: 0, variant: "four_player");
         await Task.WhenAll(openA, openB);
 
         await using var sessionA = await openA;
@@ -178,6 +178,11 @@ public class MultiGameRoutingTests : IAsyncLifetime
         Assert.Equal("UPDATE", snapshotB.GetProperty("type").GetString());
         Assert.True(snapshotB.GetProperty("full").GetBoolean());
         sessionB.PlayerId = joinedB.GetProperty("playerId").GetString() ?? throw new InvalidOperationException("no playerId");
+        Assert.False(snapshotA.TryGetProperty("viewer", out _));
+        Assert.False(snapshotB.TryGetProperty("viewer", out _));
+        var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
+        Assert.Null(manager.GetRuntimeGameIdBoundTo("NEW-A"));
+        Assert.Null(manager.GetRuntimeGameIdBoundTo("NEW-B"));
 
         // Cross-talk probe — A pushes a mouse entry; B must NOT see it.
         var entryValue = JsonSerializer.SerializeToElement(new { x = 9.0, y = 9.0, z = 9.0 });
@@ -314,8 +319,8 @@ public class MultiGameRoutingTests : IAsyncLifetime
     private Task<RelaySession> OpenAsync(int seat)
         => OpenInternalAsync(query: $"?seat={seat}");
 
-    private Task<RelaySession> OpenWithQueryAsync(string gameId, int seat)
-        => OpenInternalAsync(query: $"?gameId={Uri.EscapeDataString(gameId)}&seat={seat}");
+    private Task<RelaySession> OpenWithQueryAsync(string gameId, int seat, string variant = "changsha")
+        => OpenInternalAsync(query: $"?gameId={Uri.EscapeDataString(gameId)}&seat={seat}&variant={Uri.EscapeDataString(variant)}");
 
     private async Task<RelaySession> OpenInternalAsync(string query)
     {

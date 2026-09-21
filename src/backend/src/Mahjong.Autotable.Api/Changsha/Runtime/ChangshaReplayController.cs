@@ -92,14 +92,8 @@ public sealed class ChangshaReplayController : ControllerBase
             return NotFound(new { error = "Replay not found.", gameId });
         }
 
-        // Materialise EventsJson back into a JSON node so the response is
-        // structured, then normalise the order: the wire contract guarantees
-        // events arrive sorted by `turn` ascending (stable on ties — the
-        // serialisation sequence is the tiebreaker). Vasquez's
-        // GameReplayEndpointTests.GameReplay_Events_AreOrderedByTurnAscending
-        // pins this contract: even if a row is seeded with an out-of-order
-        // `EventsJson` (admin import, partial replay merge), the endpoint
-        // must hand the frontend scrubber a monotonic turn sequence.
+        // Turns reset at each hand. V3 carries the real global event sequence;
+        // legacy arrays preserve their recorded storage order without guessing it.
         //
         // Phase J Wave 9 — the writer now emits a v2 envelope
         // ({ schemaVersion, events: [...] }); we normalise both v1
@@ -107,14 +101,28 @@ public sealed class ChangshaReplayController : ControllerBase
         // the same canonical wire response and surface schemaVersion
         // so a client can branch on shape if it wants.
         //
-        // If the stored payload is malformed (it shouldn't be — we own the
-        // writer) we fall back to surfacing the raw string so the client at
-        // least gets the data.
+        // Malformed JSON cannot establish a legacy schema from a stale row
+        // version. Never expose an unparsed replay as public events.
         object events;
         int schemaVersion = row.SchemaVersion;
         try
         {
             using var doc = JsonDocument.Parse(row.EventsJson);
+            if (row.SchemaVersion >= 3
+                && (doc.RootElement.ValueKind != JsonValueKind.Object
+                    || !doc.RootElement.TryGetProperty("schemaVersion", out var declaredVersion)
+                    || declaredVersion.ValueKind != JsonValueKind.Number
+                    || !declaredVersion.TryGetInt32(out var declared)
+                    || declared != 3))
+                return StatusCode(500, new { error = "invalid-replay-schema", gameId });
+            // Resolve the payload version before any legacy fallback, even if
+            // its events field is malformed and the row's column has drifted.
+            if (doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("schemaVersion", out var sv))
+            {
+                if (sv.ValueKind != JsonValueKind.Number || !sv.TryGetInt32(out schemaVersion))
+                    return StatusCode(500, new { error = "invalid-replay-schema", gameId });
+            }
             JsonElement eventsArrayElement;
             if (doc.RootElement.ValueKind == JsonValueKind.Array)
             {
@@ -126,17 +134,12 @@ public sealed class ChangshaReplayController : ControllerBase
                   && doc.RootElement.TryGetProperty("events", out var maybeEvents)
                   && maybeEvents.ValueKind == JsonValueKind.Array)
             {
-                // v2 envelope. Read schemaVersion from the payload so the
-                // wire surface reflects what was actually stored even if
-                // the row's column drifted.
                 eventsArrayElement = maybeEvents;
-                if (doc.RootElement.TryGetProperty("schemaVersion", out var sv) && sv.ValueKind == JsonValueKind.Number)
-                {
-                    schemaVersion = sv.GetInt32();
-                }
             }
             else
             {
+                if (schemaVersion >= 3)
+                    return StatusCode(500, new { error = "invalid-replay-schema", gameId });
                 events = doc.RootElement.Clone();
                 return Ok(new
                 {
@@ -147,23 +150,32 @@ public sealed class ChangshaReplayController : ControllerBase
                 });
             }
 
-            var sorted = eventsArrayElement.EnumerateArray()
-                .Select((el, idx) => (
-                    Element: el.Clone(),
-                    Turn: el.TryGetProperty("turn", out var t) && t.ValueKind == JsonValueKind.Number
-                        ? t.GetInt32()
-                        : int.MaxValue,
-                    Order: idx))
-                .OrderBy(x => x.Turn)
-                .ThenBy(x => x.Order)
-                .Select(x => NormaliseLegacyEvent(x.Element))
-                .ToArray();
-            events = sorted;
+            var elements = eventsArrayElement.EnumerateArray().Select(el => el.Clone()).ToArray();
+            if (schemaVersion > 3)
+                return StatusCode(500, new { error = "unsupported-replay-schema", gameId });
+            if (schemaVersion >= 3)
+            {
+                var sequenced = new List<(long Sequence, JsonElement Element)>(elements.Length);
+                foreach (var element in elements)
+                {
+                    if (element.ValueKind != JsonValueKind.Object
+                        || !element.TryGetProperty("sequence", out var sequence)
+                        || sequence.ValueKind != JsonValueKind.Number
+                        || !sequence.TryGetInt64(out var value) || value <= 0)
+                        return StatusCode(500, new { error = "invalid-replay-order", gameId });
+                    sequenced.Add((value, element));
+                }
+                var ordered = sequenced.OrderBy(e => e.Sequence).ToArray();
+                if (ordered.Where((entry, index) => entry.Sequence != index + 1L).Any())
+                    return StatusCode(500, new { error = "invalid-replay-order", gameId });
+                elements = ordered.Select(e => e.Element).ToArray();
+            }
+            events = elements.Select(NormaliseLegacyEvent).ToArray();
         }
-        catch (JsonException ex)
+        catch (JsonException)
         {
-            _logger.LogWarning(ex, "Replay row {ReplayId} for game {GameId} has malformed EventsJson.", row.Id, gameId);
-            events = row.EventsJson;
+            _logger.LogWarning("Replay row {ReplayId} for game {GameId} has malformed EventsJson.", row.Id, gameId);
+            return StatusCode(500, new { error = "invalid-replay-format", gameId });
         }
 
         return Ok(new

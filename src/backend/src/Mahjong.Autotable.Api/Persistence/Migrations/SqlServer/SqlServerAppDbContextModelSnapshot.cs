@@ -101,6 +101,32 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
                     b.ToTable("RotationSchedules");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.AutotableRoomBinding", b =>
+                {
+                    b.Property<string>("RoomKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RoomId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("RuntimeGameId")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RoomKey");
+
+                    b.HasIndex("RuntimeGameId")
+                        .IsUnique();
+
+                    b.ToTable("AutotableRoomBindings");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.ChangshaGame", b =>
                 {
                     b.Property<Guid>("Id")
@@ -163,8 +189,7 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
 
                     b.Property<string>("Detail")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("EventType")
                         .IsRequired()

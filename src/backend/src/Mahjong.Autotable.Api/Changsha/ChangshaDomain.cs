@@ -369,6 +369,12 @@ public sealed class ChangshaGameState
     /// </summary>
     public int MaxHands { get; set; } = 4;
 
+    /// <summary>Creation-latched scoring multiplier. Snapshots predating this setting retain unit 1.</summary>
+    public int BaseUnit { get; set; } = 1;
+
+    /// <summary>Resolved strategy identity persisted with the table, independent of reconnect URL hints.</summary>
+    public string? BotDifficulty { get; set; }
+
     /// <summary>
     /// Phase J Wave 2 — terminal flag flipped to <c>true</c> by
     /// <see cref="ChangshaGameStateMachine.RotateBanker"/> when the game reaches
@@ -418,6 +424,13 @@ public sealed class ChangshaGameState
     // Win / Score
     public WinResult? CurrentWin { get; set; }
     public ScoreResult? CurrentScore { get; set; }
+
+    /// <summary>Latched for browser rooms. Missing on legacy native snapshots means false;
+    /// restoring a browser binding enables it monotonically before resuming play.</summary>
+    public bool RequireHandResultAcknowledgements { get; set; }
+
+    /// <summary>Persisted settlement barrier; disconnect does not acknowledge or remove a participant.</summary>
+    public ChangshaHandResultContinuation? HandResultContinuation { get; set; }
 
     /// <summary>
     /// Seats that have declined a winning discard during the current hand. Per spec §3.6
@@ -486,6 +499,13 @@ public sealed class ChangshaGameState
     /// </summary>
     public bool LastDrawWasKongReplacement { get; set; } = false;
 
+    /// <summary>Actual own-draw entitlement for this turn, including the dealer's initial extra.
+    /// Null on old snapshots or after a discard/claim without an own draw.</summary>
+    public int? LastDrawSeatIndex { get; set; }
+
+    /// <summary>Counts discards even after claimed tiles leave the river.</summary>
+    public int DiscardsThisHand { get; set; }
+
     // ── Phase J Wave 5 — Public matchmaking lobby ─────────────────────
     /// <summary>
     /// Phase J Wave 5 — when <c>true</c>, this game appears in the
@@ -515,6 +535,26 @@ public sealed class ChangshaGameState
     /// public game (see <c>MatchmakingService.HandleHostDisconnect</c>).
     /// </summary>
     public string? CreatorPlayerId { get; set; }
+}
+
+public sealed class ChangshaHandResultContinuation
+{
+    public int HandNumber { get; set; }
+    public string ResultToken { get; set; } = string.Empty;
+    public Dictionary<int, string> RequiredPlayers { get; set; } = new();
+    public HashSet<int> AcknowledgedSeats { get; set; } = new();
+
+    internal int[] RequiredSeats(ChangshaGameState state) => RequiredPlayers
+        .Where(pair => state.Seats.Any(seat => seat.SeatIndex == pair.Key && !seat.IsBot
+            && string.Equals(seat.PlayerId, pair.Value, StringComparison.Ordinal)))
+        .Select(pair => pair.Key).Order().ToArray();
+
+    internal int[] WaitingSeats(ChangshaGameState state) =>
+        RequiredSeats(state).Where(seat => !AcknowledgedSeats.Contains(seat)).ToArray();
+
+    internal static bool IsParticipant(ChangshaSeatState seat) => !seat.IsBot
+        && !string.IsNullOrEmpty(seat.PlayerId)
+        && !string.Equals(seat.PlayerId, $"human-{seat.SeatIndex}", StringComparison.Ordinal);
 }
 
 public sealed class ChangshaSeatState

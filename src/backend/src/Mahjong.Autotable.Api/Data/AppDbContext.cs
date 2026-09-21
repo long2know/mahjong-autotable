@@ -15,6 +15,7 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
 {
     public DbSet<ChangshaGame> ChangshaGames => Set<ChangshaGame>();
     public DbSet<ChangshaGameEvent> ChangshaGameEvents => Set<ChangshaGameEvent>();
+    public DbSet<AutotableRoomBinding> AutotableRoomBindings => Set<AutotableRoomBinding>();
 
     // Phase J Wave 5 — persistent per-player profile + stats. See
     // Mahjong.Autotable.Api.Players.PlayerProfileService.
@@ -193,6 +194,15 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<AutotableRoomBinding>(entity =>
+        {
+            entity.HasKey(binding => binding.RoomKey);
+            entity.Property(binding => binding.RoomKey).HasMaxLength(64);
+            entity.Property(binding => binding.RoomId).HasMaxLength(64).IsRequired();
+            entity.Property(binding => binding.RuntimeGameId).IsConcurrencyToken();
+            entity.HasIndex(binding => binding.RuntimeGameId).IsUnique();
+        });
+
         modelBuilder.Entity<ChangshaGame>(entity =>
         {
             entity.HasKey(x => x.Id);
@@ -202,7 +212,7 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             // Sqlite=`TEXT`, Postgres=`text`, SQL Server=`nvarchar(max)`.
             // SqlServer's legacy `TEXT` is deprecated, so this override
             // was removed to keep the multi-provider migration set clean.
-            entity.Property(x => x.StateVersion).HasDefaultValue(1);
+            entity.Property(x => x.StateVersion).HasDefaultValue(1).HasSentinel(-1);
             // Phase K Wave 3 — Bishop. Owner-of-the-table column (Wave 3
             // brief task 3): table creator's persistent PlayerId, gates
             // /api/games/{id}/settings/voice.
@@ -216,7 +226,6 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
         {
             entity.HasKey(x => x.Id);
             entity.Property(x => x.EventType).HasMaxLength(64);
-            entity.Property(x => x.Detail).HasMaxLength(256);
             entity.HasIndex(x => new { x.GameId, x.Sequence }).IsUnique();
             entity.HasOne<ChangshaGame>()
                 .WithMany()

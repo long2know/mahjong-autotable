@@ -4,7 +4,7 @@ import { EventEmitter } from 'events';
 
 import { Entry } from '../server/protocol';
 
-import { BaseClient, Game } from './base-client';
+import { BaseClient, Game, type ClientMode } from './base-client';
 import {
   ThingInfo,
   MatchInfo,
@@ -14,8 +14,11 @@ import {
   DiceInfo,
   ClaimWindowEntry,
   HandResultEntry,
+  HandResultAckCommand,
   PickupEntry,
   TurnEntry,
+  OwnTurnEntry,
+  ActionRejectedEntry,
 } from './types';
 import { clearSession, saveSession } from './reconnect';
 import {
@@ -25,8 +28,8 @@ import {
   onProfile,
   initProfileHubBindings,
 } from './profile';
-import { getHubConnection, stopHubConnection } from './hub';
-import { loadGameState, updateGameState, resetGameState } from './game-state';
+import { getHubConnection } from './hub';
+import { clearGameState, refreshGameState, setGameRoomConnected } from './game-state';
 
 
 // Phase J Wave 2 — Server-pushed end-of-game payload.  Bishop's runtime
@@ -92,7 +95,10 @@ export class Client extends BaseClient {
   dice: Collection<string | number, DiceInfo>;
   // Phase D — Changsha protocol extensions emitted by AutotableWsEndpoint.
   claim: Collection<string, ClaimWindowEntry>;
+  ownTurn: Collection<number, OwnTurnEntry>;
+  actionRejected: Collection<string, ActionRejectedEntry>;
   result: Collection<string, HandResultEntry>;
+  handResultAck: Collection<string, HandResultAckCommand>;
   // Phase F — manual-pickup state machine.  Singleton (key=0) carrying the
   // currently-expected pickup affordance pushed by ChangshaToAutotableTranslator.
   //   • Inbound  : ["pickup", 0, { phase, seatIndex, count, dealMode, breakPoint, wallIndex, targetSlots }]
@@ -128,7 +134,10 @@ export class Client extends BaseClient {
   // modal.  Ephemeral by design — a fresh game wipes it on the new JOIN.
   gameComplete: Collection<string, GameCompleteEntry>;
 
-  seat: number | null = 0;
+  private legacySeat: number | null = 0;
+  get seat(): number | null {
+    return this.connectionMode === 'changsha' ? this.viewerSeat : this.legacySeat;
+  }
   seatPlayers: Array<string | null> = new Array(4).fill(null);
 
   // Phase J Wave 4 — last seen `gameId` from a JOIN response.  Public so
@@ -137,9 +146,11 @@ export class Client extends BaseClient {
   // check refuses to widen even with a cast).  Set on the `connect` event
   // handler below, cleared on user-initiated disconnect.
   lastGameId: string | null = null;
+  serverSnapshotGameId: string | null = null;
+  private roomMetadataSignature: string | null = null;
 
-  constructor() {
-    super();
+  constructor(mode: ClientMode = 'offline') {
+    super(mode);
 
     // Make sure match is first, as it triggers reorganization of slots and things.
     this.match = new Collection('match', this, { sendOnConnect: true });
@@ -151,12 +162,34 @@ export class Client extends BaseClient {
     this.sound = new Collection('sound', this, { ephemeral: true });
     this.dice = new Collection('dice', this, { ephemeral: true });
     this.claim = new Collection('claim', this, { ephemeral: true });
+    this.ownTurn = new Collection('ownTurn', this, { ephemeral: true });
+    this.actionRejected = new Collection('actionRejected', this, { ephemeral: true });
     this.result = new Collection('result', this);
+    this.handResultAck = new Collection('handResultAck', this, { ephemeral: true });
     this.pickup = new Collection('pickup', this, { ephemeral: true });
     this.turn = new Collection('turn', this, { ephemeral: true });
     this.discard = new Collection('discard', this, { ephemeral: true });
     this.gameComplete = new Collection('gameComplete', this, { ephemeral: true });
     this.seats.on('update', this.onSeats.bind(this));
+    this.on('update', (_entries, full) => {
+      if (full) {
+        const bound = this.connected()
+          && (this.connectionMode !== 'changsha' || this.turn.get('current') !== null);
+        this.serverSnapshotGameId = bound ? this.lastGameId : null;
+        setGameRoomConnected(this.connectionMode === 'changsha' ? this.serverSnapshotGameId : null);
+      }
+      this.refreshRoomMetadata();
+    });
+    this.on('disconnect', () => {
+      this.serverSnapshotGameId = null;
+      this.roomMetadataSignature = null;
+      setGameRoomConnected(null);
+    });
+    this.on('joining', () => {
+      this.serverSnapshotGameId = null;
+      this.roomMetadataSignature = null;
+      setGameRoomConnected(null);
+    });
 
     // Phase J Wave 4 — keep the reconnect session in sync with live
     // server state:
@@ -167,8 +200,12 @@ export class Client extends BaseClient {
     //     move-seat or kick).  Save is cheap; the localStorage write is
     //     fire-and-forget.
     this.on('connect', (game: Game) => {
+      this.serverSnapshotGameId = null;
       this.lastGameId = game.gameId;
       this.saveReconnectSession();
+      // JOINED may precede runtime binding. Room-scoped HTTP waits for the
+      // authoritative FULL snapshot, after all collections have been applied.
+      setGameRoomConnected(null);
       // Phase J Wave 5 — connect to Bishop's SignalR hub (idempotent
       // singleton) and load the player profile.  The hub's
       // OnConnectedAsync fires a `ProfileLoaded` event which
@@ -177,12 +214,9 @@ export class Client extends BaseClient {
       // loadProfile() so the local cache lands even if the hub
       // already pushed before our listener was installed.
       initProfileHubBindings();
-      // Phase K Wave 4 — Populate the per-table reactive state so
-      // voice / settings-drawer / future owner-only surfaces share
-      // one cached snapshot of `{ ownerId, voiceEnabled,
-      // viewerIsOwner }`.  Fire-and-forget — surfaces degrade to
-      // their disabled state when the fetch fails.
-      void loadGameState(game.gameId);
+      // The first bound FULL update populates per-table metadata for voice,
+      // settings and owner-only controls; JOINED alone is not ready.
+      this.roomMetadataSignature = null;
       void (async (): Promise<void> => {
         try {
           await getHubConnection();
@@ -194,18 +228,6 @@ export class Client extends BaseClient {
           // Cache the pre-game stats snapshot so the post-game modal
           // can render a delta.
           snapshotStatsForGame();
-          // Phase K Wave 4 — Bishop's `ChangshaHub.GameJoined` event
-          // pushes the same `{ ownerId, voiceEnabled }` payload that
-          // the REST endpoint serves.  Subscribe so live owner
-          // transfers + voice toggles refresh the reactive state
-          // without a refetch.  Best-effort: when the event isn't
-          // registered server-side the `on` handler just never fires.
-          try {
-            const conn = await getHubConnection();
-            conn.on('GameJoined', (payload: unknown) => {
-              applyGameJoined(payload, game.gameId);
-            });
-          } catch { /* hub binding best-effort */ }
         } catch {
           // Profile load is best-effort; lobby/UI degrade gracefully.
         }
@@ -237,16 +259,28 @@ export class Client extends BaseClient {
   }
 
   private onSeats(): void {
-    this.seat = null;
+    const legacy = this.connectionMode !== 'changsha';
+    if (legacy) this.legacySeat = null;
     this.seatPlayers.fill(null);
     for (const [playerId, seatInfo] of this.seats.entries()) {
-      if (playerId === this.playerId()) {
-        this.seat = seatInfo.seat;
+      if (legacy && playerId === this.playerId()) {
+        this.legacySeat = seatInfo.seat;
       }
       if (seatInfo.seat !== null) {
         this.seatPlayers[seatInfo.seat] = playerId;
       }
     }
+  }
+
+  private refreshRoomMetadata(): void {
+    const variant = new URLSearchParams(window.location.search).get('variant') ?? 'changsha';
+    if (!this.connected() || this.lastGameId === null || variant.toLowerCase() !== 'changsha'
+      || this.serverSnapshotGameId !== this.lastGameId || this.turn.get('current') === null) return;
+    const seats = Array.from(this.seats.entries()).map(([id, seat]) => [id, seat.seat]).sort();
+    const signature = JSON.stringify([this.lastGameId, seats, this.turn.get('current')?.phase]);
+    if (signature === this.roomMetadataSignature) return;
+    this.roomMetadataSignature = signature;
+    void refreshGameState(this.lastGameId);
   }
 
   // Phase J Wave 4 — persist the current (gameId, playerId, seat) to
@@ -255,7 +289,7 @@ export class Client extends BaseClient {
   // (lastGameId === null).  Fire-and-forget — localStorage write
   // errors (privacy mode, quota) are swallowed by reconnect.ts.
   private saveReconnectSession(): void {
-    if (this.lastGameId === null) return;
+    if (!this.connected() || this.lastGameId === null) return;
     const playerId = this.playerId();
     if (playerId === null || playerId === '') return;
     saveSession({
@@ -274,42 +308,9 @@ export class Client extends BaseClient {
       clearSession(this.lastGameId);
     }
     this.lastGameId = null;
-    // Phase J Wave 5 — tear down the SignalR hub on intentional
-    // disconnect so the server's ProfileLoaded events don't keep
-    // landing on a client that no longer cares.  Fire-and-forget.
-    void stopHubConnection();
-    // Phase K Wave 4 — Drop the per-table reactive state too so the
-    // next JOIN starts from a clean snapshot.
-    resetGameState();
+    // Leaving a table does not disconnect the server-wide social lobby.
+    clearGameState();
   }
-}
-
-// Phase K Wave 4 — Normalise Bishop's `GameJoined` SignalR payload and
-// merge it into the per-table reactive state.  Tolerates the camelCase
-// /PascalCase split the .NET serialiser may produce.
-interface GameJoinedPayload {
-  gameId?: string;
-  GameId?: string;
-  ownerId?: string;
-  OwnerId?: string;
-  voiceEnabled?: boolean;
-  VoiceEnabled?: boolean;
-  viewerIsOwner?: boolean;
-  ViewerIsOwner?: boolean;
-}
-
-function applyGameJoined(raw: unknown, fallbackGameId: string): void {
-  if (raw === null || typeof raw !== 'object') return;
-  const p = raw as GameJoinedPayload;
-  const gameId =
-    typeof p.gameId === 'string' && p.gameId !== '' ? p.gameId
-    : (typeof p.GameId === 'string' && p.GameId !== '' ? p.GameId : fallbackGameId);
-  const ownerId =
-    typeof p.ownerId === 'string' && p.ownerId !== '' ? p.ownerId
-    : (typeof p.OwnerId === 'string' && p.OwnerId !== '' ? p.OwnerId : null);
-  const voiceEnabled = p.voiceEnabled === true || p.VoiceEnabled === true;
-  const viewerIsOwner = p.viewerIsOwner === true || p.ViewerIsOwner === true;
-  updateGameState({ gameId, ownerId, voiceEnabled, viewerIsOwner });
 }
 
 // Phase J Wave 5 — read the "is complete" flag from a gameComplete
@@ -368,6 +369,7 @@ export class Collection<K extends string | number, V> {
     this.options = options ?? {};
 
     this.client.on('update', this.onUpdate.bind(this));
+    this.client.on('joining', this.clearPending.bind(this));
     this.client.on('connect', this.onConnect.bind(this));
     this.client.on('disconnect', this.onDisconnect.bind(this));
   }
@@ -432,6 +434,7 @@ export class Collection<K extends string | number, V> {
   }
 
   private onConnect(game: Game, isFirst: boolean): void {
+    this.clearPending();
     if (isFirst) {
       if (this.options.unique) {
         this.client.update([['unique', this.kind, this.options.unique]]);
@@ -456,10 +459,7 @@ export class Collection<K extends string | number, V> {
   }
 
   private onDisconnect(game: Game | null): void {
-    if (this.intervalId !== null) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
+    this.clearPending();
     if (game && this.options.perPlayer) {
       const localEntries: Array<Entry> = [];
       for (const [key, value] of this.map.entries()) {
@@ -469,6 +469,14 @@ export class Collection<K extends string | number, V> {
         }
       }
       this.onUpdate(localEntries, true);
+    }
+  }
+
+  private clearPending(): void {
+    this.pending.clear();
+    if (this.intervalId !== null) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
     }
   }
 

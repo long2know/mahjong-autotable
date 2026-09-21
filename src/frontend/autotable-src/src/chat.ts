@@ -1,66 +1,23 @@
-// Phase J Wave 9 — In-game table chat panel.
-//
-// A bottom-right docked, collapsible chat panel with three channels:
-//   • Table       — visible whenever you're in a game (default channel)
-//   • Spectators  — visible only when the URL has ?seat=-1 (the
-//                   spectator-follow body class)
-//   • Private     — visible when at least one other player is known;
-//                   picks a recipient from a dropdown
-//
-// Composer:
-//   • 280-char limit with a live counter testid `chat-char-count`
-//   • Enter sends; Shift+Enter inserts a newline
-//   • Slash commands intercepted client-side:
-//       /clear — clears the visible message history (does NOT delete
-//                from the server)
-//       /help  — shows the command help line in the chat scroller
-//
-// Inbound messages render with an avatar chip (initial letter + the
-// sender's avatar colour) and a display-name pill.  Self-messages
-// right-align; everyone else left-aligns.
-//
-// Notification chime:
-//   New incoming messages (i.e. not ours) trigger Sound.play('claim')
-//   which respects the existing sound on/off toggle (mahjong:soundEnabled
-//   mirror).
-//
-// Persistence + history:
-//   On boot (after the gameId is known) we issue
-//     GET /api/games/{gameId}/chat?since=<lastSeenIso>
-//   to backfill the history pane.  A 404 hides the panel + shows
-//   "Chat unavailable" (Bishop hasn't merged the endpoint yet).
-//
-// Live updates:
-//   • If Bishop's hub broadcasts a `chat` collection (best-effort wire
-//     name), the panel binds to it and renders messages reactively.
-//   • Otherwise the panel falls back to long-polling
-//     `GET /api/games/{gameId}/chat?since=<lastIso>` every ~6s while
-//     the panel is open.  This keeps the UI shell honest even when the
-//     hub hasn't shipped chat yet.
-//
-// Send:
-//   POST /api/games/{gameId}/chat
-//   body: { channel: 'table' | 'spectators' | 'private',
-//           recipientPlayerId?: string,
-//           body: string }
-
 import type { Client } from './client';
 import { Sound } from './sound';
-import { t, onLanguageChange } from './i18n';
-import { showEl, hideEl, setElHidden } from './dom-utils';
+import { t, onLanguageChange, translateElements } from './i18n';
+import { showEl, setElHidden } from './dom-utils';
+import { getVerifiedIdentity, onIdentityBootstrap } from './identity';
+import { getGameState, getGameStateStatus, refreshGameState, subscribeGameState } from './game-state';
+import {
+  getLobbyPresence, inviteExpired, markInvitesRead, sendTableInvite, startLobbyPresence,
+  subscribeLobbyPresence, type OnlinePlayer, type TableInvite,
+} from './lobby-presence';
+import { buildRoomJoinUrl } from './room-join-url';
+import { readConcreteGameId } from './session-url';
+import { getSettings, onSettingsChange, setSettings } from './settings-drawer';
+import { COMPACT_VIEW_QUERY, toggleMobilePanel } from './mobile-overlay-policy';
 
-// ── Wire types ─────────────────────────────────────────────────────
-
-// Phase J Wave 10 — `spectator-private` is a frontend-only sub-channel
-// that scopes private chat to the cohort of spectators currently in the
-// game.  It is sent over the wire as channel='private' (so the backend
-// /chat endpoint requires no change), but the picker UI and visibility
-// filter recognize it as a distinct channel so spectator-to-spectator
-// DMs don't bleed into seated players' private view.
 export type ChatChannel = 'table' | 'spectators' | 'private' | 'spectator-private';
 
 export interface ChatMessage {
   id: string;
+  gameId: string;
   channel: ChatChannel;
   senderPlayerId: string;
   senderDisplayName: string;
@@ -68,738 +25,802 @@ export interface ChatMessage {
   recipientPlayerId: string | null;
   body: string;
   sentUtc: string;
-  /** True when this message was sent by the local player. */
   isSelf: boolean;
-  /** True when this is a synthetic system message (e.g. /help). */
   isSystem: boolean;
 }
-
-// ── Constants ──────────────────────────────────────────────────────
 
 const MAX_BODY_LEN = 280;
 const POLL_INTERVAL_MS = 6000;
 const COLLAPSED_LS_KEY = 'mahjong.chat.collapsed.v1';
-const LAST_SEEN_LS_KEY = 'mahjong.chat.lastSeenIso.v1';
-
-// ── Module state ───────────────────────────────────────────────────
+const LAST_SEEN_LS_KEY = 'mahjong.chat.lastSeenIso.v2';
 
 interface ChatState {
-  available: boolean;          // server has the /chat endpoint
+  available: boolean;
   installed: boolean;
   collapsed: boolean;
   channel: ChatChannel;
+  channelChosen: boolean;
   privateRecipientId: string | null;
   messages: ChatMessage[];
+  seenIds: Set<string>;
   localPlayerId: string | null;
   gameId: string | null;
   pollTimer: number | null;
   lastSeenIso: string;
+  historyLoaded: boolean;
+  historyPending: boolean;
+  historyController: AbortController | null;
+  sending: boolean;
+  scope: string;
+  epoch: number;
+  error: string | null;
   client: Client | null;
 }
 
 const state: ChatState = {
-  available: false,
-  installed: false,
-  collapsed: true,
-  channel: 'table',
-  privateRecipientId: null,
-  messages: [],
-  localPlayerId: null,
-  gameId: null,
-  pollTimer: null,
-  lastSeenIso: '',
-  client: null,
+  available: false, installed: false, collapsed: true,
+  channel: 'table', channelChosen: false, privateRecipientId: null,
+  messages: [], seenIds: new Set(), localPlayerId: null, gameId: null,
+  pollTimer: null, lastSeenIso: '', historyLoaded: false, historyPending: false,
+  historyController: null, sending: false, scope: '', epoch: 0, error: null, client: null,
 };
-
-// ── LS helpers ─────────────────────────────────────────────────────
+const boundClients = new WeakSet<Client>();
+const inviteSending = new Set<string>();
+let errorTimer: number | null = null;
 
 function loadCollapsed(): boolean {
-  try {
-    const raw = window.localStorage.getItem(COLLAPSED_LS_KEY);
-    if (raw === null) return true;
-    return raw === 'true';
-  } catch {
-    return true;
-  }
+  if (window.matchMedia(COMPACT_VIEW_QUERY).matches) return getSettings().mobileInfoPanel !== 'chat';
+  try { return window.localStorage.getItem(COLLAPSED_LS_KEY) !== 'false'; }
+  catch { return true; }
 }
 
-function saveCollapsed(c: boolean): void {
-  try { window.localStorage.setItem(COLLAPSED_LS_KEY, c ? 'true' : 'false'); }
-  catch { /* skip */ }
+function cursorKey(): string {
+  return `${LAST_SEEN_LS_KEY}:${encodeURIComponent(state.gameId ?? '')}:${encodeURIComponent(state.localPlayerId ?? '')}`;
 }
 
 function loadLastSeen(): string {
   try {
-    return window.localStorage.getItem(LAST_SEEN_LS_KEY) ?? '';
-  } catch {
-    return '';
-  }
+    const value = window.localStorage.getItem(cursorKey()) ?? '';
+    return Number.isFinite(Date.parse(value)) ? value : '';
+  } catch { return ''; }
 }
 
-function saveLastSeen(iso: string): void {
-  try { window.localStorage.setItem(LAST_SEEN_LS_KEY, iso); }
-  catch { /* skip */ }
-}
-
-// ── Helpers ────────────────────────────────────────────────────────
-
-function getGameIdFromUrl(): string | null {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const v = params.get('game') ?? params.get('gameId');
-    if (v === null || v === '') return null;
-    return v;
-  } catch {
-    return null;
-  }
+function saveLastSeen(): void {
+  try { window.localStorage.setItem(cursorKey(), state.lastSeenIso); }
+  catch { /* The in-memory cursor still deduplicates when storage is disabled. */ }
 }
 
 function isSpectator(): boolean {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('seat') === '-1';
-  } catch {
-    return false;
-  }
+  return state.client?.connected() === true ? state.client.seat === null
+    : new URLSearchParams(window.location.search).get('seat') === '-1';
 }
 
-function escapeText(s: string): string {
-  return s.replace(/[&<>"]/g, (ch) => {
-    switch (ch) {
-      case '&': return '&amp;';
-      case '<': return '&lt;';
-      case '>': return '&gt;';
-      case '"': return '&quot;';
-      default:  return ch;
-    }
-  });
-}
-
-function djb2Hue(input: string): number {
-  let hash = 5381;
-  for (let i = 0; i < input.length; i++) hash = ((hash << 5) + hash + input.charCodeAt(i)) | 0;
-  return (hash & 0xff) | 0;
-}
-
-function colorForSender(message: ChatMessage): string {
-  if (message.senderAvatarColor !== null && /^#[0-9a-fA-F]{3,6}$/.test(message.senderAvatarColor)) {
-    return message.senderAvatarColor;
-  }
-  const hue = djb2Hue(message.senderPlayerId || message.senderDisplayName || 'anon');
-  return `hsl(${hue * 360 / 256}, 55%, 45%)`;
-}
-
-function senderInitial(message: ChatMessage): string {
-  const name = (message.senderDisplayName || message.senderPlayerId || '?').trim();
-  if (name === '') return '?';
-  return name.charAt(0).toUpperCase();
+function isRoomConnected(): boolean {
+  return state.gameId !== null && state.localPlayerId !== null
+    && getVerifiedIdentity()?.playerId === state.localPlayerId
+    && state.client?.connected() === true
+    && state.client.lastGameId !== null
+    && state.client.serverSnapshotGameId === state.client.lastGameId
+    && state.client.turn.get('current') !== null
+    && (new URLSearchParams(window.location.search).get('variant') ?? 'changsha').toLowerCase() === 'changsha';
 }
 
 function normalizeChannel(raw: unknown): ChatChannel {
-  if (raw === 'spectators' || raw === 'private' || raw === 'spectator-private') return raw;
-  return 'table';
+  if (raw === 'spectator') return 'spectators';
+  if (raw === 'spectators' || raw === 'private' || raw === 'spectator-private' || raw === 'table') return raw;
+  if (typeof raw === 'string' && raw.startsWith('private:') && raw.length > 8) return 'private';
+  throw new Error('Invalid chat channel.');
 }
 
-// Phase J Wave 10 — channels that require a recipient picker.  Today the
-// picker is shown for `private` (any seat → any seat) and the new
-// spectator-only `spectator-private` (spectator → spectator).
 function needsRecipient(channel: ChatChannel): boolean {
   return channel === 'private' || channel === 'spectator-private';
 }
 
-// Phase J Wave 10 — the wire channel sent to the server for a given UI
-// channel.  `spectator-private` is a frontend-only sub-channel that maps
-// to wire-channel='private'; the per-spectator filter is enforced in
-// `visibleMessages()` below.
 function wireChannel(channel: ChatChannel): 'table' | 'spectators' | 'private' {
-  if (channel === 'spectator-private') return 'private';
-  return channel;
+  return channel === 'spectator-private' ? 'private' : channel;
 }
 
-function normalizeMessage(raw: unknown): ChatMessage | null {
-  if (raw === null || typeof raw !== 'object') return null;
+function normalizeMessage(raw: unknown, gameId: string, localPlayerId: string): ChatMessage {
+  if (raw === null || typeof raw !== 'object') throw new Error('Invalid chat message response.');
   const o = raw as Record<string, unknown>;
-  const id = typeof o.id === 'string' ? o.id
-    : (typeof o.Id === 'string' ? o.Id : '');
-  if (id === '') return null;
-  const body = typeof o.body === 'string' ? o.body
-    : (typeof o.Body === 'string' ? o.Body : '');
-  if (body === '') return null;
-  const channel = normalizeChannel(o.channel ?? o.Channel);
-  const senderPlayerId = typeof o.senderPlayerId === 'string' ? o.senderPlayerId
-    : (typeof o.SenderPlayerId === 'string' ? o.SenderPlayerId : '');
-  const senderDisplayName = typeof o.senderDisplayName === 'string' ? o.senderDisplayName
-    : (typeof o.SenderDisplayName === 'string' ? o.SenderDisplayName
-       : (typeof o.senderName === 'string' ? o.senderName : senderPlayerId));
-  const avatarColor = typeof o.senderAvatarColor === 'string' ? o.senderAvatarColor
-    : (typeof o.SenderAvatarColor === 'string' ? o.SenderAvatarColor : null);
-  const recipientPlayerId = typeof o.recipientPlayerId === 'string' ? o.recipientPlayerId
-    : (typeof o.RecipientPlayerId === 'string' ? o.RecipientPlayerId : null);
-  const sentUtc = typeof o.sentUtc === 'string' ? o.sentUtc
-    : (typeof o.SentUtc === 'string' ? o.SentUtc
-       : (typeof o.timestampUtc === 'string' ? o.timestampUtc : new Date().toISOString()));
+  const id = o.id ?? o.Id;
+  const body = o.body ?? o.Body;
+  const rawChannel = o.channel ?? o.Channel;
+  const channel = normalizeChannel(rawChannel);
+  const senderPlayerId = o.senderPlayerId ?? o.SenderPlayerId ?? o.playerId;
+  const senderDisplayName = o.senderDisplayName ?? o.SenderDisplayName ?? senderPlayerId;
+  const avatarColor = o.senderAvatarColor ?? o.SenderAvatarColor ?? null;
+  const legacyRecipient = typeof rawChannel === 'string' && rawChannel.startsWith('private:')
+    ? rawChannel.slice(8) : null;
+  const recipientPlayerId = o.recipientPlayerId ?? o.RecipientPlayerId ?? legacyRecipient;
+  const sentUtc = o.sentUtc ?? o.SentUtc ?? o.at;
+  const canonicalRoom = o.gameId ?? o.GameId;
+  if (typeof id !== 'string' || id === '' || typeof body !== 'string' || body === ''
+      || typeof senderPlayerId !== 'string' || senderPlayerId === ''
+      || typeof senderDisplayName !== 'string'
+      || typeof sentUtc !== 'string' || !Number.isFinite(Date.parse(sentUtc))
+      || canonicalRoom !== gameId
+      || (avatarColor !== null && typeof avatarColor !== 'string')
+      || (recipientPlayerId !== null && typeof recipientPlayerId !== 'string')
+      || (needsRecipient(channel) && !recipientPlayerId)) {
+    throw new Error('Chat message does not match the room/identity contract.');
+  }
   return {
-    id,
-    channel,
-    senderPlayerId,
-    senderDisplayName: senderDisplayName.trim() === '' ? senderPlayerId : senderDisplayName,
-    senderAvatarColor: avatarColor,
-    recipientPlayerId,
-    body,
-    sentUtc,
-    isSelf: state.localPlayerId !== null && senderPlayerId === state.localPlayerId,
-    isSystem: false,
+    id, gameId, channel, senderPlayerId,
+    senderDisplayName: senderDisplayName.trim() || senderPlayerId,
+    senderAvatarColor: avatarColor, recipientPlayerId, body, sentUtc,
+    isSelf: senderPlayerId === localPlayerId, isSystem: false,
   };
 }
 
-// ── Network ────────────────────────────────────────────────────────
-
-async function fetchHistory(): Promise<{ ok: boolean; status: number; messages: ChatMessage[] }> {
-  const gameId = state.gameId;
-  if (gameId === null) return { ok: false, status: 0, messages: [] };
-  const params = new URLSearchParams();
-  if (state.lastSeenIso !== '') params.set('since', state.lastSeenIso);
-  const query = params.toString();
-  const url = `/api/games/${encodeURIComponent(gameId)}/chat${query !== '' ? '?' + query : ''}`;
-  try {
-    const resp = await fetch(url, {
-      credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
-    });
-    if (resp.status === 404) return { ok: false, status: 404, messages: [] };
-    if (!resp.ok) return { ok: false, status: resp.status, messages: [] };
-    const body = await resp.json() as unknown;
-    const rawList = Array.isArray(body)
-      ? body
-      : (body !== null && typeof body === 'object'
-        ? ((body as Record<string, unknown>).messages
-          ?? (body as Record<string, unknown>).Messages ?? [])
-        : []);
-    const out: ChatMessage[] = [];
-    if (Array.isArray(rawList)) {
-      for (const r of rawList) {
-        const m = normalizeMessage(r);
-        if (m !== null) out.push(m);
-      }
-    }
-    return { ok: true, status: resp.status, messages: out };
-  } catch {
-    return { ok: false, status: 0, messages: [] };
+class ChatRequestError extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
   }
 }
 
-async function sendMessage(channel: ChatChannel, body: string, recipientPlayerId: string | null):
-    Promise<{ ok: boolean; status: number }> {
-  const gameId = state.gameId;
-  if (gameId === null) return { ok: false, status: 0 };
-  const url = `/api/games/${encodeURIComponent(gameId)}/chat`;
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        channel: wireChannel(channel),
-        recipientPlayerId,
-        body,
-      }),
-    });
-    return { ok: resp.ok, status: resp.status };
-  } catch {
-    return { ok: false, status: 0 };
+function describeError(error: unknown): string {
+  if (error instanceof ChatRequestError) {
+    if (error.status === 401) return t('chat.identity_required');
+    if (error.status === 403) return t('chat.membership_required');
+    if (error.status === 404) return t('chat.room_missing');
+    if (error.status === 429) return t('chat.send_rate_limited');
+    return t('chat.http_failed', { status: error.status });
   }
+  return t('chat.request_failed', { reason: error instanceof Error ? error.message : String(error) });
 }
 
-// ── State helpers ──────────────────────────────────────────────────
-
-function appendMessages(incoming: ChatMessage[]): number {
-  if (incoming.length === 0) return 0;
-  // Dedup by id; preserve sortable order by sentUtc.
-  const seen = new Set<string>(state.messages.map((m) => m.id));
-  let added = 0;
-  for (const m of incoming) {
-    if (seen.has(m.id)) continue;
-    state.messages.push(m);
-    seen.add(m.id);
-    added++;
-    if (m.sentUtc > state.lastSeenIso) {
-      state.lastSeenIso = m.sentUtc;
+function appendMessages(incoming: ChatMessage[], advanceCursor = true): ChatMessage[] {
+  const added: ChatMessage[] = [];
+  for (const message of incoming) {
+    if (advanceCursor && (state.lastSeenIso === '' || Date.parse(message.sentUtc) > Date.parse(state.lastSeenIso))) {
+      state.lastSeenIso = message.sentUtc;
     }
+    if (state.seenIds.has(message.id)) continue;
+    state.seenIds.add(message.id);
+    state.messages.push(message);
+    added.push(message);
   }
-  if (added > 0) {
-    state.messages.sort((a, b) => a.sentUtc.localeCompare(b.sentUtc));
-    saveLastSeen(state.lastSeenIso);
-  }
+  state.messages.sort((a, b) => Date.parse(a.sentUtc) - Date.parse(b.sentUtc) || a.id.localeCompare(b.id));
+  if (advanceCursor) saveLastSeen();
   return added;
 }
 
-function getSeatNicks(): Array<{ playerId: string; displayName: string; avatarColor: string | null }> {
-  const out: Array<{ playerId: string; displayName: string; avatarColor: string | null }> = [];
-  const client = state.client;
-  if (client === null) return out;
+async function refreshHistory(): Promise<void> {
+  if (!isRoomConnected() || state.historyPending || state.gameId === null || state.localPlayerId === null) {
+    renderAvailability();
+    return;
+  }
+  const gameId = state.gameId;
+  const localPlayerId = state.localPlayerId;
+  const epoch = state.epoch;
+  const ctrl = new AbortController();
+  state.historyController = ctrl;
+  state.historyPending = true;
+  const previouslyLoaded = state.historyLoaded;
+  const params = new URLSearchParams({ limit: '200' });
+  // On a fresh page, reload persisted history rather than showing an empty
+  // pane after the saved cursor. Overlap subsequent reads to preserve timestamp ties.
+  if (state.historyLoaded && state.lastSeenIso !== '') {
+    params.set('since', new Date(Date.parse(state.lastSeenIso) - 1).toISOString());
+  }
   try {
-    for (const [playerId, seatInfo] of client.seats.entries()) {
-      if (playerId === 'offline') continue;
-      if (state.localPlayerId !== null && playerId === state.localPlayerId) continue;
-      const nick = client.nicks.get(playerId);
-      const displayName = (typeof nick === 'string' && nick !== '')
-        ? nick
-        : playerId.slice(0, 6);
-      out.push({ playerId, displayName, avatarColor: null });
-      void seatInfo;
+    const response = await fetch(`/api/games/${encodeURIComponent(gameId)}/chat?${params}`, {
+      credentials: 'same-origin', headers: { Accept: 'application/json' }, signal: ctrl.signal,
+    });
+    if (!response.ok) throw new ChatRequestError(response.status);
+    const raw: unknown = await response.json();
+    if (epoch !== state.epoch || ctrl.signal.aborted) return;
+    const messages = raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>).messages : null;
+    if (!Array.isArray(messages)) throw new Error('Chat history response omitted messages.');
+    const incoming = messages.map(message => normalizeMessage(message, gameId, localPlayerId));
+    const added = appendMessages(incoming);
+    state.available = true;
+    state.error = null;
+    state.historyLoaded = true;
+    if (previouslyLoaded && added.some(message => !message.isSelf)) Sound.play('claim');
+    renderMessages();
+  } catch (failure) {
+    if (epoch !== state.epoch || ctrl.signal.aborted) return;
+    state.available = false;
+    state.error = describeError(failure);
+  } finally {
+    if (epoch === state.epoch) {
+      state.historyController = null;
+      state.historyPending = false;
+      renderAvailability();
     }
-  } catch { /* swallow */ }
-  return out;
-}
-
-// ── DOM ────────────────────────────────────────────────────────────
-
-function setCollapsed(collapsed: boolean): void {
-  state.collapsed = collapsed;
-  saveCollapsed(collapsed);
-  const root = document.getElementById('chat-panel');
-  if (root === null) return;
-  root.classList.toggle('chat-panel-collapsed', collapsed);
-  const toggle = document.getElementById('chat-toggle') as HTMLButtonElement | null;
-  if (toggle !== null) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-  if (!collapsed) {
-    // When opening, mark all received as seen.
-    void refreshHistory();
-    startPolling();
-    requestAnimationFrame(() => scrollToBottom());
-  } else {
-    stopPolling();
   }
 }
 
-function renderRecipientOptions(select: HTMLSelectElement): void {
-  const previous = state.privateRecipientId ?? select.value ?? '';
+function startPolling(): void {
+  if (state.pollTimer !== null || state.collapsed) return;
+  state.pollTimer = window.setInterval(() => { void refreshHistory(); }, POLL_INTERVAL_MS);
+}
+
+function stopPolling(): void {
+  if (state.pollTimer !== null) window.clearInterval(state.pollTimer);
+  state.pollTimer = null;
+}
+
+function syncRoom(): void {
+  const identity = getVerifiedIdentity();
+  const gameId = state.client?.connected() === true ? state.client.lastGameId : readConcreteGameId(window.location.search);
+  const bound = state.client?.connected() === true && state.client.lastGameId !== null
+    && state.client.serverSnapshotGameId === state.client.lastGameId && state.client.turn.get('current') !== null;
+  const canonicalRoom = (bound && getGameStateStatus().connected ? getGameState()?.gameId : null) ?? gameId;
+  const nextScope = JSON.stringify([canonicalRoom, identity?.playerId ?? null, bound]);
+  const scopeChanged = nextScope !== state.scope;
+  if (scopeChanged) {
+    state.historyController?.abort();
+    state.epoch++;
+    state.scope = nextScope;
+    state.gameId = canonicalRoom;
+    state.localPlayerId = identity?.playerId ?? null;
+    state.messages = [];
+    state.seenIds.clear();
+    state.privateRecipientId = null;
+    state.channelChosen = false;
+    state.historyLoaded = false;
+    state.historyPending = false;
+    state.sending = false;
+    state.available = false;
+    state.error = null;
+    state.lastSeenIso = loadLastSeen();
+    const input = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+    if (input !== null) {
+      input.value = '';
+      updateCharCount(input);
+    }
+  }
+  if (!isRoomConnected()) {
+    state.historyController?.abort();
+    state.available = false;
+  }
+  if (!state.channelChosen || (!isSpectator() && (state.channel === 'spectators' || state.channel === 'spectator-private'))) {
+    state.channel = isSpectator() ? 'spectators' : 'table';
+  }
+  renderChannelOptions();
+  renderRecipientOptions();
+  renderAvailability();
+  renderMessages();
+  if (scopeChanged && isRoomConnected()) void refreshHistory();
+}
+
+function roomRecipients(): Array<{ playerId: string; displayName: string }> {
+  if (state.client === null || !isRoomConnected()) return [];
+  const humans = new Map(getLobbyPresence().players.map(player => [player.playerId, player]));
+  const peers: Array<{ playerId: string; displayName: string }> = [];
+  const seats = new Map(state.client.seats.entries());
+  const localIds = new Set([...seats.keys(), ...Array.from(state.client.nicks.entries(), ([id]) => id)]);
+  for (const playerId of localIds) {
+    if (playerId === state.localPlayerId || playerId === 'offline') continue;
+    const seat = seats.get(playerId)?.seat;
+    if (state.channel === 'spectator-private' && seat !== null && seat !== undefined) continue;
+    const human = humans.get(playerId);
+    if (human !== undefined) peers.push({ playerId, displayName: human.displayName });
+  }
+  return peers;
+}
+
+function renderRecipientOptions(): void {
+  const select = document.getElementById('chat-recipient-select') as HTMLSelectElement | null;
+  if (select === null) return;
+  const previous = state.privateRecipientId;
+  const peers = roomRecipients();
+  select.replaceChildren(new Option(t('chat.recipient_none'), ''));
+  for (const peer of peers) select.appendChild(new Option(peer.displayName, peer.playerId));
+  state.privateRecipientId = peers.some(peer => peer.playerId === previous) ? previous : null;
+  select.value = state.privateRecipientId ?? '';
+  const wrap = document.getElementById('chat-recipient-wrap');
+  if (wrap !== null) setElHidden(wrap, !needsRecipient(state.channel));
+}
+
+function renderChannelOptions(): void {
+  const select = document.getElementById('chat-channel-select') as HTMLSelectElement | null;
+  if (select === null) return;
+  const channels: ChatChannel[] = ['table'];
+  if (isSpectator()) channels.push('spectators', 'spectator-private');
+  channels.push('private');
   select.replaceChildren();
-  const noneOpt = document.createElement('option');
-  noneOpt.value = '';
-  noneOpt.textContent = t('chat.recipient_none');
-  select.appendChild(noneOpt);
-  const nicks = getSeatNicks();
-  for (const n of nicks) {
-    const opt = document.createElement('option');
-    opt.value = n.playerId;
-    opt.textContent = n.displayName;
-    if (n.playerId === previous) opt.selected = true;
-    select.appendChild(opt);
+  for (const channel of channels) {
+    const key = channel === 'spectator-private' ? 'spectator_private' : channel;
+    const option = new Option(t(`chat.channel.${key}`), channel);
+    option.setAttribute('data-testid', `chat-channel-${channel}`);
+    select.appendChild(option);
   }
+  select.value = state.channel;
 }
 
-function renderChannelOptions(select: HTMLSelectElement): void {
-  select.replaceChildren();
-  const spectating = isSpectator();
-  const channels: Array<{ id: ChatChannel; label: string }> = [
-    { id: 'table',      label: t('chat.channel.table') },
-  ];
-  if (spectating) {
-    channels.push({ id: 'spectators',         label: t('chat.channel.spectators') });
-    channels.push({ id: 'spectator-private',  label: t('chat.channel.spectator_private') });
+function colorForSender(message: Pick<ChatMessage, 'senderAvatarColor' | 'senderPlayerId'>): string {
+  if (message.senderAvatarColor !== null && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(message.senderAvatarColor)) {
+    return message.senderAvatarColor;
   }
-  channels.push({ id: 'private', label: t('chat.channel.private') });
-  for (const c of channels) {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = c.label;
-    opt.setAttribute('data-testid', `chat-channel-${c.id}`);
-    if (c.id === state.channel) opt.selected = true;
-    select.appendChild(opt);
-  }
+  let hash = 5381;
+  for (let i = 0; i < message.senderPlayerId.length; i++) hash = ((hash << 5) + hash + message.senderPlayerId.charCodeAt(i)) | 0;
+  return `hsl(${(hash & 0xff) * 360 / 256}, 55%, 45%)`;
 }
 
 function visibleMessages(): ChatMessage[] {
-  const local = state.localPlayerId;
-  // Phase J Wave 10 — `spectator-private` is on the wire as `private`, so
-  // when the user has the spectator-private channel selected we still
-  // match messages whose wire-channel is `private`.
-  const selectedWire = wireChannel(state.channel);
-  return state.messages.filter((m) => {
-    if (m.isSystem) return true;
-    const msgWire = wireChannel(m.channel);
-    if (msgWire !== selectedWire) return false;
-    if (selectedWire === 'private') {
-      const peer = state.privateRecipientId;
-      if (peer === null || peer === '') {
-        return m.isSelf || (m.senderPlayerId === local) || (m.recipientPlayerId === local);
-      }
-      const involvesPeer = m.senderPlayerId === peer || m.recipientPlayerId === peer;
-      const involvesSelf = m.isSelf || m.senderPlayerId === local || m.recipientPlayerId === local;
-      return involvesPeer && involvesSelf;
-    }
-    return true;
+  const channel = wireChannel(state.channel);
+  return state.messages.filter(message => {
+    if (message.isSystem) return true;
+    if (wireChannel(message.channel) !== channel) return false;
+    if (channel !== 'private') return true;
+    const self = message.senderPlayerId === state.localPlayerId || message.recipientPlayerId === state.localPlayerId;
+    const peer = state.privateRecipientId;
+    return self && (peer === null || message.senderPlayerId === peer || message.recipientPlayerId === peer);
   });
 }
 
 function renderMessages(): void {
   const list = document.getElementById('chat-messages');
   if (list === null) return;
+  const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
   list.replaceChildren();
-  // Phase J Wave 10 — surface the active channel on the panel root so the
-  // CSS can apply a distinct accent (cyan for spectator, magenta for
-  // private, etc.) and an 👁/🔒 prefix in the header.
-  const panel = document.getElementById('chat-panel');
-  if (panel !== null) {
-    panel.setAttribute('data-channel', state.channel);
-  }
-  const msgs = visibleMessages();
-  if (msgs.length === 0) {
+  document.getElementById('chat-panel')?.setAttribute('data-channel', state.channel);
+  const messages = visibleMessages();
+  if (messages.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'chat-empty';
-    empty.textContent = needsRecipient(state.channel) && (state.privateRecipientId === null || state.privateRecipientId === '')
-      ? t('chat.empty_private')
-      : t('chat.no_messages');
+    empty.textContent = needsRecipient(state.channel) && state.privateRecipientId === null
+      ? t('chat.empty_private') : t('chat.no_messages');
     list.appendChild(empty);
     return;
   }
-  msgs.forEach((m, i) => {
+  messages.forEach((message, index) => {
     const row = document.createElement('div');
-    row.className = `chat-message chat-message-${m.isSelf ? 'self' : 'other'} chat-message-channel-${m.channel}`;
-    if (m.isSystem) row.classList.add('chat-message-system');
-    row.setAttribute('data-testid', `chat-message-${i}`);
-    row.setAttribute('data-channel', m.channel);
-
+    row.className = `chat-message chat-message-${message.isSelf ? 'self' : 'other'} chat-message-channel-${message.channel}`;
+    if (message.isSystem) row.classList.add('chat-message-system');
+    row.setAttribute('data-testid', `chat-message-${index}`);
+    row.setAttribute('data-channel', message.channel);
+    row.setAttribute('data-message-id', message.id);
     const avatar = document.createElement('span');
     avatar.className = 'chat-message-avatar';
-    avatar.style.backgroundColor = colorForSender(m);
-    avatar.textContent = senderInitial(m);
-
+    avatar.style.backgroundColor = colorForSender(message);
+    avatar.textContent = (message.senderDisplayName || message.senderPlayerId).charAt(0).toUpperCase();
     const bubble = document.createElement('div');
     bubble.className = 'chat-message-bubble';
-
     const author = document.createElement('span');
     author.className = 'chat-message-author';
-    author.setAttribute('data-testid', `chat-message-${i}-author`);
-    author.textContent = m.senderDisplayName;
-
-    const bodyEl = document.createElement('span');
-    bodyEl.className = 'chat-message-body';
-    bodyEl.setAttribute('data-testid', `chat-message-${i}-body`);
-    bodyEl.innerHTML = escapeText(m.body).replace(/\n/g, '<br>');
-
-    bubble.appendChild(author);
-    bubble.appendChild(bodyEl);
-
-    if (m.isSelf) {
-      row.appendChild(bubble);
-      row.appendChild(avatar);
-    } else {
-      row.appendChild(avatar);
-      row.appendChild(bubble);
-    }
+    author.setAttribute('data-testid', `chat-message-${index}-author`);
+    author.textContent = message.senderDisplayName;
+    const body = document.createElement('span');
+    body.className = 'chat-message-body';
+    body.setAttribute('data-testid', `chat-message-${index}-body`);
+    body.textContent = message.body;
+    const time = document.createElement('time');
+    time.className = 'chat-message-time';
+    time.dateTime = message.sentUtc;
+    time.textContent = new Date(message.sentUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    bubble.append(author, body, time);
+    row.append(...(message.isSelf ? [bubble, avatar] : [avatar, bubble]));
     list.appendChild(row);
   });
-  scrollToBottom();
+  if (atBottom) list.scrollTop = list.scrollHeight;
 }
 
-function scrollToBottom(): void {
-  const list = document.getElementById('chat-messages');
-  if (list === null) return;
-  list.scrollTop = list.scrollHeight;
-}
-
-function renderUnavailable(): void {
+function renderAvailability(): void {
   const root = document.getElementById('chat-panel');
-  if (root === null) return;
-  root.classList.add('chat-panel-unavailable');
   const placeholder = document.getElementById('chat-unavailable');
+  const available = state.available && isRoomConnected();
+  root?.classList.toggle('chat-panel-unavailable', !available);
   if (placeholder !== null) {
-    showEl(placeholder as HTMLElement);
-    placeholder.textContent = t('chat.unavailable') + ' — ' + t('chat.unavailable_hint');
+    setElHidden(placeholder, available);
+    placeholder.textContent = state.gameId === null ? t('chat.join_table')
+      : state.localPlayerId === null ? t('chat.identity_required')
+      : state.error ?? (!isRoomConnected() ? t('chat.connect_first') : t('common.loading'));
   }
-  // Disable composer.
   const input = document.getElementById('chat-input') as HTMLTextAreaElement | null;
   const send = document.getElementById('chat-send') as HTMLButtonElement | null;
-  if (input !== null) input.disabled = true;
-  if (send !== null) send.disabled = true;
+  if (input !== null) input.disabled = !available || state.sending;
+  if (send !== null) send.disabled = !available || state.sending;
+  const selectors = document.getElementById('chat-room-selectors');
+  if (selectors !== null) setElHidden(selectors, state.gameId === null);
+  const room = document.getElementById('chat-room-content');
+  if (room !== null) setElHidden(room, state.gameId === null);
 }
 
-function flashError(text: string): void {
+function flashError(message: string): void {
   const status = document.getElementById('chat-status');
   if (status === null) return;
-  status.textContent = text;
+  if (errorTimer !== null) window.clearTimeout(errorTimer);
+  status.textContent = message;
   status.classList.add('chat-status-visible');
-  window.setTimeout(() => {
+  errorTimer = window.setTimeout(() => {
     status.classList.remove('chat-status-visible');
     status.textContent = '';
-  }, 3000);
+    errorTimer = null;
+  }, 8000);
 }
 
-function pushSystemMessage(text: string): void {
+function pushSystemMessage(body: string): void {
   state.messages.push({
     id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    channel: state.channel,
-    senderPlayerId: 'system',
-    senderDisplayName: 'system',
-    senderAvatarColor: '#666',
-    recipientPlayerId: null,
-    body: text,
-    sentUtc: new Date().toISOString(),
-    isSelf: false,
-    isSystem: true,
+    gameId: state.gameId ?? '', channel: state.channel,
+    senderPlayerId: 'system', senderDisplayName: 'system', senderAvatarColor: '#666',
+    recipientPlayerId: null, body, sentUtc: new Date().toISOString(), isSelf: false, isSystem: true,
   });
   renderMessages();
 }
 
 function executeCommand(raw: string): boolean {
-  const trimmed = raw.trim();
-  if (!trimmed.startsWith('/')) return false;
-  const m = trimmed.match(/^\/(\w+)(?:\s+(.*))?$/);
-  if (m === null) return false;
-  const cmd = m[1].toLowerCase();
-  switch (cmd) {
-    case 'clear':
-      state.messages = [];
-      pushSystemMessage(t('chat.cleared'));
-      return true;
-    case 'help':
-      pushSystemMessage(t('chat.command_help'));
-      return true;
-    default:
-      pushSystemMessage(t('chat.command_unknown', { cmd }));
-      return true;
+  const match = raw.trim().match(/^\/(\w+)(?:\s+(.*))?$/);
+  if (match === null) return false;
+  const command = match[1].toLowerCase();
+  if (command === 'clear') {
+    state.messages = [];
+    pushSystemMessage(t('chat.cleared'));
+  } else if (command === 'help') {
+    pushSystemMessage(t('chat.command_help'));
+  } else {
+    pushSystemMessage(t('chat.command_unknown', { cmd: command }));
   }
+  return true;
 }
-
-// ── Polling ────────────────────────────────────────────────────────
-
-async function refreshHistory(): Promise<void> {
-  if (state.gameId === null) return;
-  const result = await fetchHistory();
-  if (result.status === 404) {
-    state.available = false;
-    renderUnavailable();
-    return;
-  }
-  if (!result.ok) return;
-  const added = appendMessages(result.messages);
-  if (added > 0) {
-    // Chime when new inbound (i.e. not self) arrives.
-    const fresh = result.messages.find((m) => !m.isSelf);
-    if (fresh !== undefined) Sound.play('claim');
-    renderMessages();
-  }
-}
-
-function startPolling(): void {
-  if (state.pollTimer !== null) return;
-  state.pollTimer = window.setInterval(() => {
-    if (state.collapsed) return;
-    void refreshHistory();
-  }, POLL_INTERVAL_MS);
-}
-
-function stopPolling(): void {
-  if (state.pollTimer !== null) {
-    window.clearInterval(state.pollTimer);
-    state.pollTimer = null;
-  }
-}
-
-// ── Composer ───────────────────────────────────────────────────────
 
 function updateCharCount(input: HTMLTextAreaElement): void {
   const counter = document.getElementById('chat-char-count');
   if (counter === null) return;
   counter.textContent = t('chat.char_count', { count: input.value.length, max: MAX_BODY_LEN });
-  counter.classList.toggle('chat-char-count-over',
-    input.value.length > MAX_BODY_LEN);
+  counter.classList.toggle('chat-char-count-over', input.value.length > MAX_BODY_LEN);
 }
 
 async function doSend(): Promise<void> {
   const input = document.getElementById('chat-input') as HTMLTextAreaElement | null;
-  if (input === null) return;
-  const raw = input.value;
-  if (raw.trim() === '') return;
-  if (executeCommand(raw)) {
+  if (input === null || state.sending || input.value.trim() === '') return;
+  const body = input.value;
+  if (executeCommand(body)) {
     input.value = '';
     updateCharCount(input);
     return;
   }
-  if (raw.length > MAX_BODY_LEN) {
-    flashError(t('chat.char_count', { count: raw.length, max: MAX_BODY_LEN }));
+  if (body.length > MAX_BODY_LEN) {
+    flashError(t('chat.char_count', { count: body.length, max: MAX_BODY_LEN }));
     return;
   }
-  if (!state.available) {
-    flashError(t('chat.unavailable'));
+  if (!state.available || !isRoomConnected() || state.gameId === null || state.localPlayerId === null) {
+    flashError(t('chat.connect_first'));
     return;
   }
-  const channel = state.channel;
-  const recipient = needsRecipient(channel) ? state.privateRecipientId : null;
-  if (needsRecipient(channel) && (recipient === null || recipient === '')) {
+  const recipient = needsRecipient(state.channel) ? state.privateRecipientId : null;
+  if (needsRecipient(state.channel) && recipient === null) {
     flashError(t('chat.empty_private'));
     return;
   }
-  input.disabled = true;
-  const result = await sendMessage(channel, raw, recipient);
-  input.disabled = false;
-  if (!result.ok) {
-    if (result.status === 429) {
-      flashError(t('chat.send_rate_limited'));
-    } else if (result.status === 404) {
-      state.available = false;
-      renderUnavailable();
-    } else {
-      flashError(t('chat.send_failed'));
+  const gameId = state.gameId;
+  const playerId = state.localPlayerId;
+  const epoch = state.epoch;
+  state.sending = true;
+  renderAvailability();
+  try {
+    const response = await fetch(`/api/games/${encodeURIComponent(gameId)}/chat`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channel: wireChannel(state.channel),
+        ...(recipient !== null ? { recipientPlayerId: recipient } : {}),
+        body,
+      }),
+    });
+    if (!response.ok) throw new ChatRequestError(response.status);
+    const raw: unknown = await response.json();
+    if (epoch !== state.epoch) return;
+    const message = normalizeMessage(raw, gameId, playerId);
+    // The POST must not advance past inbound messages that have not been polled.
+    appendMessages([message], false);
+    input.value = '';
+    updateCharCount(input);
+    renderMessages();
+    await refreshHistory();
+  } catch (failure) {
+    if (epoch === state.epoch) flashError(describeError(failure));
+  } finally {
+    if (epoch === state.epoch) {
+      state.sending = false;
+      renderAvailability();
+      input.focus();
     }
-    input.focus();
-    return;
   }
-  input.value = '';
-  updateCharCount(input);
-  input.focus();
-  await refreshHistory();
 }
 
-// ── Install ────────────────────────────────────────────────────────
+function inviteUnavailableReason(player: OnlinePlayer): string | null {
+  const presence = getLobbyPresence();
+  if (presence.status !== 'ready') return t(presence.status === 'connecting' ? 'social.connecting' : 'social.unavailable');
+  if (!player.canReceiveInvites) return t('social.delivery_unavailable');
+  const metadata = getGameState();
+  const load = getGameStateStatus();
+  if (load.roomId === null) return t('social.invite_need_table');
+  if (load.status === 'not-found') return t('social.invite_error.room-not-found');
+  if (load.status === 'identity-required') return t('social.invite_error.identity-required');
+  if (load.status === 'unavailable' || load.status === 'invalid') {
+    return t('lobby.public.unavailable', { reason: load.error ?? '' });
+  }
+  if (metadata === null) return t('lobby.public.loading');
+  if (!load.connected) return t('social.invite_need_table');
+  if (metadata.phase !== 'Seating') return t('social.invite_error.room-not-seating');
+  if (metadata.openHumanSeats === 0) return t('social.invite_error.room-full');
+  if (!metadata.canInvite) return t('social.invite_error.not-allowed');
+  return null;
+}
+
+async function invitePlayer(playerId: string): Promise<void> {
+  const player = getLobbyPresence().players.find(value => value.playerId === playerId);
+  const metadata = getGameState();
+  const status = document.getElementById('online-invite-status');
+  if (status === null || inviteSending.has(playerId)) return;
+  if (player === undefined) {
+    status.textContent = t('social.invite_error.recipient-offline');
+    return;
+  }
+  const reason = inviteUnavailableReason(player);
+  if (reason !== null || metadata === null) {
+    status.textContent = reason ?? t('social.invite_need_table');
+    return;
+  }
+  inviteSending.add(playerId);
+  status.textContent = t('social.invite_sending', { player: player.displayName });
+  renderOnline();
+  try {
+    const result = await sendTableInvite(metadata.gameId, playerId);
+    status.textContent = result.success
+      ? t('social.invite_sent', { player: player.displayName })
+      : t(`social.invite_error.${result.reason}`);
+    if (!result.success && ['room-full', 'room-not-seating', 'not-allowed', 'room-not-found'].includes(result.reason)) {
+      void refreshGameState();
+    }
+  } catch (failure) {
+    status.textContent = t('social.invite_failed', { reason: failure instanceof Error ? failure.message : String(failure) });
+  } finally {
+    inviteSending.delete(playerId);
+    renderOnline();
+  }
+}
+
+function renderOnline(): void {
+  const list = document.getElementById('online-players-list');
+  const status = document.getElementById('online-players-status');
+  const retry = document.getElementById('online-players-retry') as HTMLButtonElement | null;
+  if (list === null || status === null) return;
+  const snapshot = getLobbyPresence();
+  status.textContent = snapshot.status === 'ready'
+    ? t(snapshot.players.length === 0 ? 'social.no_others' : 'social.online_count', { count: snapshot.players.length })
+    : snapshot.status === 'connecting' ? t('social.connecting')
+    : t('social.unavailable_reason', { reason: snapshot.error ?? '' });
+  if (retry !== null) setElHidden(retry, snapshot.status !== 'unavailable');
+  list.setAttribute('aria-busy', String(snapshot.status === 'connecting'));
+  const existing = new Map(Array.from(list.querySelectorAll<HTMLElement>('[data-player-id]'))
+    .map(row => [row.dataset.playerId, row]));
+  snapshot.players.forEach((player, index) => {
+    let row = existing.get(player.playerId);
+    if (row === undefined) {
+      row = document.createElement('div');
+      row.className = 'online-player';
+      row.setAttribute('role', 'listitem');
+      row.setAttribute('data-testid', 'online-player');
+      row.dataset.playerId = player.playerId;
+      const name = document.createElement('span');
+      name.setAttribute('data-testid', 'online-player-name');
+      name.className = 'online-player-name';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-sm btn-primary online-player-invite';
+      button.setAttribute('data-testid', 'online-player-invite');
+      button.addEventListener('click', () => { void invitePlayer(player.playerId); });
+      const availability = document.createElement('span');
+      availability.className = 'online-player-availability';
+      row.append(name, button, availability);
+    }
+    existing.delete(player.playerId);
+    const name = row.querySelector<HTMLElement>('.online-player-name')!;
+    name.textContent = player.displayName;
+    const button = row.querySelector<HTMLButtonElement>('button')!;
+    const reason = inviteUnavailableReason(player);
+    button.textContent = t('social.invite_action');
+    button.disabled = reason !== null || inviteSending.has(player.playerId);
+    button.title = reason ?? '';
+    row.querySelector<HTMLElement>('.online-player-availability')!.textContent = reason ?? '';
+    if (list.children[index] !== row) list.insertBefore(row, list.children[index] ?? null);
+  });
+  for (const row of existing.values()) row.remove();
+}
+
+function updateInviteCard(card: HTMLElement, invite: TableInvite): void {
+  card.setAttribute('aria-label', t('social.invite_received', {
+    sender: invite.senderDisplayName, table: invite.publicName ?? invite.gameId,
+  }));
+  card.querySelector<HTMLElement>('[data-testid="table-invite-sender"]')!.textContent = invite.senderDisplayName;
+  card.querySelector<HTMLElement>('[data-testid="table-invite-table"]')!.textContent = invite.publicName ?? invite.gameId;
+  const join = card.querySelector<HTMLAnchorElement>('[data-testid="table-invite-join"]')!;
+  const expired = inviteExpired(invite);
+  join.textContent = t('social.join_table');
+  join.setAttribute('aria-disabled', String(expired));
+  if (expired) {
+    join.removeAttribute('href');
+    join.tabIndex = -1;
+  } else {
+    join.href = buildRoomJoinUrl(invite.gameId);
+    join.removeAttribute('tabindex');
+  }
+  const expiry = card.querySelector<HTMLElement>('[data-testid="table-invite-expired"]')!;
+  expiry.textContent = t('social.expired');
+  setElHidden(expiry, !expired);
+  const deadline = card.querySelector<HTMLElement>('[data-testid="table-invite-expiry"]')!;
+  deadline.textContent = t('social.invite_expires', {
+    time: new Date(invite.expiresUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  });
+  setElHidden(deadline, expired);
+}
+
+function renderInvites(): void {
+  const list = document.getElementById('incoming-invites');
+  if (list === null) return;
+  const snapshot = getLobbyPresence();
+  const existing = new Map(Array.from(list.querySelectorAll<HTMLElement>('[data-invite-id]'))
+    .map(card => [card.dataset.inviteId, card]));
+  snapshot.invites.forEach((invite, index) => {
+    let card = existing.get(invite.inviteId);
+    if (card === undefined) {
+      card = document.createElement('article');
+      card.className = 'table-invite';
+      card.setAttribute('data-testid', 'table-invite');
+      card.dataset.inviteId = invite.inviteId;
+      const sender = document.createElement('strong');
+      sender.setAttribute('data-testid', 'table-invite-sender');
+      const table = document.createElement('span');
+      table.setAttribute('data-testid', 'table-invite-table');
+      const join = document.createElement('a');
+      join.className = 'btn btn-sm btn-success';
+      join.setAttribute('role', 'link');
+      join.setAttribute('data-testid', 'table-invite-join');
+      join.addEventListener('click', event => {
+        if (inviteExpired(invite)) {
+          event.preventDefault();
+          renderInvites();
+        }
+      });
+      const expiry = document.createElement('small');
+      expiry.setAttribute('data-testid', 'table-invite-expired');
+      const deadline = document.createElement('small');
+      deadline.setAttribute('data-testid', 'table-invite-expiry');
+      card.append(sender, table, join, deadline, expiry);
+    }
+    existing.delete(invite.inviteId);
+    updateInviteCard(card, invite);
+    if (list.children[index] !== card) list.insertBefore(card, list.children[index] ?? null);
+  });
+  for (const card of existing.values()) card.remove();
+  const empty = document.getElementById('incoming-invites-empty');
+  if (empty !== null) {
+    setElHidden(empty, snapshot.invites.length !== 0);
+    empty.textContent = t(snapshot.status === 'ready' ? 'social.no_invites'
+      : snapshot.status === 'connecting' ? 'social.connecting' : 'social.unavailable');
+  }
+}
+
+function setCollapsed(collapsed: boolean): void {
+  const previous = state.collapsed;
+  if (window.matchMedia(COMPACT_VIEW_QUERY).matches) {
+    const current = getSettings().mobileInfoPanel;
+    const next = toggleMobilePanel(current, 'chat', !collapsed);
+    if (next !== current) setSettings({ mobileInfoPanel: next });
+  } else {
+    try { window.localStorage.setItem(COLLAPSED_LS_KEY, String(collapsed)); }
+    catch { /* The panel still opens when preferences cannot be stored. */ }
+  }
+  if (state.collapsed === previous) applyCollapsed(collapsed);
+}
+
+function applyCollapsed(collapsed: boolean): void {
+  state.collapsed = collapsed;
+  document.getElementById('chat-panel')?.classList.toggle('chat-panel-collapsed', collapsed);
+  document.getElementById('chat-toggle')?.setAttribute('aria-expanded', String(!collapsed));
+  if (collapsed) {
+    stopPolling();
+  } else {
+    markInvitesRead();
+    void refreshHistory();
+    startPolling();
+  }
+}
+
+export function openChatPanel(): void {
+  setCollapsed(false);
+  document.getElementById('chat-toggle')?.focus();
+}
+
+function renderChrome(): void {
+  const root = document.getElementById('chat-panel');
+  if (root !== null) translateElements(root);
+  const input = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+  if (input !== null) {
+    input.placeholder = t('chat.placeholder');
+    updateCharCount(input);
+  }
+  renderChannelOptions();
+  renderRecipientOptions();
+  renderAvailability();
+  renderMessages();
+  renderOnline();
+  renderInvites();
+}
+
+function attachClient(client: Client): void {
+  state.client = client;
+  if (!boundClients.has(client)) {
+    boundClients.add(client);
+    const update = (): void => {
+      if (state.client !== client) return;
+      syncRoom();
+    };
+    client.on('connect', update);
+    client.on('joining', update);
+    client.on('disconnect', update);
+    client.on('update', (_entries, full) => { if (full) update(); });
+    client.seats.on('update', update);
+    client.nicks.on('update', renderRecipientOptions);
+  }
+  syncRoom();
+  if (!state.historyLoaded) void refreshHistory();
+}
 
 export function installChatPanel(client: Client | null): void {
   if (state.installed) {
-    if (client !== null) state.client = client;
+    if (client !== null) attachClient(client);
     return;
   }
-  state.installed = true;
-  state.client = client;
-  state.collapsed = loadCollapsed();
-  state.lastSeenIso = loadLastSeen();
-  state.gameId = getGameIdFromUrl();
-  // If we're not in a game (lobby only), don't render the panel.
-  if (state.gameId === null) {
-    const root = document.getElementById('chat-panel');
-    if (root !== null) hideEl(root as HTMLElement);
-    return;
-  }
-
-  // Read local player id.
-  if (client !== null) {
-    try {
-      const pid = client.playerId();
-      state.localPlayerId = (pid !== '' && pid !== 'offline') ? pid : null;
-    } catch { /* skip */ }
-  }
-
   const root = document.getElementById('chat-panel');
   if (root === null) return;
-  showEl(root as HTMLElement);
+  state.installed = true;
+  state.collapsed = loadCollapsed();
+  state.client = client;
+  showEl(root);
   root.classList.toggle('chat-panel-collapsed', state.collapsed);
-
-  // Phase J Wave 10 (Vasquez `spectator-chat.spec.ts`) — spectators
-  // default to the `spectators` channel so they aren't dropped into
-  // a table chat they can't legitimately participate in.  Seated
-  // players keep the default `table` channel.  The user can still
-  // switch channels manually; this only seeds the initial selection.
-  if (isSpectator()) {
-    state.channel = 'spectators';
-  }
-
-  // Header toggle.
-  const toggle = document.getElementById('chat-toggle') as HTMLButtonElement | null;
-  if (toggle !== null) {
-    toggle.setAttribute('aria-controls', 'chat-panel-body');
-    toggle.setAttribute('aria-expanded', state.collapsed ? 'false' : 'true');
-    toggle.addEventListener('click', () => setCollapsed(!state.collapsed));
-  }
-
-  // Channel select.
-  const channelSelect = document.getElementById('chat-channel-select') as HTMLSelectElement | null;
-  if (channelSelect !== null) {
-    renderChannelOptions(channelSelect);
-    channelSelect.addEventListener('change', () => {
-      state.channel = normalizeChannel(channelSelect.value);
-      const recipientWrap = document.getElementById('chat-recipient-wrap');
-      if (recipientWrap !== null) {
-        setElHidden(recipientWrap as HTMLElement, !needsRecipient(state.channel));
-      }
-      renderMessages();
-    });
-  }
-
-  // Recipient select.
-  const recipientSelect = document.getElementById('chat-recipient-select') as HTMLSelectElement | null;
-  if (recipientSelect !== null) {
-    renderRecipientOptions(recipientSelect);
-    recipientSelect.addEventListener('change', () => {
-      state.privateRecipientId = recipientSelect.value || null;
-      renderMessages();
-    });
-  }
-  const recipientWrap = document.getElementById('chat-recipient-wrap');
-  if (recipientWrap !== null) {
-    setElHidden(recipientWrap as HTMLElement, !needsRecipient(state.channel));
-  }
-
-  // Composer.
-  const input = document.getElementById('chat-input') as HTMLTextAreaElement | null;
-  if (input !== null) {
-    input.setAttribute('maxlength', String(MAX_BODY_LEN));
-    input.placeholder = t('chat.placeholder');
-    input.addEventListener('input', () => updateCharCount(input));
-    input.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        void doSend();
-      }
-    });
-    updateCharCount(input);
-  }
-  const sendBtn = document.getElementById('chat-send') as HTMLButtonElement | null;
-  if (sendBtn !== null) {
-    sendBtn.addEventListener('click', () => { void doSend(); });
-  }
-
-  // Wire client live updates if the seats collection changes — re-render
-  // the recipient dropdown so disconnect/joins reflect immediately.
-  if (client !== null) {
-    try {
-      client.seats.on('update', () => {
-        if (recipientSelect !== null) renderRecipientOptions(recipientSelect);
-        // If localPlayerId only becomes known after connection, pick it
-        // up here so isSelf detection works retroactively.
-        const cp = client.playerId();
-        if (cp !== '' && cp !== 'offline' && cp !== state.localPlayerId) {
-          state.localPlayerId = cp;
-          // Re-tag existing messages.
-          for (const m of state.messages) {
-            m.isSelf = m.senderPlayerId === state.localPlayerId;
-          }
-          renderMessages();
-        }
-      });
-      client.nicks.on('update', () => {
-        if (recipientSelect !== null) renderRecipientOptions(recipientSelect);
-      });
-    } catch { /* swallow */ }
-  }
-
-  // Boot fetch. If 404 → "Chat unavailable" placeholder; otherwise mark
-  // available and render any backlog.
-  void (async () => {
-    const r = await fetchHistory();
-    if (r.status === 404) {
-      state.available = false;
-      renderUnavailable();
-      return;
+  const toggle = document.getElementById('chat-toggle');
+  toggle?.setAttribute('aria-expanded', String(!state.collapsed));
+  toggle?.addEventListener('click', () => setCollapsed(!state.collapsed));
+  const compact = window.matchMedia(COMPACT_VIEW_QUERY);
+  compact.addEventListener('change', () => applyCollapsed(loadCollapsed()));
+  onSettingsChange(settings => {
+    if (compact.matches && state.collapsed !== (settings.mobileInfoPanel !== 'chat')) {
+      applyCollapsed(settings.mobileInfoPanel !== 'chat');
     }
-    state.available = true;
-    appendMessages(r.messages);
-    renderMessages();
-    if (!state.collapsed) startPolling();
-  })();
-
-  // Phase J Wave 9 — refresh static chrome on language change.
-  onLanguageChange(() => {
-    const channelSelect2 = document.getElementById('chat-channel-select') as HTMLSelectElement | null;
-    if (channelSelect2 !== null) renderChannelOptions(channelSelect2);
-    const recipientSelect2 = document.getElementById('chat-recipient-select') as HTMLSelectElement | null;
-    if (recipientSelect2 !== null) renderRecipientOptions(recipientSelect2);
-    const input2 = document.getElementById('chat-input') as HTMLTextAreaElement | null;
-    if (input2 !== null) input2.placeholder = t('chat.placeholder');
-    if (!state.available) renderUnavailable();
+  });
+  const channel = document.getElementById('chat-channel-select') as HTMLSelectElement | null;
+  channel?.addEventListener('change', () => {
+    state.channel = normalizeChannel(channel.value);
+    state.channelChosen = true;
+    renderRecipientOptions();
     renderMessages();
   });
+  const recipient = document.getElementById('chat-recipient-select') as HTMLSelectElement | null;
+  recipient?.addEventListener('change', () => {
+    state.privateRecipientId = recipient.value || null;
+    renderMessages();
+  });
+  const input = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+  input?.addEventListener('input', () => updateCharCount(input));
+  input?.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void doSend();
+    }
+  });
+  document.getElementById('chat-send')?.addEventListener('click', () => { void doSend(); });
+  document.getElementById('online-players-retry')?.addEventListener('click', () => { void startLobbyPresence(); });
+  subscribeLobbyPresence(() => {
+    renderOnline();
+    renderInvites();
+    renderRecipientOptions();
+  });
+  subscribeGameState(() => {
+    syncRoom();
+    renderOnline();
+  });
+  onIdentityBootstrap(syncRoom);
+  onLanguageChange(renderChrome);
+  if (client !== null) attachClient(client);
+  else syncRoom();
+  renderChrome();
+  if (!state.collapsed) setCollapsed(false);
 }

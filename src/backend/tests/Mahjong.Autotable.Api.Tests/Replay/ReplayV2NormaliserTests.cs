@@ -348,15 +348,12 @@ public class ReplayV2NormaliserTests : IAsyncLifetime
     }
 
     // ────────────────────────────────────────────────────────────────────
-    //  6. The CurrentSchemaVersion constant stays at 2 (no silent bump)
+    //  6. The current writer uses v3; the historical v1/v2 read fixtures above stay unchanged.
     // ────────────────────────────────────────────────────────────────────
 
     [Fact, Trait("Category", "Replay"), Trait("Wave", "Phase-J-10")]
-    public void Constant_CurrentSchemaVersion_RemainsAtTwo()
+    public void Constant_CurrentSchemaVersion_UsesReviewedReplayV3()
     {
-        // The Wave 10 normaliser does NOT bump the schema — it's purely
-        // a read-path adapter. A silent bump would force every persisted
-        // row to be re-written, which is out of scope for Wave 10.
-        Assert.Equal(2, ChangshaGameReplay.CurrentSchemaVersion);
+        Assert.Equal(3, ChangshaGameReplay.CurrentSchemaVersion);
     }
 }

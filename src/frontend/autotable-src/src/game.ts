@@ -1,6 +1,7 @@
 import { ObjectView } from "./object-view";
 import { World } from "./world";
 import { Client } from "./client";
+import { onlineModeForVariant } from './base-client';
 import { AssetLoader } from "./asset-loader";
 import { Animation } from "./utils";
 import { MouseUi } from "./mouse-ui";
@@ -47,7 +48,9 @@ export class Game {
   constructor(assetLoader: AssetLoader) {
     this.assetLoader = assetLoader;
     this.mainGroup = new Group;
-    this.client = new Client();
+    const query = new URLSearchParams(window.location.search);
+    const online = (query.get('gameId') ?? '').trim() !== '' || query.has('rejoin');
+    this.client = new Client(online ? onlineModeForVariant(query.get('variant')) : 'offline');
     this.objectView = new ObjectView(this.mainGroup, assetLoader, this.client);
     this.soundPlayer = new SoundPlayer(this.client);
     this.world = new World(this.objectView, this.soundPlayer, this.client);
@@ -148,7 +151,9 @@ export class Game {
 
     this.world.updateView();
     this.mainView.updateViewport();
-    this.mainView.updateCamera(this.world.seat, this.lookDown.pos, this.zoom.pos, this.mouseUi.mouse2);
+    this.mainView.updateCamera(
+      this.world.seat, this.lookDown.pos, this.zoom.pos, this.mouseUi.mouse2, this.world.conditions.gameType,
+    );
     this.mainView.updateOutline(this.objectView.selectedObjects);
     this.mainView.updateHighlight(
       this.objectView.highlightedObjects,

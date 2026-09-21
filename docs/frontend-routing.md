@@ -16,7 +16,7 @@ client-side routing:
 |---------|-------|---------|---------|
 | **Pathname routes** | Apone (backend) | Initial server-rendered HTML or hard navigation | `/lobby`, `/tournament/list` |
 | **Hash routes** | Hicks (frontend) | `window.location.hash` parsing in `lobby-app.ts` (W6) | `#/spectate/<tableId>` |
-| **Game-bootstrap query** | Hicks (frontend) | `window.location.search !== ''` in `index.ts` (W2) | `?game=<tableId>` |
+| **Game-bootstrap query** | Hicks (frontend) | `window.location.search !== ''` in `index.ts` (W2) | `?gameId=<tableId>` |
 
 Wave 11 introduces a fourth flavour: **PWA action shortcuts**.
 These are short, human-friendly query keywords used by the
@@ -84,11 +84,63 @@ side-effect, strips the param, returns:
   game-bootstrap import.
 - `false` if no action / unrecognised action — caller proceeds
   with normal boot (game-bootstrap guard re-evaluates other
-  query params like `?game=<tableId>`).
+  query params like `?gameId=<tableId>`).
 
 This is the **only** function the boot sequence in
 `src/index.ts` should call. The other two exports are utility
 hooks for future tests / future shortcuts.
+
+### Existing-table links and the online lobby
+
+Public-table cards, Join Random, chat invitations and **Copy table link**
+all use `src/room-join-url.ts` to construct a fresh same-origin URL:
+
+```text
+/autotable/?gameId=<canonical-room-alias>&variant=changsha&join=1
+```
+
+Only those three query keys are included. Creator seats, creation intent,
+bot/deal/seed/scoring overrides, personal reconnect links, credentials and
+fragments are not shared. Join Random calls `FindJoinableGame`; it does not
+allocate a seat on the short-lived metadata hub before navigating. The primary
+WebSocket forwards `join=1` and waits for server admission without sending a
+numeric seat handoff. Missing, full and already-started tables show explicit
+join errors and do not fall back to a new table or an automatic retry.
+An explicit **New Game** or **Apply & Start** leaves join-only intent behind
+and uses a fresh alias.
+
+Both bare lobby and table pages verify `POST /api/identity` before opening
+either transport. A cached name is display-only when verification fails.
+The lightweight `lobby-presence.ts` subscription starts independently of the
+3D renderer and chat visibility, rejoins `JoinLobby` after reconnect, ignores
+older roster revisions, and retains an explicitly stale roster during outages.
+The lobby's **Online players and invitations** control opens the existing
+chat widget. **Online** is server-wide; the room channel and private-recipient
+picker remain local to the joined table. Tabs sharing one signed identity are
+one online player, not invitation targets for each other.
+
+Invitations require the server's `canInvite` permission and recipient delivery
+availability. The recipient gets a sender/table card and unread badge/toast,
+including while chat is collapsed. **Join table** is an explicit click:
+receiving an invitation never navigates, and invitations neither reserve a
+seat nor bypass admission. Cards deduplicate by `inviteId` and disable Join
+after expiry.
+
+`game-state.ts` is the single room-and-verified-identity metadata cache.
+**Make public** needs live owner/Seating permission; hover or focus never
+changes eligibility. Voice administration uses the separate account-policy
+field `viewerCanManageVoice`. The current-table summary displays server bot
+and human-seat counts, separately from creation pickers. Apply supports
+0/1/2/3 bots and spectator-only 4; Quick Match deliberately keeps 3 Medium bots.
+Existing rooms never take configuration from a joiner's URL.
+
+Room chat uses `POST /api/games/{canonical-room-alias}/chat` and bounded GET
+history with a room-and-identity-scoped cursor. A fresh page reloads persisted
+history; later six-second polls run while expanded. Server sender/time fields
+and normalized `table`, `spectators` and `private` channels are preserved.
+Network, authorization, missing-room and malformed-response failures are shown
+explicitly. Names and message bodies render as text; invitation links come only
+from the allowlisted builder.
 
 ### `?action=replay` (W12) — co-parameter contract
 

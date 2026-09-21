@@ -16,7 +16,9 @@ public sealed record LobbyGameDto(
     int SeatedCount,
     int MaxSeats,
     string Variant,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    int BotCount = 0,
+    int OpenHumanSeats = 0);
 
 /// <summary>
 /// Phase J Wave 5 — joins the in-memory matchmaking snapshot from
@@ -49,34 +51,45 @@ public sealed class MatchmakingService
         var result = new List<LobbyGameDto>(snapshots.Count);
         foreach (var snap in snapshots)
         {
+            var room = await _runtime.ResolveExistingRoomAsync(snap.GameId, ct);
+            if (room is null) continue;
             string? displayName = null;
             if (!string.IsNullOrEmpty(snap.CreatorPlayerId))
             {
-                try
-                {
-                    var profile = await _profiles.GetOrCreateAsync(snap.CreatorPlayerId, ct);
-                    displayName = profile.DisplayName;
-                }
-                catch
-                {
-                    // Fall through — lobby renders without a host name rather than blowing up.
-                    displayName = PlayerProfileService.DefaultDisplayName(snap.CreatorPlayerId);
-                }
+                var profile = await _profiles.GetOrCreateAsync(snap.CreatorPlayerId, ct);
+                displayName = profile.DisplayName;
             }
             result.Add(new LobbyGameDto(
-                GameId: snap.GameId,
+                GameId: room.RoomId,
                 PublicName: snap.PublicName,
                 CreatorDisplayName: displayName,
                 SeatedCount: snap.SeatedCount,
                 MaxSeats: snap.MaxSeats,
                 Variant: snap.Variant,
-                CreatedAt: snap.CreatedAt));
+                CreatedAt: snap.CreatedAt,
+                BotCount: snap.BotCount,
+                OpenHumanSeats: snap.OpenHumanSeats));
         }
         return result;
     }
 
-    public Task SetGamePublicAsync(string gameId, string callerPlayerId, bool isPublic, string? publicName, CancellationToken ct = default)
-        => _runtime.SetGamePublicAsync(gameId, callerPlayerId, isPublic, publicName, ct);
+    public async Task SetGamePublicAsync(string gameId, string callerPlayerId, bool isPublic, string? publicName, CancellationToken ct = default)
+    {
+        var room = await _runtime.ResolveExistingRoomAsync(gameId, ct)
+            ?? throw new RoomAdmissionException("room-not-found");
+        await _runtime.SetGamePublicAsync(room.RuntimeGameId, callerPlayerId, isPublic, publicName, ct);
+    }
+
+    public async Task<RoomReference?> FindJoinableGameAsync(string? variant, CancellationToken ct = default)
+    {
+        if (!string.IsNullOrEmpty(variant)
+            && !string.Equals(variant, "changsha", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var candidates = _runtime.SnapshotLobbyGames(LobbyCap);
+        if (candidates.Count == 0) return null;
+        var candidate = candidates[Random.Shared.Next(candidates.Count)];
+        return await _runtime.ResolveExistingRoomAsync(candidate.GameId, ct);
+    }
 
     /// <summary>
     /// Phase J Wave 6 — picks a public lobby-phase game with a free human seat
@@ -85,6 +98,12 @@ public sealed class MatchmakingService
     /// used for stats and seat ownership) and <paramref name="connectionId"/>
     /// (transport-level SignalR id used for per-connection routing).
     /// </summary>
-    public Task<(string GameId, int SeatIndex)?> JoinRandomAsync(string playerId, string connectionId, string? variant, CancellationToken ct = default)
-        => _runtime.JoinRandomAsync(playerId, connectionId, variant, ct);
+    public async Task<(string GameId, int SeatIndex)?> JoinRandomAsync(string playerId, string connectionId, string? variant, CancellationToken ct = default)
+    {
+        var result = await _runtime.JoinRandomAsync(playerId, connectionId, variant, ct);
+        if (result is null) return null;
+        var room = await _runtime.ResolveExistingRoomAsync(result.Value.GameId, ct)
+            ?? throw new RoomAdmissionException("room-not-found");
+        return (room.RoomId, result.Value.SeatIndex);
+    }
 }

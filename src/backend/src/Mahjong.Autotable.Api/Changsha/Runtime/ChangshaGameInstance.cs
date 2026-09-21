@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Mahjong.Autotable.Api.Changsha.Bot;
+using Mahjong.Autotable.Api.Changsha.Replay;
 using Mahjong.Autotable.Api.Tables;
 
 namespace Mahjong.Autotable.Api.Changsha.Runtime;
@@ -14,9 +15,36 @@ internal sealed class ChangshaGameInstance : IAsyncDisposable
 {
     public string GameId { get; }
     public ChangshaGameState State { get; }
+    internal ChangshaReplayJournal? ReplayJournal { get; init; }
+    private readonly object _completionEffectsGate = new();
+    private Task? _completionEffectsTask;
+    private Task? _disposeTask;
+    private Task? _retirementTask;
+    private TaskCompletionSource? _operationsDrained;
+    private int _activeOperations;
+    private bool _disposeStarted;
+    private readonly CancellationToken _lifecycleToken;
+    private readonly ChangshaGameRuntime? _runtimeOwner;
+    internal Task? CompletionEffectsTask
+    {
+        get { lock (_completionEffectsGate) return _completionEffectsTask; }
+    }
+
+    internal Task QueueCompletionEffects(Func<CancellationToken, Task> work)
+    {
+        lock (_completionEffectsGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposeStarted, this);
+            var cancellation = LifecycleCts.Token;
+            return _completionEffectsTask ??= Task.Run(() => work(cancellation));
+        }
+    }
     public SemaphoreSlim Lock { get; } = new(1, 1);
     public DateTime CreatedUtc { get; } = DateTime.UtcNow;
     public DateTime LastActivityUtc { get; set; } = DateTime.UtcNow;
+    public bool RecoveryPending { get; set; }
+    public bool WasRecovered { get; init; }
+    public Dictionary<int, string> RecoveredSeatOwners { get; } = new();
 
     /// <summary>SeatIndex → connectionId. A seat without a connection is a bot or disconnected human.</summary>
     public ConcurrentDictionary<int, string> SeatConnections { get; } = new();
@@ -85,20 +113,114 @@ internal sealed class ChangshaGameInstance : IAsyncDisposable
     /// <summary>Releases a previously-claimed <c>(kind, seat)</c> slot. Idempotent.</summary>
     public void EndBotSchedule(BotScheduleKind kind, int seat) => _scheduledBots.TryRemove((kind, seat), out _);
 
-    public ChangshaGameInstance(string gameId, ChangshaGameState state)
+    public ChangshaGameInstance(string gameId, ChangshaGameState state) : this(gameId, state, null)
+    {
+    }
+
+    internal ChangshaGameInstance(string gameId, ChangshaGameState state, ChangshaGameRuntime? runtimeOwner)
     {
         GameId = gameId;
         State = state;
+        _runtimeOwner = runtimeOwner;
+        _lifecycleToken = LifecycleCts.Token;
     }
 
-    public async ValueTask DisposeAsync()
+    internal IDisposable EnterOperation() =>
+        TryEnterOperation() ?? throw new OperationCanceledException("The game is retiring.", _lifecycleToken);
+
+    internal IDisposable? TryEnterOperation()
     {
-        try { LifecycleCts.Cancel(); } catch { }
-        ClaimWindowCts?.Cancel();
-        ClaimWindowCts?.Dispose();
-        LifecycleCts.Dispose();
-        Lock.Dispose();
-        await Task.CompletedTask;
+        lock (_completionEffectsGate)
+        {
+            if (_disposeStarted) return null;
+            _activeOperations++;
+            return new Operation(this);
+        }
+    }
+
+    private void ExitOperation()
+    {
+        lock (_completionEffectsGate)
+        {
+            if (--_activeOperations == 0)
+                _operationsDrained?.TrySetResult();
+        }
+    }
+
+    internal Task RetireAsync()
+    {
+        lock (_completionEffectsGate)
+        {
+            _disposeStarted = true;
+            var drained = _activeOperations == 0
+                ? Task.CompletedTask
+                : (_operationsDrained ??= new(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+            return _retirementTask ??= RetireCoreAsync(drained);
+        }
+    }
+
+    private async Task RetireCoreAsync(Task drained)
+    {
+        try
+        {
+            using (_runtimeOwner?.EnterSynchronousLifecycleCallback())
+                LifecycleCts.Cancel();
+        }
+        finally { await drained.ConfigureAwait(false); }
+    }
+
+    private sealed class Operation(ChangshaGameInstance instance) : IDisposable
+    {
+        private ChangshaGameInstance? _instance = instance;
+        public void Dispose() => Interlocked.Exchange(ref _instance, null)?.ExitOperation();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        lock (_completionEffectsGate)
+        {
+            _disposeStarted = true;
+            return new(_disposeTask ??= DisposeCoreAsync(_completionEffectsTask));
+        }
+    }
+
+    private async Task DisposeCoreAsync(Task? completion)
+    {
+        try
+        {
+            await RetireAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            try
+            {
+                if (completion is not null) await completion.ConfigureAwait(false);
+            }
+            finally
+            {
+                // Admitted work owns the semaphore through its entire continuation,
+                // not merely one critical section. Retire it before releasing resources.
+                await Lock.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    try
+                    {
+                        using (_runtimeOwner?.EnterSynchronousLifecycleCallback())
+                            ClaimWindowCts?.Cancel();
+                    }
+                    finally
+                    {
+                        ClaimWindowCts?.Dispose();
+                        LifecycleCts.Dispose();
+                    }
+                }
+                finally
+                {
+                    Lock.Release();
+                    Lock.Dispose();
+                }
+            }
+        }
     }
 }
 

@@ -21,6 +21,7 @@ import * as path from 'path';
 const C1_KINDS = [
   'match', 'seats', 'things', 'nicks', 'mouse', 'sound',
   'dice', 'claim', 'pickup', 'discard', 'result', 'gameComplete',
+  'actionRejected', 'ownTurn', 'handResultAck',
   // Stuck-turn fix (squad/fix-live-gameplay-defects) — server-authoritative
   // discard-turn cue. Server-emitted only (ChangshaCollectionEncoder.EncodeTurn),
   // client push dropped (AutotableWsEndpoint `case ChangshaCollectionKinds.Turn`),
@@ -30,17 +31,19 @@ const C1_KINDS = [
 
 // Server → client only.  The FE receives these; it never sends them as
 // commands (C-1: "result / gameComplete are inbound-only").
-const INBOUND_ONLY = new Set(['result', 'gameComplete', 'turn']);
+const INBOUND_ONLY = new Set(['result', 'gameComplete', 'turn', 'actionRejected']);
 
 // FE → server game commands.  The backend MUST route each of these through
 // an *explicit* case in HandleUpdateAsync — a silent default-passthrough
 // would break authoritative play.
-const GAME_COMMAND_KINDS = new Set(['seats', 'claim', 'pickup', 'discard', 'match']);
+const GAME_COMMAND_KINDS = new Set(['seats', 'claim', 'pickup', 'discard', 'match', 'ownTurn', 'handResultAck']);
 
-// Cosmetic / meta kinds the backend accepts via its default passthrough
-// (mouse / sound / dice / things / nicks).  Kept explicit so a *new* FE
+// Cosmetic kinds accepted by the authoritative endpoint's default passthrough.
+// Keep relay scene writes separate: Changsha explicitly drops things/dice.
+// These sets are explicit so a *new* FE
 // kind can't quietly slip into the catch-all without a human classifying it.
-const PASSTHROUGH_KINDS = new Set(['things', 'nicks', 'mouse', 'sound', 'dice']);
+const PASSTHROUGH_KINDS = new Set(['nicks', 'mouse', 'sound']);
+const RUNTIME_SCENE_KINDS = new Set(['things', 'dice']);
 
 function readRepo(rel: string): string {
   // __dirname = <repo>/src/frontend/autotable-src/tests/e2e
@@ -68,7 +71,7 @@ function changshaKindConstants(): Map<string, string> {
 }
 
 /** The kinds HandleUpdateAsync dispatches with an *explicit* `case`. */
-function backendExplicitDispatchKinds(): Set<string> {
+function backendDispatchBodies(): Map<string, string> {
   const src = readRepo('../../../../../src/backend/src/Mahjong.Autotable.Api/Autotable/AutotableWsEndpoint.cs');
   const marker = 'private async Task HandleUpdateAsync(';
   const start = src.indexOf(marker);
@@ -79,20 +82,39 @@ function backendExplicitDispatchKinds(): Set<string> {
   const body = nextMethod > -1 ? rest.slice(0, nextMethod) : rest;
 
   const consts = changshaKindConstants();
-  const kinds = new Set<string>();
-  for (const m of body.matchAll(/case\s+"([^"]+)"\s*:/g)) kinds.add(m[1]);
-  for (const m of body.matchAll(/case\s+ChangshaCollectionKinds\.(\w+)\s*:/g)) {
-    const val = consts.get(m[1]);
-    if (val) kinds.add(val);
+  const endpointConstants = new Map<string, string>();
+  for (const m of src.matchAll(/(?:public|private|internal)\s+const\s+string\s+(\w+)\s*=\s*"([^"]+)"/g)) {
+    endpointConstants.set(m[1], m[2]);
   }
-  return kinds;
+  const clean = body.replace(/\/\/[^\n]*/g, '');
+  const labels = [...clean.matchAll(/case\s+(?:"([^"]+)"|ChangshaCollectionKinds\.(\w+)|(\w+))\s*:|default\s*:/g)];
+  const cases = new Map<string, string>();
+  for (let i = 0; i < labels.length; i++) {
+    const label = labels[i];
+    if (label[0].startsWith('default')) continue;
+    const kind = label[1] ?? consts.get(label[2]) ?? endpointConstants.get(label[3]);
+    expect(kind, `unresolved backend kind constant: ${label[0]}`).toBeTruthy();
+    let j = i;
+    let statements = '';
+    do {
+      const marker = labels[j];
+      statements = clean.slice(marker.index! + marker[0].length, labels[j + 1]?.index ?? clean.length).trim();
+      j++;
+    } while (statements === '' && j < labels.length);
+    cases.set(kind!, statements);
+  }
+  return cases;
 }
 
-function claimHandlerBody(): string {
+function backendExplicitDispatchKinds(): Set<string> {
+  return new Set(backendDispatchBodies().keys());
+}
+
+function endpointHandlerBody(name: string): string {
   const src = readRepo('../../../../../src/backend/src/Mahjong.Autotable.Api/Autotable/AutotableWsEndpoint.cs');
-  const marker = 'private async Task TryHandleClaimActionAsync(';
+  const marker = `private async Task ${name}(`;
   const start = src.indexOf(marker);
-  if (start < 0) throw new Error('TryHandleClaimActionAsync not found in AutotableWsEndpoint.cs');
+  if (start < 0) throw new Error(`${name} not found in AutotableWsEndpoint.cs`);
   const rest = src.slice(start + marker.length);
   const nextMethod = rest.search(/\n {4}private\s+(static\s+)?(async\s+)?\w/);
   return nextMethod > -1 ? rest.slice(0, nextMethod) : rest;
@@ -119,7 +141,7 @@ test.describe('WP-E/#120 — WS Collection protocol conformance (C-1) static gat
     // Partition sanity: what the FE can *send* is exactly the game commands
     // plus the cosmetic passthrough set (inbound-only kinds are never sent).
     const feSent = [...fe].filter((k) => !INBOUND_ONLY.has(k)).sort();
-    const expectedSent = [...new Set([...GAME_COMMAND_KINDS, ...PASSTHROUGH_KINDS])].sort();
+    const expectedSent = [...new Set([...GAME_COMMAND_KINDS, ...PASSTHROUGH_KINDS, ...RUNTIME_SCENE_KINDS])].sort();
     expect(
       feSent,
       'A FE-sent kind is neither a classified game command nor a cosmetic ' +
@@ -141,6 +163,11 @@ test.describe('WP-E/#120 — WS Collection protocol conformance (C-1) static gat
     for (const kind of feSent) {
       const handled = explicit.has(kind) || PASSTHROUGH_KINDS.has(kind);
       expect(handled, `FE-sent kind '${kind}' has no backend handling path.`).toBe(true);
+    }
+    for (const kind of RUNTIME_SCENE_KINDS) {
+      const body = backendDispatchBodies().get(kind)!;
+      expect(body, `${kind} is runtime-owned, not cosmetic`).toContain('droppedRuntimeOwnedScenePush = true;');
+      expect(body).not.toContain('passthroughEntries.Add');
     }
   });
 
@@ -164,7 +191,35 @@ test.describe('WP-E/#120 — WS Collection protocol conformance (C-1) static gat
         `backend HandleUpdateAsync has no explicit case for inbound-only '${kind}' — a client ` +
         `push of it would hit the default passthrough and relay a spoofed entry to peers.`,
       ).toBe(true);
+      expect(backendDispatchBodies().get(kind), `${kind} client pushes must be ignored, not routed or echoed`).toBe('break;');
     }
+  });
+
+  test('ownTurn and handResultAck use exact guarded command handlers, never cosmetic passthrough', () => {
+    const cases = backendDispatchBodies();
+    const routes = {
+      ownTurn: 'TryHandleOwnTurnActionAsync',
+      handResultAck: 'TryHandleHandResultAckAsync',
+    };
+    for (const [kind, handler] of Object.entries(routes)) {
+      expect(cases.get(kind)?.replace(/\s+/g, ' ').trim()).toBe(
+        `await ${handler}(connection, entry, ct); break;`,
+      );
+      expect(PASSTHROUGH_KINDS.has(kind)).toBe(false);
+      expect(INBOUND_ONLY.has(kind)).toBe(false);
+    }
+    const ack = readRepo('../../../../../src/backend/src/Mahjong.Autotable.Api/Autotable/AutotableConnectionManager.HandResults.cs');
+    expect(ack).toMatch(/AuthorizeSeatAction\(connection,\s*runtimeGameId,\s*requestedSeat:\s*null\)/);
+    expect(ack).toMatch(/key\s*!=\s*"current"/);
+    expect(ack).toMatch(/body\.EnumerateObject\(\)\.Count\(\)\s*!=\s*3/);
+    for (const field of ['gameId', 'handNumber', 'resultToken']) {
+      expect(ack).toContain(`TryGetProperty("${field}"`);
+    }
+    expect(ack).toMatch(/string\.Equals\(command\.GameId,\s*runtimeGameId,\s*StringComparison\.Ordinal\)/);
+    expect(ack).toMatch(/AcknowledgeHandResultAsync\(runtimeGameId!,\s*connection\.PlayerId,\s*connection\.Id\.ToString\("N"\),\s*command\.HandNumber,\s*command\.ResultToken/);
+    const ownTurn = endpointHandlerBody('TryHandleOwnTurnActionAsync');
+    expect(ownTurn).toContain('AuthorizeSeatAction(connection, runtimeGameId, requestedSeat)');
+    expect(ownTurn).toContain('if (!authorization.IsAuthorized)');
   });
 
   // #134 — the human claim wire shape. The shipped bundle writes
@@ -186,7 +241,7 @@ test.describe('WP-E/#120 — WS Collection protocol conformance (C-1) static gat
       "game-ui.ts must send a decline as { action: 'pass', type: null }.",
     ).toMatch(/action:\s*'pass'\s*,\s*type:\s*null/);
 
-    const handler = claimHandlerBody();
+    const handler = endpointHandlerBody('TryHandleClaimActionAsync');
     expect(
       handler,
       "backend claim handler must read the 'action' field.",

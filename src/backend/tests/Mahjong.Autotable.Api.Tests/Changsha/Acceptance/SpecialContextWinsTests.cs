@@ -102,23 +102,45 @@ public class SpecialContextWinsTests
             "HeavenlyHand is dealer-exclusive — non-dealer self-draws must not flag.");
 
         var state = BuildHandAfterDeal(dealerSeat: 0);
-        // Non-dealer (seat 1) holds the winning 14-tile hand — same structure as
-        // the positive test, just on a different seat. Dealer (seat 0) is cleared
-        // so they cannot also be confused with the winner.
-        state.Hands[0].ConcealedTiles.Clear();
-        state.Hands[0].Melds.Clear();
-        OverrideHandWith14Tiles(state, seatIndex: 1,
-            (Suit.Wan, 1), (Suit.Wan, 2), (Suit.Wan, 3),
-            (Suit.Wan, 4), (Suit.Wan, 5), (Suit.Wan, 6),
-            (Suit.Tong, 1), (Suit.Tong, 2), (Suit.Tong, 3),
-            (Suit.Tiao, 4), (Suit.Tiao, 5), (Suit.Tiao, 6),
-            (Suit.Tong, 5), (Suit.Tong, 5));
+        int[] winningTiles =
+        [
+            Tid(Suit.Wan, 1, 0), Tid(Suit.Wan, 2, 0), Tid(Suit.Wan, 3, 0),
+            Tid(Suit.Wan, 4, 0), Tid(Suit.Wan, 5, 0), Tid(Suit.Wan, 6, 0),
+            Tid(Suit.Tong, 1, 0), Tid(Suit.Tong, 2, 0), Tid(Suit.Tong, 3, 0),
+            Tid(Suit.Tiao, 4, 0), Tid(Suit.Tiao, 5, 0), Tid(Suit.Tiao, 6, 0),
+            Tid(Suit.Tong, 5, 0), Tid(Suit.Tong, 5, 1)
+        ];
+        var hand = state.Hands[1].ConcealedTiles;
+        Assert.Equal(13, hand.Count);
+        for (var index = 0; index < hand.Count; index++)
+            SwapInto(hand, index, winningTiles[index]);
+        SwapInto(state.Wall, 0, winningTiles[^1]);
         state.ActiveSeatIndex = 1; // force non-dealer to be active
+
+        // Keep the first-action context, but establish the non-dealer's own draw.
+        Assert.False(ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, 1));
+        var draws = ChangshaGameStateMachine.DrawTile(state);
+        Assert.Equal(winningTiles, hand);
+        Assert.Equal(1, state.LastDrawSeatIndex);
+        Assert.Contains(draws, draw => draw.EventType == "tile-drawn"
+            && draw.SeatIndex == 1 && draw.TileId == winningTiles[^1]);
+        Assert.Equal(1, state.TurnNumber);
+        Assert.Empty(state.DiscardPile);
+        Assert.Equal(Enumerable.Range(0, 108),
+            state.Wall.Concat(state.Hands.SelectMany(seat => seat.ConcealedTiles)).OrderBy(tile => tile));
 
         ChangshaGameStateMachine.DeclareSelfDrawWin(state, seatIndex: 1);
 
         Assert.NotNull(state.CurrentWin);
         Assert.DoesNotContain(heavenly, state.CurrentWin!.AllPatterns);
+
+        void SwapInto(List<int> target, int index, int tile)
+        {
+            var source = state.Hands.Select(seat => seat.ConcealedTiles).Append(state.Wall)
+                .Single(tiles => tiles.Contains(tile));
+            var sourceIndex = source.IndexOf(tile);
+            (source[sourceIndex], target[index]) = (target[index], source[sourceIndex]);
+        }
     }
 
     // ────────────────────────────────────────────────────────────────────────

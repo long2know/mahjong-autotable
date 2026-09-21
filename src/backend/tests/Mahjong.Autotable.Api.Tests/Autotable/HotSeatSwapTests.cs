@@ -107,7 +107,7 @@ public class HotSeatSwapTests : IAsyncLifetime
 
         // ws#1 joins as seat 0 and explicitly takes seat 0 via the bundle's
         // seats UPDATE (this is what Hicks's Player.svelte does on click).
-        var alice = await OpenAndJoinAsync(seat: 0, gameId: gameId);
+        var alice = await OpenAndJoinAsync(seat: 0, gameId: gameId, botCount: 0);
         await alice.TakeSeatAsync(0);
 
         // Wait for the runtime binding + state.Seats[0] to reflect Alice.
@@ -123,13 +123,24 @@ public class HotSeatSwapTests : IAsyncLifetime
             "Alice's seat-take should bind state.Seats[0].PlayerId to her connectionId.");
 
         var runtimeGameId = manager.GetRuntimeGameIdBoundTo(gameId)!;
+        Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var before));
+        Assert.Equal(ChangshaPhase.Seating, before!.Phase);
+        Assert.DoesNotContain(before.Seats, seat => seat.IsBot);
+        var originalSeed = before.Seed;
+        var originalScores = before.CumulativeScores.OrderBy(pair => pair.Key).ToArray();
+        var originalConnection = Mahjong.Autotable.Api.Tests.TestInfrastructure.ViewerAuthorityAssertions
+            .GrantedConnection(manager, runtime, runtimeGameId, 0);
+        var originalConnectionId = originalConnection.Id.ToString("N");
 
         // Alice disconnects (the bundle's soft-reconnect closes the old WS).
         await alice.DisposeAsync();
+        Assert.True(await WaitForAsync(
+            () => runtime.TryGetSeatForConnection(runtimeGameId, originalConnectionId) is null,
+            timeoutMs: 2000), "The old transport must release its actual seat grant.");
 
         // ws#2 joins the SAME gameId with seat=1 (Hicks's picker disables the
         // current seat, so the new connection never tries to take seat 0).
-        await using var bob = await OpenAndJoinAsync(seat: 1, gameId: gameId);
+        await using var bob = await OpenAndJoinAsync(seat: 1, gameId: gameId, botCount: 3);
         await bob.TakeSeatAsync(1);
 
         // The runtime binding must be the SAME instance — Bob's snapshot is
@@ -140,41 +151,28 @@ public class HotSeatSwapTests : IAsyncLifetime
             "Hot-seat swap must preserve the runtime binding for the relay gameId; " +
             $"expected {runtimeGameId} but saw {manager.GetRuntimeGameIdBoundTo(gameId)}.");
 
-        // Bob's seat-take binds seat 1 to his connectionId. Phase J Wave 9
-        // (Apone) tightens the polling predicate to ALSO wait for the
-        // post-take auto-bot-fill flow to drop a bot into the freed seat 0;
-        // otherwise the assertion below races a still-in-flight
-        // FillEmptySeatsWithBotsAsync and reads the preserved Alice
-        // PlayerId before the fill completes. See the Wave-2 contract note
-        // above for the seat-0 release semantics.
+        // A late joiner's bot preference cannot change this zero-bot room.
         var bobSeated = await WaitForAsync(() =>
         {
             if (!runtime.TryGetSnapshot(runtimeGameId, out var s) || s is null) return false;
-            var bobOnSeatOne =
-                string.Equals(s.Seats[1].PlayerId, bob.PlayerId, StringComparison.Ordinal)
+            return string.Equals(s.Seats[1].PlayerId, bob.PlayerId, StringComparison.Ordinal)
                 && !s.Seats[1].IsBot;
-            // Auto-bot-fill is complete once seat 0 is no longer pinned to
-            // Alice. Either it's a bot (PlayerId rewritten) or the slot has
-            // a different player id; both satisfy the post-fill contract.
-            var seatZeroFreedOrFilled =
-                !string.Equals(s.Seats[0].PlayerId, alice.PlayerId, StringComparison.Ordinal);
-            return bobOnSeatOne && seatZeroFreedOrFilled;
         }, timeoutMs: 2000);
         Assert.True(bobSeated,
-            "Bob's seat-take on the same gameId should bind state.Seats[1] to his connectionId " +
-            "AND the post-take auto-bot-fill should release seat 0 from Alice's PlayerId.");
+            "Bob must own seat 1 in the original Seating room without filling its other seats.");
 
-        // Phase J Wave 2 flipped this contract: when Alice disconnects from the
-        // autotable WS path, the runtime seat binding IS released (mirror of
-        // ChangshaHub.OnDisconnectedAsync). Bob's seat-take then runs
-        // FillEmptySeatsWithBotsAsync (autoBotFill default) which drops a bot
-        // into seat 0. The previous contract (orphaned binding) was the bug
-        // surfaced in Wave 1's review; this assertion now pins the new contract:
-        // seat 0 is either empty (no SeatConnections entry) OR converted to a
-        // bot by the post-take auto-fill flow.
         Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var finalState));
         Assert.NotNull(finalState);
-        Assert.NotEqual(alice.PlayerId, finalState!.Seats[0].PlayerId);
+        Assert.Equal(ChangshaPhase.Seating, finalState!.Phase);
+        Assert.DoesNotContain(finalState.Seats, seat => seat.IsBot);
+        Assert.Equal(originalSeed, finalState.Seed);
+        Assert.Equal(originalScores, finalState.CumulativeScores.OrderBy(pair => pair.Key).ToArray());
+        Assert.Null(runtime.TryGetSeatForConnection(runtimeGameId, originalConnectionId));
+        var replacement = Mahjong.Autotable.Api.Tests.TestInfrastructure.ViewerAuthorityAssertions
+            .GrantedConnection(manager, runtime, runtimeGameId, 1);
+        Assert.NotEqual(originalConnection.Id, replacement.Id);
+        Assert.Equal(1, runtime.TryGetSeatForConnection(runtimeGameId, replacement.Id.ToString("N")));
+        Assert.False(runtime.AreAllSeatsOccupied(runtimeGameId));
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -311,11 +309,12 @@ public class HotSeatSwapTests : IAsyncLifetime
     //  Helpers
     // ────────────────────────────────────────────────────────────────────
 
-    private async Task<WsSession> OpenAndJoinAsync(int seat, string gameId)
+    private async Task<WsSession> OpenAndJoinAsync(int seat, string gameId, int? botCount = null)
     {
         var server = _factory!.Server;
         var wsClient = server.CreateWebSocketClient();
         var path = $"autotable/ws?seat={seat}&gameId={Uri.EscapeDataString(gameId)}";
+        if (botCount is not null) path += $"&botCount={botCount.Value}";
         var uri = new Uri(server.BaseAddress, path);
         var ws = await wsClient.ConnectAsync(uri, CancellationToken.None);
         var session = new WsSession(ws);

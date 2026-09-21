@@ -47,6 +47,12 @@ import {
   type LanguagePreference,
 } from './i18n';
 import { hideEl } from './dom-utils';
+import { handSortMode, type HandSortMode } from './hand-sort';
+import { mobileInfoPanel, type MobileInfoPanel } from './mobile-overlay-policy';
+import {
+  getGameState, getGameStateStatus, loadGameState, refreshGameState, subscribeGameState,
+  type GameState,
+} from './game-state';
 
 // ── Public types ────────────────────────────────────────────────────
 
@@ -59,6 +65,9 @@ export interface AppSettings {
   soundEnabled: boolean;
   /** Perspective vs orthographic table view (Phase F #perspective). */
   perspective: boolean;
+  handSort: HandSortMode;
+  mobileTableStatus: boolean;
+  mobileInfoPanel: MobileInfoPanel;
   /** Table cloth colour (CSS hex).  Read by world.ts via a CSS variable. */
   tableColor: string;
   /** Network override.  Empty string = use page origin. */
@@ -74,6 +83,9 @@ export const SETTINGS_DEFAULT: AppSettings = {
   masterVolume: 0.8,
   soundEnabled: true,
   perspective: true,
+  handSort: 'suit',
+  mobileTableStatus: false,
+  mobileInfoPanel: 'none',
   tableColor: '#0a5a3a',
   serverUrl: '',
 };
@@ -89,6 +101,7 @@ const TABS: ReadonlyArray<{ id: SettingsTab; labelKey: string; fallback: string 
 // ── State ───────────────────────────────────────────────────────────
 
 let current: AppSettings = { ...SETTINGS_DEFAULT };
+let settingsLoaded = false;
 let installed = false;
 let activeTab: SettingsTab = 'general';
 const listeners = new Set<(s: AppSettings) => void>();
@@ -106,6 +119,9 @@ function loadFromStorage(): AppSettings {
     }
     if (typeof j.soundEnabled === 'boolean') out.soundEnabled = j.soundEnabled;
     if (typeof j.perspective === 'boolean') out.perspective = j.perspective;
+    out.handSort = handSortMode(j.handSort);
+    if (typeof j.mobileTableStatus === 'boolean') out.mobileTableStatus = j.mobileTableStatus;
+    out.mobileInfoPanel = mobileInfoPanel(j.mobileInfoPanel);
     if (typeof j.tableColor === 'string' && /^#[0-9a-fA-F]{3,6}$/.test(j.tableColor)) {
       out.tableColor = j.tableColor;
     }
@@ -118,7 +134,12 @@ function loadFromStorage(): AppSettings {
 
 function writeToStorage(s: AppSettings): void {
   try {
-    window.localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(s));
+    let saved: Record<string, unknown> = {};
+    try {
+      const value: unknown = JSON.parse(window.localStorage.getItem(SETTINGS_LS_KEY) ?? '{}');
+      if (value && typeof value === 'object' && !Array.isArray(value)) saved = value as Record<string, unknown>;
+    } catch { /* replace an unreadable preference blob */ }
+    window.localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify({ ...saved, ...s }));
   } catch {
     /* private mode / quota — skip */
   }
@@ -135,7 +156,14 @@ function mirrorSoundEnabled(s: AppSettings): void {
 // ── Public API ──────────────────────────────────────────────────────
 
 export function getSettings(): AppSettings {
+  ensureSettingsLoaded();
   return { ...current };
+}
+
+function ensureSettingsLoaded(): void {
+  if (settingsLoaded) return;
+  current = loadFromStorage();
+  settingsLoaded = true;
 }
 
 export function onSettingsChange(handler: (s: AppSettings) => void): () => void {
@@ -151,35 +179,50 @@ function emit(): void {
 
 /** Replace the current settings (full object).  Persists + emits. */
 export function setSettings(next: Partial<AppSettings>): void {
+  ensureSettingsLoaded();
   current = { ...current, ...next };
   writeToStorage(current);
-  mirrorSoundEnabled(current);
-  applyDerivedSettings(current);
+  if ('soundEnabled' in next) mirrorSoundEnabled(current);
+  applyDerivedSettings(current, next);
   emit();
 }
 
 /** Apply the in-memory settings to known surfaces (sound, CSS, etc.). */
-function applyDerivedSettings(s: AppSettings): void {
+function applyDerivedSettings(s: AppSettings, changed: Partial<AppSettings> = s): void {
+  if ('mobileTableStatus' in changed) {
+    document.body.classList.toggle('mobile-table-status-visible', s.mobileTableStatus);
+  }
+  if ('handSort' in changed) {
+    for (const id of ['hand-sort', 'settings-hand-sort']) {
+      const select = document.getElementById(id) as HTMLSelectElement | null;
+      if (select && select.value !== s.handSort) {
+        select.value = s.handSort;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+  }
   // Sound on/off mirror — write `mahjong:soundEnabled` so the Wave-3
   // mute toggle in sound.ts (via the existing settings drawer +
   // installSoundEnabledMirror) sees the same state.
-  try {
-    window.localStorage.setItem(LS_KEY_SOUND_ENABLED_MIRROR, s.soundEnabled ? 'true' : 'false');
-  } catch { /* skip */ }
+  if ('soundEnabled' in changed) {
+    try {
+      window.localStorage.setItem(LS_KEY_SOUND_ENABLED_MIRROR, s.soundEnabled ? 'true' : 'false');
+    } catch { /* skip */ }
+  }
   // Notify the legacy #settings-sound checkbox so its change handlers
   // (Sound.setMuted) fire from this single source.
   const legacyCheckbox = document.getElementById('settings-sound') as HTMLInputElement | null;
-  if (legacyCheckbox !== null && legacyCheckbox.checked !== s.soundEnabled) {
+  if ('soundEnabled' in changed && legacyCheckbox !== null && legacyCheckbox.checked !== s.soundEnabled) {
     legacyCheckbox.checked = s.soundEnabled;
     legacyCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
   }
   // Table colour — expose as a CSS variable so style.css / main.css
   // can apply it without each surface importing this module.
-  document.documentElement.style.setProperty('--app-table-color', s.tableColor);
+  if ('tableColor' in changed) document.documentElement.style.setProperty('--app-table-color', s.tableColor);
   // Perspective mirror — keep the legacy #perspective checkbox in sync
   // so world.ts sees the new value via its existing input listener.
   const perspectiveCheckbox = document.getElementById('perspective') as HTMLInputElement | null;
-  if (perspectiveCheckbox !== null && perspectiveCheckbox.checked !== s.perspective) {
+  if ('perspective' in changed && perspectiveCheckbox !== null && perspectiveCheckbox.checked !== s.perspective) {
     perspectiveCheckbox.checked = s.perspective;
     perspectiveCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
   }
@@ -198,8 +241,9 @@ export function installSettingsDrawerV2(): void {
   if (drawer === null) return;
   installed = true;
 
-  current = loadFromStorage();
+  ensureSettingsLoaded();
   applyDerivedSettings(current);
+  emit();
 
   const btn = document.getElementById('settings-button') as HTMLButtonElement | null;
   const closeBtn = document.getElementById('settings-close-v2') as HTMLButtonElement | null;
@@ -297,6 +341,11 @@ export function installSettingsDrawerV2(): void {
     }
     rerenderPanels();
   });
+}
+
+export function openSettingsDrawerV2(): void {
+  installSettingsDrawerV2();
+  openDrawer();
 }
 
 function openDrawer(): void {
@@ -650,6 +699,46 @@ function buildDisplayPanel(): HTMLDivElement {
   themeRow.appendChild(themeSelect);
 
   panel.appendChild(perspRow);
+  const sortRow = document.createElement('label');
+  sortRow.className = 'settings-v2-field';
+  const sortLabel = document.createElement('span');
+  sortLabel.className = 'settings-v2-label';
+  sortLabel.textContent = t('hand.order');
+  const sortSelect = document.createElement('select');
+  sortSelect.id = 'settings-hand-sort';
+  sortSelect.className = 'dark-select form-control';
+  sortSelect.setAttribute('data-testid', 'settings-hand-sort');
+  sortSelect.setAttribute('aria-label', t('hand.order'));
+  for (const mode of ['suit', 'groups'] as const) {
+    const option = document.createElement('option');
+    option.value = mode;
+    option.textContent = t(`hand.sort_${mode}`);
+    sortSelect.appendChild(option);
+  }
+  sortSelect.value = current.handSort;
+  sortSelect.addEventListener('change', () => {
+    const mode = handSortMode(sortSelect.value);
+    if (mode !== current.handSort) setSettings({ handSort: mode });
+  });
+  const sortHint = document.createElement('span');
+  sortHint.className = 'settings-v2-hint';
+  sortHint.textContent = t('hand.sort_hint');
+  sortRow.append(sortLabel, sortSelect, sortHint);
+  panel.appendChild(sortRow);
+  const statusRow = document.createElement('label');
+  statusRow.className = 'settings-v2-field settings-v2-checkbox-row';
+  const statusInput = document.createElement('input');
+  statusInput.type = 'checkbox';
+  statusInput.checked = current.mobileTableStatus;
+  statusInput.setAttribute('data-testid', 'settings-mobile-table-status');
+  const statusText = document.createElement('span');
+  statusText.textContent = t('settings.mobile_table_status');
+  statusInput.addEventListener('change', () => setSettings({ mobileTableStatus: statusInput.checked }));
+  statusRow.append(statusInput, statusText);
+  const overlayHint = document.createElement('p');
+  overlayHint.className = 'settings-v2-hint';
+  overlayHint.textContent = t('settings.mobile_overlays_hint');
+  panel.append(statusRow, overlayHint);
   panel.appendChild(colorRow);
   panel.appendChild(motionRow);
   panel.appendChild(themeRow);
@@ -706,11 +795,7 @@ function buildNetworkPanel(): HTMLDivElement {
 //   POST /api/games/{id}/settings/voice
 //     body: { enabled: bool }  → 204 | 403 (not owner) | 404
 //
-// The toggle is hidden when:
-//   • There is no `gameId` in the URL (lobby-only context).
-//   • GET returns 404 (endpoint not deployed).
-//   • `viewerIsOwner` is false (the user is a guest at someone else's
-//     table — the server enforces this anyway via 403).
+// Account-authorized voice administration is distinct from signed-guest room ownership.
 
 // Phase K Wave 4 — Voice settings are now fetched via the unified
 // `./game-state` reactive store (`loadGameState` / `subscribeGameState`),
@@ -733,12 +818,10 @@ function buildVoiceEnableToggle(): HTMLElement | null {
 
   const wrap = document.createElement('div');
   wrap.className = 'settings-v2-field settings-v2-voice-enable';
-  // Start hidden — the async GET decides whether to surface it.
-  wrap.hidden = true;
 
   const heading = document.createElement('span');
   heading.className = 'settings-v2-section-heading';
-  heading.textContent = t('settings.voice.section') || 'Voice chat (this table)';
+  heading.textContent = t('settings.voice.section');
   wrap.appendChild(heading);
 
   const row = document.createElement('label');
@@ -753,14 +836,13 @@ function buildVoiceEnableToggle(): HTMLElement | null {
 
   const labelText = document.createElement('span');
   labelText.className = 'settings-v2-toggle-label';
-  labelText.textContent = t('settings.voice.toggle') || 'Enable voice chat for this table';
+  labelText.textContent = t('settings.voice.toggle');
   row.appendChild(labelText);
 
   const hint = document.createElement('span');
   hint.className = 'settings-v2-hint';
   hint.setAttribute('data-testid', 'voice-enable-hint');
-  hint.textContent =
-    'Hosts only — when on, players at this table can talk via WebRTC voice.';
+  hint.textContent = t('common.loading');
 
   wrap.appendChild(row);
   wrap.appendChild(hint);
@@ -779,46 +861,43 @@ async function primeVoiceToggle(
   wrap: HTMLElement,
   input: HTMLInputElement,
 ): Promise<void> {
-  // Phase K Wave 4 — Prefer the shared `game-state` reactive snapshot
-  // so we don't double-fetch `/api/games/{id}/settings` when the voice
-  // module already populated it on JOIN.  Fall back to a direct fetch
-  // only when the snapshot is missing (e.g. settings drawer opened
-  // before the WS JOIN completed).
-  const { getGameState, loadGameState, subscribeGameState } = await import('./game-state');
-  const apply = (snapshot: { voiceEnabled: boolean; viewerIsOwner: boolean }): void => {
-    if (!snapshot.viewerIsOwner) return;
-    input.checked = snapshot.voiceEnabled;
-    input.disabled = false;
+  const apply = (snapshot: GameState | null): void => {
+    const load = getGameStateStatus();
+    const matches = load.roomId === gameId || snapshot?.gameId === gameId;
+    if (snapshot !== null && matches && input.dataset.saving !== 'true') input.checked = snapshot.voiceEnabled;
+    input.disabled = !matches || load.status !== 'ready' || snapshot?.viewerCanManageVoice !== true
+      || input.dataset.saving === 'true';
     wrap.hidden = false;
+    const hint = wrap.querySelector<HTMLElement>('[data-testid="voice-enable-hint"]');
+    if (hint !== null) {
+      hint.textContent = snapshot === null ? t('settings.voice.unavailable')
+        : snapshot.viewerCanManageVoice ? t('settings.voice.hint') : t('settings.voice.permission');
+    }
   };
-  const cached = getGameState();
-  if (cached !== null && cached.gameId === gameId) {
-    apply(cached);
-  } else {
-    const fresh = await loadGameState(gameId);
-    if (fresh !== null) apply(fresh);
-  }
-  // Live sync — a `GameJoined` push after the drawer renders will
-  // flip the toggle in place.
-  subscribeGameState((s) => {
-    if (s.gameId !== gameId) return;
-    if (!s.viewerIsOwner) return;
-    if (input.checked !== s.voiceEnabled) input.checked = s.voiceEnabled;
-    input.disabled = false;
-    wrap.hidden = false;
-  });
+  subscribeGameState(apply);
+  await loadGameState(gameId);
 }
 
 async function postVoiceEnable(
   gameId: string,
   input: HTMLInputElement,
 ): Promise<void> {
-  // Optimistic update — keep the current checked state, roll back on failure.
+  const snapshot = getGameState();
+  const { showToast } = await import('./toast');
+  if (snapshot === null || !snapshot.viewerCanManageVoice
+      || (getGameStateStatus().roomId !== gameId && snapshot.gameId !== gameId)) {
+    input.checked = snapshot?.voiceEnabled ?? false;
+    input.disabled = true;
+    showToast(t('settings.voice.permission'), 'error');
+    return;
+  }
   const desired = input.checked;
+  const identityId = getGameStateStatus().playerId;
+  input.dataset.saving = 'true';
   input.disabled = true;
   try {
     const r = await fetch(
-      `/api/games/${encodeURIComponent(gameId)}/settings/voice`,
+      `/api/games/${encodeURIComponent(snapshot.gameId)}/settings/voice`,
       {
         method: 'POST',
         credentials: 'same-origin',
@@ -830,38 +909,23 @@ async function postVoiceEnable(
       },
     );
     if (!r.ok) {
-      input.checked = !desired;
-      const { showToast } = await import('./toast');
-      showToast(
-        desired
-          ? 'Could not enable voice — server rejected the request.'
-          : 'Could not disable voice — server rejected the request.',
-        'error',
-      );
+      throw new Error(`HTTP ${r.status}`);
+    }
+    if (identityId !== getGameStateStatus().playerId || currentGameIdFromUrl() !== gameId) return;
+    const fresh = await refreshGameState(snapshot.gameId);
+    if (fresh === null) {
+      showToast(t('settings.voice.refresh_failed'), 'error');
       return;
     }
-    const { showToast } = await import('./toast');
-    showToast(
-      desired ? 'Voice enabled for this table.' : 'Voice disabled for this table.',
-      'success',
-    );
-    // Phase K Wave 4 — Mirror the new flag into the shared game-state
-    // store so voice.ts + any other subscribers flip in lockstep.
-    const { updateGameState } = await import('./game-state');
-    updateGameState({ gameId, voiceEnabled: desired });
-    // Notify voice.ts so the mic toggle enables in place — voice.ts
-    // listens for this event when it mounted in the disabled state.
-    if (desired) {
-      window.dispatchEvent(new CustomEvent('mahjong:voice-enabled'));
-    } else {
-      window.dispatchEvent(new CustomEvent('mahjong:voice-disabled'));
-    }
-  } catch {
-    input.checked = !desired;
-    const { showToast } = await import('./toast');
-    showToast('Voice settings request failed.', 'error');
+    showToast(t(fresh.voiceEnabled ? 'settings.voice.enabled' : 'settings.voice.disabled'), 'success');
+  } catch (failure) {
+    input.checked = snapshot.voiceEnabled;
+    showToast(t('settings.voice.failed', { reason: failure instanceof Error ? failure.message : String(failure) }), 'error');
   } finally {
-    input.disabled = false;
+    delete input.dataset.saving;
+    const fresh = getGameState();
+    input.checked = fresh?.voiceEnabled ?? snapshot.voiceEnabled;
+    input.disabled = fresh?.viewerCanManageVoice !== true || getGameStateStatus().status !== 'ready';
   }
 }
 

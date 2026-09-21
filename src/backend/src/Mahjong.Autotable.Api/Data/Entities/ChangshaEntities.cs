@@ -52,6 +52,9 @@ public class ChangshaGame
 /// <summary>
 /// Append-only event log for Changsha games.
 /// Supports replay and reconnection.
+/// V3 rows use the reserved replay-v3-step event type: Sequence is the accepted
+/// operation ordinal and Detail contains its versioned arguments/facts/checkpoints.
+/// Emitted ChangshaEvent sequences remain distinct inside that payload.
 /// </summary>
 public class ChangshaGameEvent
 {
@@ -90,11 +93,11 @@ public class ChangshaGameEvent
 /// </summary>
 public class ChangshaGameReplay
 {
-    /// <summary>Phase J Wave 9 — current replay schema version stamped on
-    /// every new write. Old rows persisted under v1 keep their stored
+    /// <summary>Current recorded replay schema. Games without a complete v3
+    /// initialization retain legacy-unverifiable playback. Old rows keep their stored
     /// <see cref="SchemaVersion"/> (defaulted to 1 by the migration) so
     /// readers can branch on the value.</summary>
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid GameId { get; set; }
