@@ -25,6 +25,38 @@ async function currentResult(page: Page): Promise<HandResultEntry | null> {
   } }).game?.client.result.get('current') ?? null);
 }
 
+function observedSettlement(
+  current: HandResultEntry | null, complete: boolean, received: readonly Frame[],
+): HandResultEntry | null {
+  if (current !== null) return current;
+  if (!complete) return null;
+  // A final hand is not held for acknowledgements. Preserve its actual server
+  // result frame instead of requiring polling to catch a transient singleton.
+  for (let i = received.length - 1; i >= 0; i--) {
+    const entries = received[i].entries ?? [];
+    for (let j = entries.length - 1; j >= 0; j--) {
+      const [kind, key, value] = entries[j];
+      if (kind === 'result' && key === 'current' && value !== null) {
+        return value as unknown as HandResultEntry;
+      }
+    }
+  }
+  return null;
+}
+
+async function readSettlement(page: Page, received: readonly Frame[]): Promise<HandResultEntry | null> {
+  const snapshot = await page.evaluate(() => {
+    const c = (window as unknown as { game: { client: {
+      result: { get(key: string): HandResultEntry | null };
+      gameComplete: { get(key: string): { isComplete?: boolean; IsComplete?: boolean; isGameComplete?: boolean; IsGameComplete?: boolean } | null };
+    } } }).game.client;
+    const done = c.gameComplete.get('current');
+    return { result: c.result.get('current'),
+      complete: done?.isComplete ?? done?.IsComplete ?? done?.isGameComplete ?? done?.IsGameComplete ?? false };
+  });
+  return observedSettlement(snapshot.result, snapshot.complete, received);
+}
+
 async function signature(actor: Actor): Promise<string> {
   return actor.page.evaluate(() => {
     const client = (window as unknown as { game: { client: {
@@ -53,19 +85,112 @@ async function board(page: Page): Promise<unknown> {
   });
 }
 
+async function stalledHandEvidence(actors: Actor[]): Promise<unknown> {
+  return Promise.all(actors.map(async actor => ({
+    label: actor.label,
+    state: await actor.page.evaluate(() => {
+      const c = (window as unknown as { game: { client: {
+        seat: number | null; playerId(): string;
+        things: { entries(): Iterable<[string | number, { slotName?: string }]> };
+        turn: { get(key: string): unknown }; pickup: { get(key: string): unknown };
+        claim: { get(key: string): unknown }; ownTurn: { get(key: number): unknown };
+        result: { get(key: string): unknown }; actionRejected: { get(key: string): unknown };
+      } } }).game.client;
+      const handCounts = [0, 0, 0, 0], meldCounts = [0, 0, 0, 0];
+      for (const [, tile] of c.things.entries()) {
+        const match = /^(hand|meld)\.[^@]*@([0-3])$/.exec(tile.slotName ?? '');
+        if (match) (match[1] === 'hand' ? handCounts : meldCounts)[Number(match[2])]++;
+      }
+      return { seat: c.seat, playerId: c.playerId(), handCounts, meldCounts,
+        turn: c.turn.get('current'), pickup: c.pickup.get('current'),
+        claim: c.claim.get(String(c.seat)), ownTurn: c.seat === null ? null : c.ownTurn.get(c.seat),
+        result: c.result.get('current'), rejection: c.actionRejected.get('current') };
+    }),
+    sent: actor.sent,
+    received: actor.received,
+  })));
+}
+
 async function configure(actor: Actor, hands: 1 | 4, seed: number): Promise<void> {
   await actor.page.locator(`#lobby-hand-count-fieldset label:has(input[value="${hands}"])`).click();
   await actor.page.locator('#lobby-advanced summary').click();
   await actor.page.locator('#lobby-seed').fill(String(seed));
 }
 
+interface DiscardReadiness {
+  connected: boolean;
+  seat: number | null;
+  activeSeat: number | null;
+  phase: string | null;
+  awaitingDiscard: boolean;
+  concealed: number;
+  melds: number;
+}
+
+function legalNormalDiscard(state: DiscardReadiness): boolean {
+  return state.connected && state.seat !== null && state.activeSeat === state.seat
+    && state.phase === 'AwaitingDiscard' && state.awaitingDiscard
+    && state.concealed + 3 * state.melds === 14;
+}
+
+async function discardReadiness(page: Page): Promise<DiscardReadiness> {
+  return page.evaluate(() => {
+    const client = (window as unknown as { game: { client: {
+      connected(): boolean; seat: number | null;
+      turn: { get(key: string): { activeSeat: number | null; phase: string; awaitingDiscard: boolean } | null };
+      things: { entries(): Iterable<[string | number, { slotName?: string } | null]> };
+    } } }).game.client;
+    const seat = client.seat, turn = client.turn.get('current');
+    let concealed = 0;
+    const melds = new Set<string>();
+    for (const [, tile] of client.things.entries()) {
+      const hand = /^hand\.\d+@([0-3])$/.exec(tile?.slotName ?? '');
+      if (hand && Number(hand[1]) === seat) concealed++;
+      const meld = /^meld\.(\d+)\.\d+@([0-3])$/.exec(tile?.slotName ?? '');
+      if (meld && Number(meld[2]) === seat) melds.add(meld[1]);
+    }
+    return { connected: client.connected(), seat, activeSeat: turn?.activeSeat ?? null,
+      phase: turn?.phase ?? null, awaitingDiscard: turn?.awaitingDiscard === true,
+      concealed, melds: melds.size };
+  });
+}
+
+test('normal-play driver requires an authoritative14-effective hand, not only a phase flag', () => {
+  const ready: DiscardReadiness = {
+    connected: true, seat: 0, activeSeat: 0, phase: 'AwaitingDiscard',
+    awaitingDiscard: true, concealed: 14, melds: 0,
+  };
+  expect(legalNormalDiscard(ready)).toBe(true);
+  expect(legalNormalDiscard({ ...ready, concealed: 13 })).toBe(false);
+  expect(legalNormalDiscard({ ...ready, concealed: 11, melds: 1 })).toBe(true);
+  expect(legalNormalDiscard({ ...ready, concealed: 10, melds: 1 })).toBe(false);
+  expect(legalNormalDiscard({ ...ready, concealed: 8, melds: 2 })).toBe(true);
+  expect(legalNormalDiscard({ ...ready, seat: null })).toBe(false);
+  expect(legalNormalDiscard({ ...ready, activeSeat: 1 })).toBe(false);
+  expect(legalNormalDiscard({ ...ready, phase: 'AwaitingDraw' })).toBe(false);
+  expect(legalNormalDiscard({ ...ready, awaitingDiscard: false })).toBe(false);
+  expect(legalNormalDiscard({ ...ready, connected: false })).toBe(false);
+});
+
+test('terminal observation requires GameComplete and a real received result, never an invented fallback', () => {
+  const result: HandResultEntry = { winner: 2, type: 'Hu', score: [], hand: [1, 2], nextBanker: 2, continuation: null };
+  const received: Frame[] = [
+    { type: 'UPDATE', entries: [['result', 'current', result as unknown as Record<string, unknown>]] },
+    { type: 'UPDATE', entries: [['result', 'current', null], ['gameComplete', 'current', { isComplete: true }]] },
+  ];
+  expect(observedSettlement(null, false, received)).toBeNull();
+  expect(observedSettlement(null, true, [])).toBeNull();
+  expect(observedSettlement(null, true, received)).toBe(result);
+  expect(observedSettlement(result, false, [])).toBe(result);
+});
+
 /** Bounded one-hand play, using only visible legal Pass/discard controls. */
-async function playOneHand(actors: Actor[]): Promise<HandResultEntry> {
+async function playOneHand(actors: Actor[], observed: { received: Frame[] }): Promise<HandResultEntry> {
   const deadline = Date.now() + 140_000;
   let discards = 0;
   const passedWindows = new Map<Actor, string>();
   while (Date.now() < deadline) {
-    const result = await currentResult(actors[0].page);
+    const result = await readSettlement(actors[0].page, observed.received);
     if (result !== null) return result;
     let acted = false;
     for (const actor of actors) {
@@ -84,7 +209,8 @@ async function playOneHand(actors: Actor[]): Promise<HandResultEntry> {
         if (passedWindows.get(actor) === claimKey) continue;
         try { await pass.click({ timeout: 1200 }); }
         catch {
-          if (await currentResult(actors[0].page)) return (await currentResult(actors[0].page))!;
+          const completed = await readSettlement(actors[0].page, observed.received);
+          if (completed !== null) return completed;
           continue; // A genuine server claim deadline may close before the press.
         }
         // Pass does not promise an immediate phase change: other players may
@@ -92,12 +218,16 @@ async function playOneHand(actors: Actor[]): Promise<HandResultEntry> {
         passedWindows.set(actor, claimKey);
         acted = true;
       } else if (state.seat !== null && state.turn?.activeSeat === state.seat && state.turn.awaitingDiscard) {
+        // A predraw phase-only snapshot can still hold13 effective tiles.
+        // Wait for the authoritative legal shape; this does not fix or mask
+        // the separately reported runtime race or extend the hand budget.
+        if (!legalNormalDiscard(await discardReadiness(actor.page))) continue;
         const tile = actor.page.getByTestId('hand-tile').last();
         await expect(tile).toBeVisible();
         const before = await signature(actor);
         try { await tile.click({ timeout: 1200 }); }
         catch (error) {
-          const completed = await currentResult(actor.page);
+          const completed = await readSettlement(actors[0].page, observed.received);
           if (completed !== null) return completed;
           if (await signature(actor) === before) throw error;
           continue; // The server advanced while the ordinary press was queued.
@@ -134,7 +264,15 @@ test(`real bot win/draw (${dealMode}) is held through backdrop, Escape, metadata
     await applyRoom(actor, 3, 0, dealMode);
     await closeLobby(actor);
     if (dealMode === 'manual') await driveManualCeremony([actor]);
-    const result = await playOneHand([actor]);
+    let result: HandResultEntry;
+    try {
+      result = await playOneHand([actor], transport);
+    } catch (error) {
+      await save(testInfo, 'unsettled-hand-observation', {
+        error: String(error), observed: await stalledHandEvidence([actor]), transport,
+      }, actor.page);
+      throw error;
+    }
     expect(result.continuation?.waitingSeats).toEqual([0]);
     await expect(actor.page.getByTestId('hand-result-dialog')).toBeVisible();
     await expect(actor.page.locator('#result-score tbody tr')).toHaveCount(4);
@@ -204,7 +342,7 @@ test('two actual humans must both Continue; an acknowledged reconnect waits and 
     const peerSeat = (await probe(peer)).seat;
     expect(peerSeat).not.toBeNull();
     expect(peerSeat).not.toBe(0);
-    const result = await playOneHand([owner, peer]);
+    const result = await playOneHand([owner, peer], ownerWire);
     expect(result.continuation?.waitingSeats).toEqual([0, peerSeat!].sort((a, b) => a - b));
     await expect(peer.page.getByTestId('hand-result-dialog')).toBeVisible();
     const held = await board(owner.page);
@@ -256,7 +394,7 @@ test('terminal hand keeps authoritative GameComplete and the existing final New 
     await configure(actor, 1, 4100);
     const originalRoom = await applyRoom(actor, 3, 0, 'auto');
     await closeLobby(actor);
-    const result = await playOneHand([actor]);
+    const result = await playOneHand([actor], transport);
     expect(result.continuation).toBeNull();
     await expect(actor.page.locator('#game-complete-modal')).toBeVisible();
     await expect(actor.page.getByTestId('hand-result-dialog')).toBeHidden();

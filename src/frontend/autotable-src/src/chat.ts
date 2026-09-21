@@ -97,7 +97,11 @@ function isSpectator(): boolean {
 
 function isRoomConnected(): boolean {
   return state.gameId !== null && state.localPlayerId !== null
+    && getVerifiedIdentity()?.playerId === state.localPlayerId
     && state.client?.connected() === true
+    && state.client.lastGameId !== null
+    && state.client.serverSnapshotGameId === state.client.lastGameId
+    && state.client.turn.get('current') !== null
     && (new URLSearchParams(window.location.search).get('variant') ?? 'changsha').toLowerCase() === 'changsha';
 }
 
@@ -242,8 +246,10 @@ function stopPolling(): void {
 function syncRoom(): void {
   const identity = getVerifiedIdentity();
   const gameId = state.client?.connected() === true ? state.client.lastGameId : readConcreteGameId(window.location.search);
-  const canonicalRoom = getGameState()?.gameId ?? gameId;
-  const nextScope = JSON.stringify([canonicalRoom, identity?.playerId ?? null]);
+  const bound = state.client?.connected() === true && state.client.lastGameId !== null
+    && state.client.serverSnapshotGameId === state.client.lastGameId && state.client.turn.get('current') !== null;
+  const canonicalRoom = (bound && getGameStateStatus().connected ? getGameState()?.gameId : null) ?? gameId;
+  const nextScope = JSON.stringify([canonicalRoom, identity?.playerId ?? null, bound]);
   const scopeChanged = nextScope !== state.scope;
   if (scopeChanged) {
     state.historyController?.abort();
@@ -282,7 +288,7 @@ function syncRoom(): void {
 }
 
 function roomRecipients(): Array<{ playerId: string; displayName: string }> {
-  if (state.client === null || !state.client.connected()) return [];
+  if (state.client === null || !isRoomConnected()) return [];
   const humans = new Map(getLobbyPresence().players.map(player => [player.playerId, player]));
   const peers: Array<{ playerId: string; displayName: string }> = [];
   const seats = new Map(state.client.seats.entries());
@@ -747,11 +753,10 @@ function attachClient(client: Client): void {
       if (state.client !== client) return;
       syncRoom();
     };
-    client.on('connect', () => {
-      update();
-      void refreshHistory();
-    });
+    client.on('connect', update);
+    client.on('joining', update);
     client.on('disconnect', update);
+    client.on('update', (_entries, full) => { if (full) update(); });
     client.seats.on('update', update);
     client.nicks.on('update', renderRecipientOptions);
   }

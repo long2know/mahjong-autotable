@@ -62,7 +62,14 @@ export function subscribeGameState(cb: Listener): () => void {
 }
 
 export function setGameRoomConnected(gameId: string | null): void {
+  if (joinedRoomId === gameId) return;
+  // This edge comes from a bound runtime snapshot, not a URL or JOINED ack.
+  // Revoke pending old-room work immediately on disconnect/switch/reconnect.
+  invalidate();
   joinedRoomId = gameId;
+  roomId = gameId;
+  playerId = getVerifiedIdentity()?.playerId ?? null;
+  status = 'idle';
   emit();
 }
 
@@ -109,6 +116,8 @@ function parseGamePayload(raw: unknown): GameState {
 
 /** One active room + verified-identity cache; refreshes invalidate older async responses. */
 export function loadGameState(gameId: string, refresh = false): Promise<GameState | null> {
+  if (joinedRoomId === null || (gameId !== joinedRoomId
+    && !(roomId === joinedRoomId && state?.gameId === gameId))) return Promise.resolve(null);
   const identityId = getVerifiedIdentity()?.playerId ?? null;
   const sameRoom = roomId === gameId || state?.gameId === gameId;
   if (!sameRoom || playerId !== identityId) {
@@ -129,7 +138,7 @@ export function loadGameState(gameId: string, refresh = false): Promise<GameStat
   const attempt = (async (): Promise<GameState | null> => {
     try {
       const identity = await bootstrapIdentity();
-      if (epoch !== generation) return null;
+      if (epoch !== generation || joinedRoomId === null) return null;
       if (identity === null) {
         status = 'identity-required';
         error = getIdentityBootstrapState().error;

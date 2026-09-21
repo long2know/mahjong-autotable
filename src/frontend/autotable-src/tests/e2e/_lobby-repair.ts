@@ -65,6 +65,7 @@ function recordFrames(payload: string | Buffer, destination: WireFrame[]): void 
 export async function newActor(
   browser: Browser, baseURL: string | undefined, testInfo: TestInfo, label: string,
   sharedContext?: BrowserContext, destination?: string,
+  fixture: { establishSignedGuest?: boolean } = {},
 ): Promise<Actor> {
   const use = testInfo.project.use;
   const context = sharedContext ?? await browser.newContext({
@@ -102,11 +103,24 @@ export async function newActor(
     new URL(response.url()).pathname === '/api/identity'
       && response.request().method() === 'POST');
   try {
+    let establishedPlayerId: string | null = null;
+    if (fixture.establishSignedGuest) {
+      // Same-cookie authority tests need an established server-issued cookie,
+      // not the first response from competing anonymous bootstrap endpoints.
+      const url = new URL('/api/identity', destination ?? baseURL ?? 'http://localhost:8080/autotable/');
+      const established = await context.request.post(url.href);
+      expect(established.status(), 'the signed-guest fixture must be issued by the real server').toBe(200);
+      establishedPlayerId = (await established.json() as { playerId: string }).playerId;
+      expect(establishedPlayerId).toBeTruthy();
+    }
     await page.goto(destination ?? baseURL ?? 'http://localhost:8080/autotable/', { waitUntil: 'domcontentloaded' });
     const response = await identityResponse;
     expect(response.status(), 'a cached offline identity is not verified bootstrap').toBe(200);
     const identity = await response.json() as { playerId: string; displayName: string };
     expect(identity.playerId).toBeTruthy();
+    if (establishedPlayerId !== null) {
+      expect(identity.playerId, 'browser bootstrap must preserve the established signed-cookie identity').toBe(establishedPlayerId);
+    }
     actor.id = identity.playerId;
     actor.name = identity.displayName;
     await dismissPrompts(actor);

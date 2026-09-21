@@ -106,17 +106,28 @@ test('same-cookie tabs deduplicate; closing a metadata tab preserves the WS host
 test('C1 real duplicate table tab is an observer while the public occupant and original private seat remain', async ({ browser, baseURL }, testInfo) => {
   const actors: Actor[] = [];
   try {
-    const owner = await newActor(browser, baseURL, testInfo, 'c1-active-owner');
+    const owner = await newActor(browser, baseURL, testInfo, 'c1-active-owner',
+      undefined, undefined, { establishSignedGuest: true });
     actors.push(owner);
     const alias = await applyRoom(owner, 3, 0, 'auto');
     await expect.poll(async () => (await probe(owner)).handCount).toBe(14);
     const ownedIds = (await probe(owner)).handIds;
     expect(ownedIds).toHaveLength(14);
+    expect((await probe(owner)).seats[0], 'the server occupant must match the verified fixture identity').toBe(owner.id);
+    expect(await owner.page.evaluate(() =>
+      (window as unknown as { game: { client: { playerId(): string } } }).game.client.playerId()),
+    'C1 owner identity must match the API bootstrap').toBe(owner.id);
     const duplicate = await newActor(browser, baseURL, testInfo, 'c1-live-duplicate',
       owner.context, knownJoinUrl(owner.page.url(), alias));
     actors.push(duplicate);
     expect(duplicate.id).toBe(owner.id);
-    const observed = await waitForSeat(duplicate, null);
+    await waitForSeat(duplicate, null);
+    await expect.poll(async () => (await probe(duplicate)).seats[0],
+      { message: 'the observer full snapshot must retain the original public occupant' }).toBe(owner.id);
+    const observed = await probe(duplicate);
+    expect(await duplicate.page.evaluate(() =>
+      (window as unknown as { game: { client: { playerId(): string } } }).game.client.playerId()),
+    'duplicate C1 identity must equal the same verified API identity').toBe(owner.id);
     expect(observed.connected).toBe(true);
     expect(observed.seats[0]).toBe(owner.id);
     expect(observed.handIds).toEqual([]);

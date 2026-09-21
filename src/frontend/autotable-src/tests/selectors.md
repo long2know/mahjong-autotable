@@ -56,6 +56,24 @@ the top-left re-opens it for new-game configuration.
 
 ## Mobile drawers
 
+### C-1 collection directions and authoritative dispatch
+
+`protocol-conformance.spec.ts` compares the exact registered kind set, resolves
+backend constants, and checks the authoritative `HandleUpdateAsync` branches.
+New kinds require an explicit classification; none are implicitly cosmetic.
+
+| Kinds | Direction / authoritative handling |
+|---|---|
+| `seats`, `claim`, `pickup`, `discard`, `match` | Existing guarded game-command routes. Server-owned scene state is never accepted as arbitrary client authority. |
+| `ownTurn` | Server availability plus guarded client own-turn commands through `TryHandleOwnTurnActionAsync`; not cosmetic passthrough. |
+| `handResultAck` | Client command, key `current`, exact `{gameId, handNumber, resultToken}` from the held result. `TryHandleHandResultAckAsync` validates owning connection and hand/token identity. No claimed seat, player ID or version. |
+| `result`, `gameComplete`, `turn`, `actionRejected` | Server-only collections. Client pushes are explicitly ignored; never echoed, passed through or classified as commands. |
+| `things`, `dice` | Legacy relay scene writes. Authoritative Changsha explicitly drops them and corrects the sender's scene. |
+| `nicks`, `mouse`, `sound` | Explicit existing cosmetic passthrough set. |
+
+The exact registered set is these 16 kinds. C-1 `viewer` authority remains a
+server-envelope field, never a writable collection.
+
 ### Authoritative hand-result continuation
 
 | Selector | Element | Purpose | Source |

@@ -172,7 +172,13 @@ export class Client extends BaseClient {
     this.gameComplete = new Collection('gameComplete', this, { ephemeral: true });
     this.seats.on('update', this.onSeats.bind(this));
     this.on('update', (_entries, full) => {
-      if (full && this.connected()) this.serverSnapshotGameId = this.lastGameId;
+      if (full) {
+        const bound = this.connected()
+          && (this.connectionMode !== 'changsha' || this.turn.get('current') !== null);
+        this.serverSnapshotGameId = bound ? this.lastGameId : null;
+        setGameRoomConnected(this.connectionMode === 'changsha' ? this.serverSnapshotGameId : null);
+      }
+      this.refreshRoomMetadata();
     });
     this.on('disconnect', () => {
       this.serverSnapshotGameId = null;
@@ -197,7 +203,9 @@ export class Client extends BaseClient {
       this.serverSnapshotGameId = null;
       this.lastGameId = game.gameId;
       this.saveReconnectSession();
-      setGameRoomConnected(game.gameId);
+      // JOINED may precede runtime binding. Room-scoped HTTP waits for the
+      // authoritative FULL snapshot, after all collections have been applied.
+      setGameRoomConnected(null);
       // Phase J Wave 5 — connect to Bishop's SignalR hub (idempotent
       // singleton) and load the player profile.  The hub's
       // OnConnectedAsync fires a `ProfileLoaded` event which
@@ -206,13 +214,9 @@ export class Client extends BaseClient {
       // loadProfile() so the local cache lands even if the hub
       // already pushed before our listener was installed.
       initProfileHubBindings();
-      // Phase K Wave 4 — Populate the per-table reactive state so
-      // voice / settings-drawer / future owner-only surfaces share
-      // one cached snapshot of `{ ownerId, voiceEnabled,
-      // viewerIsOwner }`.  Fire-and-forget — surfaces degrade to
-      // their disabled state when the fetch fails.
+      // The first bound FULL update populates per-table metadata for voice,
+      // settings and owner-only controls; JOINED alone is not ready.
       this.roomMetadataSignature = null;
-      this.refreshRoomMetadata();
       void (async (): Promise<void> => {
         try {
           await getHubConnection();
@@ -230,8 +234,6 @@ export class Client extends BaseClient {
       })();
     });
     this.seats.on('update', () => this.saveReconnectSession());
-    this.seats.on('update', () => this.refreshRoomMetadata());
-    this.turn.on('update', () => this.refreshRoomMetadata());
 
     // Phase J Wave 5 — propagate the local profile's displayName into
     // the WS-broadcast nicks collection on every profile update, so
@@ -272,7 +274,8 @@ export class Client extends BaseClient {
 
   private refreshRoomMetadata(): void {
     const variant = new URLSearchParams(window.location.search).get('variant') ?? 'changsha';
-    if (!this.connected() || this.lastGameId === null || variant.toLowerCase() !== 'changsha') return;
+    if (!this.connected() || this.lastGameId === null || variant.toLowerCase() !== 'changsha'
+      || this.serverSnapshotGameId !== this.lastGameId || this.turn.get('current') === null) return;
     const seats = Array.from(this.seats.entries()).map(([id, seat]) => [id, seat.seat]).sort();
     const signature = JSON.stringify([this.lastGameId, seats, this.turn.get('current')?.phase]);
     if (signature === this.roomMetadataSignature) return;
