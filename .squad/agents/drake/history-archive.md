@@ -1,3 +1,9 @@
+# Drake — history archive
+
+> Full prior `history.md` preserved verbatim by Scribe 2026-07-27T01-56-23-811-07-00.
+
+---
+
 # Drake — History
 
 ## Core Context
@@ -26,12 +32,110 @@ written if I stick around past it.
 - Frost owns `Changsha/Dealing/**` (new module), `Changsha/Bot/**`,
   `Changsha/Scoring/**`. Currently on `feat/changsha-dealing-ceremony`.
 - Hicks owns the frontend.
-- Vasquez owns the test infrastructure (`T
+- Vasquez owns the test infrastructure (`TestInfrastructure/**` —
+  e.g. `PostgresTestDatabaseLifetime.cs`) and runs playtests.
+- Apone owns DevOps / CI / Docker / observability.
+- Scribe handles decisions.md merges and orchestration logs.
+- Ripley / Ralph / Ferro / Hudson — other specialists already on the
+  roster, dormant at the time I joined.
 
-## Learnings (summarized 2026-07-27T01-56-23-811-07-00)
+**Lane rules learned the first day:**
 
-> Full history (19846 B, 9 entries) preserved verbatim in `history-archive.md`. Most-recent entries retained below.
+- Don't touch other agents' active branches even adjacently.
+- The squad's flock pipeline lives at `.work/squad-git-lock`. Always
+  branch from `origin/main`, never from another agent's branch.
+- Memos go in `.squad/decisions/inbox/<agent>-<short-handle>.md` and
+  are gitignored — force-add with `git add -f`.
+- Agent history files live under `.squad/agents/<agent>/history.md`
+  and ARE tracked (no `-f` needed in principle, but the brief
+  asked for `-f` belt-and-braces so I followed instructions).
 
+## First task — PlayerStats.LastGameAt nullable hotfix (2026-05-27)
+
+**Commit authored:** _TBD — recorded after squash-merge_
+
+**Symptom:** Runtime `SqliteException 19 — NOT NULL constraint failed:
+PlayerStats.LastGameAt` on `POST /api/identity` against a dev SQLite
+file that pre-dated Phase J Wave 5.
+
+**Root cause:** `Data/DatabaseBootstrapper.cs:301` declared the
+SQLite-only defensive bootstrap CREATE TABLE for `PlayerStats` with
+`LastGameAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'`. The EF
+model (`Players/PlayerStats.cs:18` → `public DateTime? LastGameAt`)
+and every EF migration + model snapshot across SQLite / Postgres /
+SqlServer say nullable. The hand-rolled bootstrap was the only thing
+shadowing the model — and it only ran on dev SQLite files that pre-
+date the migration set.
+
+**Fix:** Surgical single-file change to
+`Data/DatabaseBootstrapper.cs`:
+1. Corrected the CREATE: `"LastGameAt" TEXT NULL`.
+2. Added a defensive remediation pass: PRAGMA-introspect the
+   `notnull` flag on `LastGameAt`; if `1`, rebuild the table with
+   the SQLite-recommended pattern and remap the sentinel default
+   back to `NULL`.
+
+No EF migration changes (they were already correct). No model snapshot
+changes (already correct). No entity-config changes (no fluent
+`.IsRequired()` was set).
+
+**Verified:**
+- `dotnet build` 0 errors.
+- `dotnet test … --filter PlayerStats|PlayerProfile|DatabaseBootstrap`
+  — 11/11 pass.
+- Full suite — 5219 pass; 2 flaky `Autotable/MultiGameRoutingTests`
+  (Bishop's lane) re-passed 8/8 in isolation, flake attributable to
+  a concurrent test runner from another agent racing on the shared
+  test DB.
+- Fresh-DB runtime smoke: `/health` + `POST /api/identity` 200 OK.
+- Broken-DB remediation: hand-seeded the pre-fix schema, booted,
+  confirmed table rebuilt + data preserved + sentinel default mapped
+  back to NULL.
+
+**Memo:** `.squad/decisions/inbox/drake-playerstats-lastgameat-fix.md`
+
+**Lane discipline observed:** Did not touch any of
+`Changsha/Runtime/**`, `Changsha/Dealing/**`, `Changsha/Bot/**`,
+`Changsha/Scoring/**`, `Autotable/**`, frontend, workflows, or
+`TestInfrastructure/**`. The only file changed in product code was
+`src/backend/src/Mahjong.Autotable.Api/Data/DatabaseBootstrapper.cs`.
+
+**Pattern locked in:** The defensive `EnsureSqlite…TablesAsync`
+bootstrappers in `DatabaseBootstrapper.cs` are effectively a
+hand-rolled migration chain for the SQLite provider. Any future
+schema change covered by one of those helpers MUST update both the
+canonical EF migration AND the hand-rolled SQL in lockstep, or this
+exact class of bug recurs.
+
+## Second task — PlayerProfiles.PlayerId UNIQUE race hotfix (2026-05-29)
+
+**Commit authored:** `2df2e75` — `fix(persistence): PlayerProfiles.PlayerId UNIQUE race-safe upsert (squash)`
+
+**Symptom:** Stephen hit
+`CLR/Microsoft.EntityFrameworkCore.DbUpdateException` with innermost
+`Microsoft.Data.Sqlite.SqliteException : SQLite Error 19: 'UNIQUE
+constraint failed: PlayerProfiles.PlayerId'` during live play. Stack
+started at `ReaderModificationCommandBatch.ExecuteAsync`.
+
+**Root cause:** Classic SELECT-then-INSERT race in
+`Players/PlayerProfileService.GetOrCreateAsync` (and the two sibling
+`Update*Async` methods that share the same shape). Two concurrent
+requests for the same persistent player id (POST `/api/identity` racing
+the `ChangshaHub.OnConnectedAsync` "ensure profile on first connect"
+call, or two browser tabs onboarding together) both saw
+`FirstOrDefault → null` and both called `db.PlayerProfiles.Add`. The
+losing `SaveChangesAsync` violated the unique PK.
+
+**Fix:** Surgical single-file refactor of
+`Players/PlayerProfileService.cs`:
+1. New `UpsertProfileAsync(playerId, onCreate, onExisting, ct)` private
+   helper — 2-attempt loop, fresh `IServiceScope` per attempt, catches
+   `DbUpdateException` only when `IsUniqueViolation(ex)` is true and
+   re-fetches the row the winning caller just committed.
+2. New `IsUniqueViolation(DbUpdateException)` cross-provider predicate
+   (SQLite errno 19, Postgres SqlState 23505, SqlServer Number 2627/2601)
+   so the fix lands once and works on every provider this codebase ships
+   against.
 3. `GetOrCreateAsync`, `UpdateDisplayNameAsync`, `UpdateAvatarColorAsync`
    rewritten as thin shells over `UpsertProfileAsync`. Happy-path
    behaviour identical; only race semantics changed.
@@ -300,101 +404,3 @@ Persistence layer, Apone's Dockerfile, or any other agent's
 production source.
 
 📌 JWT signing-key prod hardening (2026-06-04): fail-fast in Production + restart-survival proven end-to-end — committed `385e7fc`. Merged to squad decision: Production-Ready Wave (2026-06-04).
-
-## Real-play gate hand-2 "stall" — root-caused to the CLIENT (2026-08-11)
-
-**Brief (Stephen):** independently diagnose and, only if proven, fix the
-corrected real-play gate's multi-hand progression stall. Terminal
-evidence against :18087 / HEAD `349dbd67`: `dealt:true, playable:true,
-discardsFired:15, claimsHandled:8, handEnds:1, dealersSeen:[0,2],
-gcComplete:false, stalled:true`, reason `no progress for 52s`.
-
-**Verdict: NO backend defect. The runtime was correctly parked waiting
-for a human action the browser never performed. No product code changed.**
-
-### Reproduction (exact, twice)
-Built HEAD `349dbd67` Release into a throwaway clone, served the
-committed bundle on `:18187`, ran the corrected gate spec unmodified:
-`real play made no progress for 53s (discards=15 claims=8 handEnds=1
-dealers=[0,2])` — byte-for-byte the reported signature.
-
-### Authoritative terminal state (persisted snapshot, wedged game)
-```
-phase=9 (AwaitingDiscard)  hand=2  dealer=2 (BOT)  active=0 (HUMAN)
-pickupSeatIndex=null  pickupRoundIndex=0  turnNumber=6  stateVersion=211
-wall=52  claimWindow=null  discardPile=3
-hands=[seat0:14, seat1:10+1 meld, seat2:13, seat3:10+1 meld]
-seats=[0 human, 1 bot, 2 bot(dealer), 3 bot]
-seat0 tiles = [79,5,17,15,83,70,56,60,31,6,73,50,2,101]
-```
-The hand-2 ceremony **completed**: the bot dealer auto-rolled, every bot
-took its batches, the human took 0→4→8→12→13, bots 1/2/3 played three
-discards and two Chow claims, and the human drew its 14th tile. Nothing
-was scheduled-but-unfired: `Bot pickup failed` / `Bot dealer dice-roll
-failed` / `Bot turn failed` = **0** occurrences in the server log.
-
-### Wire evidence (live watcher attached during the failing run)
-```
-[62468] pickup[current] = {phase:DealerExtra, seatIndex:2, count:1, …}
-[63007] pickup[current] = null              <- explicit tombstone, correct
-[63007] turn[current]   = {activeSeat:2, phase:AwaitingDiscard, awaitingDiscard:true}
-…
-[65529] turn[current]   = {activeSeat:0, phase:AwaitingDiscard, awaitingDiscard:true}
-```
-
-### Client evidence (fresh page, SAME wedged game, same `mahjong_pid`)
-```
-seat=0  pickupCurrent=null  isMyPickupTurn=false  hasExtraHandTile=TRUE
-turnCurrent={activeSeat:0, phase:AwaitingDiscard, awaitingDiscard:true}
-14 owned hand.*@0 slots (hand.0@0 … hand.13@0)
-```
-A freshly-loaded client on the identical server state renders the correct,
-actionable discard affordance. The stalled long-lived session did not.
-
-### Required human action (server was waiting for exactly this)
-`["discard", 0, {tileId}]` for any of seat 0's 14 tiles. Supplying it
-un-wedged the table instantly: `turnNumber 6→10`, `stateVersion 211→219`,
-`discardPile 3→7` — bots 1/2/3 each played and the turn returned to the
-human. **Ownership: frontend (Hicks)** — long-lived client world-state,
-not the runtime, not the rules engine, not the WS transport.
-
-### Hudson vs Vasquez conflict — RESOLVED in Vasquez's favour
-Human non-dealer (seat 1) + BOT dealer (seat 0), hand 1, driven through
-the real `/autotable/ws` auto-seat-fill/auto-start path with NO human
-roll: the bot dealer auto-rolls and the ceremony runs to
-`AwaitingDiscard hands=[14,13,13,13]`. Reproduced deterministically on
-both a fast and a slow (production-shaped) timing profile. Hudson's
-`human-seat1/bot-dealer` stall does not reproduce at HEAD.
-
-### Regressions added (test-only; no product edit)
-- `Changsha/Acceptance/HumanSeatMultiHandManualProgressionTests.cs` (4 tests)
-  — hand-1 human dealer → forced Hu by BOT seat 2 → banker rotates onto a
-  bot → hand-2 ceremony must complete (`[13,13,14,13]`); full 4-hand
-  human+3-Hard-bot real play to `GameComplete` with a 15 s no-progress
-  stall detector; **Auto mode preserved** (never enters a pickup phase);
-  **reconnect preserved** (disconnect mid-ceremony must NOT bot-ify the
-  seat, must NOT auto-play the human, ceremony resumes on reconnect).
-- `Changsha/Acceptance/WsDrivenManualProgressionRegressionTests.cs` (4 tests)
-  — same scenarios driven over the REAL `/autotable/ws` endpoint with the
-  bundle's own wire verbs, fast + slow profiles.
-
-**Harness note worth remembering:** `IChangshaGameRuntime.TryGetSnapshot`
-is deliberately lock-free, so a poller can observe a mutation *before*
-`StateChanged` fires (both under the instance lock, snapshot second). Any
-"latch the state at transition X" assertion must subscribe to
-`StateChanged` **and** bounded-wait for the latch, or it flakes.
-
-**Validation:** new 8/8 green ×4 consecutive runs in the worktree and ×3
-in the clean clone; `Changsha.Acceptance | StateMachine | BankerRotation |
-TurnFlow | Dealing | GameCompletionLifecycle | Reconnect | Tests.Autotable`
-→ **927/927**; full suite in the clean clone → **5808 passed / 2 skipped /
-0 failed**; `dotnet build Mahjong.Autotable.slnx -c Release` → 0 errors.
-
-**Lane discipline:** ZERO product-code edits. Did not touch
-`Autotable/AutotableWsEndpoint.cs` (Wierzbowski had it mid-edit and
-briefly non-compiling — I built/tested from a throwaway clone at
-`349dbd67` rather than wait or interfere), Vasquez's authorization tests,
-the frontend, the E2E harness, workflows, visual PNGs, or the bundle.
-
-### 2026-09-17 - Approved multiplayer/lobby/chat backend implementation
-Implemented canonical room lookup/metadata, persisted creation bot slots and serialized creator claims, existing-only join admission, verified WS/hub presence, targeted bounded invitations, and access-filtered REST chat adapters in authorized backend paths. Preserved the PublicRooms recovery lockout, gameplay wire IDs, native explicit controls, and voice account policy. API Release build is clean. Focused existing regressions: 57/61 pass; four old duplicate-authority/late-bot-fill assertions are flagged for coordinator and eligible test-owner reconciliation, not rebaselined. Evidence and all 14 source hashes are verified in lobby-fix-20260917/drake/backend-handoff.json. No acceptance claim; independent QA/integration remains outstanding. No frontend/tests edited, agents spawned, commits, installs, or packaging.

@@ -55,6 +55,41 @@
       "created_at": "2026-05-25T22:15:00Z",
       "legacy_named": false,
       "status": "active"
+    },
+    "drake": {
+      "persistent_name": "Drake",
+      "universe": "Alien",
+      "created_at": "2026-08-11T00:08:19.918-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "dietrich": {
+      "persistent_name": "Dietrich",
+      "universe": "Alien",
+      "created_at": "2026-08-11T00:08:19.918-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "wierzbowski": {
+      "persistent_name": "Wierzbowski",
+      "universe": "Alien",
+      "created_at": "2026-08-11T00:08:19.918-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "spunkmeyer": {
+      "persistent_name": "Spunkmeyer",
+      "universe": "Alien",
+      "created_at": "2026-08-11T00:08:19.918-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "burke": {
+      "persistent_name": "Burke",
+      "universe": "Alien",
+      "created_at": "2026-08-11T00:08:19.918-07:00",
+      "legacy_named": false,
+      "status": "active"
     }
   }
 }

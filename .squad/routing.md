@@ -8,7 +8,11 @@ How to decide who handles what.
 |-----------|----------|----------|
 | Architecture, scope, and cross-team decisions | Ripley | Feature decomposition, interface contracts, risk trade-offs |
 | Backend, APIs, persistence, and integration | Bishop | .NET 10 services, EF Core models, SQLite migrations, provider abstraction |
+| Runtime reliability and cross-layer hotfixes | Drake | Async progression stalls, lifecycle races, state/persistence integration defects |
+| WebSocket action authorization | Spunkmeyer | Connection-to-seat binding, spectator isolation, inbound mutation authorization |
+| Durable identity and cookie security | Burke | Signed player identity, anti-impersonation, reconnect credential integrity |
 | Frontend and interaction layer | Hicks | Table UI behavior, client integration, optional React/Fluent/Vite migration slices |
+| Three.js renderer and scene reconciliation | Dietrich | Thing/slot ownership, hidden pools, raycasting, scene graph invariants |
 | Changsha and variant rule logic | Vasquez | Wall setup/draw rules, turn flow, variant compatibility boundaries |
 | Code review and quality gate | Hudson | Review implementation quality, reject/approve with revision guidance |
 | Testing and QA | Hudson | Rules validation cases, regression suites, gameplay scenario checks |
@@ -26,6 +30,11 @@ How to decide who handles what.
 | `squad:hicks` | Pick up frontend/client behavior issues | Hicks |
 | `squad:vasquez` | Pick up rules and variant logic issues | Vasquez |
 | `squad:hudson` | Pick up testing and reviewer-gate issues | Hudson |
+| `squad:drake` | Pick up runtime reliability and cross-layer hotfixes | Drake |
+| `squad:dietrich` | Pick up renderer and scene-reconciliation issues | Dietrich |
+| `squad:wierzbowski` | Pick up WebSocket authorization and spectator-isolation issues | Wierzbowski |
+| `squad:spunkmeyer` | Pick up endpoint authorization completion and adversarial tests | Spunkmeyer |
+| `squad:burke` | Pick up durable identity and cookie-security issues | Burke |
 | `squad:scribe` | Pick up logging/decision-hygiene tasks | Scribe |
 | `squad:ralph` | Pick up monitoring/triage automation tasks | Ralph |
 
