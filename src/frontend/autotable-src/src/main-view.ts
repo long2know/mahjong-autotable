@@ -2,7 +2,7 @@ import { AmbientLight, DirectionalLight, Group, Mesh, Object3D, OrthographicCame
 import { World } from './world';
 import { CustomOutline } from './render/custom-outline';
 import { GameType, Size } from './types';
-import { fitTableProjection, type ScreenArea } from './table-fit';
+import { fitTableProjection, localHandFitCorners, responsiveHandScale, type ScreenArea } from './table-fit';
 
 // Phase K Wave 7 — OutlinePass + EffectComposer + RenderPass are
 // gone.  The renderer is now a single-pass `renderer.render(scene,
@@ -290,7 +290,8 @@ export class MainView {
       this.updateOrthographicCamera(seat === null, 0, 0, null);
     }
     this.viewGroup.updateMatrixWorld();
-    fitTableProjection(this.camera, this.fitCorners, this.width, this.height, this.playArea());
+    const corners = this.fitCorners.concat(localHandFitCorners(seat, this.handPresentationScale));
+    fitTableProjection(this.camera, corners, this.width, this.height, this.playArea());
 
     // Fit is the zero-zoom baseline. Do not auto-fit away an intentional zoom,
     // pan or look-down; the existing controls remain independent of resizing.
@@ -298,6 +299,10 @@ export class MainView {
     if (this.perspective) this.updatePespectiveCamera(seat === null, lookDown, userZoom, mouse2);
     else this.updateOrthographicCamera(seat === null, lookDown, userZoom, mouse2);
     this.viewGroup.updateMatrixWorld();
+  }
+
+  get handPresentationScale(): number {
+    return responsiveHandScale(this.width, this.height);
   }
 
   private playArea(): ScreenArea {
@@ -311,26 +316,20 @@ export class MainView {
       right: this.width - Math.max(margin, safeRight), bottom: this.height - margin,
     };
     const compact = this.width <= 900 || this.height <= 520;
-    const topChrome = ['new-game', 'turn-banner', 'variant-badge', 'settings-button', 'lobby-toggle'];
+    const topChrome = ['new-game', 'variant-badge', 'settings-button', 'lobby-toggle'];
     if (compact) topChrome.push('bot-banner');
     for (const id of topChrome) {
       const element = document.getElementById(id);
       if (!element || !element.getClientRects().length) continue;
-      const bounds = element.getBoundingClientRect();
-      if (bounds.top - canvas.top < this.height * 0.45) {
-        area.top = Math.max(area.top, bounds.bottom - canvas.top + margin);
+      // Layout slots, not transformed hover bounds (the desktop gear rotates).
+      const parentTop = element.offsetParent?.getBoundingClientRect().top ?? 0;
+      const top = element.offsetTop + parentTop - canvas.top;
+      if (top < this.height * 0.45) {
+        area.top = Math.max(area.top, top + element.offsetHeight + margin);
       }
     }
-    for (const id of ['own-hand-tray', 'pickup-hud']) {
-      const element = document.getElementById(id);
-      if (!element || !element.getClientRects().length) continue;
-      const bounds = element.getBoundingClientRect();
-      area.bottom = Math.min(area.bottom, bounds.top - canvas.top - margin);
-    }
-    const claim = document.querySelector('.ferro-claim-overlay-visible');
-    if (claim?.getClientRects().length) {
-      area.bottom = Math.min(area.bottom, claim.getBoundingClientRect().top - canvas.top - margin);
-    }
+    // Turn text and transient pickup/claim overlays do not define the camera's
+    // viewport. Their changing size/countdown must never move the table.
     const tableStatus = document.getElementById('bot-banner');
     if (!compact && tableStatus?.getClientRects().length) {
       area.bottom = Math.min(area.bottom, tableStatus.getBoundingClientRect().top - canvas.top - margin);
@@ -428,6 +427,7 @@ export class MainView {
   }
 
   setPerspective(perspective: boolean): void {
+    if (this.perspective === perspective) return;
     this.perspective = perspective;
     this.setupRendering();
   }

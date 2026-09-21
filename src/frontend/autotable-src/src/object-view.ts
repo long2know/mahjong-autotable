@@ -168,10 +168,7 @@ export class ObjectView {
       const typeParams = [...params.values()].filter(p => p.type === type);
       typeParams.sort((a, b) => a.index - b.index);
 
-      if (typeParams.length === 0) {
-        continue;
-      }
-      const startIndex = typeParams[0].index;
+      const startIndex = typeParams[0]?.index ?? 0;
       const thingGroup = this.thingGroups.get(type)!;
       thingGroup.replace(startIndex, typeParams);
     }
@@ -271,12 +268,12 @@ export class ObjectView {
       }
       const custom = thing.hovered || thing.selected || thing.held || thing.bottom || thing.highlighted || thing.drawn;
       if (!custom && thingGroup.canSetSimple()) {
-        thingGroup.setSimple(thing.thingIndex, thing.place.position, thing.place.rotation);
+        thingGroup.setSimple(thing.thingIndex, thing.place.position, thing.place.rotation, thing.place.scale);
         continue;
       }
 
       const obj = thingGroup.setCustom(
-        thing.thingIndex, thing.place.position, thing.place.rotation);
+        thing.thingIndex, thing.place.position, thing.place.rotation, thing.place.scale);
 
       const material = obj.material as MeshLambertMaterial;
       const wasTransparent = material.transparent;

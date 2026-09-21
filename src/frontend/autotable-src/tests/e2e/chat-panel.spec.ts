@@ -107,32 +107,22 @@ test.describe('Mahjong Autotable — table chat panel', () => {
     }
   });
 
-  test('channel selector exposes table / spectators / private options', async ({ page }) => {
+  test('a real seated table exposes table and private chat channels', async ({ browser, baseURL }, testInfo) => {
     test.setTimeout(45_000);
-    await mockChatBackend(page);
-    await gotoChat(page);
-
-    if (!(await chatShipped(page))) {
-      test.info().annotations.push({
-        type: 'soft-pass',
-        description: 'chat channel selector not yet wired',
-      });
-      return;
+    const actor = await newActor(browser, baseURL, testInfo, 'chat-channels');
+    try {
+      await mockChatBackend(actor.page);
+      await applyRoom(actor, 0);
+      await closeLobby(actor);
+      await openOnline(actor);
+      const options = actor.page.getByTestId('chat-channel-select').locator('option');
+      await expect(options).toHaveCount(2);
+      expect(await options.evaluateAll(items => items.map(item => (item as HTMLOptionElement).value)))
+        .toEqual(['table', 'private']);
+      expect(actor.errors).toEqual([]);
+    } finally {
+      await actor.context.close();
     }
-
-    const select = page.getByTestId('chat-channel-select');
-    if (await select.count() === 0) {
-      test.info().annotations.push({
-        type: 'soft-pass',
-        description: 'chat-channel-select not exposed',
-      });
-      return;
-    }
-
-    const options = await select.locator('option').allInnerTexts();
-    // We don't assert exact wording (i18n), only that at least one option
-    // is offered when the selector is wired.
-    expect(options.length).toBeGreaterThan(0);
   });
 
   test('send button stays graceful when backend is missing', async ({ page }) => {

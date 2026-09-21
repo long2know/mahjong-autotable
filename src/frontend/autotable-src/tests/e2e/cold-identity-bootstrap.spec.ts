@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { waitForBoardHand } from './_mobile-geometry';
 
 interface IdentityReply {
   page: string;
@@ -90,7 +91,7 @@ test('fresh normal pages keep one verified identity across API, signed cookie, p
     await owner.waitForURL(url => url.searchParams.has('gameId'), { waitUntil: 'domcontentloaded' });
     await dismiss(owner);
     await expect.poll(() => joined.some(j => j.page === 'owner' && j.seat === 0)).toBe(true);
-    await expect(owner.getByTestId('hand-tile')).toHaveCount(14);
+    await waitForBoardHand(owner);
     const alias = new URL(owner.url()).searchParams.get('gameId')!;
     const duplicate = await context.newPage();
     await observe(duplicate, 'duplicate');

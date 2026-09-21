@@ -1,11 +1,12 @@
-import type { Page } from '@playwright/test';
-import type { Camera, Group, InstancedMesh, Mesh } from 'three';
+import { expect, type Page } from '@playwright/test';
+import type { Camera, Group, InstancedMesh, Mesh, Raycaster, Vector2 } from 'three';
 import type { Slot } from '../../src/slot';
 
 interface ProbeGame {
   client: { seat: number | null };
   mainView: { camera: Camera; playArea(): Bounds };
   mainGroup: Group;
+  mouseUi: { raycaster: Raycaster; currentObjects: Mesh[] };
   objectView: { thingGroups: Map<string, { startIndex: number; meshes: Mesh[]; instancedMesh: InstancedMesh }> };
   world: { slots: Map<string, Slot>; things: Map<number, {
     index: number; type: string; typeIndex: number; hidden: boolean;
@@ -15,14 +16,15 @@ interface ProbeGame {
 
 interface Bounds { left: number; right: number; top: number; bottom: number }
 interface TileBounds extends Bounds {
-  id: number; face: number; width: number; height: number; x: number; y: number; hit: boolean;
+  id: number; face: number; width: number; height: number; x: number; y: number; hit: boolean; raycastId: number | null;
+  obstructedBy: string | null;
 }
 export interface GeometryReport {
   width: number; height: number; dpr: number; camera: string; seat: number | null;
   canvas: { left: number; top: number; width: number; height: number };
   pageWidth: number; pageHeight: number; table: Bounds | null;
   meshes: Array<Bounds & { id: number; face: number; slot: string }>;
-  ownMeshCount: number; tiles: TileBounds[]; tray: boolean;
+  ownMeshCount: number; tiles: TileBounds[];
   chrome: Record<string, Bounds & { hit: boolean }>;
   playArea: Bounds;
   areas: Array<Bounds & { slot: string }>;
@@ -67,21 +69,20 @@ export async function mobileGeometry(page: Page): Promise<GeometryReport> {
       const rect = projected(mesh, index);
       if (rect) meshes.push({ id: thing.index, face: thing.typeIndex, slot: thing.slot.name, ...rect });
     }
-    const ownMeshes = meshes.filter(mesh => /^hand\.\d+@/.test(mesh.slot) && mesh.slot.endsWith('@' + game.client.seat));
-    const tray = document.getElementById('own-hand-tray');
-    const tiles = tray?.getClientRects().length ? [...tray.querySelectorAll<HTMLButtonElement>('[data-tile-id]')].map(tile => {
-      const r = tile.getBoundingClientRect();
-      const x = (r.left + r.right) / 2, y = (r.top + r.bottom) / 2;
-      const hit = document.elementFromPoint(x, y);
-      return {
-        id: Number(tile.dataset.tileId), face: Number(tile.dataset.face),
-        left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height,
-        x, y, hit: hit === tile || tile.contains(hit),
-      };
-    }) : ownMeshes.map(mesh => {
+    const ownMeshes = meshes.filter(mesh => /^hand\.\d+@/.test(mesh.slot) && mesh.slot.endsWith('@' + game.client.seat))
+      .sort((a, b) => a.left - b.left);
+    const Ray = game.mouseUi.raycaster.constructor as new () => Raycaster;
+    const ray = new Ray();
+    const tiles = ownMeshes.map(mesh => {
       const x = (mesh.left + mesh.right) / 2, y = (mesh.top + mesh.bottom) / 2;
+      ray.setFromCamera({ x: (x - canvas.left) / canvas.width * 2 - 1,
+        y: 1 - (y - canvas.top) / canvas.height * 2 } as Vector2, camera);
+      const raycastId: number | null = ray.intersectObjects(game.mouseUi.currentObjects)[0]?.object.userData.id ?? null;
+      const target = document.elementFromPoint(x, y);
+      const canvasHit = target?.tagName === 'CANVAS';
       return { ...mesh, width: mesh.right - mesh.left, height: mesh.bottom - mesh.top, x, y,
-        hit: document.elementFromPoint(x, y)?.tagName === 'CANVAS' };
+        raycastId, hit: canvasHit && raycastId === mesh.id,
+        obstructedBy: canvasHit ? null : target ? `${target.tagName}#${target.id}.${target.className}` : 'outside viewport' };
     });
     const chrome: Record<string, { left: number; top: number; right: number; bottom: number; hit: boolean }> = {};
     for (const id of ['new-game', 'lobby-toggle', 'settings-button', 'settings-toggle', 'move-log-toggle',
@@ -127,10 +128,28 @@ export async function mobileGeometry(page: Page): Promise<GeometryReport> {
       canvas: { left: canvas.left, top: canvas.top, width: canvas.width, height: canvas.height },
       pageWidth: document.documentElement.scrollWidth, pageHeight: document.documentElement.scrollHeight,
       table: table ? projected(table) : null, meshes, ownMeshCount: ownMeshes.length,
-      tiles, chrome, tray: !!tray?.getClientRects().length,
+      tiles, chrome,
       areas, actions,
       playArea: { left: available.left + canvas.left, right: available.right + canvas.left,
         top: available.top + canvas.top, bottom: available.bottom + canvas.top },
     };
   });
+}
+
+export async function waitForBoardHand(page: Page, count = 14): Promise<void> {
+  await expect(page.locator('body')).toHaveAttribute('data-scene-effects-ready', 'true');
+  await expect.poll(async () => (await mobileGeometry(page)).ownMeshCount).toBe(count);
+}
+
+export async function setHandOrder(page: Page, mode: 'suit' | 'groups'): Promise<void> {
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('settings-tab-display').click();
+  const select = page.getByTestId('settings-hand-sort');
+  if (await select.inputValue() !== mode) {
+    await page.getByTestId('settings-panel-display').getByRole('button', { name: 'Hand order', exact: true }).click();
+    await page.getByRole('option', { name: mode === 'suit' ? 'Suit + rank' : 'Pairs / triples first', exact: true }).click();
+  }
+  await expect(select).toHaveValue(mode);
+  await page.getByTestId('settings-close').click();
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 }

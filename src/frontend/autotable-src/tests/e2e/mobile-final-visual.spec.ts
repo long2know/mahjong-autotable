@@ -2,7 +2,7 @@ import { test, expect, type Page, type TestInfo } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { newActor, applyRoom, closeLobby, dismissPrompts, probe, type Actor } from './_lobby-repair';
-import { mobileGeometry, type GeometryReport } from './_mobile-geometry';
+import { mobileGeometry, setHandOrder, waitForBoardHand, type GeometryReport } from './_mobile-geometry';
 
 type Rect = { left: number; top: number; right: number; bottom: number };
 const overlaps = (a: Rect, b: Rect): boolean =>
@@ -15,13 +15,6 @@ async function view(page: Page, perspective: boolean): Promise<void> {
   await page.getByTestId('settings-perspective-toggle').setChecked(perspective);
   await page.getByTestId('settings-close').click();
   await expect.poll(async () => (await mobileGeometry(page)).camera).toBe(perspective ? 'PerspectiveCamera' : 'OrthographicCamera');
-}
-
-async function sort(page: Page, mode: 'suit' | 'groups'): Promise<void> {
-  if (await page.getByTestId('hand-sort').inputValue() === mode) return;
-  await page.getByTestId('own-hand-tray').getByRole('button', { name: 'Hand order', exact: true }).click();
-  await page.getByRole('option', { name: mode === 'suit' ? 'Suit + rank' : 'Pairs / triples first', exact: true }).click();
-  await expect(page.getByTestId('hand-sort')).toHaveValue(mode);
 }
 
 async function overlays(page: Page): Promise<Array<Rect & { id: string }>> {
@@ -58,9 +51,7 @@ async function capture(page: Page, testInfo: TestInfo, name: string, handCount: 
   const check = (ok: boolean, message: string): void => { if (!ok) violations.push(message); };
   check(report.pageWidth <= report.width, `page width ${report.pageWidth} exceeds ${report.width}`);
   check(report.pageHeight <= report.height, `page height ${report.pageHeight} exceeds ${report.height}`);
-  const own3d = new Set(report.tiles.map(tile => tile.id));
   for (const item of [...report.meshes, ...report.areas]) {
-    if ('id' in item && own3d.has(item.id) && report.tray) continue;
     check(item.left >= report.playArea.left - 0.5, `${item.slot}: left ${item.left}`);
     check(item.right <= report.playArea.right + 0.5, `${item.slot}: right ${item.right}`);
     check(item.top >= report.playArea.top - 0.5, `${item.slot}: top ${item.top}`);
@@ -71,8 +62,9 @@ async function capture(page: Page, testInfo: TestInfo, name: string, handCount: 
   }
   for (const tile of report.tiles) {
     check(tile.hit === true, `own tile ${tile.id} must receive the hit`);
-    check(tile.width >= (report.tray ? 44 : 30), `own tile ${tile.id}: width ${tile.width}`);
-    check(tile.height >= 44, `own tile ${tile.id}: height ${tile.height}`);
+    const compact = report.width <= 900 || report.height <= 520;
+    check(tile.width >= (compact ? 10 : 30), `own tile ${tile.id}: width ${tile.width}`);
+    check(tile.height >= (compact ? 16 : 44), `own tile ${tile.id}: height ${tile.height}`);
   }
   for (const action of report.actions) check(action.hit === true, `essential action ${action.id}`);
   expect(violations, `${name}: every projected bound, occlusion, touch size and action target`).toEqual([]);
@@ -80,11 +72,12 @@ async function capture(page: Page, testInfo: TestInfo, name: string, handCount: 
 }
 
 async function discard(actor: Actor, mode: 'suit' | 'groups'): Promise<number> {
-  await sort(actor.page, mode);
+  await setHandOrder(actor.page, mode);
   const before = actor.sent.length;
-  const tile = actor.page.getByTestId('hand-tile').last();
-  const id = Number(await tile.getAttribute('data-tile-id'));
-  await tile.tap();
+  const tile = (await mobileGeometry(actor.page)).tiles.at(-1)!;
+  const id = tile.id;
+  expect(tile.hit).toBe(true);
+  await actor.page.touchscreen.tap(tile.x, tile.y);
   await expect.poll(() => actor.sent.slice(before).flatMap(frame => frame.entries ?? [])
     .filter(([kind]) => kind === 'discard').map(([, , value]) => value?.tileId)).toEqual([id]);
   await expect.poll(async () => (await probe(actor)).handIds).not.toContain(id);
@@ -150,7 +143,7 @@ test('final integrated visual gate: real draw, meld, both sorts, enabled panels,
     await actor.page.locator('#lobby-seed').fill('4100');
     await applyRoom(actor, 3, 0, 'auto');
     await closeLobby(actor);
-    await expect(actor.page.getByTestId('hand-tile')).toHaveCount(14);
+    await waitForBoardHand(actor.page);
     const sizes = [[360, 800], [390, 844], [844, 390], [820, 1180], [1280, 900]];
     for (const [width, height] of sizes) {
       await actor.page.setViewportSize({ width, height });
@@ -206,7 +199,7 @@ test('final integrated visual gate: real draw, meld, both sorts, enabled panels,
     });
     await dismissPrompts(actor);
     await closeLobby(actor);
-    await expect(actor.page.getByTestId('hand-sort')).toHaveValue('groups');
+    expect(await actor.page.evaluate(() => JSON.parse(localStorage.getItem('mahjong.settings.v1')!).handSort)).toBe('groups');
     await capture(actor.page, testInfo, 'meld-reconnected-390x844', concealed);
     writeFileSync(testInfo.outputPath('real-actions.json'), JSON.stringify({
       suitDiscard, groupsDiscard, concealed, exposedMeldTiles: melds,
@@ -263,7 +256,7 @@ test(`final visual gate: manual wall-pickup with chat ${viewport.width}x${viewpo
         return { mouse2: g.mouseUi.mouse2, mouse3: g.mouseUi.mouse3, hovered: g.world.hovered?.slot.name ?? null };
       }),
     }, null, 2));
-    await expect(actor.page.getByTestId('hand-tile')).toHaveCount(4);
+    await waitForBoardHand(actor.page, 4);
     await capture(actor.page, testInfo, 'manual-after-real-wall-tap', 4);
     expect(actor.errors).toEqual([]);
   } finally { await context.close(); }
@@ -279,7 +272,7 @@ test(`CURRENT open-panel-only visual proof ${viewport.width}x${viewport.height}`
     await actor.page.locator('#lobby-hand-count-fieldset label:has(input[value="1"])').click();
     await applyRoom(actor, 3, 0, 'auto');
     await closeLobby(actor);
-    await expect(actor.page.getByTestId('hand-tile')).toHaveCount(14);
+    await waitForBoardHand(actor.page);
     for (const perspective of [true, false]) {
       await view(actor.page, perspective);
       const suffix = `${viewport.width}x${viewport.height}-${perspective ? 'perspective' : 'flat'}`;

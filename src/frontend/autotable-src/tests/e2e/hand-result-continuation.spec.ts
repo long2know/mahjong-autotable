@@ -6,6 +6,7 @@ import {
   dismissPrompts, probe, driveManualCeremony, type Actor,
 } from './_lobby-repair';
 import type { HandResultEntry } from '../../src/types';
+import { mobileGeometry } from './_mobile-geometry';
 
 type Frame = { type?: string; full?: boolean; entries?: Array<[string, string | number, Record<string, unknown> | null]> };
 
@@ -222,10 +223,15 @@ async function playOneHand(actors: Actor[], observed: { received: Frame[] }): Pr
         // Wait for the authoritative legal shape; this does not fix or mask
         // the separately reported runtime race or extend the hand budget.
         if (!legalNormalDiscard(await discardReadiness(actor.page))) continue;
-        const tile = actor.page.getByTestId('hand-tile').last();
-        await expect(tile).toBeVisible();
+        // Coordinate presses do not get a DOM locator's actionability wait:
+        // the copied-invite toast must clear the actual board before clicking.
+        await expect.poll(async () => (await mobileGeometry(actor.page)).tiles.at(-1)?.hit,
+          { message: 'the rendered discard target must be unobscured and raycastable' }).toBe(true);
+        const layout = await mobileGeometry(actor.page);
+        const tile = layout.tiles.at(-1)!;
+        expect(tile.hit, JSON.stringify({ seat: state.seat, tile, chrome: layout.chrome })).toBe(true);
         const before = await signature(actor);
-        try { await tile.click({ timeout: 1200 }); }
+        try { await actor.page.mouse.click(tile.x, tile.y); }
         catch (error) {
           const completed = await readSettlement(actors[0].page, observed.received);
           if (completed !== null) return completed;

@@ -44,11 +44,12 @@ import {
   setLanguage,
   onLanguageChange,
   t,
+  translateElements,
   type LanguagePreference,
 } from './i18n';
 import { hideEl } from './dom-utils';
 import { handSortMode, type HandSortMode } from './hand-sort';
-import { mobileInfoPanel, type MobileInfoPanel } from './mobile-overlay-policy';
+import { COMPACT_VIEW_QUERY, mobileInfoPanel, type MobileInfoPanel } from './mobile-overlay-policy';
 import {
   getGameState, getGameStateStatus, loadGameState, refreshGameState, subscribeGameState,
   type GameState,
@@ -103,6 +104,9 @@ const TABS: ReadonlyArray<{ id: SettingsTab; labelKey: string; fallback: string 
 let current: AppSettings = { ...SETTINGS_DEFAULT };
 let settingsLoaded = false;
 let installed = false;
+let perspectiveInstalled = false;
+let legacyDisplayInstalled = false;
+let drawerOpened = false;
 let activeTab: SettingsTab = 'general';
 const listeners = new Set<(s: AppSettings) => void>();
 
@@ -160,6 +164,45 @@ export function getSettings(): AppSettings {
   return { ...current };
 }
 
+/** Bind the existing camera input before the optional drawer is opened. */
+export function installPerspectiveSetting(): void {
+  if (perspectiveInstalled) return;
+  const input = document.getElementById('perspective') as HTMLInputElement | null;
+  if (input === null) return;
+  perspectiveInstalled = true;
+  input.addEventListener('change', () => {
+    if (getSettings().perspective !== input.checked) setSettings({ perspective: input.checked });
+  });
+  const settings = getSettings();
+  applyDerivedSettings(settings, { perspective: settings.perspective });
+}
+
+export function installLegacyDisplaySettings(): void {
+  if (legacyDisplayInstalled) return;
+  const root = document.getElementById('settings-table-display');
+  const perspective = document.getElementById('settings-game-perspective') as HTMLInputElement | null;
+  const order = document.getElementById('settings-game-hand-sort') as HTMLSelectElement | null;
+  if (root === null || perspective === null || order === null) return;
+  legacyDisplayInstalled = true;
+  installPerspectiveSetting();
+  perspective.addEventListener('change', () => {
+    if (getSettings().perspective !== perspective.checked) setSettings({ perspective: perspective.checked });
+  });
+  order.addEventListener('change', () => {
+    const mode = handSortMode(order.value);
+    if (getSettings().handSort !== mode) setSettings({ handSort: mode });
+  });
+  const localize = (): void => {
+    translateElements(root);
+    order.setAttribute('aria-label', t('hand.order'));
+    order.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const settings = getSettings();
+  applyDerivedSettings(settings, { perspective: settings.perspective, handSort: settings.handSort });
+  localize();
+  onLanguageChange(localize);
+}
+
 function ensureSettingsLoaded(): void {
   if (settingsLoaded) return;
   current = loadFromStorage();
@@ -193,7 +236,7 @@ function applyDerivedSettings(s: AppSettings, changed: Partial<AppSettings> = s)
     document.body.classList.toggle('mobile-table-status-visible', s.mobileTableStatus);
   }
   if ('handSort' in changed) {
-    for (const id of ['hand-sort', 'settings-hand-sort']) {
+    for (const id of ['settings-hand-sort', 'settings-game-hand-sort']) {
       const select = document.getElementById(id) as HTMLSelectElement | null;
       if (select && select.value !== s.handSort) {
         select.value = s.handSort;
@@ -219,12 +262,17 @@ function applyDerivedSettings(s: AppSettings, changed: Partial<AppSettings> = s)
   // Table colour — expose as a CSS variable so style.css / main.css
   // can apply it without each surface importing this module.
   if ('tableColor' in changed) document.documentElement.style.setProperty('--app-table-color', s.tableColor);
-  // Perspective mirror — keep the legacy #perspective checkbox in sync
-  // so world.ts sees the new value via its existing input listener.
-  const perspectiveCheckbox = document.getElementById('perspective') as HTMLInputElement | null;
-  if ('perspective' in changed && perspectiveCheckbox !== null && perspectiveCheckbox.checked !== s.perspective) {
-    perspectiveCheckbox.checked = s.perspective;
-    perspectiveCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+  if ('perspective' in changed) {
+    for (const id of ['settings-perspective-toggle', 'settings-game-perspective']) {
+      const display = document.getElementById(id) as HTMLInputElement | null;
+      if (display !== null) display.checked = s.perspective;
+    }
+    // The legacy input is the camera actuator for the drawer and P shortcut.
+    const perspective = document.getElementById('perspective') as HTMLInputElement | null;
+    if (perspective !== null && perspective.checked !== s.perspective) {
+      perspective.checked = s.perspective;
+      perspective.dispatchEvent(new Event('change', { bubbles: true }));
+    }
   }
 }
 
@@ -241,11 +289,17 @@ export function installSettingsDrawerV2(): void {
   if (drawer === null) return;
   installed = true;
 
+  installPerspectiveSetting();
   ensureSettingsLoaded();
   applyDerivedSettings(current);
   emit();
 
   const btn = document.getElementById('settings-button') as HTMLButtonElement | null;
+  const localizeButton = (): void => {
+    btn?.setAttribute('title', t('settings.open_display'));
+    btn?.setAttribute('aria-label', t('settings.open_display'));
+  };
+  localizeButton();
   const closeBtn = document.getElementById('settings-close-v2') as HTMLButtonElement | null;
   const saveBtn = document.getElementById('settings-save') as HTMLButtonElement | null;
   const resetBtn = document.getElementById('settings-reset') as HTMLButtonElement | null;
@@ -334,6 +388,7 @@ export function installSettingsDrawerV2(): void {
   // Phase J Wave 9 — re-render the drawer's tab strip + panel labels
   // whenever the active locale changes (Language picker change).
   onLanguageChange(() => {
+    localizeButton();
     // Re-render tabs (textContent depends on t()).
     for (const tab_ of TABS) {
       const tabEl = document.getElementById(`settings-tab-${tab_.id}`);
@@ -352,6 +407,11 @@ function openDrawer(): void {
   const drawer = document.getElementById('settings-drawer-v2');
   const btn = document.getElementById('settings-button') as HTMLButtonElement | null;
   if (drawer === null) return;
+  if (!drawerOpened && !document.body.classList.contains('lobby-active')
+    && window.matchMedia(COMPACT_VIEW_QUERY).matches) {
+    activateTab('display');
+  }
+  drawerOpened = true;
   drawer.classList.add('settings-drawer-v2-open');
   drawer.setAttribute('aria-hidden', 'false');
   if (btn !== null) btn.setAttribute('aria-expanded', 'true');
@@ -601,18 +661,24 @@ function buildDisplayPanel(): HTMLDivElement {
   const panel = buildPanelShell('display', t('settings.tab.display') || 'Display settings');
 
   const perspRow = document.createElement('label');
-  perspRow.className = 'settings-v2-field settings-v2-checkbox-row';
+  perspRow.className = 'settings-v2-field settings-v2-checkbox-row settings-perspective-row';
   const perspInput = document.createElement('input');
   perspInput.type = 'checkbox';
+  perspInput.id = 'settings-perspective-toggle';
   perspInput.checked = current.perspective;
   perspInput.setAttribute('data-testid', 'settings-perspective-toggle');
+  perspInput.setAttribute('aria-describedby', 'settings-perspective-hint');
   const perspText = document.createElement('span');
-  perspText.textContent = t('settings.perspective') || 'Perspective camera (uncheck for flat top-down)';
+  perspText.textContent = t('settings.perspective');
   perspInput.addEventListener('change', () => {
     setSettings({ perspective: perspInput.checked });
   });
   perspRow.appendChild(perspInput);
   perspRow.appendChild(perspText);
+  const perspHint = document.createElement('p');
+  perspHint.id = 'settings-perspective-hint';
+  perspHint.className = 'settings-v2-help';
+  perspHint.textContent = t('settings.perspective_hint');
 
   const colorRow = document.createElement('label');
   colorRow.className = 'settings-v2-field';
@@ -698,7 +764,7 @@ function buildDisplayPanel(): HTMLDivElement {
   themeRow.appendChild(themeLabel);
   themeRow.appendChild(themeSelect);
 
-  panel.appendChild(perspRow);
+  panel.append(perspRow, perspHint);
   const sortRow = document.createElement('label');
   sortRow.className = 'settings-v2-field';
   const sortLabel = document.createElement('span');
@@ -722,7 +788,9 @@ function buildDisplayPanel(): HTMLDivElement {
   });
   const sortHint = document.createElement('span');
   sortHint.className = 'settings-v2-hint';
+  sortHint.id = 'settings-hand-sort-hint';
   sortHint.textContent = t('hand.sort_hint');
+  sortSelect.setAttribute('aria-describedby', sortHint.id);
   sortRow.append(sortLabel, sortSelect, sortHint);
   panel.appendChild(sortRow);
   const statusRow = document.createElement('label');

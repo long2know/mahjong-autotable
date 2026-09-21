@@ -36,7 +36,7 @@ interface RenderPlacementAudit {
   mismatches: Array<{
     id: number;
     slot: string;
-    mode: 'custom' | 'instanced' | 'tray' | 'missing';
+    mode: 'custom' | 'instanced' | 'missing';
     distance: number | null;
   }>;
 }
@@ -60,19 +60,6 @@ async function auditRenderedPlacements(
       if ((slot.group === 'hand' || slot.group === 'meld') && slot.seat !== world.seat) continue;
       if (slot.group === 'hand' && String(slot.name).startsWith('hand.extra@')) continue;
       counts[slot.group] = (counts[slot.group] ?? 0) + 1;
-
-      // Mobile replaces the own mesh row; sorting changes presentation, not ownership.
-      if (world.handInTray(thing)) {
-        const button = document.querySelector<HTMLElement>(
-          `[data-testid="hand-tile"][data-tile-id="${thing.index}"]`);
-        const rect = button?.getBoundingClientRect();
-        const hit = rect && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-        if (!button || !rect || rect.width === 0 || rect.height === 0 || !hit
-          || !button.contains(hit) || button.dataset.face !== String(thing.typeIndex)) {
-          mismatches.push({ id: thing.index, slot: slot.name, mode: 'tray', distance: null });
-        }
-        continue;
-      }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let renderGroup: any = null;

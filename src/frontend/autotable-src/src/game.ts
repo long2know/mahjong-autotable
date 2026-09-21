@@ -149,10 +149,10 @@ export class Game {
     this.lookDown.update();
     this.zoom.update();
 
-    this.world.updateView();
     this.mainView.updateViewport();
+    this.world.updateView(this.mainView.handPresentationScale);
     this.mainView.updateCamera(
-      this.world.seat, this.lookDown.pos, this.zoom.pos, this.mouseUi.mouse2, this.world.conditions.gameType,
+      this.world.viewSeat, this.lookDown.pos, this.zoom.pos, this.mouseUi.mouse2, this.world.conditions.gameType,
     );
     this.mainView.updateOutline(this.objectView.selectedObjects);
     this.mainView.updateHighlight(
@@ -170,7 +170,9 @@ export class Game {
   }
 
   private onKeyDown(event: KeyboardEvent): void {
-    if (document.activeElement?.tagName === 'INPUT') {
+    const active = document.activeElement as HTMLElement | null;
+    if (active && (['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName) || active.isContentEditable
+      || (event.key === ' ' && ['BUTTON', 'A'].includes(active.tagName)))) {
       return;
     }
 
@@ -208,7 +210,7 @@ export class Game {
         break;
       case 'p':
         this.settings.perspective.checked = !this.settings.perspective.checked;
-        this.updateSettings();
+        this.settings.perspective.dispatchEvent(new Event('change', { bubbles: true }));
         break;
       case 'l':
         this.settings.tileLabels.checked = !this.settings.tileLabels.checked;

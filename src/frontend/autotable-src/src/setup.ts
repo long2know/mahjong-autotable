@@ -68,8 +68,8 @@ export class Setup {
     this.addTiles(conditions);
     if (conditions.gameType !== GameType.CHANGSHA) {
       this.addSticks(conditions.gameType, conditions.points);
+      this.addMarker();
     }
-    this.addMarker();
     this.deal(0);
   }
 
@@ -151,7 +151,7 @@ export class Setup {
     }
     if (whatReplace.MARKER) {
       this.counters.set(ThingType.MARKER, 0);
-      this.addMarker();
+      if (!isChangsha) this.addMarker();
     }
 
     for (const thing of this.things.values()) {

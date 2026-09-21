@@ -15,6 +15,8 @@ export interface Place {
   position: Vector3;
   rotation: Quaternion;
   size: Vector3;
+  /** Display-only uniform mesh scale; size already includes it for raycasting. */
+  scale?: number;
 }
 
 export interface ThingInfo {

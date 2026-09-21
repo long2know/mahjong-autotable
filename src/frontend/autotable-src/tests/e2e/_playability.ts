@@ -641,10 +641,6 @@ export async function readClaimWindow(page: Page): Promise<ClaimView> {
 /** OBSERVE — id list of the local seat's own concealed hand tiles. */
 export async function readMyHandTiles(page: Page): Promise<number[]> {
   return page.evaluate(() => {
-    const tray = document.getElementById('own-hand-tray');
-    if (tray?.getClientRects().length) {
-      return [...tray.querySelectorAll<HTMLButtonElement>('[data-tile-id]')].map(tile => Number(tile.dataset.tileId));
-    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = (window as any).game?.world;
     if (!w || typeof w.toSelect !== 'function') return [];
@@ -750,18 +746,6 @@ export interface TileScreenPos {
  */
 export async function projectTileToCanvas(page: Page, tileId: number): Promise<TileScreenPos> {
   return page.evaluate((id: number) => {
-    // Compact Changsha replaces its tiny 3D row with a touch-sized local view.
-    // Observe that visible tile body; the existing real pointer press is unchanged.
-    const tile = document.querySelector<HTMLElement>(`#own-hand-tray [data-tile-id="${id}"]`);
-    if (tile?.getClientRects().length) {
-      const r = tile.getBoundingClientRect();
-      const clientX = (r.left + r.right) / 2, clientY = (r.top + r.bottom) / 2;
-      const hit = document.elementFromPoint(clientX, clientY);
-      // A held result now persists over the table. Never misroute a discard
-      // coordinate to its Continue button or another foreground control.
-      if (hit !== tile && !tile.contains(hit)) return { ok: false, reason: 'hand tile is covered', clientX, clientY };
-      return { ok: true, clientX, clientY };
-    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const g = (window as any).game;
     const w = g?.world;

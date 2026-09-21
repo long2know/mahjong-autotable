@@ -528,9 +528,9 @@
     <!-- Phase J Wave 7 — App-wide settings button.  Sits next to the
          per-game settings gear and opens the tabbed app settings drawer
          below.  Keeps the existing Wave-2 gear untouched. -->
-    <button id="settings-button" type="button" title="Settings"
+    <button id="settings-button" type="button" title="Settings: view and hand order"
             data-testid="settings-button"
-            aria-label="Open settings drawer"
+            aria-label="Settings: view and hand order"
             aria-haspopup="dialog"
             aria-expanded="false"
             aria-controls="settings-drawer-v2">
@@ -586,6 +586,30 @@
                     title="Close">×</button>
         </div>
         <div class="settings-drawer-body">
+            <div id="settings-table-display">
+                <div class="settings-row">
+                    <label class="settings-checkbox-label settings-perspective-row">
+                        <input type="checkbox" id="settings-game-perspective"
+                               data-testid="settings-game-perspective"
+                               aria-describedby="settings-game-perspective-hint" checked>
+                        <span data-i18n="settings.perspective">Perspective view</span>
+                    </label>
+                    <small id="settings-game-perspective-hint" class="settings-hint"
+                           data-i18n="settings.perspective_hint">Uncheck for flat view. Applies immediately; P also switches views.</small>
+                </div>
+                <div class="settings-row">
+                    <label for="settings-game-hand-sort" class="settings-label" data-i18n="hand.order">Hand order</label>
+                    <select id="settings-game-hand-sort" class="dark-select form-control form-control-sm"
+                            data-testid="settings-game-hand-sort" aria-label="Hand order"
+                            aria-describedby="settings-game-hand-sort-hint">
+                        <option value="suit" data-i18n="hand.sort_suit">Suit + rank</option>
+                        <option value="groups" data-i18n="hand.sort_groups">Pairs / triples first</option>
+                    </select>
+                    <small id="settings-game-hand-sort-hint" class="settings-hint" data-i18n="hand.sort_hint">
+                        Automatic, on your screen only. Groups include four identical tiles; this does not claim a meld or suggest a scoring pattern. Relay games keep manual arrangement.
+                    </small>
+                </div>
+            </div>
             <div class="settings-row">
                 <label for="settings-bot-strength" class="settings-label">
                     Bot Strength
@@ -1005,6 +1029,11 @@
                     </select>
                 </span>
             </div>
+            <button id="chat-collapse" type="button" class="chat-collapse"
+                    data-testid="chat-collapse" aria-label="Collapse chat"
+                    title="Collapse chat" aria-controls="chat-panel-body" hidden>
+                <span aria-hidden="true">×</span>
+            </button>
         </div>
         <div id="chat-panel-body" class="chat-panel-body">
             <section id="chat-online" class="chat-social-section"

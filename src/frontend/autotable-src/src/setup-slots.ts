@@ -308,7 +308,6 @@ export const SLOT_GROUPS: Record<GameType, Array<SlotGroup>> = {
       [start('wall.cs'), row(count), stack(), seats([seat])]),
     [start('discard.cs'), column(3, -Size.TILE.y), row(6, undefined, {push: true}), seats()],
     [start('discard.extra.cs'), row(4, undefined, {push: true}), seats()],
-    [start('marker'), seats()],
   ],
 
   // Phase F — upstream Riichi 4-player, restored from commit 98d4cca^ verbatim.

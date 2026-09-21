@@ -7,8 +7,8 @@ import { Sound } from './sound';
 import { Replay } from './replay';
 import { openReplayForGame } from './replay-launcher';
 import { World } from "./world";
-import { HandView } from './hand-view';
-import { getSettings as getAppSettings, onSettingsChange as onAppSettingsChange, setSettings as setAppSettings } from './settings-drawer';
+import './mobile-table.css';
+import { getSettings as getAppSettings, installLegacyDisplaySettings, installPerspectiveSetting, onSettingsChange as onAppSettingsChange, setSettings as setAppSettings } from './settings-drawer';
 import { COMPACT_VIEW_QUERY, toggleMobilePanel } from './mobile-overlay-policy';
 import { HandResultState, type ResultPresentation } from './hand-result-state';
 import { setElHidden, showEl, hideEl } from './dom-utils';
@@ -572,7 +572,8 @@ export class GameUi {
     this.setupResultModal();
     this.setupDiceHud();
     this.setupBotBanner();
-    this.setupHandPresentation();
+    installPerspectiveSetting();
+    this.setupHandSorting();
     this.setupPhaseFPickers();
     this.setupPickupHud();
     this.setupTurnBanner();
@@ -1544,8 +1545,28 @@ export class GameUi {
     this.refreshBotBanner();
   }
 
-  private setupHandPresentation(): void {
-    new HandView(this.client, this.world);
+  private setupHandSorting(): void {
+    const update = (): void => this.world.setHandSortMode(getAppSettings().handSort);
+    onAppSettingsChange(update);
+    update();
+
+    // Keep rendered and raycast positions stable through touch's compatibility
+    // mouse events, as well as a held mouse or a multi-pointer gesture.
+    const pointers = new Set<number>();
+    document.addEventListener('pointerdown', e => {
+      pointers.add(e.pointerId);
+      this.world.setHandPointerDown(true);
+    }, true);
+    const release = (e: PointerEvent): void => {
+      pointers.delete(e.pointerId);
+      requestAnimationFrame(() => this.world.setHandPointerDown(pointers.size > 0));
+    };
+    document.addEventListener('pointerup', release, true);
+    document.addEventListener('pointercancel', release, true);
+    window.addEventListener('blur', () => {
+      pointers.clear();
+      this.world.setHandPointerDown(false);
+    });
   }
 
   private refreshBotBanner(): void {
@@ -2567,6 +2588,7 @@ export class GameUi {
   // params and reloads, which is the same pattern the lobby uses.
   // ---------------------------------------------------------------------
   private setupSettingsDrawer(): void {
+    installLegacyDisplaySettings();
     // Re-hydrate from localStorage on boot (gameId-keyed; falls back to
     // a global default key when gameId isn't on the URL yet).
     const state = readSettingsState();

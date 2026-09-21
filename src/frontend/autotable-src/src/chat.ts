@@ -67,6 +67,8 @@ const state: ChatState = {
 const boundClients = new WeakSet<Client>();
 const inviteSending = new Set<string>();
 let errorTimer: number | null = null;
+let messageScrollTop = 0;
+let messageAtBottom = true;
 
 function loadCollapsed(): boolean {
   if (window.matchMedia(COMPACT_VIEW_QUERY).matches) return getSettings().mobileInfoPanel !== 'chat';
@@ -353,10 +355,31 @@ function visibleMessages(): ChatMessage[] {
   });
 }
 
+function captureMessageScroll(): void {
+  const list = document.getElementById('chat-messages');
+  if (state.collapsed || list === null || list.clientHeight === 0) return;
+  messageScrollTop = list.scrollTop;
+  messageAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+}
+
+function restoreMessageScroll(reveal = false): void {
+  const list = document.getElementById('chat-messages');
+  if (state.collapsed || list === null || list.clientHeight === 0) return;
+  list.scrollTop = messageAtBottom ? list.scrollHeight : messageScrollTop;
+  if (!reveal) return;
+  const rows = Array.from(list.querySelectorAll<HTMLElement>('.chat-message'));
+  const top = list.getBoundingClientRect().top;
+  const row = messageAtBottom ? rows[rows.length - 1]
+    : rows.find(message => message.getBoundingClientRect().bottom > top);
+  // The message scroller is nested inside the social/room scroller. Restoring
+  // only its scrollTop can leave the message clipped above the compact dock.
+  row?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
 function renderMessages(): void {
   const list = document.getElementById('chat-messages');
   if (list === null) return;
-  const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+  captureMessageScroll();
   list.replaceChildren();
   document.getElementById('chat-panel')?.setAttribute('data-channel', state.channel);
   const messages = visibleMessages();
@@ -397,7 +420,7 @@ function renderMessages(): void {
     row.append(...(message.isSelf ? [bubble, avatar] : [avatar, bubble]));
     list.appendChild(row);
   });
-  if (atBottom) list.scrollTop = list.scrollHeight;
+  restoreMessageScroll();
 }
 
 function renderAvailability(): void {
@@ -712,15 +735,32 @@ function setCollapsed(collapsed: boolean): void {
 }
 
 function applyCollapsed(collapsed: boolean): void {
+  const wasCollapsed = state.collapsed;
+  captureMessageScroll();
   state.collapsed = collapsed;
   document.getElementById('chat-panel')?.classList.toggle('chat-panel-collapsed', collapsed);
-  document.getElementById('chat-toggle')?.setAttribute('aria-expanded', String(!collapsed));
+  renderCollapseControls();
   if (collapsed) {
     stopPolling();
   } else {
+    restoreMessageScroll();
+    window.requestAnimationFrame(() => restoreMessageScroll(wasCollapsed));
     markInvitesRead();
     void refreshHistory();
     startPolling();
+  }
+}
+
+function renderCollapseControls(): void {
+  const toggle = document.getElementById('chat-toggle');
+  toggle?.setAttribute('aria-expanded', String(!state.collapsed));
+  toggle?.setAttribute('aria-label', t(state.collapsed ? 'chat.open' : 'chat.collapse'));
+  toggle?.setAttribute('title', t(state.collapsed ? 'chat.open' : 'chat.collapse'));
+  const close = document.getElementById('chat-collapse');
+  if (close !== null) {
+    setElHidden(close, state.collapsed);
+    close.setAttribute('aria-label', t('chat.collapse'));
+    close.setAttribute('title', t('chat.collapse'));
   }
 }
 
@@ -732,6 +772,7 @@ export function openChatPanel(): void {
 function renderChrome(): void {
   const root = document.getElementById('chat-panel');
   if (root !== null) translateElements(root);
+  renderCollapseControls();
   const input = document.getElementById('chat-input') as HTMLTextAreaElement | null;
   if (input !== null) {
     input.placeholder = t('chat.placeholder');
@@ -779,6 +820,10 @@ export function installChatPanel(client: Client | null): void {
   const toggle = document.getElementById('chat-toggle');
   toggle?.setAttribute('aria-expanded', String(!state.collapsed));
   toggle?.addEventListener('click', () => setCollapsed(!state.collapsed));
+  document.getElementById('chat-collapse')?.addEventListener('click', () => {
+    setCollapsed(true);
+    toggle?.focus();
+  });
   const compact = window.matchMedia(COMPACT_VIEW_QUERY);
   compact.addEventListener('change', () => applyCollapsed(loadCollapsed()));
   onSettingsChange(settings => {
