@@ -116,6 +116,17 @@ paths = [
     '''(^|/)\.github/workflows/mobile-build\.yml$''',
 ]
 
+[[rules.allowlists]]
+description = "Exact public assembly SHA-256 recorded in the preserved C03 history, not an API key"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+    '''^- API DLL SHA256: `12553ecd8c4a67bc4ab6ba4399d8ff15f7032b43d7c54c6dbff108b22941c51f`\.$''',
+]
+paths = [
+    '''(^|/)\.squad/log/2026-09-10T08-37-28-814Z-c03-final-local-gameplay\.md$''',
+]
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Per-rule extension — `private-key`
