@@ -86,6 +86,53 @@ an unchanged assembly version alone cannot distinguish revisions. Reloading a
 page cannot update an old server deployment. These build scripts never deploy
 to a remote host.
 
+## Published main builds and GitHub releases
+
+Every successful `docker-build` image publication from upstream `main`
+(push or manual run on `main`) creates a GitHub **prerelease record** tagged
+`build-<workflow-run-id>-<build-job-attempt>`. It is not a product-version bump
+and is never promoted to GitHub's latest stable release. Failed builds, PR
+validation, non-main manual builds and version-tag builds do not create these
+records. Build-prefixed tags do not match the image/version-release triggers.
+
+Each record links the exact source/merge commit and originating workflow
+attempt, and records the manifest-list digest, published image tags and
+`linux/amd64` + `linux/arm64` platforms. Its `docker pull ...@sha256:...` command
+identifies the actual image from that build; `latest` **and** `sha-<commit>`
+tags can move when images are rebuilt. The UI and `/health` `BUILD_SHA` identify
+the source commit, not a particular rebuilt digest.
+
+PR notes are generated between the preceding published build record in the
+commit's ancestry and this exact commit, covering batches of merged PRs.
+Out-of-order/newer or divergent builds are not used as a baseline. With no
+prior record, only merged main PRs associated with the source commit are
+listed, explicitly not the entire historical PR inventory. A rebuild of the
+same source reports no newly included PRs.
+
+Rerunning only a failed release-record job preserves the original build
+attempt and digest. An existing matching release is verified, not edited;
+a conflicting tag, commit or image identity fails rather than being
+overwritten. Rerunning the build itself creates a new attempt-tagged record,
+even for the same source commit. API/permission failures fail the job visibly;
+fix permissions/tag rules and rerun the failed job rather than deleting or
+moving previous records. A release-record failure makes `docker-build`
+unsuccessful, so its existing downstream signer waits for a successful rerun.
+The helper defaults to a non-publishing API dry run;
+its mocked contract tests run with `python3 -B tests/ci/test-build-release.py`.
+
+Only the release-record job has `contents: write` (plus PR read access), using
+the existing `GITHUB_TOKEN`; no new PAT is required. Repository tag/release
+rules must permit these main-build records. This permission is not intended
+to tag arbitrary non-main workflow revisions. GitHub may also reject an older
+main run if its workflow files differ from the current default branch; do not
+broaden the token or move old tags to bypass that restriction.
+
+**A build record is not production qualification.** Signing runs separately
+after `docker-build` succeeds; the record does not assert that signing, SBOM
+verification, smoke tests or deployment have completed. Existing `v*.*.*`
+releases still require their separate smoke, image-signature and signed-SBOM
+gates in `release.yml`. No signing permissions or gates are changed here.
+
 ## Run on the Linux host
 
 The Production server requires a stable JWT signing key. The existing

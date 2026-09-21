@@ -15,9 +15,12 @@
 # mcr.microsoft.com/dotnet base images which are themselves multi-arch).
 #
 # Tag scheme:
-#   - `latest`             — every successful main build (and tag pushes)
-#   - `sha-<commit-sha>`   — every successful build (immutable rollback target)
+#   - `latest`             — every successful main build
+#   - `sha-<commit-sha>`   — every successful build (can move on a rebuild)
 #   - `<git-tag-name>`     — only on `refs/tags/*` pushes (e.g. `v1.2.3`)
+# Main builds also get a build-<run-id>-<build-attempt> GitHub prerelease.
+# Only the image digest is an immutable image reference; build records do
+# not replace the separately gated v*.*.* production releases.
 #
 # Authentication uses the workflow's auto-provisioned `GITHUB_TOKEN`;
 # pushes to `ghcr.io/<owner>/<repo>` from the same repository require no PAT.
@@ -49,6 +52,10 @@ jobs:
   build-and-push:
     name: Build + push multi-arch (amd64, arm64) to ghcr.io
     runs-on: ubuntu-latest
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-tags: ${{ steps.meta.outputs.tags }}
+      build-attempt: ${{ steps.publication.outputs.build-attempt }}
     steps:
       - name: Checkout
         # Phase K Wave 16 — Apone (DevOps). SLSA-3 W16 hardening:
@@ -57,6 +64,9 @@ jobs:
         # the SHA maps to; cosmetic only, the SHA is the source of
         # truth at admission/CI time.
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Check build-release contracts (mocked APIs only)
+        run: python3 -B tests/ci/test-build-release.py
 
       # Phase J Wave 10 — QEMU enables linux/arm64 cross-build on the
       # amd64 GitHub-hosted runner. Without this, buildx would fail with
@@ -107,11 +117,51 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Summary
+        id: publication
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          BUILD_SHA: ${{ github.sha }}
         run: |
-          echo "### Published image tags" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "Platforms: \`${{ env.PLATFORMS }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "Manifest digest: \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "BUILD_SHA baked in: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          # Preserve the BUILD attempt when only the release job is rerun.
+          printf 'build-attempt=%s\n' "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Published image tags"
+            echo '```'
+            printf '%s\n' "$IMAGE_TAGS"
+            echo '```'
+            echo "Platforms: \`$PLATFORMS\`"
+            echo "Manifest digest: \`$IMAGE_DIGEST\`"
+            echo "BUILD_SHA baked in: \`$BUILD_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release-record:
+    name: Record published main build
+    needs: build-and-push
+    if: >-
+      needs.build-and-push.result == 'success' &&
+      github.repository == 'long2know/mahjong-autotable' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Checkout the built commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Create or verify the build release record
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILD_RESULT: ${{ needs.build-and-push.result }}
+          BUILD_RUN_ATTEMPT: ${{ needs.build-and-push.outputs.build-attempt }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          IMAGE_DIGEST: ${{ needs.build-and-push.outputs.image-digest }}
+          IMAGE_TAGS: ${{ needs.build-and-push.outputs.image-tags }}
+        run: python3 -B scripts/publish_build_release.py --publish
