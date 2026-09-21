@@ -16,6 +16,7 @@
 // mocked so the test does not depend on Bishop's hub state.
 
 import { test, expect, type Page } from '@playwright/test';
+import { newActor, applyRoom, closeLobby, openOnline } from './_lobby-repair';
 
 const FAKE_GAME_ID = '00000000-0000-0000-0000-000000000c00';
 
@@ -87,44 +88,22 @@ test.describe('Mahjong Autotable — table chat panel', () => {
     }
   });
 
-  test('composer enforces the 280-char client limit', async ({ page }) => {
+  test('composer enforces the 280-char client limit', async ({ browser, baseURL }, testInfo) => {
     test.setTimeout(45_000);
-    await mockChatBackend(page);
-    await gotoChat(page);
-
-    if (!(await chatShipped(page))) {
-      test.info().annotations.push({
-        type: 'soft-pass',
-        description: 'chat composer not yet wired',
-      });
-      return;
-    }
-
-    const toggle = page.getByTestId('chat-toggle');
-    if (await toggle.count() > 0) {
-      await toggle.click().catch(() => undefined);
-    }
-
-    const input = page.getByTestId('chat-input');
-    if (await input.count() === 0) {
-      test.info().annotations.push({
-        type: 'soft-pass',
-        description: 'chat-input not exposed',
-      });
-      return;
-    }
-
-    // The textarea is `maxlength="280"` in index.html — typing 300 chars
-    // should be capped at 280 by the browser.
-    const longText = 'x'.repeat(300);
-    await input.fill(longText);
-    const actual = await input.inputValue();
-    expect(actual.length).toBeLessThanOrEqual(280);
-
-    const counter = page.getByTestId('chat-char-count');
-    if (await counter.count() > 0) {
-      const txt = (await counter.textContent()) ?? '';
-      expect(txt).toMatch(/280/);
+    const actor = await newActor(browser, baseURL, testInfo, 'composer-limit');
+    try {
+      await mockChatBackend(actor.page);
+      await applyRoom(actor, 0);
+      await closeLobby(actor);
+      await openOnline(actor);
+      const input = actor.page.getByTestId('chat-input');
+      await expect(input).toBeEnabled();
+      await expect(input).toHaveAttribute('maxlength', '280');
+      await input.fill('x'.repeat(300));
+      expect((await input.inputValue()).length).toBe(280);
+      await expect(actor.page.getByTestId('chat-char-count')).toHaveText('280/280');
+    } finally {
+      await actor.context.close();
     }
   });
 

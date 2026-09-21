@@ -106,8 +106,7 @@ test('same-cookie tabs deduplicate; closing a metadata tab preserves the WS host
 test('C1 real duplicate table tab is an observer while the public occupant and original private seat remain', async ({ browser, baseURL }, testInfo) => {
   const actors: Actor[] = [];
   try {
-    const owner = await newActor(browser, baseURL, testInfo, 'c1-active-owner',
-      undefined, undefined, { establishSignedGuest: true });
+    const owner = await newActor(browser, baseURL, testInfo, 'c1-active-owner');
     actors.push(owner);
     const alias = await applyRoom(owner, 3, 0, 'auto');
     await expect.poll(async () => (await probe(owner)).handCount).toBe(14);

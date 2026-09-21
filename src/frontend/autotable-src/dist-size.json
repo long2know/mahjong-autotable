@@ -469,9 +469,9 @@
     {
       "wave": "K22",
       "bundler": "vite",
-      "recordedAt": "2026-09-21T06:36:11.303Z",
+      "recordedAt": "2026-09-21T08:27:09.463Z",
       "chunks": {
-        "autotable-src-eager": 145732,
+        "autotable-src-eager": 145766,
         "game-bootstrap": 174732,
         "scene-shell": 2696,
         "scene-effects": 78162,
@@ -506,7 +506,7 @@
         "spectator-follow": 3645,
         "matchmaking": 3266,
         "rule-presets": 10010,
-        "auth": 21799,
+        "auth": 21878,
         "identity-onboarding": 3300,
         "identity-avatar-migration": 2339
       }

@@ -56,8 +56,7 @@ test('ordinary NEW, reconnect, room switch and JOIN fetch room APIs only after b
     }
   }));
   try {
-    const actor = await newActor(browser, baseURL, testInfo, 'bound-room-http', context,
-      undefined, { establishSignedGuest: true });
+    const actor = await newActor(browser, baseURL, testInfo, 'bound-room-http', context);
     await waitLobbyReady(actor);
     expect(roomIdOrNull(actor.page.url())).toBeNull();
     expect(requests).toEqual([]);

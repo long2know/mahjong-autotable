@@ -248,8 +248,9 @@ export async function bootstrapIdentity(): Promise<Identity | null> {
   if (bootPromise !== null) return bootPromise;
   cookieAtBoot = readCookie(IDENTITY_COOKIE_NAME);
   const firstVisitGuess = cookieAtBoot === null || cookieAtBoot === '';
-  setBootstrapState('loading');
-  const attempt = (async (): Promise<Identity | null> => {
+  // Install the flight before publishing any synchronous subscriber event.
+  // A loading/identity listener may re-enter bootstrapIdentity immediately.
+  const attempt = Promise.resolve().then(async (): Promise<Identity | null> => {
     try {
       const resp = await fetch(IDENTITY_ENDPOINT, {
         method: 'POST',
@@ -274,8 +275,9 @@ export async function bootstrapIdentity(): Promise<Identity | null> {
       setBootstrapState('unavailable', error instanceof Error ? error.message : String(error));
       return null;
     }
-  })();
+  });
   bootPromise = attempt;
+  setBootstrapState('loading');
   try {
     return await attempt;
   } finally {

@@ -66,6 +66,7 @@
 //     paints immediately on load — re-validated via `/api/auth/me`.
 
 import { EventEmitter } from 'events';
+import { bootstrapIdentity } from './identity';
 
 // ── Public types ────────────────────────────────────────────────────
 
@@ -261,16 +262,16 @@ function normaliseMe(raw: unknown): Partial<AuthState> {
  */
 export async function bootstrapAuth(): Promise<AuthState> {
   if (bootPromise !== null) return bootPromise;
-  // Seed from cache so the chip paints synchronously on revisits.
-  const cached = readAuthCache();
-  if (cached !== null) {
-    setState({
-      authenticated: cached.authenticated === true,
-      email: typeof cached.email === 'string' ? cached.email : null,
-      primaryProvider: coerceProvider(cached.primaryProvider),
-    });
-  }
-  bootPromise = (async () => {
+  // Assign before cached-state events can synchronously re-enter bootstrap.
+  bootPromise = Promise.resolve().then(async () => {
+    const cached = readAuthCache();
+    if (cached !== null) {
+      setState({
+        authenticated: cached.authenticated === true,
+        email: typeof cached.email === 'string' ? cached.email : null,
+        primaryProvider: coerceProvider(cached.primaryProvider),
+      });
+    }
     try {
       const providersResp = await fetch(ENDPOINT_PROVIDERS, {
         method: 'GET',
@@ -295,6 +296,9 @@ export async function bootstrapAuth(): Promise<AuthState> {
       return state;
     }
     try {
+      // /auth/me can issue a guest cookie too. Never race it against the
+      // canonical identity POST on a genuinely cookie-less first visit.
+      if (await bootstrapIdentity() === null) return state;
       const meResp = await fetch(ENDPOINT_ME, {
         method: 'GET',
         credentials: 'include',
@@ -313,7 +317,7 @@ export async function bootstrapAuth(): Promise<AuthState> {
       /* keep cached state */
     }
     return state;
-  })();
+  });
   return bootPromise;
 }
 
@@ -321,6 +325,7 @@ export async function bootstrapAuth(): Promise<AuthState> {
 export async function refreshAuth(): Promise<AuthState> {
   if (!state.serverHasAuth) return state;
   try {
+    if (await bootstrapIdentity() === null) return state;
     const r = await fetch(ENDPOINT_ME, {
       method: 'GET',
       credentials: 'include',

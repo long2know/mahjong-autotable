@@ -58,8 +58,7 @@ export async function getHubConnection(): Promise<HubConnection> {
     throw new Error('Lobby connection is reconnecting. Please wait or retry.');
   }
 
-  publishStatus('connecting');
-  const attempt = (async (): Promise<HubConnection> => {
+  const attempt = Promise.resolve().then(async (): Promise<HubConnection> => {
     const identity = await bootstrapIdentity();
     if (identity === null) {
       throw new Error(getIdentityBootstrapState().error ?? 'Verified identity is required.');
@@ -72,8 +71,9 @@ export async function getHubConnection(): Promise<HubConnection> {
     await local.start();
     publishConnected(local);
     return local;
-  })();
+  });
   startPromise = attempt;
+  publishStatus('connecting');
   try {
     return await attempt;
   } catch (error) {
