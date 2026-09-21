@@ -1,0 +1,21 @@
+# Bot oracle authority chronology and exact postfix review
+
+**FINAL technical TEST-DIFF APPROVE** for existing `HudsonBotMeldContinuationTests.cs` SHA `7c1571434ecf26ae556089fbaa3d1f537356b0503a4c15a7f988eae032756971`, under the later specific coordinator grant recorded in Hudson's versioned handoff. No source/oracle edit or replay by Vasquez; no new write authorization is issued here.
+
+## Chronology and authority correction
+
+The incoming notice describes the earlier freeze/request state. Independently read `decisions/inbox/Hudson-coordinator-ruling-required-before-changing-frozen.md`, recorded **September14,2026 at12:12:48UTC (05:12:48PDT)**, citing the **04:00PDT /11:00UTC** coordinator freeze. That later freeze controlled over the earlier grant(b) while it applied. **My earlier unqualified appeals to(b) must not be used to bypass that later freeze.** Rule semantics and write authority are separate.
+
+The working copy was already7c157143, not10f9b705. A later discovered packet, `hudson-actions/bot-meld-postfix-alignment-01/handoff.json` SHA `c0486c184d04ff32731bdd37cbdb66ef3c3185ac9e218d7015939cdc66dab138`, records an explicit coordinator grant received **September14,2026 at05:23:23.166PDT /12:23:23.166UTC**, resolving request `5bfc58c1-f0fd-4469-bd97-8d3504ba9ed6`. Its scope is only DeclareWin -> Discard in the obsolete proposal expectation, preserving all actual progression/10s assertions. **That specific recorded later release, not the earlier(b) text or peer feedback, is the stated authority for the existing revision.** Provenance limit: the grant-receipt record was read/hashed; the original coordinator prompt itself was not independently retrieved. This review does not authenticate or issue a broader release.
+
+## Exact diff and complete behavior proof
+
+Archived10f9b705 bytes remain immutable. Independently proved that replacing exactly the unique line117 assertion produces the entire new7c157143 file byte-for-byte; every other byte remains unchanged. GNU diff matches `6153caf080da90616fbf5d2459c0716281a81df5a8ae9956837f33e438745f54`; scope proof `1f80c54d8def681164a9c6fd1e590c2d50ff958bef4aa18d10d4097c3b8c888c`. No diagnostic edit was necessary because the old diagnostic already prints the actual proposal. Both rows, seeded pre-existing Pass-Hu setup, actual signed-human/stock-Medium automatic claim path, structural-win/no-own-draw premises, ALL autonomous discard/next-draw/108/phase/version/score/Pass-Hu/no-error assertions and the10s budget remain intact.
+
+Independently corroborated the later **2 executed/2PASS/0FAIL/0SKIP** packet, all856 sealed files and twelve protected file pins. Owner command **12:26:46–12:27:43UTC (05:26:46–05:27:43PDT)**; TRX `96f951f730897ca2a3ecddd37a1158d2cd26f898748105cded43a6e41bd4b982`. Both Pung/Chow now reach the full actual stock-Medium meld -> held discard92 -> next human draw102/version8 sequence, with108 conserved, Pass-Hu retained and no scoring/error. No bot claim/discard/win is test-issued. Chow keeps its existing once-per-game null-partner/lowest-rank compatibility warning; Pung logs are empty. This is complete scoped progression evidence on runtime0e0e2c3c /Mediumd1f8e0d5 /endpoint752c673a /pure0c8b838, not merely proposal acceptance.
+
+The separately verified **33/31PASS/2FAIL** TRX `4ca3be450acfabfcd938699953a88de0e155d35f1c4e029cc960ef52842017be` remains unchanged: both failures are the old DeclareWin-vs-Discard precondition, not new stalls. The new two rows overlap those two old case names; no33-case rerun/all-green total is claimed. The separate c1f38423 twelve-case packet is unchanged/unrerun and retains its controlled-claim versus autonomous-own-turn boundary.
+
+At13:06:18UTC the working runtime had moved to `641e75140200726f50738b2e5ffd9d07c5b2c5e9afc4f9d37dd1d9dfd07fead3`; the2/2 evidence does not transfer to those newer bytes. No production-source audit, runtime/image/live/cohort approval, qualification credit or new lockout. Other rule/fixture decisions and coherent-freeze HOLD remain separate.
+
+Full independent record: `session-files/qualification/2026-09-12/vasquez/bot-oracle-authority-and-postfix-2026-09-14/disposition.json`, SHA `7acb3fabc8b6bc3ad33ce4b416a8d39c54b76e16b8d6e43a265c858aeb1e20de`.

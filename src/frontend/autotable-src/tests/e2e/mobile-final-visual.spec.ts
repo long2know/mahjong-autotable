@@ -52,25 +52,30 @@ async function capture(page: Page, testInfo: TestInfo, name: string, handCount: 
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify({ report, panels, excludedSurfaces: 'None: this is a live playable hand, not a paused result modal.' }, null, 2));
   await page.screenshot({ path: testInfo.outputPath(name + '.png') });
-  expect(report.pageWidth).toBeLessThanOrEqual(report.width);
-  expect(report.pageHeight).toBeLessThanOrEqual(report.height);
+  // Keep every predicate, but do not create thousands of traced expect steps
+  // per image. CI's retry trace spent31s in this synchronous assertion loop.
+  const violations: string[] = [];
+  const check = (ok: boolean, message: string): void => { if (!ok) violations.push(message); };
+  check(report.pageWidth <= report.width, `page width ${report.pageWidth} exceeds ${report.width}`);
+  check(report.pageHeight <= report.height, `page height ${report.pageHeight} exceeds ${report.height}`);
   const own3d = new Set(report.tiles.map(tile => tile.id));
   for (const item of [...report.meshes, ...report.areas]) {
     if ('id' in item && own3d.has(item.id) && report.tray) continue;
-    expect(item.left, item.slot).toBeGreaterThanOrEqual(report.playArea.left - 0.5);
-    expect(item.right, item.slot).toBeLessThanOrEqual(report.playArea.right + 0.5);
-    expect(item.top, item.slot).toBeGreaterThanOrEqual(report.playArea.top - 0.5);
-    expect(item.bottom, item.slot).toBeLessThanOrEqual(report.playArea.bottom + 0.5);
+    check(item.left >= report.playArea.left - 0.5, `${item.slot}: left ${item.left}`);
+    check(item.right <= report.playArea.right + 0.5, `${item.slot}: right ${item.right}`);
+    check(item.top >= report.playArea.top - 0.5, `${item.slot}: top ${item.top}`);
+    check(item.bottom <= report.playArea.bottom + 0.5, `${item.slot}: bottom ${item.bottom}`);
   }
   for (const item of [...report.meshes, ...report.tiles]) {
-    for (const panel of panels) expect(overlaps(item, panel), `${panel.id} covers rendered tile ${item.id}`).toBe(false);
+    for (const panel of panels) check(!overlaps(item, panel), `${panel.id} covers rendered tile ${item.id}`);
   }
   for (const tile of report.tiles) {
-    expect(tile.hit, `own tile ${tile.id} must receive the hit`).toBe(true);
-    expect(tile.width).toBeGreaterThanOrEqual(report.tray ? 44 : 30);
-    expect(tile.height).toBeGreaterThanOrEqual(44);
+    check(tile.hit === true, `own tile ${tile.id} must receive the hit`);
+    check(tile.width >= (report.tray ? 44 : 30), `own tile ${tile.id}: width ${tile.width}`);
+    check(tile.height >= 44, `own tile ${tile.id}: height ${tile.height}`);
   }
-  for (const action of report.actions) expect(action.hit, `essential action ${action.id}`).toBe(true);
+  for (const action of report.actions) check(action.hit === true, `essential action ${action.id}`);
+  expect(violations, `${name}: every projected bound, occlusion, touch size and action target`).toEqual([]);
   return report;
 }
 
@@ -193,6 +198,12 @@ test('final integrated visual gate: real draw, meld, both sorts, enabled panels,
     }
     await actor.page.setViewportSize({ width: 390, height: 844 });
     await actor.page.reload({ waitUntil: 'domcontentloaded' });
+    await actor.page.waitForFunction(() => {
+      const game = (window as unknown as { game?: {
+        gameUi?: unknown; client?: { connected(): boolean; seat: number | null };
+      } }).game;
+      return !!game?.gameUi && game.client?.connected() && game.client.seat === 0;
+    });
     await dismissPrompts(actor);
     await closeLobby(actor);
     await expect(actor.page.getByTestId('hand-sort')).toHaveValue('groups');

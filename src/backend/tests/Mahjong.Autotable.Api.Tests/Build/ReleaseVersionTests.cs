@@ -16,7 +16,7 @@ public sealed class ReleaseVersionTests
         var project = XDocument.Load(Path.Combine(root.FullName, "src", "backend", "src",
             "Mahjong.Autotable.Api", "Mahjong.Autotable.Api.csproj"));
         var versionText = Assert.Single(project.Descendants("Version")).Value;
-        Assert.Equal("0.32.0", versionText);
+        Assert.Equal("0.32.1", versionText);
         var version = Version.Parse(versionText);
         var assemblyVersion = typeof(Mahjong.Autotable.Api.Changsha.ChangshaGameState).Assembly.GetName().Version;
         Assert.Equal(new Version(version.Major, version.Minor, version.Build, 0), assemblyVersion);

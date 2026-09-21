@@ -1,4 +1,4 @@
-import { AmbientLight, Camera, DirectionalLight, Group, Mesh, Object3D, OrthographicCamera, PerspectiveCamera, PlaneGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
+import { AmbientLight, DirectionalLight, Group, Mesh, Object3D, OrthographicCamera, PerspectiveCamera, PlaneGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import { World } from './world';
 import { CustomOutline } from './render/custom-outline';
 import { GameType, Size } from './types';
@@ -45,7 +45,7 @@ export class MainView {
   private viewGroup: Group;
   private renderer: WebGLRenderer;
 
-  camera: Camera = null!;
+  camera: PerspectiveCamera | OrthographicCamera = null!;
   private outline: CustomOutline = new CustomOutline();
 
   private width = 0;
@@ -257,7 +257,7 @@ export class MainView {
     });
   }
 
-  private makeCamera(perspective: boolean): Camera {
+  private makeCamera(perspective: boolean): PerspectiveCamera | OrthographicCamera {
     if (perspective) {
       const camera = new PerspectiveCamera(30, RATIO, 0.1, 1000);
       return camera;
@@ -491,6 +491,7 @@ export class MainView {
    */
   private updateCameraProjection(width: number, height: number): void {
     if (width <= 0 || height <= 0) return;
+    if (this.camera.view?.enabled) this.camera.clearViewOffset();
     const aspect = width / height;
     if (this.camera instanceof PerspectiveCamera) {
       this.camera.aspect = aspect;

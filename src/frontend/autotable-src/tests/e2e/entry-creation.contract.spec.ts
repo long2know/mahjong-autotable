@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
+import { setImmediate as settleAsyncBoot } from 'node:timers/promises';
 import * as ts from 'typescript';
 import { test, expect } from '@playwright/test';
 import { BaseClient } from '../../src/base-client';
@@ -38,6 +39,7 @@ class ElementDouble {
   readonly style = { display: '' };
   readonly classList = new Classes();
   readonly handlers = new Map<string, Array<() => void>>();
+  readonly attributes = new Map<string, string>();
   onclick: (() => void) | null = null;
   onchange: (() => void) | null = null;
   oninput: (() => void) | null = null;
@@ -47,7 +49,8 @@ class ElementDouble {
   }
   click(): void { if (!this.disabled) { this.onclick?.(); for (const fn of this.handlers.get('click') ?? []) fn(); } }
   focus(): void {}
-  setAttribute(_name: string, _value: string): void {}
+  setAttribute(name: string, value: string): void { this.attributes.set(name, value); }
+  removeAttribute(name: string): void { this.attributes.delete(name); }
   closest(selector: string): ElementDouble | null {
     return this.id === 'new-game' && selector === NEW_GAME_ACTION_SELECTOR ? this : null;
   }
@@ -56,6 +59,8 @@ class ElementDouble {
 
 class SocketDouble {
   static readonly OPEN = 1;
+  static readonly CLOSED = 3;
+  static readonly CLOSING = 2;
   static readonly sockets: SocketDouble[] = [];
   readyState = 0;
   onopen: (() => void) | null = null;
@@ -69,7 +74,7 @@ class SocketDouble {
     this.sent.push(JSON.parse(data));
   }
   receive(message: object): void { this.onmessage?.({ data: JSON.stringify(message) }); }
-  close(): void { this.readyState = 3; this.onclose?.(); }
+  close(): void { if (this.readyState === 3) return; this.readyState = 3; this.onclose?.(); }
 }
 
 class CollectionDouble {
@@ -92,7 +97,7 @@ class CollectionDouble {
 }
 
 class EntryClient extends BaseClient {
-  seat: number | null = null;
+  get seat(): number | null { return this.connectionMode === 'changsha' ? this.viewerSeat : null; }
   seatPlayers: Array<string | null> = [null, null, null, null];
   lastGameId: string | null = null;
   serverSnapshotGameId: string | null = null;
@@ -129,8 +134,8 @@ function entryHarness(search: string): {
   element(id: string): ElementDouble;
   coldNewGame(): void;
   apply(state: object, quick?: boolean): void;
-  boot(): { ui: UiPort; client: EntryClient; socket: SocketDouble };
-  fireTimer(): void;
+  boot(reenterWhileIdentityPending?: boolean): Promise<{ ui: UiPort; client: EntryClient; socket: SocketDouble }>;
+  fireTimer(): Promise<void>;
 } {
   const location = new URL(`https://example.test/autotable/${search}`);
   const navigations: string[] = [];
@@ -152,6 +157,7 @@ function entryHarness(search: string): {
     get hash(): string { return location.hash; },
     get host(): string { return location.host; },
     get protocol(): string { return location.protocol; },
+    get origin(): string { return location.origin; },
     replace(url: string): void { navigations.push(url); location.href = new URL(url, location).href; },
   };
   const globals = {
@@ -189,6 +195,9 @@ function entryHarness(search: string): {
     if (name === './base-unit') return { DEFAULT_BASE_UNIT: 1 };
     throw new Error(`Unexpected URL module dependency: ${name}`);
   });
+  const roomModule = load('src/room-join-url.ts', name => {
+    throw new Error(`Unexpected room URL dependency: ${name}`);
+  });
   const lobbySource = ts.createSourceFile('lobby.ts', sourceText('src/lobby.ts'), ts.ScriptTarget.Latest, true);
   const functionText = (name: string): string => {
     const node = lobbySource.statements.find((item): item is ts.FunctionDeclaration =>
@@ -198,7 +207,7 @@ function entryHarness(search: string): {
   };
   const run = (text: string, expression: string, extra: Record<string, unknown> = {}): unknown =>
     runInNewContext(ts.transpileModule(`${text}\n${expression}`, { compilerOptions: COMPILE }).outputText,
-      { ...globals, ...urlModule, ...extra });
+      { ...globals, ...urlModule, ...roomModule, ...extra });
   const bind = run(
     `let newGameControlsBound=false; let newGameNavigationPending=false; let newGameAction=null;\n${functionText('bindNewGameControls')}`,
     'bindNewGameControls;',
@@ -232,6 +241,17 @@ function entryHarness(search: string): {
       case './profile': return {};
       case './stats': return {};
       case './reconnect': return {};
+      case './identity': return {
+        bootstrapIdentity: async (): Promise<object> => ({
+          playerId: 'same-owner', displayName: 'Verified owner', avatarColor: '#2980b9', isFirstVisit: false,
+        }),
+        getIdentityBootstrapState: (): object => ({ status: 'ready', error: null }),
+      };
+      case './room-join-url': return roomModule;
+      case './game-state': return {
+        getGameState: (): null => null,
+        getGameStateStatus: (): object => ({ status: 'idle', connected: false, error: null }),
+      };
       case './ui/rule-action-controls': return { getRuleActionControls: (): void => {} };
       default: throw new Error(`Unexpected entry dependency: ${name}`);
     }
@@ -257,30 +277,40 @@ function entryHarness(search: string): {
       if (typeof call !== 'function') throw new Error('Actual entry callback did not compile');
       call();
     },
-    boot(): { ui: UiPort; client: EntryClient; socket: SocketDouble } {
+    async boot(reenterWhileIdentityPending = false): Promise<{ ui: UiPort; client: EntryClient; socket: SocketDouble }> {
+      const socketCount = SocketDouble.sockets.length;
       const client = new EntryClient();
       const ui = new ClientUi(client);
       ui.start();
-      const socket = SocketDouble.sockets[SocketDouble.sockets.length - 1];
-      if (socket === undefined) throw new Error('Entry did not open a normal WebSocket');
+      if (reenterWhileIdentityPending) ui.connect();
+      // Verified identity resolves asynchronously before the normal WS opens.
+      await settleAsyncBoot();
+      const created = SocketDouble.sockets.slice(socketCount);
+      if (created.length !== 1) throw new Error(`Entry must open exactly one normal WebSocket, got ${created.length}: ${element('status-text').innerText}`);
+      const socket = created[0];
       return { client, ui, socket };
     },
-    fireTimer(): void {
+    async fireTimer(): Promise<void> {
       const next = timers.entries().next();
       if (next.done) throw new Error('Expected an ordinary reconnect timer');
       const [id, callback] = next.value;
       timers.delete(id); callback();
+      await settleAsyncBoot();
     },
   };
 }
 
-function joined(socket: SocketDouble, alias: string): void {
-  socket.receive({ type: 'JOINED', gameId: alias, playerId: 'same-owner', isFirst: false });
+function joined(socket: SocketDouble, alias: string, seat: number | null = 0): void {
+  socket.receive({ type: 'JOINED', gameId: alias, playerId: 'same-owner', isFirst: false,
+    viewer: { roomId: alias, revision: 1, seat } });
 }
 
 function full(socket: SocketDouble, bound: boolean): void {
   socket.receive({
-    type: 'UPDATE', full: true, entries: [
+    type: 'UPDATE', full: true,
+    viewer: { roomId: new URL(socket.url).searchParams.get('gameId'), revision: 1,
+      seat: new URL(socket.url).searchParams.get('seat') === '-1' ? null : 0 },
+    entries: [
       ['match', 0, { conditions: { baseUnit: bound ? 10 : 1 } }],
       ...(bound ? [['turn', 'current', { phase: 'Seating', activeSeat: null, awaitingDiscard: false }]] : []),
     ],
@@ -298,14 +328,14 @@ test.describe('Explicit application creation entry — source/normal-protocol co
     else Reflect.deleteProperty(globalThis, 'WebSocket');
   });
 
-  test('actual cold header callback creates one fresh explicit NEW intent before ClientUi exists', () => {
+  test('actual cold header callback creates one fresh explicit NEW intent before ClientUi exists', async () => {
     const h = entryHarness('?seat=0');
     h.coldNewGame(); h.coldNewGame();
     expect(h.navigations).toHaveLength(1);
     const id = h.location.searchParams.get('gameId');
     expect(id).toMatch(/^changsha-[0-9a-f]{8}$/);
     expect(h.location.searchParams.get('createGame')).toBe(id);
-    const { socket } = h.boot();
+    const { socket } = await h.boot();
     socket.open();
     expect(socket.sent[0]).toEqual({ type: 'NEW' });
     const wire = new URL(socket.url).searchParams;
@@ -315,13 +345,13 @@ test.describe('Explicit application creation entry — source/normal-protocol co
   });
 
   for (const dealMode of ['manual', 'auto']) {
-    test(`actual Quick Match callback preserves ${dealMode}/unit/hand config and uses NEW`, () => {
+    test(`actual Quick Match callback preserves ${dealMode}/unit/hand config and uses NEW`, async () => {
       const h = entryHarness('?variant=changsha&gameId=prior-room');
       h.apply({ variant: 'changsha', dealMode, botCount: 0, botDifficulty: 'Hard', handCount: 8, baseUnit: 10, seed: 42, seat: null }, true);
       const id = h.location.searchParams.get('gameId');
       expect(id).not.toBe('prior-room');
       expect(h.location.searchParams.get('createGame')).toBe(id);
-      const { socket } = h.boot(); socket.open();
+      const { socket } = await h.boot(); socket.open();
       expect(socket.sent[0]).toEqual({ type: 'NEW' });
       const wire = new URL(socket.url).searchParams;
       expect(Object.fromEntries(['dealMode','baseUnit','handCount','botCount','botDifficulty','seat'].map(k => [k, wire.get(k)])))
@@ -329,7 +359,7 @@ test.describe('Explicit application creation entry — source/normal-protocol co
     });
   }
 
-  test('ordinary existing Apply remains JOIN; changed configuration starts a fresh NEW', () => {
+  test('ordinary existing Apply remains JOIN; changed configuration starts a fresh NEW', async () => {
     const state = { variant: 'changsha', dealMode: 'manual', botCount: 3, botDifficulty: 'Medium', handCount: 8, baseUnit: 10, seed: 94209, seat: 0 };
     for (const changed of [false, true]) {
       const h = entryHarness('?gameId=existing-room&variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=8&baseUnit=10&seed=94209&seat=0');
@@ -337,30 +367,30 @@ test.describe('Explicit application creation entry — source/normal-protocol co
       const id = h.location.searchParams.get('gameId');
       expect(id === 'existing-room').toBe(!changed);
       expect(h.location.searchParams.get('createGame')).toBe(changed ? id : null);
-      const { socket } = h.boot(); socket.open();
+      const { socket } = await h.boot(); socket.open();
       expect(socket.sent[0]).toEqual(changed ? { type: 'NEW' } : { type: 'JOIN', gameId: 'existing-room' });
     }
   });
 
-  test('JOINED/unbound FULL is not creation confirmation; reload/retry retains the same alias intent', () => {
+  test('JOINED/unbound FULL is not creation confirmation; reload/retry retains the same alias intent', async () => {
     const h = entryHarness('?gameId=fresh-room&createGame=fresh-room&variant=changsha&baseUnit=10&seat=0');
-    const { socket } = h.boot(); socket.open();
+    const { socket } = await h.boot(); socket.open();
     expect(socket.sent[0]).toEqual({ type: 'NEW' });
     joined(socket, 'fresh-room'); full(socket, false);
     expect(h.location.searchParams.get('createGame')).toBe('fresh-room');
     socket.close();
-    h.fireTimer();
+    await h.fireTimer();
     const retry = SocketDouble.sockets[1]; retry.open();
     expect(retry.sent[0]).toEqual({ type: 'NEW' });
     expect(new URL(retry.url).searchParams.get('gameId')).toBe('fresh-room');
-    const reloaded = entryHarness(h.location.search).boot(); reloaded.socket.open();
+    const reloaded = await entryHarness(h.location.search).boot(); reloaded.socket.open();
     expect(reloaded.socket.sent[0]).toEqual({ type: 'NEW' });
     expect(new URL(reloaded.socket.url).searchParams.get('gameId')).toBe('fresh-room');
   });
 
-  test('runtime FULL consumes only the intent; subsequent reconnect/reload is JOIN without config changes', () => {
+  test('runtime FULL consumes only the intent; subsequent reconnect/reload is JOIN without config changes', async () => {
     const h = entryHarness('?gameId=fresh-room&createGame=fresh-room&variant=changsha&dealMode=manual&baseUnit=10&handCount=8&seed=94209&botCount=3&botDifficulty=Medium&seat=2#retained');
-    const { socket, ui } = h.boot(); ui.connect(); socket.open();
+    const { socket } = await h.boot(true); socket.open();
     expect(SocketDouble.sockets).toHaveLength(1);
     expect(socket.sent).toHaveLength(1);
     expect(socket.sent[0]).toEqual({ type: 'NEW' });
@@ -369,26 +399,28 @@ test.describe('Explicit application creation entry — source/normal-protocol co
     expect(h.location.hash).toBe('#retained');
     expect(h.location.searchParams.get('baseUnit')).toBe('10');
     expect(h.location.searchParams.get('seed')).toBe('94209');
-    socket.close(); h.fireTimer();
+    socket.close(); await h.fireTimer();
     const retry = SocketDouble.sockets[1]; retry.open();
     expect(retry.sent[0]).toEqual({ type: 'JOIN', gameId: 'fresh-room' });
-    const reloaded = entryHarness(h.location.search).boot(); reloaded.socket.open();
+    const reloaded = await entryHarness(h.location.search).boot(); reloaded.socket.open();
     expect(reloaded.socket.sent[0]).toEqual({ type: 'JOIN', gameId: 'fresh-room' });
   });
 
-  test('unchanged Apply preserves an unconfirmed explicit creation rather than downgrading it to JOIN', () => {
+  test('unchanged Apply preserves an unconfirmed explicit creation rather than downgrading it to JOIN', async () => {
     const h = entryHarness('?gameId=fresh-room&createGame=fresh-room&variant=changsha&dealMode=auto&baseUnit=10&handCount=4&botCount=3&botDifficulty=Medium&seat=0');
     h.apply({ variant: 'changsha', dealMode: 'auto', botCount: 3, botDifficulty: 'Medium', handCount: 4, baseUnit: 10, seed: null, seat: 0 });
     expect(h.location.searchParams.get('gameId')).toBe('fresh-room');
     expect(h.location.searchParams.get('createGame')).toBe('fresh-room');
-    const { socket } = h.boot(); socket.open();
+    const { socket } = await h.boot(); socket.open();
     expect(socket.sent[0]).toEqual({ type: 'NEW' });
   });
 
-  test('ready New Game preserves the real owned seat/config and uses a different explicit alias', () => {
+  test('ready New Game preserves the real owned seat/config and uses a different explicit alias', async () => {
     const h = entryHarness('?gameId=old-room&variant=changsha&dealMode=manual&baseUnit=10&handCount=8&botCount=0&seed=94209&seat=0');
-    const { client, socket } = h.boot(); socket.open(); joined(socket, 'old-room'); full(socket, true);
-    client.seat = 2;
+    const { client, socket } = await h.boot(); socket.open(); joined(socket, 'old-room'); full(socket, true);
+    socket.receive({ type: 'UPDATE', full: false, viewer: { roomId: 'old-room', revision: 2, seat: 2 },
+      entries: [['seats', 'same-owner', { seat: 2 }]] });
+    expect(client.seat).toBe(2);
     h.coldNewGame(); h.coldNewGame();
     expect(client.cleared).toBe(1);
     expect(socket.readyState).toBe(3);
@@ -401,25 +433,25 @@ test.describe('Explicit application creation entry — source/normal-protocol co
   });
 
   for (const variant of ['four-player', 'three-player', 'bamboo', 'minefield']) {
-    test(`relay ${variant} keeps its JOIN path and carries no new creation marker`, () => {
+    test(`relay ${variant} keeps its JOIN path and carries no new creation marker`, async () => {
       const h = entryHarness(`?variant=${variant}&gameId=old-room&createGame=old-room`);
       h.apply({ variant, dealMode: 'auto', botCount: 0, botDifficulty: 'Medium', handCount: 4, baseUnit: 1, seed: null, seat: null }, true);
       expect(h.location.searchParams.has('createGame')).toBe(false);
-      const { socket } = h.boot(); socket.open();
+      const { socket } = await h.boot(); socket.open();
       expect(socket.sent[0]).toEqual({ type: 'JOIN', gameId: h.location.searchParams.get('gameId') });
     });
   }
 
-  test('a marker for another alias cannot turn an ordinary JOIN into creation', () => {
+  test('a marker for another alias cannot turn an ordinary JOIN into creation', async () => {
     const h = entryHarness('?gameId=existing-room&createGame=other-room&variant=changsha');
-    const { socket } = h.boot(); socket.open();
+    const { socket } = await h.boot(); socket.open();
     expect(socket.sent[0]).toEqual({ type: 'JOIN', gameId: 'existing-room' });
   });
 
-  test('room rejection is visible, never becomes an automatic NEW or substitutes an alias', () => {
+  test('room rejection is visible, never becomes an automatic NEW or substitutes an alias', async () => {
     const h = entryHarness('?gameId=unknown-legacy-room&variant=changsha');
-    const { socket } = h.boot(); socket.open();
-    socket.receive({ type: 'UPDATE', full: false, entries: [
+    const { socket } = await h.boot(); socket.open();
+    socket.receive({ type: 'UPDATE', full: false, viewer: { roomId: null, revision: 1, seat: null }, entries: [
       ['actionRejected', 'current', { action: 'room', reason: 'legacy-room-binding-unavailable' }],
     ] });
     expect(h.element('status-text').innerText).toContain('legacy-room-binding-unavailable');
@@ -428,5 +460,18 @@ test.describe('Explicit application creation entry — source/normal-protocol co
     expect(h.location.searchParams.get('gameId')).toBe('unknown-legacy-room');
     expect(h.location.searchParams.has('createGame')).toBe(false);
     expect(h.navigations).toEqual([]);
+  });
+
+  test('spectator creation retains the explicit marker and never acquires authority from the URL', async () => {
+    const h = entryHarness('?gameId=spectator-room&createGame=spectator-room&variant=changsha&seat=-1&botCount=4');
+    const { client, socket } = await h.boot();
+    socket.open();
+    expect(socket.sent[0]).toEqual({ type: 'NEW' });
+    expect(new URL(socket.url).searchParams.get('seat')).toBe('-1');
+    joined(socket, 'spectator-room', null);
+    full(socket, true);
+    expect(client.seat).toBeNull();
+    expect(h.location.searchParams.has('createGame')).toBe(false);
+    expect(socket.sent).toEqual([{ type: 'NEW' }]);
   });
 });

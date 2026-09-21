@@ -77,3 +77,44 @@ test('a Changsha world still uses the measured free viewport, independent of HUD
     assert(y >= area.top - 1e-6 && y <= area.bottom + 1e-6);
   }
 });
+
+for (const [width, height] of [[1280, 900], [1920, 1080]]) {
+  for (const perspective of [true, false]) {
+    test(`Changsha ${width}x${height} ${perspective ? 'perspective' : 'flat'} fit survives input projection refresh`, () => {
+      const v = view(perspective);
+      Object.assign(v, { width, height });
+      v.playArea = () => ({ left: 8, right: width - 320, top: 68, bottom: height - 134 });
+      const anchors = () => v.fitCorners.map(point => {
+        const p = point.clone().project(v.camera);
+        return [(p.x + 1) * width / 2, (1 - p.y) * height / 2];
+      });
+      const deviation = (expected) => Math.max(...anchors().map(([x, y], i) =>
+        Math.hypot(x - expected[i][0], y - expected[i][1])));
+      v.updateCamera(0, 0, 0, null, 'CHANGSHA');
+      const reference = anchors();
+      v.camera.updateProjectionMatrix();
+      assert(deviation(reference) < 0.01, `input refreshed the fitted projection by ${deviation(reference)} CSS px`);
+      v.updateCamera(0, 0, 0, null, 'CHANGSHA');
+      assert(deviation(reference) < 0.01, 'successive frames must not accumulate the fit');
+      v.updateCamera(0, 1, 0, null, 'CHANGSHA');
+      assert(deviation(reference) > 10, 'intentional look-down remains active');
+      v.updateCamera(0, 0, 1, new THREE.Vector2(.2, -.2), 'CHANGSHA');
+      assert(deviation(reference) > 10, 'intentional zoom and pan remain active');
+      v.updateCamera(0, 0, 0, null, 'CHANGSHA');
+      assert(deviation(reference) < 0.01, 'releasing view controls restores the fitted baseline');
+    });
+  }
+}
+
+for (const perspective of [true, false]) {
+  test(`switching a fitted Changsha ${perspective ? 'perspective' : 'flat'} camera to relay restores the original frustum`, () => {
+    const v = view(perspective);
+    v.playArea = () => ({ left: 8, right: 640, top: 110, bottom: 470 });
+    v.updateCamera(0, 0, 0, null, 'CHANGSHA');
+    v.playArea = () => { throw new Error('Relay must not inspect Changsha chrome'); };
+    v.updateCamera(0, 0, 0, null, 'FOUR_PLAYER');
+    const reference = view(perspective);
+    reference.updateCamera(0, 0, 0, null, 'FOUR_PLAYER');
+    assert.deepEqual(v.camera.projectionMatrix.elements, reference.camera.projectionMatrix.elements);
+  });
+}

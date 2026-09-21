@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Release version surfaced by /health and Lobby > Build / Version. -->
-    <Version>0.32.0</Version>
+    <Version>0.32.1</Version>
   </PropertyGroup>
 
   <ItemGroup>

@@ -22,6 +22,13 @@ rebuild are tracked here.
 Working branch: `stlong/phase-k-wave-22-bringup`. Phase K Wave 22
 in flight. Other lane deliverables outstanding.
 
+## [0.32.1] — 2026-09-21
+
+### Fixed
+
+- Stabilize desktop table framing during ordinary pointer interaction without
+  removing intentional zoom/look-down controls or the mobile table layout.
+
 ## [0.32.0] — 2026-09-20
 
 ### Changed
