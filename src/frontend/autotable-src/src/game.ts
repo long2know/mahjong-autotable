@@ -151,7 +151,9 @@ export class Game {
 
     this.world.updateView();
     this.mainView.updateViewport();
-    this.mainView.updateCamera(this.world.seat, this.lookDown.pos, this.zoom.pos, this.mouseUi.mouse2);
+    this.mainView.updateCamera(
+      this.world.seat, this.lookDown.pos, this.zoom.pos, this.mouseUi.mouse2, this.world.conditions.gameType,
+    );
     this.mainView.updateOutline(this.objectView.selectedObjects);
     this.mainView.updateHighlight(
       this.objectView.highlightedObjects,

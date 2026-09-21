@@ -110,6 +110,10 @@ public sealed class HumanHuFinalizationTests : IAsyncLifetime
                 "result['current'] over the autotable WS — so the #result-modal never opens and the " +
                 "playability gate's hand-end latch never fires (handEnds stays 0 and play stalls). The " +
                 "EndHand result must be broadcast to the bundle, not just emitted on SignalR ScoringComplete.");
+            Assert.Equal(ChangshaPhase.EndHand, final!.Phase);
+            Assert.Equal(1, final.HandNumber);
+            Assert.NotNull(final.CurrentScore);
+            Assert.Equal(new[] { 0 }, final.HandResultContinuation!.WaitingSeats(final));
         }
     }
 
@@ -128,31 +132,15 @@ public sealed class HumanHuFinalizationTests : IAsyncLifetime
         var runtimeGameId = await WaitForBindingAsync(manager, gameId, 5000)
             ?? throw new InvalidOperationException("runtime never bound.");
 
-        await runtime.FillEmptySeatsWithBotsAsync(runtimeGameId);
-        // BE-3 — the seat-take server-starts the auto game on seat-fill; a redundant
-        // explicit start is a harmless no-op. Guard on Seating AND swallow the benign
-        // "already started" InvalidOperationException so BE-3's async start can't race-flake
-        // this arrange.
-        try
-        {
-            if (runtime.TryGetSnapshot(runtimeGameId, out var preStart) && preStart is not null
-                && preStart.Phase == ChangshaPhase.Seating)
-            {
-                await runtime.StartGameAsync(runtimeGameId);
-            }
-        }
-        catch (InvalidOperationException) { /* BE-3 already started the game (seat-fill race) */ }
+        Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var configured));
+        Assert.Equal(new[] { 1, 2, 3 },
+            configured!.Seats.Where(seat => seat.IsBot).Select(seat => seat.SeatIndex).Order());
+        Assert.Equal(DealMode.Auto, configured.DealMode);
         var dealt = await WaitForAsync(() =>
             runtime.TryGetSnapshot(runtimeGameId, out var s) && s is not null
             && s.Phase == ChangshaPhase.AwaitingDiscard
             && s.Hands.Sum(h => h.ConcealedTiles.Count) == 14 + 13 + 13 + 13, 5000);
         Assert.True(dealt, "auto-deal did not reach a quiescent AwaitingDiscard.");
-
-        // The real WS lobby default is Manual deal — after a Hu the next hand parks in RollingDice
-        // (few awaits), unlike the Auto path (many awaits). Reproduce that timing so the transient
-        // EndHand broadcast races the fast advance exactly as it does in the real gate.
-        Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var pre) && pre is not null);
-        pre!.DealMode = DealMode.Manual;
 
         // Seat 0 waits on Wan-1 for the win; seat 1 (bot) discards it — opening a real Hu window.
         Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var state) && state is not null);

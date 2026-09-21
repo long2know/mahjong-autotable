@@ -1352,8 +1352,8 @@ export async function isResultModalVisible(page: Page): Promise<boolean> {
 
 /**
  * ADVANCE — click the real "Next Hand" (#result-next) button in the per-hand
- * result modal to proceed to the next hand (sends match[1]={action:'nextHand'}
- * through the normal UI path — NOT a backdoor). Waits for it to be actionable.
+ * result modal to acknowledge the settled hand through the normal UI.
+ * The server advances after all required humans acknowledge.
  */
 export async function clickNextHand(page: Page, timeoutMs = 8000): Promise<boolean> {
   const btn = page.locator('#result-next');

@@ -186,11 +186,20 @@ public class FanCatalogIntegrationTests
             (Suit.Tong, 5), (Suit.Tong, 5));
         ClearOtherHands(state, keepSeat: 1);
 
+        var hand = state.Hands[1].ConcealedTiles;
+        var drawnTile = hand[^1];
+        hand.RemoveAt(hand.Count - 1);
+        state.Wall.RemoveAll(tile => tile == drawnTile);
+        state.Wall.Insert(0, drawnTile);
+        state.WallBackIndex = state.Wall.Count - 1;
+        Assert.Equal(13, hand.Count);
+        ChangshaGameStateMachine.DrawTile(state);
+        Assert.Equal(1, state.LastDrawSeatIndex);
+        Assert.Equal(drawnTile, hand[^1]);
         ChangshaGameStateMachine.DeclareSelfDrawWin(state, seatIndex: 1);
         ChangshaGameStateMachine.Score(state, ChangshaScoringOptions.HouseRules);
 
-        // Force EndHand-ish state so the translator's BuildHandResult path runs.
-        state.Phase = ChangshaPhase.EndHand;
+        Assert.Equal(ChangshaPhase.EndHand, state.Phase);
 
         var translated = ChangshaToAutotableTranslator.BuildHandResult(state);
         Assert.NotNull(translated);

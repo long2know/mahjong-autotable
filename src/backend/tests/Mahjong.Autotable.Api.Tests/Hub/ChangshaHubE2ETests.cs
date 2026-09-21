@@ -1,4 +1,7 @@
+using System.Text.Json;
+using Mahjong.Autotable.Api.Changsha.Runtime;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Mahjong.Autotable.Api.Tests.Hub;
 
@@ -80,7 +83,8 @@ public sealed class ChangshaHubE2ETests
     public async Task E2E3_Reconnect_ReceivesFullStateSnapshot()
     {
         await using var harness = new ChangshaHubTestHarness();
-        var conn1 = await harness.ConnectAsync();
+        var playerId = $"reconnect-owner-{Guid.NewGuid():N}";
+        var conn1 = await harness.ConnectAsync(playerId);
 
         var createResult = await conn1.InvokeAsync<CreateGameResult>("CreateGame", "changsha-v1", new int[] { 1, 2, 3 }, 9001);
         await conn1.InvokeAsync<TakeSeatResult>("TakeSeat", createResult.GameId, 0);
@@ -90,11 +94,17 @@ public sealed class ChangshaHubE2ETests
         await WaitForAsync(() => harness.EventsOfType("TurnStarted").Any(), TimeSpan.FromSeconds(10));
 
         // Disconnect first connection.
+        var runtime = harness.Factory.Services.GetRequiredService<IChangshaGameRuntime>();
+        var previousConnectionId = Assert.IsType<string>(conn1.ConnectionId);
         await conn1.DisposeAsync();
+        await WaitForAsync(() => runtime.TryGetSeatForConnection(createResult.GameId, previousConnectionId) is null);
 
         // Reconnect on a new connection.
-        var conn2 = await harness.ConnectAsync();
+        var conn2 = await harness.ConnectAsync(playerId);
+        Assert.NotEqual(previousConnectionId, conn2.ConnectionId);
         var fullStateBefore = harness.EventsOfType("FullState").Count();
+        var received = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var subscription = conn2.On<JsonElement>("FullState", payload => received.TrySetResult(payload.Clone()));
 
         var ok = await conn2.InvokeAsync<ReconnectResult>("ReconnectGame", createResult.GameId, 0);
         Assert.True(ok.Success);
@@ -103,6 +113,17 @@ public sealed class ChangshaHubE2ETests
         await WaitForAsync(
             () => harness.EventsOfType("FullState").Count() > fullStateBefore,
             TimeSpan.FromSeconds(5));
+        var snapshot = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(createResult.GameId, snapshot.GetProperty("gameId").GetString());
+        Assert.Equal(0, runtime.TryGetSeatForConnection(createResult.GameId, conn2.ConnectionId!));
+        var state = await runtime.TryGetSnapshotCopyAsync(createResult.GameId);
+        Assert.Equal(playerId, state!.Seats[0].PlayerId);
+        var seats = snapshot.GetProperty("seats").EnumerateArray().ToArray();
+        var own = Assert.Single(seats, seat => seat.GetProperty("seatIndex").GetInt32() == 0);
+        Assert.Equal(state.Hands[0].ConcealedTiles,
+            own.GetProperty("concealedTiles").EnumerateArray().Select(tile => tile.GetInt32()));
+        Assert.All(seats.Where(seat => seat.GetProperty("seatIndex").GetInt32() != 0), seat =>
+            Assert.True(!seat.TryGetProperty("concealedTiles", out var tiles) || tiles.ValueKind == JsonValueKind.Null));
     }
 
     private sealed record CreateGameResult(string GameId);

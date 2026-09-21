@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Mahjong.Autotable.Api.Changsha.Runtime;
+using Mahjong.Autotable.Api.Players;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -48,13 +49,18 @@ internal sealed class ChangshaHubTestHarness : IAsyncDisposable
 
     private readonly string _tempDbPath;
 
-    public async Task<HubConnection> ConnectAsync()
+    public async Task<HubConnection> ConnectAsync(string? playerId = null)
     {
         var server = Factory.Server;
         var conn = new HubConnectionBuilder()
             .WithUrl(server.BaseAddress + "hubs/changsha", o =>
             {
                 o.HttpMessageHandlerFactory = _ => server.CreateHandler();
+                if (playerId is not null)
+                {
+                    var identity = Factory.Services.GetRequiredService<PlayerIdentityService>();
+                    o.Headers["Cookie"] = $"{PlayerIdentityService.CookieName}={identity.Protect(playerId)}";
+                }
             })
             .Build();
 

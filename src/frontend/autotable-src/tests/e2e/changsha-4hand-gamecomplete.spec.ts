@@ -76,7 +76,11 @@ test.describe('GATE gamecomplete: 4-hand authoritative GameComplete (real clicks
     while (Date.now() < deadline && !gc.isComplete) {
       iters++;
       const claim = await readClaimWindow(page);
-      if (claim.open) {
+      if (await isResultModalVisible(page)) {
+        // A settled winning hand can still contain fourteen tiles. Continue
+        // before looking for another discard; the server owns the next deal.
+        if (await clickNextHand(page, 6000)) nextHands++;
+      } else if (claim.open) {
         // Real click on the visible claim overlay (wins with Hu when offered,
         // else passes) — advances play without any synthetic dispatch.
         await claimByClick(page); claimsPassed++;
@@ -86,10 +90,6 @@ test.describe('GATE gamecomplete: 4-hand authoritative GameComplete (real clicks
         // Only spend a real pointer discard when the seat AUTHORITATIVELY owes
         // one — this is what keeps the mobile loop fast enough to finish 4 hands.
         const d = await discardByPointer(page); if (d.ok) discards++;
-      } else if (await isResultModalVisible(page)) {
-        // Desktop may surface the per-hand result modal; click the real Next-Hand
-        // button when present. (Mobile auto-deals the next hand server-side.)
-        if (await clickNextHand(page, 6000)) nextHands++;
       } else {
         await page.waitForTimeout(500); // bots acting / between-hand auto-deal.
       }

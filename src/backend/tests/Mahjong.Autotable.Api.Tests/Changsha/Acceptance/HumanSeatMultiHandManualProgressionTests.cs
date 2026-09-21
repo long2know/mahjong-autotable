@@ -172,13 +172,16 @@ public sealed class HumanSeatMultiHandManualProgressionTests
         var runtime = harness.Runtime;
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
 
+        const string playerId = "manual-human-player";
         var gameId = await runtime.CreateGameAsync(
             seed: 4100, botSeatIndexes: new[] { 1, 2, 3 },
-            hostPlayerId: "human-0", hostConnectionId: null, cts.Token, maxHands: 4);
-        await runtime.TakeSeatAsync(gameId, "human-0", "conn-0", 0, cts.Token);
+            hostPlayerId: playerId, hostConnectionId: null, cts.Token, maxHands: 4,
+            publicRoom: new($"manual-progress-{Guid.NewGuid():N}", DealMode.Manual, "medium"));
+        await runtime.TakeSeatAsync(gameId, playerId, "conn-0", 0, cts.Token);
 
         var state = Snapshot(runtime, gameId);
-        state.DealMode = DealMode.Manual;
+        Assert.Equal(DealMode.Manual, state.DealMode);
+        Assert.True(state.RequireHandResultAcknowledgements);
         Assert.False(state.Seats[0].IsBot);
         Assert.Equal(0, state.DealerSeatIndex);
 
@@ -198,13 +201,63 @@ public sealed class HumanSeatMultiHandManualProgressionTests
         Assert.Equal(new[] { 14, 13, 13, 13 }, latch.HandCounts(1));
         Assert.Equal(0, latch.Dealer(1));
 
-        // Force a Hu by BOT seat 2 so RotateBanker moves the button onto a bot seat.
+        // A conserved pre-draw position: seat 1 discards, then bot 2 really draws its winning tile.
         var s1 = Snapshot(runtime, gameId);
-        s1.ActiveSeatIndex = 2;
+        const int discard = 104;
+        var winningTile = _TestHarness.ChangshaTestHelpers.Tid(Suit.Wan, 1, 0);
         var winning = AcceptanceFixture.ThirteenTileWaitingForWan1();
-        winning.Add(_TestHarness.ChangshaTestHelpers.Tid(Suit.Wan, 1, 0));
+        var used = winning.Append(winningTile).Append(discard).ToHashSet();
+        foreach (var hand in s1.Hands)
+        {
+            hand.ConcealedTiles.Clear();
+            hand.Melds.Clear();
+        }
         AcceptanceFixture.OverrideHand(s1, 2, winning.ToArray());
-        await runtime.DeclareWinAsync(gameId, 2, cts.Token);
+        int[] fillerKinds = [0, 1, 2, 3, 5, 6, 7, 8, 9, 14, 15, 16, 17];
+        foreach (var hand in s1.Hands.Where(hand => hand.SeatIndex != 2))
+        {
+            foreach (var kind in fillerKinds)
+            {
+                var tile = Enumerable.Range(kind * 4, 4).First(tile => !used.Contains(tile));
+                Assert.True(used.Add(tile));
+                hand.ConcealedTiles.Add(tile);
+            }
+        }
+        s1.Hands[1].ConcealedTiles.Add(discard);
+        s1.Wall = new[] { winningTile }.Concat(Enumerable.Range(0, 108).Where(tile => !used.Contains(tile))).ToList();
+        s1.WallDrawIndex = s1.WallBackDrawn = 0;
+        s1.WallBackIndex = s1.Wall.Count - 1;
+        s1.DiscardPile.Clear();
+        s1.ClaimWindow = null;
+        s1.ActiveSeatIndex = 1;
+        Assert.Empty(new ClaimAdjudicator().GetOpportunities(1, discard, s1.Hands));
+        Assert.Equal(Enumerable.Range(0, 108),
+            s1.Wall.Concat(s1.Hands.SelectMany(hand => hand.ConcealedTiles)).Order());
+
+        var finished = new TaskCompletionSource<ChangshaGameState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void CaptureResult(string id, ChangshaGameState snapshot)
+        {
+            if (id == gameId && snapshot.Phase == ChangshaPhase.EndHand && snapshot.HandNumber == 1)
+                finished.TrySetResult(snapshot);
+        }
+        runtime.StateChanged += CaptureResult;
+        try
+        {
+            await runtime.DiscardAsync(gameId, 1, discard, cts.Token);
+            var result = await finished.Task.WaitAsync(TimeSpan.FromSeconds(5), cts.Token);
+            Assert.Equal(2, result.CurrentWin!.WinningSeatIndex);
+            Assert.Equal(WinMethod.SelfDraw, result.CurrentWin.Method);
+            Assert.Equal(winningTile, result.CurrentWin.WinningTileId);
+            Assert.Contains(result.EventLog, entry => entry.EventType == "tile-drawn"
+                && entry.SeatIndex == 2 && entry.TileId == winningTile);
+            var continuation = Assert.IsType<ChangshaHandResultContinuation>(result.HandResultContinuation);
+            Assert.Equal(new[] { 0 }, continuation.WaitingSeats(result));
+            Assert.Equal(0, result.DealerSeatIndex);
+            Assert.Null(latch.HandCounts(2));
+            await runtime.AcknowledgeHandResultAsync(gameId, playerId, "conn-0",
+                continuation.HandNumber, continuation.ResultToken, cts.Token);
+        }
+        finally { runtime.StateChanged -= CaptureResult; }
 
         var afterRotate = Snapshot(runtime, gameId);
         Assert.Equal(2, afterRotate.DealerSeatIndex);

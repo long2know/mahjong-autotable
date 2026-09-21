@@ -1,7 +1,7 @@
 import { AmbientLight, Camera, DirectionalLight, Group, Mesh, Object3D, OrthographicCamera, PerspectiveCamera, PlaneGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import { World } from './world';
 import { CustomOutline } from './render/custom-outline';
-import { Size } from './types';
+import { GameType, Size } from './types';
 import { fitTableProjection, type ScreenArea } from './table-fit';
 
 // Phase K Wave 7 — OutlinePass + EffectComposer + RenderPass are
@@ -272,11 +272,13 @@ export class MainView {
     }
   }
 
-  updateCamera(seat: number | null, lookDown: number, zoom: number, mouse2: Vector2 | null): void {
+  updateCamera(seat: number | null, lookDown: number, zoom: number, mouse2: Vector2 | null, gameType: GameType): void {
     this.updateCameraProjection(this.width, this.height);
     const angle = (seat ?? 0) * Math.PI * 0.5;
     this.viewGroup.rotation.set(0, 0, angle);
-    if (document.body.classList.contains('variant-riichi')) {
+    // The scene can change variant independently of the URL/HUD (local relay
+    // setup and replays). Never apply Changsha fitting to a relay world.
+    if (gameType !== GameType.CHANGSHA) {
       if (this.perspective) this.updatePespectiveCamera(seat === null, lookDown, zoom, mouse2);
       else this.updateOrthographicCamera(seat === null, lookDown, zoom, mouse2);
       this.viewGroup.updateMatrixWorld();
