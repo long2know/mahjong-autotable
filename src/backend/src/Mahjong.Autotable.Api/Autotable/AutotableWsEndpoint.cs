@@ -628,12 +628,12 @@ public sealed class AutotableConnectionManager : IDisposable
                     // Hicks's "Take Seat" click — route to runtime.TakeSeatAsync,
                     // optionally auto-fill remaining seats with bots for solo play.
                     // The leave-seat path (Ripley L-10) owns its own peer broadcast
-                    // (per-player tombstones via RemovePlayerEntries) and signals
+                    // (per-player tombstones via RemovePlayerEntries), and the
+                    // occupied-seat/take path is runtime-owned too. Both signal
                     // back via the return value so we skip the raw passthrough that
-                    // would otherwise re-store a stale `seats[playerId]={seat:null}`
-                    // entry and undo the tombstone.
-                    var handledAsLeave = await TryHandleSeatTakeAsync(connection, entry, ct);
-                    if (!handledAsLeave)
+                    // would otherwise re-store a stale `seats[playerId]` entry.
+                    var handledBySeatAction = await TryHandleSeatTakeAsync(connection, entry, ct);
+                    if (!handledBySeatAction)
                     {
                         // Mirror upstream's perPlayer semantics so the seat shows up
                         // immediately for other clients; runtime will reconfirm on its
@@ -738,12 +738,9 @@ public sealed class AutotableConnectionManager : IDisposable
     private async Task<bool> TryHandleSeatTakeAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
     {
         // value shape: { seat: int } (per upstream Player.svelte). null = leave.
-        // Returns true ONLY when the entry has been fully handled as a "leave seat"
-        // action — in that case the caller skips the raw passthrough because this
-        // method already broadcast per-player tombstones (seats/nicks/mouse) that
-        // supersede the inbound `{seat: null}` payload. Returns false for the
-        // "take seat" path and for all guard / no-op exits so the existing
-        // passthrough behaviour is preserved verbatim.
+        // Returns true whenever the entry has been handled by the runtime seat
+        // path (leave or take). Returns false only for guard / no-op exits so the
+        // existing passthrough behaviour is preserved verbatim.
         if (entry.Value is null) return false;
         if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return false;
         if (!je.TryGetProperty("seat", out var seatEl)) return false;
@@ -877,10 +874,10 @@ public sealed class AutotableConnectionManager : IDisposable
             _logger.LogDebug(ex, "Seat take failed for connection {ConnectionId} seat {Seat}", connection.Id, seatIndex);
         }
 
-        // Take-seat path falls through to passthrough (caller relays the seats
-        // entry to peers as an optimistic mirror until the runtime's
-        // StateChanged push reconfirms the authoritative seat assignment).
-        return false;
+        // Take-seat path is fully owned by the runtime (the StateChanged push
+        // re-broadcasts the authoritative seat assignment). Do not passthrough
+        // the inbound client entry.
+        return true;
     }
 
     /// <summary>

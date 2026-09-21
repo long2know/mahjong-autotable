@@ -357,6 +357,60 @@ public sealed class AutotableWsSeatAuthorizationTests : IAsyncLifetime
     }
 
     [Fact, Trait("Category", "Authorization")]
+    public async Task OccupiedSeatTake_DoesNotPersistSpoofedOwnershipOrLeakOnReconnect()
+    {
+        await using var game = await CreateBoundGameAsync(DealMode.Auto);
+        var before = await SnapshotAsync(game.RuntimeGameId);
+        var victimTileId = before.Hands.Single(hand => hand.SeatIndex == 0).ConcealedTiles[0];
+        var attackerPlayerId = NewPlayerId("occupied-seat-attacker");
+
+        await using var attacker = await OpenJoinedAsync(
+            game.RelayGameId,
+            "seat=0&bots=false&botCount=0&dealMode=auto",
+            attackerPlayerId);
+
+        var processingBarrierKey = NewPlayerId("occupied-seat-processing-barrier");
+        await attacker.SendUpdateAsync(
+            new object[] { "seats", attackerPlayerId, new { seat = 0 } },
+            new object[] { "mouse", processingBarrierKey, new { x = 1, y = 2, z = 3 } });
+        var processingBarrier = await game.Owner.ReadNonFullUpdateAsync();
+        var processingBarrierEntry = Assert.Single(
+            processingBarrier.GetProperty("entries").EnumerateArray(),
+            entry => entry[0].GetString() == "mouse"
+                && entry[1].GetString() == processingBarrierKey);
+        Assert.Equal(1, processingBarrierEntry[2].GetProperty("x").GetInt32());
+
+        var afterTake = await SnapshotAsync(game.RuntimeGameId);
+        Assert.Equal(before.StateVersion, afterTake.StateVersion);
+
+        await using var reconnect = await OpenSessionAsync(
+            game.RelayGameId,
+            "seat=0&bots=false&botCount=0&dealMode=auto",
+            attackerPlayerId);
+        var reconnectFull = await reconnect.JoinAndReadLatestAsync(game.RelayGameId);
+        Assert.False(HasSeatOwnershipEntry(reconnectFull, attackerPlayerId, 0));
+        Assert.True(HandProjectionIsOpaque(reconnectFull, 0));
+
+        await reconnect.SendUpdateAsync(
+            new object[] { "discard", 0, new { tileId = victimTileId } });
+        await AssertRejectedWithoutMutationAsync(
+            reconnect, game.RuntimeGameId, afterTake,
+            expectedAction: "discard",
+            expectedReason: "connection-owns-no-seat",
+            expectedRequestedSeat: 0,
+            expectedOwnedSeat: null);
+
+        var ownerTileId = afterTake.Hands.Single(hand => hand.SeatIndex == 0).ConcealedTiles[0];
+        await game.Owner.SendUpdateAsync(
+            new object[] { "discard", 0, new { tileId = ownerTileId } });
+        Assert.True(await WaitForAsync(() =>
+            Runtime.TryGetSnapshot(game.RuntimeGameId, out var state)
+            && state is not null
+            && state.StateVersion > afterTake.StateVersion
+            && state.DiscardPile.Any(discard => discard.SeatIndex == 0 && discard.TileId == ownerTileId)));
+    }
+
+    [Fact, Trait("Category", "Authorization")]
     public async Task SpectatorLeaveSeat_CannotReleaseAnotherConnectionsSeat()
     {
         var relayGameId = NewGameId("leave-seat");
@@ -581,6 +635,21 @@ public sealed class AutotableWsSeatAuthorizationTests : IAsyncLifetime
         }
     }
 
+    private async Task<WsSession> OpenSessionAsync(
+        string relayGameId,
+        string query,
+        string playerId)
+    {
+        var client = _factory!.Server.CreateWebSocketClient();
+        var cookie = _factory.Services.GetRequiredService<PlayerIdentityService>().Protect(playerId);
+        client.ConfigureRequest = request =>
+            request.Headers["Cookie"] = $"{PlayerIdentityService.CookieName}={cookie}";
+        var uri = new Uri(
+            _factory.Server.BaseAddress,
+            $"autotable/ws?gameId={Uri.EscapeDataString(relayGameId)}&{query}");
+        return new WsSession(await client.ConnectAsync(uri, CancellationToken.None));
+    }
+
     private async Task AssertRejectedWithoutMutationAsync(
         WsSession connection,
         string runtimeGameId,
@@ -632,6 +701,57 @@ public sealed class AutotableWsSeatAuthorizationTests : IAsyncLifetime
             Assert.Equal(expected.Value, actual.GetInt32());
         else
             Assert.Equal(JsonValueKind.Null, actual.ValueKind);
+    }
+
+    private static bool HasSeatOwnershipEntry(JsonElement update, string playerId, int seatIndex)
+    {
+        var entries = update.GetProperty("entries");
+        foreach (var entry in entries.EnumerateArray())
+        {
+            if (entry[0].GetString() != "seats")
+                continue;
+            if (entry[1].GetString() != playerId)
+                continue;
+            if (entry[2].ValueKind != JsonValueKind.Object)
+                continue;
+            if (!entry[2].TryGetProperty("seat", out var seatEl) || seatEl.ValueKind != JsonValueKind.Number)
+                continue;
+            if (seatEl.GetInt32() == seatIndex)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool HandProjectionIsOpaque(JsonElement update, int seatIndex)
+    {
+        var entries = update.GetProperty("entries");
+        var seen = false;
+        foreach (var entry in entries.EnumerateArray())
+        {
+            if (entry[0].GetString() != "things")
+                continue;
+            if (entry[2].ValueKind != JsonValueKind.Object)
+                continue;
+            if (!entry[2].TryGetProperty("slotName", out var slotNameEl) || slotNameEl.ValueKind != JsonValueKind.String)
+                continue;
+            var slotName = slotNameEl.GetString() ?? string.Empty;
+            if (!slotName.StartsWith("hand.", StringComparison.Ordinal) || !slotName.EndsWith($"@{seatIndex}", StringComparison.Ordinal))
+                continue;
+
+            seen = true;
+            if (entry[1].ValueKind == JsonValueKind.Number && entry[1].TryGetInt64(out _))
+                return false;
+            if (entry[1].ValueKind == JsonValueKind.String
+                && long.TryParse(entry[1].GetString(), out _))
+                return false;
+            if (entry[2].TryGetProperty("face", out var faceEl) && faceEl.ValueKind != JsonValueKind.Null)
+                return false;
+            if (entry[2].TryGetProperty("rotationIndex", out var rotationEl) && rotationEl.GetInt32() != 2)
+                return false;
+        }
+
+        return seen;
     }
 
     private async Task<ChangshaGameState> SnapshotAsync(string runtimeGameId) =>
@@ -743,6 +863,41 @@ public sealed class AutotableWsSeatAuthorizationTests : IAsyncLifetime
             }
             if (!joined || !fullUpdate)
                 throw new TimeoutException("JOIN did not yield JOINED and a full UPDATE.");
+        }
+
+        public async Task<JsonElement> JoinAndReadLatestAsync(string gameId, int quietMs = 400, int hardTimeoutMs = 5_000)
+        {
+            await SendRawAsync(JsonSerializer.Serialize(new { type = "JOIN", gameId }));
+            var joined = false;
+            JsonElement? lastFull = null;
+            var deadline = DateTime.UtcNow.AddMilliseconds(hardTimeoutMs);
+            while (DateTime.UtcNow < deadline)
+            {
+                JsonElement envelope;
+                try
+                {
+                    envelope = await ReadEnvelopeAsync(
+                        Math.Max(1, Math.Min(quietMs, (int)(deadline - DateTime.UtcNow).TotalMilliseconds)));
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+
+                var type = envelope.GetProperty("type").GetString();
+                joined |= type == "JOINED";
+                if (type == "UPDATE"
+                    && envelope.TryGetProperty("full", out var full)
+                    && full.ValueKind == JsonValueKind.True)
+                {
+                    lastFull = envelope;
+                }
+            }
+
+            if (!joined || lastFull is null)
+                throw new TimeoutException("JOIN did not yield JOINED and a full UPDATE.");
+
+            return lastFull.Value;
         }
 
         public async Task<(JsonElement Rejection, JsonElement Resync)> ReadRejectionAndResyncAsync(
