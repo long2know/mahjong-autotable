@@ -29,15 +29,29 @@ class Element {
 const guiSource = ts.createSourceFile('game-ui.ts', fs.readFileSync(path.join(root, 'src/game-ui.ts'), 'utf8'), ts.ScriptTarget.Latest, true);
 const gui = guiSource.statements.find(s => ts.isClassDeclaration(s) && s.name?.text === 'GameUi');
 const renderer = gui.members.find(m => ts.isMethodDeclaration(m) && m.name.getText(guiSource) === 'renderResult');
+const handRenderer = gui.members.find(m => ts.isMethodDeclaration(m) && m.name.getText(guiSource) === 'renderResultHand');
 const readiness = gui.members.find(m => ts.isMethodDeclaration(m) && m.name.getText(guiSource) === 'renderResultReadiness');
-const renderSource = [renderer, readiness].map(method =>
+const renderSource = [renderer, handRenderer, readiness].map(method =>
   ts.createPrinter().printNode(ts.EmitHint.Unspecified, method, guiSource)).join('\n');
 const nodes = new Map();
 const en = JSON.parse(fs.readFileSync(path.join(root, 'src/i18n/en.json')));
-const RenderFixture = runInNewContext(javascript('class RenderFixture {' + renderSource + '}\nRenderFixture;'), {
-  document: { createElement: () => new Element(), getElementById: id => nodes.get(id) ?? null },
-  t: (key, params = {}) => (en[key] ?? key).replace(/\{(\w+)\}/g, (whole, name) => String(params[name] ?? whole)),
-});
+function fixtureClass(catalog = en, warnings = []) {
+  return runInNewContext(javascript('class RenderFixture {' + renderSource + '}\nRenderFixture;'), {
+    document: { createElement: () => new Element(), getElementById: id => nodes.get(id) ?? null },
+    t: (key, params = {}) => (catalog[key] ?? key).replace(/\{(\w+)\}/g, (whole, name) => String(params[name] ?? whole)),
+    console: { warn: message => warnings.push(message) },
+  });
+}
+const RenderFixture = fixtureClass();
+
+function resultUi(catalog = en, warnings = []) {
+  const Fixture = fixtureClass(catalog, warnings);
+  const ui = new Fixture();
+  ui.elements = Object.fromEntries(['resultHeadline', 'resultWinner', 'resultScoreBody', 'resultHand'].map(key => [key, new Element()]));
+  ui.nickForSeat = seat => seat === 0 ? 'Human One' : 'Bot ' + seat;
+  ui.renderResultWinTypeBadge = ui.renderResultPatternChips = ui.renderResultScoreBreakdown = () => {};
+  return ui;
+}
 
 function readinessUi() {
   nodes.clear();
@@ -98,10 +112,7 @@ for (const [description, type, winner, expected] of [
   ['false win', 'ZhaHu', 0, 'Human One declared a false win'],
 ]) {
   test(`actual result renderer retains readable winner and authoritative score rows for ${description}`, () => {
-    const ui = new RenderFixture();
-    ui.elements = Object.fromEntries(['resultHeadline', 'resultWinner', 'resultScoreBody', 'resultHand'].map(key => [key, new Element()]));
-    ui.nickForSeat = seat => seat === 0 ? 'Human One' : 'Bot ' + seat;
-    ui.renderResultWinTypeBadge = ui.renderResultPatternChips = ui.renderResultScoreBreakdown = () => {};
+    const ui = resultUi();
     const score = Object.freeze([
       Object.freeze({ seat: 2, delta: 12 }), Object.freeze({ seat: 0, delta: -4 }),
       Object.freeze({ seat: 3, delta: -4 }), Object.freeze({ seat: 1, delta: -4 }),
@@ -115,6 +126,87 @@ for (const [description, type, winner, expected] of [
     assert.deepEqual(score.map(row => row.seat), [2, 0, 3, 1]);
   });
 }
+
+  test('actual result renderer maps all 108 physical IDs to the board atlas and localized face names', () => {
+    const ui = resultUi();
+    const hand = Object.freeze(Array.from({ length: 108 }, (_, id) => id));
+    ui.renderResult({ type: 'Hu', winner: 0, score: [], hand, nextBanker: 0 });
+    assert.equal(ui.elements.resultHand.children.length, 108);
+    for (let face = 0; face < 27; face++) {
+      for (let copy = 0; copy < 4; copy++) {
+        const id = face * 4 + copy;
+        const cell = ui.elements.resultHand.children[id];
+        const label = `${face % 9 + 1} ${['characters', 'circles', 'bamboo'][Math.floor(face / 9)]}`;
+        assert.equal(cell.dataset.tileId, String(id));
+        assert.equal(cell.dataset.face, String(face));
+        assert.equal(cell.attributes.role, 'img');
+        assert.equal(cell.attributes['aria-label'], label);
+        assert.equal(cell.title, label);
+        assert.equal(cell.textContent, '', 'valid tiles use artwork, not abbreviated text codes');
+        const [x, y] = cell.style.backgroundPosition.split(' ').map(Number.parseFloat);
+        // Recover the atlas pixel crop: 64x80 faces in the board's 512x512 PNG.
+        assert.ok(Math.abs(x / 100 * (512 - 64) - face % 8 * 64) < 1e-8);
+        assert.ok(Math.abs(y / 100 * (512 - 80) - Math.floor(face / 8) * 80) < 1e-8);
+        assert.equal(cell.attributes.tabindex, undefined);
+        assert.equal(cell.onclick, undefined);
+      }
+    }
+  });
+
+  test('actual result renderer preserves unsorted authoritative order, all kong copies, and repeated entries', () => {
+    const ui = resultUi();
+    const hand = Object.freeze([107, 36, 0, 1, 2, 3, 72, 35, 71, 104, 16, 17, 18, 19, 107]);
+    const result = Object.freeze({ type: 'Hu', winner: 2, score: [], hand, nextBanker: 2 });
+    ui.renderResult(result);
+    const expected = hand.map(String);
+    assert.deepEqual(ui.elements.resultHand.children.map(cell => cell.dataset.tileId), expected);
+    ui.renderResult(result);
+    assert.deepEqual(ui.elements.resultHand.children.map(cell => cell.dataset.tileId), expected);
+    assert.equal(ui.elements.resultHand.children.length, 15);
+  });
+
+  test('invalid physical IDs and opaque handles remain unknown instead of wrapping or exposing an invented face', () => {
+    const warnings = [];
+    const ui = resultUi(en, warnings);
+    const invalid = [-1, 108, 135, 1000, 0.5, NaN, Infinity, -Infinity, '0', 'h_opaque', null, undefined, {}];
+    ui.renderResult({ type: 'Hu', winner: 0, score: [], hand: [...invalid, 107], nextBanker: 0 });
+    assert.equal(ui.elements.resultHand.children.length, invalid.length + 1);
+    for (const cell of ui.elements.resultHand.children.slice(0, -1)) {
+      assert.equal(cell.className, 'result-tile result-tile-unknown');
+      assert.equal(cell.textContent, '?');
+      assert.equal(cell.attributes['aria-label'], 'Unknown tile');
+      assert.equal(cell.dataset.face, undefined);
+      assert.equal(cell.dataset.tileId, undefined);
+      assert.equal(cell.style.backgroundPosition, undefined);
+    }
+    assert.equal(warnings.length, invalid.length);
+    assert.equal(ui.elements.resultHand.children.at(-1).attributes['aria-label'], '9 bamboo');
+  });
+
+  for (const [locale, expected] of [
+    ['en', ['1 characters', '9 characters', '1 circles', '9 circles', '1 bamboo', '9 bamboo']],
+    ['zh-Hans', ['1万', '9万', '1筒', '9筒', '1条', '9条']],
+    ['zh-Hant', ['1萬', '9萬', '1筒', '9筒', '1條', '9條']],
+  ]) {
+    test(`actual result artwork has localized accessible names across every suit boundary (${locale})`, () => {
+      const catalog = JSON.parse(fs.readFileSync(path.join(root, `src/i18n/${locale}.json`)));
+      const ui = resultUi(catalog);
+      ui.renderResult({ type: 'Hu', winner: 0, score: [], hand: [0, 35, 36, 71, 72, 107], nextBanker: 0 });
+      assert.deepEqual(ui.elements.resultHand.children.map(cell => cell.attributes['aria-label']), expected);
+    });
+  }
+
+  test('empty Hu, Draw and ZhaHu results clear prior artwork without retaining stale faces or changing score data', () => {
+    const ui = resultUi();
+    const score = Object.freeze([Object.freeze({ seat: 0, delta: 8 })]);
+    for (const type of ['Hu', 'Draw', 'ZhaHu']) {
+      ui.renderResult({ type: 'Hu', winner: 0, score, hand: [0, 36, 72], nextBanker: 0 });
+      assert.equal(ui.elements.resultHand.children.length, 3);
+      ui.renderResult({ type, winner: type === 'Draw' ? -1 : 0, score, hand: [], nextBanker: 0 });
+      assert.equal(ui.elements.resultHand.children.length, 0);
+      assert.equal(ui.elements.resultScoreBody.children[0].children[2].textContent, '+8');
+    }
+  });
 
 function transport() {
   const sockets = [];

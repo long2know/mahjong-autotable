@@ -3,10 +3,11 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
   newActor, applyRoom, closeLobby, copyJoinLink, followJoinLink, roomId,
-  dismissPrompts, probe, driveManualCeremony, type Actor,
+  dismissPrompts, probe, driveManualCeremony, waitForSeat, type Actor,
 } from './_lobby-repair';
 import type { HandResultEntry } from '../../src/types';
 import { mobileGeometry } from './_mobile-geometry';
+import { assertResultTileArtwork, captureResultTileArtwork } from './_result-tile-artwork';
 
 type Frame = { type?: string; full?: boolean; entries?: Array<[string, string | number, Record<string, unknown> | null]> };
 
@@ -284,6 +285,20 @@ test(`real bot win/draw (${dealMode}) is held through backdrop, Escape, metadata
     await expect(actor.page.locator('#result-score tbody tr')).toHaveCount(4);
     await expect(actor.page.locator('#result-winner')).not.toBeEmpty();
     await expect(actor.page.getByTestId('hand-result-continue')).toHaveText('Continue');
+    await assertResultTileArtwork(actor.page, result.hand);
+    if (dealMode === 'auto') {
+      for (const [name, viewport] of [
+        ['desktop', { width: 1280, height: 900 }],
+        ['portrait', { width: 390, height: 844 }],
+        ['landscape', { width: 844, height: 390 }],
+      ] as const) {
+        await actor.page.setViewportSize(viewport);
+        await assertResultTileArtwork(actor.page, result.hand);
+        await expect(actor.page.getByTestId('hand-result-continue')).toBeInViewport({ ratio: 1 });
+        await captureResultTileArtwork(actor.page, testInfo, `real-auto-${name}`, 'server-completed-hand', result);
+      }
+      await actor.page.setViewportSize({ width: 390, height: 844 });
+    }
     const held = await board(actor.page);
     await actor.page.keyboard.press('Escape');
     await actor.page.getByTestId('hand-result-dialog').click({ position: { x: 2, y: 2 } });
@@ -305,7 +320,7 @@ test(`real bot win/draw (${dealMode}) is held through backdrop, Escape, metadata
     await actor.page.reload({ waitUntil: 'domcontentloaded' });
     await dismissPrompts(actor);
     await closeLobby(actor);
-    await expect.poll(async () => (await probe(actor)).seat).toBe(0);
+    await waitForSeat(actor, 0);
     await expect(actor.page.getByTestId('hand-result-dialog')).toBeVisible();
     expect((await currentResult(actor.page))?.continuation).toEqual(result.continuation);
     expect(acknowledgements(transport.sent)).toHaveLength(0);

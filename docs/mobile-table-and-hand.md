@@ -85,6 +85,12 @@ changes, and winning hand. Every human who participated must press **Continue**.
 The server holds the actual next deal until all required players confirm;
 closing the backdrop or pressing Escape does not acknowledge it.
 
+The winning hand uses the same graphical tile faces as the board, with localized
+tile names for assistive technology. Tiles retain the server's order and count,
+including melds and all four tiles of a kong; your hand-sort preference does not
+reorder this result. These tiles are non-interactive, and invalid tile IDs display
+an unknown-tile placeholder rather than an invented face.
+
 After you confirm, the dialog can say **Waiting for the other players**.
 Reconnect or **Refresh status** restores the server's readiness without sending
 an acknowledgement automatically. A rejected acknowledgement stays visible with
