@@ -32,13 +32,13 @@ export abstract class ThingGroup {
     return false;
   }
 
-  setSimple(index: number, position: Vector3, rotation: Quaternion): void {}
+  setSimple(index: number, position: Vector3, rotation: Quaternion, scale = 1): void {}
 
   hide(index: number): void {
     this.meshes[index - this.startIndex].visible = false;
   }
 
-  setCustom(index: number, position: Vector3, rotation: Quaternion): Mesh {
+  setCustom(index: number, position: Vector3, rotation: Quaternion, scale = 1): Mesh {
     const i = index - this.startIndex;
     const mesh = this.meshes[i];
     mesh.visible = !this.params[i].hidden;
@@ -47,6 +47,7 @@ export abstract class ThingGroup {
     }
     mesh.position.copy(position);
     mesh.setRotationFromQuaternion(rotation);
+    mesh.scale.setScalar(scale);
     return mesh;
   }
 
@@ -158,7 +159,7 @@ attribute vec3 offset;
     this.hiddenInstances.add(i);
   }
 
-  override setSimple(index: number, position: Vector3, rotation: Quaternion): void {
+  override setSimple(index: number, position: Vector3, rotation: Quaternion, scale = 1): void {
     const i = index - this.startIndex;
     const mesh = this.meshes[i];
     if (this.params[i].hidden) {
@@ -168,18 +169,20 @@ attribute vec3 offset;
     // Hiding clears the instance, not its cached transform; revealing at the
     // same position must restore that instance instead of taking the fast path.
     const wasHidden = this.hiddenInstances.delete(i);
-    if (!wasHidden && !mesh.visible && mesh.position.equals(position) && rotEquals(mesh.quaternion, rotation)) {
+    if (!wasHidden && !mesh.visible && mesh.position.equals(position)
+      && rotEquals(mesh.quaternion, rotation) && mesh.scale.x === scale) {
       return;
     }
     mesh.position.copy(position);
     mesh.setRotationFromQuaternion(rotation);
+    mesh.scale.setScalar(scale);
     mesh.updateMatrix();
     mesh.visible = false;
     this.instancedMesh.setMatrixAt(i, mesh.matrix);
     this.instancedMesh.instanceMatrix.needsUpdate = true;
   }
 
-  override setCustom(index: number, position: Vector3, rotation: Quaternion): Mesh {
+  override setCustom(index: number, position: Vector3, rotation: Quaternion, scale = 1): Mesh {
     const i = index - this.startIndex;
     const mesh = this.meshes[i];
     if (this.params[i].hidden) {
@@ -189,6 +192,7 @@ attribute vec3 offset;
     this.hiddenInstances.delete(i);
     mesh.position.copy(position);
     mesh.setRotationFromQuaternion(rotation);
+    mesh.scale.setScalar(scale);
     mesh.visible = true;
     this.instancedMesh.setMatrixAt(i, this.zero);
     this.instancedMesh.instanceMatrix.needsUpdate = true;

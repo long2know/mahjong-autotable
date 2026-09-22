@@ -137,8 +137,9 @@ function worldHarness() {
   const writes = [];
   Object.assign(world, {
     slots, things, seat: 0, conditions: { gameType: GameType.CHANGSHA },
-    handMode: 'suit', compactHand: false, handPointerDown: false, handPlaces: new Map(),
-    presentedHand: [], handSignature: '', handDirty: true, drawnTile: null, handChanged: null,
+    handMode: 'suit', handScale: 1, handPointerDown: false, handPlaces: new Map(),
+    presentedHand: [], handSignature: '', handDirty: true, drawnTile: null,
+    selected: [], hovered: null, highlightedThing: null, movement: null,
     client: { seat: 0, connected: () => true,
       things: { entries: () => entries.entries(), get: id => entries.get(id) ?? null },
       claim: { get: id => claims.get(id) ?? null },
@@ -176,8 +177,70 @@ test('actual World presentation changes no authoritative slot, collection, owner
   assert.equal(h.world.things.get(4).slot.name, 'hand.3@0');
   assert.equal(h.world.toSelect().find(t => t.id === 4).position.x, sortedPosition.position.x);
   h.world.isMyDiscardTurn = () => true;
-  assert.equal(h.world.discardOwnHandTile(4), true);
+  h.world.hovered = h.world.things.get(4);
+  assert.equal(h.world.onDragStart(), false, 'the board press emits a discard, never a free drag');
   assert.deepEqual(h.writes, [{ seat: 0, tileId: 4 }]);
+});
+
+test('both sort preferences immediately reposition the rendered and raycast hand, never the server tiles', () => {
+  const h = worldHarness();
+  h.put([tile(0, 0, 0), tile(10, 2, 1), tile(100, 25, 2), tile(8, 2, 3)]);
+  const before = h.snapshot();
+  let rendered = [];
+  h.world.objectView = { updateThings: items => { rendered = items; } };
+  for (const [mode, expected] of [['groups', [8, 10, 0, 100]], ['suit', [0, 8, 10, 100]]]) {
+    h.world.setHandSortMode(mode);
+    h.world.updateHandPresentation();
+    h.world.updateViewThings();
+    assert.deepEqual(ids(h.world.ownHandPresentation().tiles), expected);
+    assert.equal(rendered.length, 4);
+    const picks = h.world.toSelect();
+    assert.equal(picks.length, 4, 'own tiles remain on-board raycast targets on every screen');
+    for (const item of rendered) {
+      assert.notEqual(item.hidden, true);
+      assert.deepEqual(item.place.position, picks.find(pick => pick.id === item.thingIndex).position);
+    }
+    assert.equal(h.snapshot(), before);
+  }
+  assert.deepEqual(h.writes, []);
+});
+
+test('actual settings binding applies the saved sort and holds reflow through pointerup, cancel and blur', () => {
+  const source = ts.createSourceFile('game-ui.ts', fs.readFileSync(path.join(root, 'src/game-ui.ts'), 'utf8'), ts.ScriptTarget.Latest, true);
+  const gui = source.statements.find(s => ts.isClassDeclaration(s) && s.name?.text === 'GameUi');
+  const method = gui.members.find(m => ts.isMethodDeclaration(m) && m.name.getText(source) === 'setupHandSorting');
+  const body = ts.createPrinter().printNode(ts.EmitHint.Unspecified, method, source);
+  const events = new Map(), frames = [];
+  let mode = 'groups', onChange;
+  const Fixture = runInNewContext(ts.transpileModule(`class Fixture { ${body} }\nFixture;`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText, {
+    getAppSettings: () => ({ handSort: mode }),
+    onAppSettingsChange: fn => { onChange = fn; },
+    document: { addEventListener: (event, fn) => events.set(event, fn) },
+    window: { addEventListener: (event, fn) => events.set(event, fn) },
+    requestAnimationFrame: fn => frames.push(fn),
+  });
+  const h = worldHarness();
+  const ui = new Fixture();
+  ui.world = h.world;
+  ui.setupHandSorting();
+  assert.equal(h.world.handMode, 'groups');
+  mode = 'suit';
+  onChange();
+  assert.equal(h.world.handMode, 'suit');
+  events.get('pointerdown')({ pointerId: 1 });
+  events.get('pointerdown')({ pointerId: 2 });
+  events.get('pointerup')({ pointerId: 1 });
+  assert.equal(h.world.handPointerDown, true, 'compatibility mouse events see the same tile positions');
+  frames.shift()();
+  assert.equal(h.world.handPointerDown, true, 'second pointer still holds the hand');
+  events.get('pointercancel')({ pointerId: 2 });
+  frames.shift()();
+  assert.equal(h.world.handPointerDown, false);
+  events.get('pointerdown')({ pointerId: 3 });
+  events.get('blur')();
+  assert.equal(h.world.handPointerDown, false);
 });
 
 test('pointer-down and claim choice defer automatic reflow, including a newly drawn tile', () => {
@@ -218,12 +281,12 @@ for (const [name, concealed, meldSize] of [
     if (meldSize === 4) melds[3].slotName = 'meld.0.4@0';
     h.put([...hand, ...melds]);
     const before = h.snapshot();
-    h.world.setHandPresentation('groups', true);
+    h.world.setHandSortMode('groups');
     h.world.updateHandPresentation();
     assert.equal(h.world.ownHandPresentation().tiles.length, concealed);
     assert.deepEqual(ids(h.world.ownHandPresentation().tiles).sort((a, b) => a - b), ids(hand));
     assert.equal(h.snapshot(), before);
-    assert.equal(h.world.toSelect().filter(t => h.world.things.get(t.id).slot.group === 'hand').length, 0);
+    assert.equal(h.world.toSelect().filter(t => h.world.things.get(t.id).slot.group === 'hand').length, concealed);
     assert.deepEqual(h.writes, []);
   });
 }

@@ -88,15 +88,22 @@ server-envelope field, never a writable collection.
 
 | Selector | Element | Purpose | Source |
 |---|---|---|---|
-| `data-testid="own-hand-tray"` | `<section>` | Compact-screen concealed hand; replaces, rather than duplicates, the own 3D row. | `src/hand-view.ts` |
-| `data-testid="hand-tile"` | `<button data-tile-id data-face data-drawn>` | Actual physical tile ID and visible catalog face; normal tap discards this ID when authorized. | `src/hand-view.ts` |
-| `data-testid="hand-sort"` | `<select>` | Persisted local Suit + rank / Pairs-triples-first mode. | `src/hand-view.ts` |
-| `data-testid="settings-hand-sort"` | `<select>` | Same preference under Settings → Display, also available on desktop. | `src/settings-drawer.ts` |
+| `#main canvas` | WebGL canvas | Own concealed hand stays visible and interactive on the board in portrait, landscape and desktop. | `src/main-view.ts`, `src/world.ts` |
+| `data-testid="settings-button"` | Existing app settings gear | Opens Display first during compact-screen gameplay; desktop/lobby retain their usual first tab. No additional gear. | `index.html`, `src/settings-drawer.ts` |
+| `data-testid="settings-perspective-toggle"` | `<input type="checkbox">` | Clearly labeled Perspective view under Settings → Display, above Hand order. Immediate camera update; persisted and synchronized with `#perspective` and P. | `src/settings-drawer.ts`, `src/game.ts` |
+| `#settings-toggle` / `#settings-drawer` | Existing per-game gear/drawer | The original Bot Strength / Hand Count / Auto-Deal / Sound surface now also exposes both display preferences at the top. | `index.html`, `src/game-ui.ts` |
+| `data-testid="settings-game-perspective"` | `<input type="checkbox">` | Immediate Perspective view control in the original Settings drawer; synchronized with Display and P, without Apply & Restart. | `index.html`, `src/settings-drawer.ts` |
+| `data-testid="settings-game-hand-sort"` | `<select>` | Both hand-order choices in the original drawer; same persistent on-board sorting as the app settings surface. | `index.html`, `src/settings-drawer.ts` |
+| `data-testid="settings-hand-sort"` | `<select>` | Settings → Display → Hand order: persisted Suit + rank / Pairs-triples-first mode, applied to the actual board hand. | `src/settings-drawer.ts` |
 | `data-testid="settings-mobile-table-status"` | `<input type="checkbox">` | Persisted compact-screen table-status visibility; default off, desktop unaffected. | `src/settings-drawer.ts` |
 
-The playability pointer helper now observes the visible tray tile on compact
-screens, and the presented raycast position on desktop. It still sends ordinary
-pointer events; no collection/gameplay calls were added to test actions.
+The playability pointer helper observes the presented on-board raycast position
+on every screen. `_mobile-geometry.ts` measures submitted meshes/instances and
+checks their screen coordinates against the real raycast targets. Mobile tests
+tap those canvas coordinates; desktop tests use normal mouse presses. Sorting
+tests choose both modes through the accessible settings listbox and verify the
+physical ID sent and acknowledged by the server. No DOM hand tiles, synthetic
+gameplay events or direct collection writes are used.
 
 Phase J Wave 4 — under the 768px breakpoint the move-log slides off-canvas;
 the toggle button reveals it as a drawer. Hidden on desktop.
@@ -207,6 +214,7 @@ table pages.
 |---|---|
 | `data-testid="lobby-open-chat"` | Bare-lobby entry, accessible name **Online players and invitations**. |
 | `data-testid="chat-panel"` / `chat-toggle` | Existing widget; toggle exposes `aria-expanded`. |
+| `data-testid="chat-collapse"` | Desktop **Collapse chat** × button; native click/keyboard activation returns focus to the **Open chat** toggle. Messages and the separate desktop collapse preference survive. |
 | `data-testid="online-players"` | Server-wide roster section, separate from room-private recipients. |
 | `data-testid="online-players-status"` | Explicit connecting/unavailable/ready state; outages are not an empty-online-list claim. |
 | `data-testid="online-player"` + `data-player-id` | One other signed identity per row; no own row, bots, rooms or transport IDs. |

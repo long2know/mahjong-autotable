@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, relative } from 'node:path';
 import type { Camera, Vector2, Vector3 } from 'three';
 import { newActor, applyRoom, closeLobby, probe } from './_lobby-repair';
-import { mobileGeometry } from './_mobile-geometry';
+import { mobileGeometry, waitForBoardHand } from './_mobile-geometry';
 
 interface Bounds { left: number; top: number; right: number; bottom: number }
 interface CameraGame {
@@ -209,7 +209,7 @@ test.describe('desktop click camera projection', () => {
   }
 
   for (const viewport of [{ width: 360, height: 800 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
-    test(`compact ${viewport.width}x${viewport.height} keeps both views fitted beside optional panels and above the hand`, async ({ browser, baseURL }, info) => {
+    test(`compact ${viewport.width}x${viewport.height} keeps both views and the board hand fitted beside optional panels`, async ({ browser, baseURL }, info) => {
       test.setTimeout(60_000);
       const context = await browser.newContext({ viewport, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
       const evidence = [];
@@ -219,7 +219,7 @@ test.describe('desktop click camera projection', () => {
         await page.locator('#lobby-hand-count-fieldset label:has(input[value="1"])').click();
         await applyRoom(actor, 3, 0, 'auto');
         await closeLobby(actor);
-        await expect(page.getByTestId('hand-tile')).toHaveCount(14);
+        await waitForBoardHand(page);
         const initial = await probe(actor);
         const mark = actor.sent.length;
         for (const perspective of [true, false]) {
@@ -236,9 +236,8 @@ test.describe('desktop click camera projection', () => {
             await page.waitForTimeout(250);
             const layout = await mobileGeometry(page);
             evidence.push({ perspective, panel, layout });
-            expect(layout.tray).toBe(true);
             expect(layout.tiles).toHaveLength(14);
-            expect(layout.ownMeshCount).toBe(0);
+            expect(layout.ownMeshCount).toBe(14);
             expect(layout.pageWidth).toBeLessThanOrEqual(viewport.width);
             expect(layout.pageHeight).toBeLessThanOrEqual(viewport.height);
             expect(layout.table).not.toBeNull();
@@ -250,8 +249,8 @@ test.describe('desktop click camera projection', () => {
             }
             for (const tile of layout.tiles) {
               expect(tile.hit, `physical tile ${tile.id} must remain unobscured`).toBe(true);
-              expect(tile.width).toBeGreaterThanOrEqual(44);
-              expect(tile.height).toBeGreaterThanOrEqual(44);
+              expect(tile.width).toBeGreaterThanOrEqual(10);
+              expect(tile.height).toBeGreaterThanOrEqual(16);
               expect(tile.left).toBeGreaterThanOrEqual(0);
               expect(tile.right).toBeLessThanOrEqual(viewport.width);
               expect(tile.top).toBeGreaterThanOrEqual(0);
@@ -261,7 +260,8 @@ test.describe('desktop click camera projection', () => {
               const visible = page.locator(panel === 'chat' ? '#chat-panel' : '#move-log');
               await expect(visible).toBeInViewport({ ratio: 1 });
               const bounds = await visible.boundingBox();
-              expect(bounds!.y + bounds!.height).toBeLessThan(Math.min(...layout.tiles.map(tile => tile.top)));
+              expect(bounds!.y + bounds!.height < Math.min(...layout.tiles.map(tile => tile.top))
+                || bounds!.x > Math.max(...layout.tiles.map(tile => tile.right))).toBe(true);
             }
             await screenshot(page, info, `${perspective ? 'perspective' : 'flat'}-${panel}`);
           }

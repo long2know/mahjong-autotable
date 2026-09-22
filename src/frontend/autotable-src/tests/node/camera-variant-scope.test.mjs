@@ -16,6 +16,8 @@ require.extensions['.ts'] = (module, filename) => module._compile(ts.transpileMo
 const types = require(path.join(root, 'src/types.ts'));
 const fit = require(path.join(root, 'src/table-fit.ts'));
 const module = { exports: {} };
+const chrome = new Map();
+const bodyClasses = new Set();
 runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root, 'src/main-view.ts'), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText, {
@@ -27,7 +29,12 @@ runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root, 'src/main-vie
     './table-fit': fit,
     './render/custom-outline': { CustomOutline: class {} },
   })[id],
-  document: { body: { classList: { contains: () => false } } },
+  document: {
+    body: { classList: { contains: name => bodyClasses.has(name) } }, documentElement: {},
+    getElementById: id => chrome.get(id),
+    querySelector: selector => chrome.get(selector) ?? null, querySelectorAll: () => [],
+  },
+  getComputedStyle: () => ({ getPropertyValue: () => '0', visibility: 'visible' }),
 });
 
 function view(perspective) {
@@ -59,9 +66,132 @@ for (const variant of ['FOUR_PLAYER', 'THREE_PLAYER', 'BAMBOO', 'MINEFIELD']) {
       } else {
         assert.deepEqual(v.camera.position.toArray(), [0, -174, 174]);
       }
+
     });
   }
 }
+
+for (const [width, height] of [[390, 844], [844, 390]]) {
+  test(`compact ${width}x${height} keeps transient turn/pickup chrome out of camera framing`, () => {
+    chrome.clear();
+    const v = view(true);
+    Object.assign(v, { width, height, main: { getBoundingClientRect: () => ({ left: 0, top: 0 }) } });
+    chrome.set('lobby-toggle', {
+      offsetTop: 62, offsetHeight: 44, offsetParent: null,
+      getClientRects: () => [1], getBoundingClientRect: () => ({ top: 62, bottom: 106 }),
+    });
+    const area = v.playArea();
+    assert.equal(area.top, 114);
+    assert.equal(area.bottom, height - 8, 'no hand-only canvas inset');
+    chrome.set('turn-banner', {
+      getClientRects: () => [1], getBoundingClientRect: () => ({ top: 62, bottom: 170 }),
+    });
+    chrome.set('.ferro-claim-overlay-visible', {
+      getClientRects: () => [1], getBoundingClientRect: () => ({ top: height - 210, bottom: height - 8 }),
+    });
+    chrome.set('pickup-hud', {
+      getClientRects: () => [1], getBoundingClientRect: () => ({ top: height - 100 }),
+    });
+    assert.equal(v.playArea().bottom, height - 8, 'pickup text is not a viewport resize');
+    assert.equal(v.playArea().top, 114, 'wrapping turn text is not a viewport resize');
+    if (width > height) {
+      chrome.set('pickup-hud', {
+        getClientRects: () => [1], getBoundingClientRect: () => ({ top: 62, bottom: 110 }),
+      });
+      assert.equal(v.playArea().top, 114);
+      assert.equal(v.playArea().bottom, height - 8, 'landscape pickup keeps the board bottom available');
+    }
+    chrome.clear();
+  });
+}
+
+test('decorative desktop gear hover transforms do not resize the camera toolbar region', () => {
+  chrome.clear();
+  const v = view(true);
+  Object.assign(v, { width: 1280, height: 900, main: { getBoundingClientRect: () => ({ left: 0, top: 0 }) } });
+  chrome.set('new-game', {
+    offsetTop: 12, offsetHeight: 44, offsetParent: null,
+    getClientRects: () => [1], getBoundingClientRect: () => ({ top: 12, bottom: 56 }),
+  });
+  const gear = {
+    offsetTop: 12, offsetHeight: 40, offsetParent: null,
+    getClientRects: () => [1], getBoundingClientRect: () => ({ top: 12, bottom: 52 }),
+  };
+  chrome.set('settings-button', gear);
+  const before = v.playArea();
+  gear.getBoundingClientRect = () => ({ top: 3.715727, bottom: 60.284273 });
+  assert.deepEqual(v.playArea(), before);
+  assert.equal(v.playArea().top, 64);
+  chrome.clear();
+});
+
+test('toolbar layout accounts for the canvas visual-viewport offset once', () => {
+  chrome.clear();
+  const v = view(true);
+  Object.assign(v, { width: 390, height: 824, main: { getBoundingClientRect: () => ({ left: 0, top: 20 }) } });
+  chrome.set('lobby-toggle', {
+    offsetTop: 62, offsetHeight: 44,
+    offsetParent: { getBoundingClientRect: () => ({ top: 20 }) },
+    getClientRects: () => [1],
+  });
+  assert.equal(v.playArea().top, 114);
+  chrome.clear();
+});
+
+for (const perspective of [true, false]) {
+  test(`desktop status retraction keeps the exact ${perspective ? 'perspective' : 'flat'} fit but permits resize, zoom and real seat changes`, () => {
+    chrome.clear();
+    const v = view(perspective);
+    Object.assign(v, { width: 1280, height: 900, main: { getBoundingClientRect: () => ({ left: 0, top: 0 }) } });
+    chrome.set('bot-banner', {
+      getClientRects: () => [1],
+      getBoundingClientRect: () => ({ top: 774.203125, bottom: 880 }),
+    });
+    v.updateCamera(0, 0, 0, null, 'CHANGSHA');
+    const area = v.playArea(), projection = v.camera.projectionMatrix.clone();
+    assert.equal(area.bottom, 766.203125, 'the measured CI status footprint, not a rounded approximation');
+    chrome.delete('bot-banner');
+    for (let frame = 0; frame < 183; frame++) {
+      v.updateCamera(0, 0, 0, null, 'CHANGSHA');
+      assert.deepEqual(v.playArea(), area);
+      assert.deepEqual(v.camera.projectionMatrix.elements, projection.elements);
+    }
+    v.height = 1000;
+    v.updateCamera(0, 0, 0, null, 'CHANGSHA');
+    assert.equal(v.playArea().bottom, 866.203125, 'the reservation is an inset, not a frozen viewport');
+    assert.notDeepEqual(v.camera.projectionMatrix.elements, projection.elements);
+    const position = v.camera.position.clone(), scale = v.camera.scale.clone();
+    v.updateCamera(0, 0, 1, new THREE.Vector2(.2, -.2), 'CHANGSHA');
+    assert(!position.equals(v.camera.position) || !scale.equals(v.camera.scale), 'intentional zoom still works');
+    v.updateCamera(null, 0, 0, null, 'CHANGSHA');
+    assert.equal(v.camera.rotation.x, 0);
+    assert.equal(v.playArea().bottom, 992, 'genuine spectator transition releases the previous seat footprint');
+    chrome.clear();
+  });
+}
+
+test('compact status retraction preserves its top band; an explicit user hide releases it', () => {
+  chrome.clear();
+  bodyClasses.add('mobile-table-status-visible');
+  const v = view(true);
+  Object.assign(v, { width: 390, height: 844, main: { getBoundingClientRect: () => ({ left: 0, top: 0 }) } });
+  chrome.set('lobby-toggle', { offsetTop: 62, offsetHeight: 44, offsetParent: null, getClientRects: () => [1] });
+  chrome.set('bot-banner', {
+    getClientRects: () => [1], getBoundingClientRect: () => ({ top: 112, bottom: 144 }),
+  });
+  v.updateCamera(0, 0, 0, null, 'CHANGSHA');
+  const projection = v.camera.projectionMatrix.clone();
+  assert.equal(v.playArea().top, 152);
+  chrome.delete('bot-banner');
+  v.updateCamera(0, 0, 0, null, 'CHANGSHA');
+  assert.equal(v.playArea().top, 152);
+  assert.deepEqual(v.camera.projectionMatrix.elements, projection.elements);
+  bodyClasses.delete('mobile-table-status-visible');
+  v.updateCamera(0, 0, 0, null, 'CHANGSHA');
+  assert.equal(v.playArea().top, 114);
+  assert.notDeepEqual(v.camera.projectionMatrix.elements, projection.elements);
+  chrome.clear();
+});
 
 test('a Changsha world still uses the measured free viewport, independent of HUD class', () => {
   const v = view(true);

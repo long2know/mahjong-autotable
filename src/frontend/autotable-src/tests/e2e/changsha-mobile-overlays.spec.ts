@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { newActor, applyRoom, closeLobby, dismissPrompts, probe, driveManualCeremony } from './_lobby-repair';
-import { mobileGeometry } from './_mobile-geometry';
+import { mobileGeometry, waitForBoardHand } from './_mobile-geometry';
 
 async function visibleHand(page: Page, count = 14): Promise<void> {
   const layout = await mobileGeometry(page);
@@ -10,8 +10,8 @@ async function visibleHand(page: Page, count = 14): Promise<void> {
   expect(layout.pageWidth).toBeLessThanOrEqual(layout.width);
   expect(layout.pageHeight).toBeLessThanOrEqual(layout.height);
   for (const tile of layout.tiles) {
-    expect(tile.width).toBeGreaterThanOrEqual(44);
-    expect(tile.height).toBeGreaterThanOrEqual(44);
+    expect(tile.width).toBeGreaterThanOrEqual(10);
+    expect(tile.height).toBeGreaterThanOrEqual(16);
     expect(tile.hit, `tile ${tile.id} must still receive the touch`).toBe(true);
   }
   const handTop = Math.min(...layout.tiles.map(tile => tile.top));
@@ -20,7 +20,8 @@ async function visibleHand(page: Page, count = 14): Promise<void> {
     if (await panel.count() === 0) continue;
     const bounds = await panel.boundingBox();
     expect(bounds, selector).not.toBeNull();
-    expect(bounds!.y + bounds!.height, selector).toBeLessThan(handTop);
+    expect(bounds!.y + bounds!.height < handTop
+      || bounds!.x > Math.max(...layout.tiles.map(tile => tile.right)), `${selector} clears the on-board hand`).toBe(true);
     await expect(panel).toBeInViewport({ ratio: 1 });
   }
   await expect(page.locator('#turn-banner')).toBeVisible();
@@ -41,7 +42,7 @@ test('prewarmed mobile settings opens on one real click, closes and reopens norm
     await actor.page.locator('#lobby-hand-count-fieldset label:has(input[value="1"])').click();
     await applyRoom(actor, 3, 0, 'auto');
     await closeLobby(actor);
-    await expect(actor.page.getByTestId('hand-tile')).toHaveCount(14);
+    await waitForBoardHand(actor.page);
     await actor.page.getByTestId('settings-button').hover();
     await expect(actor.page.getByTestId('settings-tab-display')).toBeAttached();
     await actor.page.getByTestId('settings-button').click();
@@ -69,7 +70,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }
       await actor.page.locator('#lobby-hand-count-fieldset label:has(input[value="1"])').click();
       await applyRoom(actor, 3, 0, 'auto');
       await closeLobby(actor);
-      await expect(actor.page.getByTestId('hand-tile')).toHaveCount(14);
+      await waitForBoardHand(actor.page);
       const handBefore = (await probe(actor)).handIds;
       const commandStart = actor.sent.length;
       await expect(actor.page.locator('#bot-banner')).toBeHidden();
@@ -83,7 +84,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }
       await actor.page.reload({ waitUntil: 'domcontentloaded' });
       await dismissPrompts(actor);
       await closeLobby(actor);
-      await expect(actor.page.getByTestId('hand-tile')).toHaveCount(14);
+      await waitForBoardHand(actor.page);
       await expect(actor.page.locator('#bot-banner')).toBeVisible();
       await statusPreference(actor.page, false);
       await expect(actor.page.locator('#bot-banner')).toBeHidden();
@@ -95,7 +96,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }
       await actor.page.reload({ waitUntil: 'domcontentloaded' });
       await dismissPrompts(actor);
       await closeLobby(actor);
-      await expect(actor.page.getByTestId('hand-tile')).toHaveCount(14);
+      await waitForBoardHand(actor.page);
       await expect(actor.page.locator('#move-log-toggle')).toHaveAttribute('aria-expanded', 'true');
       await expect(actor.page.locator('#bot-banner')).toBeHidden();
       await visibleHand(actor.page);
@@ -116,7 +117,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }
 
       const tile = report.tiles[4];
       const discardStart = actor.sent.length;
-      await actor.page.locator(`[data-testid="hand-tile"][data-tile-id="${tile.id}"]`).tap();
+      await actor.page.touchscreen.tap(tile.x, tile.y);
       await expect.poll(() => actor.sent.slice(discardStart).flatMap(frame => frame.entries ?? [])
         .filter(([kind]) => kind === 'discard').map(([, , info]) => info?.tileId)).toEqual([tile.id]);
       await expect.poll(async () => (await probe(actor)).handIds).not.toContain(tile.id);
@@ -165,7 +166,7 @@ test('open mobile chat leaves the real manual pickup actuator and partial hand r
       return current.pickup?.seatIndex === 0 && current.pickup.count === 4;
     }).toBe(true);
     await actor.page.locator('#pickup-take-btn').tap();
-    await expect(actor.page.getByTestId('hand-tile')).toHaveCount(4);
+    await waitForBoardHand(actor.page, 4);
     await actor.page.getByTestId('chat-toggle').tap();
     await visibleHand(actor.page, 4);
     await expect.poll(async () => {
@@ -179,10 +180,10 @@ test('open mobile chat leaves the real manual pickup actuator and partial hand r
       return button.contains(document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2));
     })).toBe(true);
     await actor.page.locator('#pickup-take-btn').tap();
-    await expect(actor.page.getByTestId('hand-tile')).toHaveCount(8);
+    await waitForBoardHand(actor.page, 8);
     await visibleHand(actor.page, 8);
     await driveManualCeremony([actor]);
-    await expect(actor.page.getByTestId('hand-tile')).toHaveCount(14);
+    await waitForBoardHand(actor.page);
     await visibleHand(actor.page);
     expect(actor.errors).toEqual([]);
   } finally { await context.close(); }

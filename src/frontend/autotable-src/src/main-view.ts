@@ -2,7 +2,7 @@ import { AmbientLight, DirectionalLight, Group, Mesh, Object3D, OrthographicCame
 import { World } from './world';
 import { CustomOutline } from './render/custom-outline';
 import { GameType, Size } from './types';
-import { fitTableProjection, type ScreenArea } from './table-fit';
+import { fitTableProjection, localHandFitCorners, responsiveHandScale, type ScreenArea } from './table-fit';
 
 // Phase K Wave 7 — OutlinePass + EffectComposer + RenderPass are
 // gone.  The renderer is now a single-pass `renderer.render(scene,
@@ -52,6 +52,9 @@ export class MainView {
   private height = 0;
   private fitCorners: Vector3[] = [];
   private viewportSignature = '';
+  private tableStatusInset = 0;
+  private tableStatusRegion: 'top' | 'bottom' | null = null;
+  private framingSeat: number | null | undefined;
 
   private dummyObject: Object3D;
 
@@ -273,6 +276,8 @@ export class MainView {
   }
 
   updateCamera(seat: number | null, lookDown: number, zoom: number, mouse2: Vector2 | null, gameType: GameType): void {
+    if (seat !== this.framingSeat || gameType !== GameType.CHANGSHA) this.tableStatusInset = 0;
+    this.framingSeat = seat;
     this.updateCameraProjection(this.width, this.height);
     const angle = (seat ?? 0) * Math.PI * 0.5;
     this.viewGroup.rotation.set(0, 0, angle);
@@ -290,7 +295,8 @@ export class MainView {
       this.updateOrthographicCamera(seat === null, 0, 0, null);
     }
     this.viewGroup.updateMatrixWorld();
-    fitTableProjection(this.camera, this.fitCorners, this.width, this.height, this.playArea());
+    const corners = this.fitCorners.concat(localHandFitCorners(seat, this.handPresentationScale));
+    fitTableProjection(this.camera, corners, this.width, this.height, this.playArea());
 
     // Fit is the zero-zoom baseline. Do not auto-fit away an intentional zoom,
     // pan or look-down; the existing controls remain independent of resizing.
@@ -298,6 +304,10 @@ export class MainView {
     if (this.perspective) this.updatePespectiveCamera(seat === null, lookDown, userZoom, mouse2);
     else this.updateOrthographicCamera(seat === null, lookDown, userZoom, mouse2);
     this.viewGroup.updateMatrixWorld();
+  }
+
+  get handPresentationScale(): number {
+    return responsiveHandScale(this.width, this.height);
   }
 
   private playArea(): ScreenArea {
@@ -311,29 +321,38 @@ export class MainView {
       right: this.width - Math.max(margin, safeRight), bottom: this.height - margin,
     };
     const compact = this.width <= 900 || this.height <= 520;
-    const topChrome = ['new-game', 'turn-banner', 'variant-badge', 'settings-button', 'lobby-toggle'];
-    if (compact) topChrome.push('bot-banner');
+    const topChrome = ['new-game', 'variant-badge', 'settings-button', 'lobby-toggle'];
     for (const id of topChrome) {
       const element = document.getElementById(id);
       if (!element || !element.getClientRects().length) continue;
-      const bounds = element.getBoundingClientRect();
-      if (bounds.top - canvas.top < this.height * 0.45) {
-        area.top = Math.max(area.top, bounds.bottom - canvas.top + margin);
+      // Layout slots, not transformed hover bounds (the desktop gear rotates).
+      const parentTop = element.offsetParent?.getBoundingClientRect().top ?? 0;
+      const top = element.offsetTop + parentTop - canvas.top;
+      if (top < this.height * 0.45) {
+        area.top = Math.max(area.top, top + element.offsetHeight + margin);
       }
     }
-    for (const id of ['own-hand-tray', 'pickup-hud']) {
-      const element = document.getElementById(id);
-      if (!element || !element.getClientRects().length) continue;
-      const bounds = element.getBoundingClientRect();
-      area.bottom = Math.min(area.bottom, bounds.top - canvas.top - margin);
-    }
-    const claim = document.querySelector('.ferro-claim-overlay-visible');
-    if (claim?.getClientRects().length) {
-      area.bottom = Math.min(area.bottom, claim.getBoundingClientRect().top - canvas.top - margin);
-    }
+    // Turn text and transient pickup/claim overlays do not define the camera's
+    // viewport. Their changing size/countdown must never move the table.
     const tableStatus = document.getElementById('bot-banner');
-    if (!compact && tableStatus?.getClientRects().length) {
-      area.bottom = Math.min(area.bottom, tableStatus.getBoundingClientRect().top - canvas.top - margin);
+    const statusRegion = compact
+      ? (document.body.classList.contains('mobile-table-status-visible') ? 'top' : null) : 'bottom';
+    if (statusRegion !== this.tableStatusRegion) {
+      this.tableStatusRegion = statusRegion;
+      this.tableStatusInset = 0;
+    }
+    if (statusRegion !== null) {
+      // Transport loss retracts the status text, not its framing footprint.
+      // Retain only the inset; real seat changes and explicit compact-HUD
+      // choices reset it, while resizing and other panels still fit normally.
+      if (tableStatus?.getClientRects().length) {
+        const bounds = tableStatus.getBoundingClientRect();
+        this.tableStatusInset = Math.max(0, statusRegion === 'top'
+          ? bounds.bottom - canvas.top + margin
+          : this.height - (bounds.top - canvas.top - margin));
+      }
+      if (statusRegion === 'top') area.top = Math.max(area.top, this.tableStatusInset);
+      else area.bottom = Math.min(area.bottom, this.height - this.tableStatusInset);
     }
     // Keep a collapsed chat header below the rendered hand in desktop mode too.
     const chat = document.querySelector('.chat-panel-collapsed');
@@ -428,6 +447,7 @@ export class MainView {
   }
 
   setPerspective(perspective: boolean): void {
+    if (this.perspective === perspective) return;
     this.perspective = perspective;
     this.setupRendering();
   }

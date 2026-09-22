@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { newActor, applyRoom, closeLobby, dismissPrompts, knownJoinUrl, roomId, waitLobbyReady } from './_lobby-repair';
+import { waitForBoardHand } from './_mobile-geometry';
 
 interface RoomRead {
   path: string;
@@ -81,14 +82,14 @@ test('ordinary NEW, reconnect, room switch and JOIN fetch room APIs only after b
     const first = await applyRoom(actor, 3, 0, 'auto');
     await closeLobby(actor);
     await awaitReads(first, 0);
-    await expect(actor.page.getByTestId('hand-tile')).toHaveCount(14);
+    await waitForBoardHand(actor.page);
 
     let mark = requests.length;
     await actor.page.reload({ waitUntil: 'domcontentloaded' });
     await dismissPrompts(actor);
     await closeLobby(actor);
     await awaitReads(first, mark);
-    await expect(actor.page.getByTestId('hand-tile')).toHaveCount(14);
+    await waitForBoardHand(actor.page);
 
     mark = requests.length;
     await actor.page.getByTestId('new-game-button').click();

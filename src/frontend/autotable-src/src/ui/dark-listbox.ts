@@ -58,17 +58,28 @@ export function enhanceDarkSelect(select: HTMLSelectElement): void {
   wrap.appendChild(trigger);
 
   const popup = document.createElement('div');
+  popup.id = `${id}-popup`;
   popup.className = 'dark-listbox-popup';
   popup.setAttribute('role', 'listbox');
+  trigger.setAttribute('aria-controls', popup.id);
   if (aria) popup.setAttribute('aria-label', aria);
   popup.hidden = true;
   wrap.appendChild(popup);
 
+  const isChatSelect = select.closest('.chat-header-selectors') !== null;
   let opts = readOptions(select);
   let active = Math.max(0, opts.findIndex((o) => o.value === select.value));
 
   const labelFor = (v: string): string => (opts.find((o) => o.value === v)?.label ?? v);
-  const renderTrigger = (): void => { trigger.textContent = labelFor(select.value); };
+  const renderTrigger = (): void => {
+    trigger.textContent = labelFor(select.value);
+    trigger.disabled = select.disabled;
+    const label = select.getAttribute('aria-label');
+    if (label !== null) {
+      trigger.setAttribute('aria-label', label);
+      popup.setAttribute('aria-label', label);
+    }
+  };
 
   const renderPopup = (): void => {
     popup.textContent = '';
@@ -97,29 +108,86 @@ export function enhanceDarkSelect(select: HTMLSelectElement): void {
 
   const syncActiveDescendant = (): void => {
     const el = popup.querySelector(`#${id}-opt-${active}`);
-    if (el) { trigger.setAttribute('aria-activedescendant', el.id); el.scrollIntoView({ block: 'nearest' }); }
+    if (el) { trigger.setAttribute('aria-activedescendant', el.id); el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
   };
 
   const onDocDown = (e: Event): void => { if (!wrap.contains(e.target as Node)) close(); };
 
+  function positionPopup(): void {
+    if (!isChatSelect || popup.hidden) return;
+    // The compact chat dock clips its contents; anchor the existing popup to
+    // the viewport instead, including the smaller visual viewport of a keyboard.
+    const viewport = window.visualViewport;
+    const left = (viewport?.offsetLeft ?? 0) + 8;
+    const top = (viewport?.offsetTop ?? 0) + 8;
+    const right = left + (viewport?.width ?? window.innerWidth) - 16;
+    const bottom = top + (viewport?.height ?? window.innerHeight) - 16;
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(Math.max(rect.width, 160), Math.max(0, right - left));
+    popup.style.position = 'fixed';
+    popup.style.width = `${width}px`;
+    popup.style.left = `${Math.max(left, Math.min(rect.left, right - width))}px`;
+    popup.style.right = 'auto';
+    popup.style.bottom = 'auto';
+    const below = Math.max(0, bottom - rect.bottom - 4);
+    const above = Math.max(0, rect.top - top - 4);
+    const desired = Math.min(260, popup.scrollHeight + 2);
+    const opensBelow = desired <= below || below >= above;
+    const height = Math.min(desired, opensBelow ? below : above, Math.max(0, bottom - top));
+    popup.style.maxHeight = `${height}px`;
+    popup.style.top = `${Math.max(top, Math.min(
+      opensBelow ? rect.bottom + 4 : rect.top - 4 - height, bottom - height,
+    ))}px`;
+  }
+
+  function syncOptions(): void {
+    const activeValue = opts[active]?.value;
+    opts = readOptions(select);
+    renderTrigger();
+    if (select.disabled || opts.length === 0) {
+      close();
+    } else if (!popup.hidden) {
+      const previous = opts.findIndex(o => o.value === activeValue && !o.disabled);
+      active = previous >= 0 ? previous : Math.max(0, opts.findIndex(o => o.value === select.value));
+      renderPopup();
+      positionPopup();
+      syncActiveDescendant();
+    }
+  }
+
   function open(): void {
     opts = readOptions(select);
+    renderTrigger();
+    if (select.disabled || opts.length === 0) return;
     active = Math.max(0, opts.findIndex((o) => o.value === select.value));
     renderPopup();
     popup.hidden = false;
     trigger.setAttribute('aria-expanded', 'true');
+    positionPopup();
     syncActiveDescendant();
     document.addEventListener('mousedown', onDocDown, true);
+    if (isChatSelect) {
+      window.addEventListener('resize', positionPopup);
+      document.addEventListener('scroll', positionPopup, true);
+      window.visualViewport?.addEventListener('resize', positionPopup);
+      window.visualViewport?.addEventListener('scroll', positionPopup);
+    }
   }
   function close(): void {
     popup.hidden = true;
     trigger.setAttribute('aria-expanded', 'false');
     trigger.removeAttribute('aria-activedescendant');
     document.removeEventListener('mousedown', onDocDown, true);
+    if (isChatSelect) {
+      window.removeEventListener('resize', positionPopup);
+      document.removeEventListener('scroll', positionPopup, true);
+      window.visualViewport?.removeEventListener('resize', positionPopup);
+      window.visualViewport?.removeEventListener('scroll', positionPopup);
+    }
   }
   function choose(i: number): void {
     const o = opts[i];
-    if (o.disabled) return;
+    if (!o || o.disabled) return;
     active = i;
     if (select.value !== o.value) { select.value = o.value; select.dispatchEvent(new Event('change', { bubbles: true })); }
     renderTrigger();
@@ -146,9 +214,15 @@ export function enhanceDarkSelect(select: HTMLSelectElement): void {
     else if (e.key === 'End') { e.preventDefault(); active = 0; move(-1); }
     else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(active); }
     else if (e.key === 'Escape') { e.preventDefault(); close(); trigger.focus(); }
+    else if (e.key === 'Tab') close();
   });
-  // If code (or the native control) changes the value, keep the trigger in sync.
-  select.addEventListener('change', renderTrigger);
+  select.addEventListener('change', syncOptions);
+  // Chat installs/replaces localized options after enhancement, without a
+  // user change event. Update the label before paint without selecting a channel.
+  new MutationObserver(syncOptions).observe(select, {
+    childList: true, subtree: true, characterData: true, attributes: true,
+    attributeFilter: ['label', 'value', 'selected', 'disabled', 'aria-label'],
+  });
 
   renderTrigger();
 }
