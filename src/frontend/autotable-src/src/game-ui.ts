@@ -198,17 +198,6 @@ export {
   loadPatternOrderingFromApi,
 };
 
-// Phase D — convert a Changsha tile id (0..26 over 3 suits × 9 ranks) to a
-// terse glyph the result modal renders, e.g. tile 0 → "1m", tile 14 → "6p".
-// Suit order matches setup-deal.ts (m=characters, p=dots, s=bamboo).
-function tileLabel(tile: number): { text: string; suit: string } {
-  const suits = ['m', 'p', 's'];
-  const idx = ((tile % 27) + 27) % 27;
-  const suit = suits[Math.floor(idx / 9)];
-  const rank = (idx % 9) + 1;
-  return { text: `${rank}${suit}`, suit: `suit-${suit}` };
-}
-
 // Phase D — Default convention (documented in this PR's inbox drop):
 // a seat is treated as a bot when its nick starts with "Bot " (case-sensitive).
 // Bishop's seats collection may later carry an explicit `is_bot` flag; this
@@ -1055,7 +1044,11 @@ export class GameUi {
     $('#result-modal').on('hide.bs.modal', event => {
       if (!this.allowResultHide && this.handResultState.presentation().visible) event.preventDefault();
     });
-    onLanguageChange(() => this.renderResultReadiness(this.handResultState.presentation()));
+    onLanguageChange(() => {
+      const result = this.client.result.get('current');
+      if (result !== null) this.renderResultHand(result.hand);
+      this.renderResultReadiness(this.handResultState.presentation());
+    });
     this.refreshResultDialog();
   }
 
@@ -1190,14 +1183,34 @@ export class GameUi {
       tbody.appendChild(tr);
     }
 
-    // Winning hand tiles.
+    this.renderResultHand(result.hand);
+  }
+
+  private renderResultHand(hand: readonly number[]): void {
     const handDiv = this.elements.resultHand;
     handDiv.innerHTML = '';
-    for (const tile of result.hand) {
-      const { text, suit } = tileLabel(tile);
+    for (const tile of hand) {
       const cell = document.createElement('div');
-      cell.className = `result-tile ${suit}`;
-      cell.textContent = text;
+      cell.className = 'result-tile';
+      cell.setAttribute('role', 'img');
+      let label: string;
+      if (typeof tile === 'number' && Number.isInteger(tile) && tile >= 0 && tile < 108) {
+        // Result hands contain physical IDs, including melds, in server order.
+        // The board atlas uses 8 columns of 4:5 faces in a square texture.
+        const face = Math.floor(tile / 4);
+        cell.dataset.tileId = String(tile);
+        cell.dataset.face = String(face);
+        cell.style.backgroundPosition = `${(face % 8) * 100 / 7}% ${Math.floor(face / 8) * 100 / 5.4}%`;
+        label = t('hand.tile', { rank: face % 9 + 1, suit: t(`hand.suit_${Math.floor(face / 9)}`) });
+      } else {
+        cell.className += ' result-tile-unknown';
+        cell.textContent = '?';
+        label = t('result_dialog.unknown_tile');
+        // eslint-disable-next-line no-console
+        console.warn('[result] Invalid winning-hand tile ID; displaying an unknown tile.');
+      }
+      cell.setAttribute('aria-label', label);
+      cell.title = label;
       handDiv.appendChild(cell);
     }
   }

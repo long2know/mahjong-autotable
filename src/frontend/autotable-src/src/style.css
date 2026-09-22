@@ -226,23 +226,27 @@
     font-weight: bold;
 }
 .result-modal-content .result-tile {
-    width: 36px;
-    height: 50px;
-    margin: 2px;
-    background-color: #f4ead5;
-    color: #2a2a2a;
-    border: 1px solid #6b5a2a;
+    flex: 0 0 auto;
+    width: 40px;
+    aspect-ratio: 4 / 5;
+    margin: 3px 2px 5px;
+    background: #fff url('../img/tiles-labels.auto.png') no-repeat;
+    background-size: 800% 640%;
+    border: 0;
     border-radius: 4px;
+    box-shadow: 0 3px 0 #d1b968;
+    cursor: default;
+    user-select: none;
+}
+.result-modal-content .result-tile-unknown {
+    background-image: none;
+    color: #2a2a2a;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-family: 'Verdana', sans-serif;
-    font-size: 0.85rem;
+    font-size: 1.25rem;
     font-weight: bold;
 }
-.result-modal-content .result-tile.suit-m { color: #a83232; }
-.result-modal-content .result-tile.suit-p { color: #1d4a8a; }
-.result-modal-content .result-tile.suit-s { color: #1d6e3a; }
 
 #result-modal { z-index: 1600; }
 #result-modal .modal-dialog {
