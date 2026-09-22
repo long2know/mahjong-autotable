@@ -109,6 +109,9 @@ test.describe('Mahjong Autotable — replay', () => {
       { timeout: 20_000 },
     );
 
+    const spectatorPanel = page.getByTestId('spectator-follow-panel');
+    await expect(spectatorPanel).toBeVisible();
+
     // Trigger the game-complete modal via a synthetic completion.
     await forceGameCompleteModal(page);
 
@@ -124,6 +127,7 @@ test.describe('Mahjong Autotable — replay', () => {
     // covers both signals.
     const replayScreen = page.getByTestId('replay-screen');
     await expect(replayScreen).toBeVisible({ timeout: 5_000 });
+    await expect(spectatorPanel).toBeHidden();
 
     // Timeline label format check — should match "Move N / M".
     const timelineLabel = page.locator('#replay-timeline-label');
@@ -177,5 +181,9 @@ test.describe('Mahjong Autotable — replay', () => {
     const closeBtn = page.getByTestId('replay-close');
     await closeBtn.click();
     await expect(replayScreen).toBeHidden({ timeout: 5_000 });
+    await expect(spectatorPanel).toBeVisible();
+    const followSeat = spectatorPanel.getByRole('button', { name: 'Follow Seat 1' });
+    await followSeat.click();
+    await expect(followSeat).toHaveAttribute('aria-pressed', 'true');
   });
 });

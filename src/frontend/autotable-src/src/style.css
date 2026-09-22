@@ -3331,6 +3331,10 @@ body.theme-light #settings-drawer .settings-drawer-close { color: #495057; }
 body.spectating .spectator-follow-panel {
     display: block;
 }
+/* Replay has its own controls; restore the live camera dock when it closes. */
+.replay-screen.replay-open ~ .spectator-follow-panel {
+    display: none;
+}
 /* Keep the two docks separate, including the collapsed chat opener. */
 @media (min-width: 901px), (orientation: landscape) {
     body.spectating .spectator-follow-panel {
