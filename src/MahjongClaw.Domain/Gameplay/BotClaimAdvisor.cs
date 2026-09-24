@@ -1433,14 +1433,25 @@ public static class BotClaimAdvisor
 
                 if (!hasVisibilityBeyondDiscard)
                 {
-                    if (requireStrongAlternate)
+                    if (!requireStrongAlternate)
                     {
+                        if (remainingCopies > 0)
+                        {
+                            return true;
+                        }
+
                         continue;
                     }
 
                     if (remainingCopies > 0)
                     {
-                        return true;
+                        liveAlternateSingletons++;
+                        totalAlternateRemainingCopies += remainingCopies;
+
+                        if (liveAlternateSingletons >= 2 && totalAlternateRemainingCopies >= 3)
+                        {
+                            return true;
+                        }
                     }
 
                     continue;
