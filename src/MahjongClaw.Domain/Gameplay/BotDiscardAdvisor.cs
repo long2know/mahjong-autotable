@@ -3054,7 +3054,12 @@ public static class BotDiscardAdvisor
                                 }
                                 else
                                 {
-                                    preferNonOrphanDiscard = false;
+                                    // With no visibility, keep the only non-orphan triplet as the discard focus
+                                    // when we're already on a live thirteen-orphans path.
+                                    if (nonOrphanCount > 3)
+                                    {
+                                        preferNonOrphanDiscard = false;
+                                    }
                                 }
                             }
 
