@@ -414,7 +414,7 @@ public static class BotClaimAdvisor
             return false;
         }
 
-        if (matchingCount > 2)
+        if (matchingCount > 3)
         {
             return false;
         }
