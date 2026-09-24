@@ -299,11 +299,31 @@ public static class BotDiscardAdvisor
         var enforceSmallWinPairBias = ruleset == MahjongRuleset.Changsha258 && !bigWinCandidate;
         var hasPotentialSmallWinPairCandidate = ruleset == MahjongRuleset.Changsha258
             && HasLiveSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts, ruleset);
+        var maxBigWinOutsForBias = discardOutSummaries.Max(summary => summary.BigWinTileTypes);
+        var maxSmallWinOutsForBias = discardOutSummaries.Max(summary => summary.SmallWinTileTypes);
+        var bigWinOutsLagSmallWin = false;
+
+        if (ruleset == MahjongRuleset.Changsha258
+            && bigWinCandidate
+            && hasPotentialSmallWinPairCandidate
+            && maxSmallWinOutsForBias > 0)
+        {
+            var maxBigWinCopies = discardOutSummaries
+                .Where(summary => summary.BigWinTileTypes == maxBigWinOutsForBias)
+                .Max(summary => summary.BigWinRemainingCopies);
+            var maxSmallWinCopies = discardOutSummaries
+                .Where(summary => summary.SmallWinTileTypes == maxSmallWinOutsForBias)
+                .Max(summary => summary.SmallWinRemainingCopies);
+
+            bigWinOutsLagSmallWin = maxBigWinOutsForBias + ChangshaPureSuitSmallWinOutsTolerance < maxSmallWinOutsForBias
+                || (maxBigWinOutsForBias + ChangshaPureSuitSmallWinOutsTolerance == maxSmallWinOutsForBias
+                    && maxBigWinCopies + ChangshaPureSuitSmallWinOutsTolerance < maxSmallWinCopies);
+        }
 
         if (ruleset == MahjongRuleset.Changsha258
             && !enforceSmallWinPairBias
             && hasPotentialSmallWinPairCandidate
-            && discardOutSummaries.Max(summary => summary.BigWinTileTypes) == 0)
+            && (maxBigWinOutsForBias == 0 || bigWinOutsLagSmallWin))
         {
             enforceSmallWinPairBias = true;
         }
