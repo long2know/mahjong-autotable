@@ -1199,6 +1199,48 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotDiscardIsolatedSmallWinSingleton_WhenItEliminatesAllWinningOuts()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Characters, 9)
+        };
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>()).Should().BeFalse();
+
+        var visibleCounts = new Dictionary<Tile, int>();
+        var isolatedIndex = handTiles.FindIndex(tile => tile.Equals(new Tile(TileSuit.Bamboos, 2)));
+        isolatedIndex.Should().BeGreaterOrEqualTo(0);
+
+        var isolatedOuts = CountWinningDrawOutsAfterDiscard(
+            handTiles,
+            visibleCounts,
+            isolatedIndex,
+            MahjongRuleset.Changsha258,
+            requireMinimumFan: true);
+
+        isolatedOuts.TileTypes.Should().Be(0);
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 9));
+
+        var preferredOuts = CountWinningDrawOutsAfterDiscard(
+            handTiles,
+            visibleCounts,
+            discardIndex,
+            MahjongRuleset.Changsha258,
+            requireMinimumFan: true);
+
+        preferredOuts.TileTypes.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_DiscardsDeadOffRankPair_WhenSmallWinCandidatesAreWeak()
     {
         var handTiles = new List<Tile>
