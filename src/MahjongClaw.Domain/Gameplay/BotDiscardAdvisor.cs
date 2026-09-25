@@ -435,6 +435,13 @@ public static class BotDiscardAdvisor
             enforceSmallWinPairBias,
             hasChangshaPureSuitLean);
 
+        if (isolatedSmallWinSingletonDiscardIndex.HasValue
+            && maxWinningOuts > 0
+            && discardOutSummaries[isolatedSmallWinSingletonDiscardIndex.Value].TileTypes == 0)
+        {
+            isolatedSmallWinSingletonDiscardIndex = null;
+        }
+
         if (isolatedSmallWinSingletonDiscardIndex.HasValue)
         {
             return isolatedSmallWinSingletonDiscardIndex.Value;
