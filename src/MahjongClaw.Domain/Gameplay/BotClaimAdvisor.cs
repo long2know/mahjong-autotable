@@ -916,6 +916,50 @@ public static class BotClaimAdvisor
                 continue;
             }
 
+            var breaksSoleChineseOfficialPair = preserveChineseOfficialSolePairOnTie
+                && soleChineseOfficialPairTile is not null
+                && candidate.Any(tile => tile.Equals(soleChineseOfficialPairTile));
+            var hasPostClaimPotentialOuts = false;
+            var postClaimPotentialOuts = default(WinningOutSummary);
+
+            if (breaksSoleChineseOfficialPair
+                && postClaimOuts.TileTypes == preClaimOuts.TileTypes
+                && postClaimOuts.RemainingCopies == preClaimOuts.RemainingCopies)
+            {
+                if (preClaimOuts.TileTypes > 0)
+                {
+                    continue;
+                }
+
+                if (!hasPreClaimPotentialOuts)
+                {
+                    preClaimPotentialOuts = CountWinningDrawOutsAfterDraw(
+                        handTiles,
+                        meldTiles,
+                        visibleCounts,
+                        ruleset,
+                        requireMinimumFan: false);
+                    hasPreClaimPotentialOuts = true;
+                }
+
+                postClaimPotentialOuts = CountBestWinningOutsAfterChowClaim(
+                    handTiles,
+                    meldTiles,
+                    discardedTile,
+                    candidate,
+                    visibleCounts,
+                    ruleset,
+                    requireMinimumFan: false);
+                hasPostClaimPotentialOuts = true;
+
+                if (postClaimPotentialOuts.TileTypes < preClaimPotentialOuts.TileTypes
+                    || (postClaimPotentialOuts.TileTypes == preClaimPotentialOuts.TileTypes
+                        && postClaimPotentialOuts.RemainingCopies <= preClaimPotentialOuts.RemainingCopies))
+                {
+                    continue;
+                }
+            }
+
             if (ruleset == MahjongRuleset.ChineseOfficial && preClaimOuts.TileTypes == 0)
             {
                 if (!hasPreClaimPotentialOuts)
@@ -929,14 +973,18 @@ public static class BotClaimAdvisor
                     hasPreClaimPotentialOuts = true;
                 }
 
-                var postClaimPotentialOuts = CountBestWinningOutsAfterChowClaim(
-                    handTiles,
-                    meldTiles,
-                    discardedTile,
-                    candidate,
-                    visibleCounts,
-                    ruleset,
-                    requireMinimumFan: false);
+                if (!hasPostClaimPotentialOuts)
+                {
+                    postClaimPotentialOuts = CountBestWinningOutsAfterChowClaim(
+                        handTiles,
+                        meldTiles,
+                        discardedTile,
+                        candidate,
+                        visibleCounts,
+                        ruleset,
+                        requireMinimumFan: false);
+                    hasPostClaimPotentialOuts = true;
+                }
 
                 if (postClaimOuts.TileTypes == 0)
                 {
@@ -1003,9 +1051,6 @@ public static class BotClaimAdvisor
                 && soleSmallWinPairCount == 2
                 && candidate.Any(tile => tile.Equals(soleSmallWinPairTile));
             var preservesSmallWinPair = !breaksSoleSmallWinPair;
-            var breaksSoleChineseOfficialPair = preserveChineseOfficialSolePairOnTie
-                && soleChineseOfficialPairTile is not null
-                && candidate.Any(tile => tile.Equals(soleChineseOfficialPairTile));
             var preservesChineseOfficialPair = !breaksSoleChineseOfficialPair;
 
             if (protectSoleSmallWinPairWhenNearDead && breaksSoleSmallWinPair)
