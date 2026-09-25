@@ -1546,6 +1546,54 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectPungClaim_ReturnsTrue_WhenChangshaPungCreatesBigWinFlexibleEye()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 2);
+
+        Changsha258Ruleset.IsSmallWinPair(discardedTile).Should().BeTrue();
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles).Should().BeFalse();
+
+        var handAfterPung = new List<Tile>(handTiles);
+        for (var i = 0; i < 2; i++)
+        {
+            var index = handAfterPung.FindIndex(tile => tile.Equals(discardedTile));
+            if (index < 0)
+            {
+                break;
+            }
+
+            handAfterPung.RemoveAt(index);
+        }
+
+        var meldAfterPung = new List<Tile>(meldTiles)
+        {
+            discardedTile, discardedTile, discardedTile
+        };
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handAfterPung, meldAfterPung).Should().BeTrue();
+
+        var shouldClaim = BotClaimAdvisor.TrySelectPungClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            MahjongRuleset.Changsha258,
+            out var claimTiles);
+
+        shouldClaim.Should().BeTrue();
+        claimTiles.Should().HaveCount(2);
+        claimTiles.Should().OnlyContain(tile => tile.Equals(discardedTile));
+    }
+
+    [Fact]
     public void TrySelectPungClaim_ReturnsFalse_WhenChangshaOffRankPungHasThinSmallWinSingletonCandidate()
     {
         var ruleset = MahjongRuleset.Changsha258;

@@ -462,6 +462,35 @@ public static class BotClaimAdvisor
 
         var allowChangshaFlexibleEye = ruleset == MahjongRuleset.Changsha258
             && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
+        var allowChangshaFlexibleEyeAfterClaim = false;
+        var allowChangshaFlexibleEyeForClaim = allowChangshaFlexibleEye;
+        List<Tile>? handAfterPung = null;
+        List<Tile>? meldAfterPung = null;
+        var preparedPungClaim = false;
+
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            handAfterPung = new List<Tile>(handTiles);
+
+            for (var i = 0; i < 2; i++)
+            {
+                var index = handAfterPung.FindIndex(tile => tile.Equals(discardedTile));
+                if (index < 0)
+                {
+                    break;
+                }
+
+                handAfterPung.RemoveAt(index);
+            }
+
+            meldAfterPung = meldTiles
+                .Concat(Enumerable.Repeat(discardedTile, 3))
+                .ToList();
+
+            allowChangshaFlexibleEyeAfterClaim = Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handAfterPung, meldAfterPung);
+            allowChangshaFlexibleEyeForClaim = allowChangshaFlexibleEye || allowChangshaFlexibleEyeAfterClaim;
+            preparedPungClaim = true;
+        }
 
         Tile? soleSmallWinPairTile = null;
         var soleSmallWinPairCount = 0;
@@ -482,7 +511,7 @@ public static class BotClaimAdvisor
 
         var protectSoleSmallWinPairWhenNearDead = false;
         if (ruleset == MahjongRuleset.Changsha258
-            && !allowChangshaFlexibleEye
+            && !allowChangshaFlexibleEyeForClaim
             && soleSmallWinPairTile is not null
             && soleSmallWinPairCount == 2)
         {
@@ -504,7 +533,7 @@ public static class BotClaimAdvisor
             {
                 var hasSevenPairsLean = IsChangshaSevenPairsLean(handTiles, meldTiles);
 
-                if ((!allowChangshaFlexibleEye && !allowChangshaSmallWinDeadFallback) || hasSevenPairsLean)
+                if ((!allowChangshaFlexibleEyeForClaim && !allowChangshaSmallWinDeadFallback) || hasSevenPairsLean)
                 {
                     var hasAlternateSmallWinPairCandidate = HasAlternateSmallWinPairCandidate(
                         handTiles,
@@ -518,7 +547,7 @@ public static class BotClaimAdvisor
                     }
                 }
             }
-            else if (!allowChangshaFlexibleEye && !allowChangshaSmallWinDeadFallback)
+            else if (!allowChangshaFlexibleEyeForClaim && !allowChangshaSmallWinDeadFallback)
             {
                 var hasSmallWinPairCandidate = HasAlternateSmallWinPairCandidate(
                     handTiles,
@@ -570,31 +599,34 @@ public static class BotClaimAdvisor
             && preClaimOuts.TileTypes == 0
             && postClaimOuts.TileTypes == 0)
         {
-            var handAfterPung = new List<Tile>(handTiles);
-
-            for (var i = 0; i < 2; i++)
+            if (!preparedPungClaim)
             {
-                var index = handAfterPung.FindIndex(tile => tile.Equals(discardedTile));
-                if (index < 0)
+                handAfterPung = new List<Tile>(handTiles);
+
+                for (var i = 0; i < 2; i++)
                 {
-                    break;
+                    var index = handAfterPung.FindIndex(tile => tile.Equals(discardedTile));
+                    if (index < 0)
+                    {
+                        break;
+                    }
+
+                    handAfterPung.RemoveAt(index);
                 }
 
-                handAfterPung.RemoveAt(index);
+                meldAfterPung = meldTiles
+                    .Concat(Enumerable.Repeat(discardedTile, 3))
+                    .ToList();
             }
 
-            var meldAfterPung = meldTiles
-                .Concat(Enumerable.Repeat(discardedTile, 3))
-                .ToList();
-
-            if (!allowChangshaFlexibleEye
+            if (!allowChangshaFlexibleEyeForClaim
                 && !allowChangshaSmallWinDeadFallback
-                && !HasLiveSmallWinPairCandidate(handAfterPung, meldAfterPung, visibleCounts))
+                && !HasLiveSmallWinPairCandidate(handAfterPung!, meldAfterPung!, visibleCounts))
             {
                 return false;
             }
 
-            var remainingCounts = handAfterPung
+            var remainingCounts = handAfterPung!
                 .GroupBy(static tile => tile)
                 .ToDictionary(group => group.Key, group => group.Count());
             var hasPair = remainingCounts.Any(entry => entry.Value >= 2);
