@@ -193,6 +193,25 @@ public static class BotDiscardAdvisor
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
         var ownedTiles = handTiles.Concat(meldTiles).ToList();
+        var shouldPreserveThirteenOrphansPath = false;
+        if (ruleset == MahjongRuleset.ChineseOfficial && meldTiles.Count == 0)
+        {
+            var orphanTiles = ownedTiles
+                .Where(tile => tile.IsHonor || IsTerminalSuitedTile(tile))
+                .ToList();
+            var distinctOrphanTypes = orphanTiles.Distinct().Count();
+            var nonOrphanCount = ownedTiles.Count - orphanTiles.Count;
+
+            if (nonOrphanCount <= 4 && distinctOrphanTypes >= 8)
+            {
+                shouldPreserveThirteenOrphansPath = HasLiveThirteenOrphansPath(
+                    ownedCounts,
+                    visibleCounts,
+                    distinctOrphanTypes,
+                    nonOrphanCount);
+            }
+        }
+
         var discardOutSummaries = handTiles
             .Select((_, index) => CountWinningDrawOutsAfterDiscard(handTiles, meldTiles, visibleCounts, index, ruleset))
             .ToList();
@@ -2089,7 +2108,8 @@ public static class BotDiscardAdvisor
             .Select(group => group.Key)
             .ToHashSet();
 
-        if (visibleCounts.Count > 0)
+        if (visibleCounts.Count > 0
+            && !(ruleset == MahjongRuleset.ChineseOfficial && shouldPreserveThirteenOrphansPath))
         {
             var honorCandidatePool = candidates;
             var deadHonorSingletonCandidates = honorCandidatePool
@@ -2160,7 +2180,8 @@ public static class BotDiscardAdvisor
 
         if (ruleset == MahjongRuleset.ChineseOfficial
             && visibleCounts.Count > 0
-            && sevenPairsPairCount < 6)
+            && sevenPairsPairCount < 6
+            && !shouldPreserveThirteenOrphansPath)
         {
             var nearDeadHonorSingletonCandidates = candidates
                 .Where(candidate =>
@@ -2200,25 +2221,6 @@ public static class BotDiscardAdvisor
                 {
                     candidates = nearDeadHonorSingletonCandidates;
                 }
-            }
-        }
-
-        var shouldPreserveThirteenOrphansPath = false;
-        if (ruleset == MahjongRuleset.ChineseOfficial && meldTiles.Count == 0)
-        {
-            var orphanTiles = ownedTiles
-                .Where(tile => tile.IsHonor || IsTerminalSuitedTile(tile))
-                .ToList();
-            var distinctOrphanTypes = orphanTiles.Distinct().Count();
-            var nonOrphanCount = ownedTiles.Count - orphanTiles.Count;
-
-            if (nonOrphanCount <= 4 && distinctOrphanTypes >= 8)
-            {
-                shouldPreserveThirteenOrphansPath = HasLiveThirteenOrphansPath(
-                    ownedCounts,
-                    visibleCounts,
-                    distinctOrphanTypes,
-                    nonOrphanCount);
             }
         }
 
