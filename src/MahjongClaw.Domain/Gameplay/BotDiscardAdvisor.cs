@@ -355,16 +355,17 @@ public static class BotDiscardAdvisor
         }
 
         Tile? soleChangshaSmallWinPairTile = null;
+        var soleChangshaSmallWinPairCount = 0;
         if (enforceSmallWinPairBias)
         {
             var smallWinPairs = handCounts
                 .Where(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
-                .Select(entry => entry.Key)
                 .ToList();
 
             if (smallWinPairs.Count == 1)
             {
-                soleChangshaSmallWinPairTile = smallWinPairs[0];
+                soleChangshaSmallWinPairTile = smallWinPairs[0].Key;
+                soleChangshaSmallWinPairCount = smallWinPairs[0].Value;
             }
         }
 
@@ -2504,6 +2505,12 @@ public static class BotDiscardAdvisor
                         && lastSmallWinSingleton is not null
                         && lastSmallWinSingletonRemainingCopies > 0
                         && nonThreatCandidates.All(candidate => candidate.Tile.Equals(lastSmallWinSingleton));
+                    var avoidingThreatWouldBreakSoleChangshaSmallWinPair = ruleset == MahjongRuleset.Changsha258
+                        && enforceSmallWinPairBias
+                        && soleChangshaSmallWinPairTile is not null
+                        && soleChangshaSmallWinPairCount == 2
+                        && !allowBreakingSoleChangshaSmallWinPairForPureSuitLean
+                        && nonThreatCandidates.All(candidate => candidate.Tile.Equals(soleChangshaSmallWinPairTile));
 
                     if (bestOverallOuts == 0)
                     {
@@ -2551,7 +2558,8 @@ public static class BotDiscardAdvisor
 
                                     if (!hasSingleCopyThreat)
                                     {
-                                        if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton)
+                                        if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton
+                                            && !avoidingThreatWouldBreakSoleChangshaSmallWinPair)
                                         {
                                             candidates = nonThreatCandidates;
                                             filteredByKongThreatAvoidance = true;
@@ -2565,7 +2573,8 @@ public static class BotDiscardAdvisor
                             }
                             else if (withinPotentialTolerance || matchesPotentialCopies)
                             {
-                                if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton)
+                                if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton
+                                    && !avoidingThreatWouldBreakSoleChangshaSmallWinPair)
                                 {
                                     candidates = nonThreatCandidates;
                                     filteredByKongThreatAvoidance = true;
@@ -2574,7 +2583,8 @@ public static class BotDiscardAdvisor
                         }
                         else
                         {
-                            if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton)
+                            if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton
+                                && !avoidingThreatWouldBreakSoleChangshaSmallWinPair)
                             {
                                 candidates = nonThreatCandidates;
                                 filteredByKongThreatAvoidance = true;
@@ -2584,7 +2594,8 @@ public static class BotDiscardAdvisor
                     else if (!losesAllWinningOuts
                         && ((withinOutsAndCopies && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies))
                     {
-                        if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton)
+                        if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton
+                            && !avoidingThreatWouldBreakSoleChangshaSmallWinPair)
                         {
                             candidates = nonThreatCandidates;
                             filteredByKongThreatAvoidance = true;

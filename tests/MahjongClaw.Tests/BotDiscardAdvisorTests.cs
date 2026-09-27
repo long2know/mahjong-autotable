@@ -8748,6 +8748,39 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotAvoidKongThreat_WhenOnlySafeOptionBreaksSoleChangshaPair()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 7),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6)
+        };
+
+        var soleSmallWinPair = new Tile(TileSuit.Dots, 2);
+        var threatenedTileTypes = handTiles
+            .Distinct()
+            .Where(tile => !tile.Equals(soleSmallWinPair))
+            .ToList();
+        var kongThreatTiles = threatenedTileTypes
+            .SelectMany(tile => Enumerable.Repeat(tile, 3))
+            .ToList();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            kongThreatTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().NotBe(soleSmallWinPair);
+        threatenedTileTypes.Should().Contain(handTiles[discardIndex]);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_DoesNotAvoidKongThreat_WhenWinningOutCopiesDropSignificantly()
     {
         var handTiles = new List<Tile>
