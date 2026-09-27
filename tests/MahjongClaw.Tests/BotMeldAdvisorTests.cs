@@ -79,6 +79,34 @@ public class BotMeldAdvisorTests
     }
 
     [Fact]
+    public void TrySelectConcealedKong_ReturnsFalse_WhenChineseOfficialNearThirteenOrphans()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        var result = BotMeldAdvisor.TrySelectConcealedKong(
+            tiles,
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            MahjongRuleset.ChineseOfficial,
+            out _);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
     public void TrySelectConcealedKong_SkipsInvalidKong_ForChangsha258()
     {
         var tiles = new List<Tile>
