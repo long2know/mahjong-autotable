@@ -9027,6 +9027,36 @@ public class BotDiscardAdvisorTests
         handTiles[discardIndex].Should().Be(new Tile(TileSuit.Flowers, 1));
     }
 
+    [Fact]
+    public void SelectDiscardIndex_PrioritizesHigherWinningOuts_WhenTenpai()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.ChineseOfficial);
+
+        var visibleCounts = new Dictionary<Tile, int>();
+        var winningOutSummaries = handTiles
+            .Select((_, index) => CountWinningDrawOutsAfterDiscard(
+                handTiles,
+                visibleCounts,
+                index,
+                MahjongRuleset.ChineseOfficial,
+                requireMinimumFan: true))
+            .ToList();
+
+        var bestOuts = winningOutSummaries.Max(summary => summary.TileTypes);
+
+        winningOutSummaries[discardIndex].TileTypes.Should().Be(bestOuts);
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
     private static List<Tile> BuildExhaustedVisibleTiles()
     {
         var tiles = new List<Tile>();

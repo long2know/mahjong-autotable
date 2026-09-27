@@ -3381,20 +3381,16 @@ public static class BotDiscardAdvisor
 
         var maxPrioritizedOuts = prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts);
 
-        if ((allowWinningOutsOverride || allowPureSuitOutsOverride) && maxPrioritizedOuts == 0)
+        if ((allowWinningOutsOverride || allowPureSuitOutsOverride) && maxPrioritizedOuts < maxWinningOuts)
         {
-            var bestOverallOuts = allCandidates.Max(candidate => candidate.WinningDrawOuts);
-            if (bestOverallOuts > 0)
-            {
-                prioritizedCandidates = allCandidates
-                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
-                    .ToList();
+            prioritizedCandidates = allCandidates
+                .Where(candidate => candidate.WinningDrawOuts == maxWinningOuts)
+                .ToList();
 
-                var bestOverallOutCopies = prioritizedCandidates.Max(candidate => candidate.WinningDrawOutCopies);
-                prioritizedCandidates = prioritizedCandidates
-                    .Where(candidate => candidate.WinningDrawOutCopies == bestOverallOutCopies)
-                    .ToList();
-            }
+            var bestOverallOutCopies = prioritizedCandidates.Max(candidate => candidate.WinningDrawOutCopies);
+            prioritizedCandidates = prioritizedCandidates
+                .Where(candidate => candidate.WinningDrawOutCopies == bestOverallOutCopies)
+                .ToList();
         }
 
         if (ruleset == MahjongRuleset.ChineseOfficial
@@ -3629,9 +3625,12 @@ public static class BotDiscardAdvisor
                 || !enforceSmallWinPairBias
                 || (maxSmallWinOuts == 0 && !hasSmallWinTileInHand)
                 || (ruleset == MahjongRuleset.Changsha258 && !lowestScoreHasSmallWinTile));
+        var prioritizeWinningOuts = maxWinningOuts > 0;
 
         var orderedPrioritizedCandidates = prioritizedCandidates
             .OrderBy(candidate => candidate.Score)
+            .ThenByDescending(candidate => prioritizeWinningOuts ? candidate.WinningDrawOuts : 0)
+            .ThenByDescending(candidate => prioritizeWinningOuts ? candidate.WinningDrawOutCopies : 0)
             .ThenBy(candidate => useRemainingCopyTieBreaker ? candidate.RemainingCopies : 0)
             .ThenByDescending(candidate => candidate.SafeMeldExposure)
             .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
@@ -3651,6 +3650,8 @@ public static class BotDiscardAdvisor
 
             alternateCandidate ??= allCandidates
                 .OrderBy(candidate => candidate.Score)
+                .ThenByDescending(candidate => prioritizeWinningOuts ? candidate.WinningDrawOuts : 0)
+                .ThenByDescending(candidate => prioritizeWinningOuts ? candidate.WinningDrawOutCopies : 0)
                 .ThenBy(candidate => useRemainingCopyTieBreaker ? candidate.RemainingCopies : 0)
                 .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
                 .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
