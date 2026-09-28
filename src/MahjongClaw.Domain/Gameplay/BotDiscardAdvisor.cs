@@ -4906,9 +4906,11 @@ public static class BotDiscardAdvisor
                 return new
                 {
                     Tile = entry.Key,
+                    OwnedCount = ownedCount,
                     RemainingCopies = 4 - ownedCount - visibleCount
                 };
             })
+            .Where(entry => entry.OwnedCount < 4)
             .ToList();
 
         var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
