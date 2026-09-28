@@ -7678,6 +7678,47 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PrioritizesSparseHonorSingleton_OverBreakingSoleNonTerminalPair_WhenTerminalHonorLean()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green)
+        };
+
+        var meldTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            meldTiles,
+            visibleTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.Red));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PreservesSoleNonTerminalPair_WhenTerminalHonorLeanAndPairIsExhausted()
     {
         var handTiles = new List<Tile>
