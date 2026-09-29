@@ -2363,9 +2363,29 @@ public static class BotDiscardAdvisor
 
                 if (ownedCount >= 4)
                 {
+                    var hasAlternateLiveSmallWinTileInHand = handCounts.Any(entry =>
+                    {
+                        if (entry.Key.Equals(tile)
+                            || entry.Value <= 0
+                            || !Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                        {
+                            return false;
+                        }
+
+                        if (entry.Value >= 2)
+                        {
+                            return true;
+                        }
+
+                        ownedCounts.TryGetValue(entry.Key, out var alternateOwnedCount);
+                        visibleCounts.TryGetValue(entry.Key, out var alternateVisibleCount);
+                        return 4 - alternateOwnedCount - alternateVisibleCount > 0;
+                    });
+
                     return handCount == 1
                         && !hasSmallWinPairInHand
-                        && enforceSmallWinPairBias;
+                        && enforceSmallWinPairBias
+                        && !hasAlternateLiveSmallWinTileInHand;
                 }
 
                 visibleCounts.TryGetValue(tile, out var visibleCount);
