@@ -2172,7 +2172,34 @@ public static class BotDiscardAdvisor
                 var withinCopyTolerance = bestDeadOuts < bestOverallOuts
                     || bestDeadOutCopies >= bestOverallOutCopies - DeadHonorSingletonOutsTolerance;
 
-                if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                var shouldPreferDeadHonorCandidates = bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance);
+
+                if (shouldPreferDeadHonorCandidates && bestOverallOuts == 0 && potentialOutSummaries is not null)
+                {
+                    var bestPotentialOuts = honorCandidatePool.Max(candidate => candidate.PotentialWinningDrawOuts);
+                    if (bestPotentialOuts > 0)
+                    {
+                        var bestPotentialCopies = honorCandidatePool
+                            .Where(candidate => candidate.PotentialWinningDrawOuts == bestPotentialOuts)
+                            .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+
+                        var bestDeadPotentialOuts = deadHonorSingletonCandidates.Max(candidate => candidate.PotentialWinningDrawOuts);
+                        var bestDeadPotentialCopies = deadHonorSingletonCandidates
+                            .Where(candidate => candidate.PotentialWinningDrawOuts == bestDeadPotentialOuts)
+                            .Max(candidate => candidate.PotentialWinningDrawOutCopies);
+
+                        var withinPotentialTolerance = bestDeadPotentialOuts >= bestPotentialOuts - DeadHonorSingletonOutsTolerance;
+                        var withinPotentialCopyTolerance = bestDeadPotentialOuts < bestPotentialOuts
+                            || bestDeadPotentialCopies >= bestPotentialCopies - DeadHonorSingletonOutsTolerance;
+
+                        if (!withinPotentialTolerance || !withinPotentialCopyTolerance)
+                        {
+                            shouldPreferDeadHonorCandidates = false;
+                        }
+                    }
+                }
+
+                if (shouldPreferDeadHonorCandidates)
                 {
                     candidates = deadHonorSingletonCandidates;
                 }
