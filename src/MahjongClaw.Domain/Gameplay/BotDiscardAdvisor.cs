@@ -2558,6 +2558,9 @@ public static class BotDiscardAdvisor
                         && soleChangshaSmallWinPairCount == 2
                         && !allowBreakingSoleChangshaSmallWinPairForPureSuitLean
                         && nonThreatCandidates.All(candidate => candidate.Tile.Equals(soleChangshaSmallWinPairTile));
+                    var avoidingThreatWouldBreakSoleChineseOfficialPair = ruleset == MahjongRuleset.ChineseOfficial
+                        && soleChineseOfficialPairTile is not null
+                        && nonThreatCandidates.All(candidate => candidate.Tile.Equals(soleChineseOfficialPairTile));
 
                     if (bestOverallOuts == 0)
                     {
@@ -2606,7 +2609,8 @@ public static class BotDiscardAdvisor
                                     if (!hasSingleCopyThreat)
                                     {
                                         if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton
-                                            && !avoidingThreatWouldBreakSoleChangshaSmallWinPair)
+                                            && !avoidingThreatWouldBreakSoleChangshaSmallWinPair
+                                            && !avoidingThreatWouldBreakSoleChineseOfficialPair)
                                         {
                                             candidates = nonThreatCandidates;
                                             filteredByKongThreatAvoidance = true;
@@ -2621,7 +2625,8 @@ public static class BotDiscardAdvisor
                             else if (withinPotentialTolerance || matchesPotentialCopies)
                             {
                                 if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton
-                                    && !avoidingThreatWouldBreakSoleChangshaSmallWinPair)
+                                    && !avoidingThreatWouldBreakSoleChangshaSmallWinPair
+                                    && !avoidingThreatWouldBreakSoleChineseOfficialPair)
                                 {
                                     candidates = nonThreatCandidates;
                                     filteredByKongThreatAvoidance = true;
@@ -2631,7 +2636,8 @@ public static class BotDiscardAdvisor
                         else
                         {
                             if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton
-                                && !avoidingThreatWouldBreakSoleChangshaSmallWinPair)
+                                && !avoidingThreatWouldBreakSoleChangshaSmallWinPair
+                                && !avoidingThreatWouldBreakSoleChineseOfficialPair)
                             {
                                 candidates = nonThreatCandidates;
                                 filteredByKongThreatAvoidance = true;
@@ -2642,7 +2648,8 @@ public static class BotDiscardAdvisor
                         && ((withinOutsAndCopies && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies))
                     {
                         if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton
-                            && !avoidingThreatWouldBreakSoleChangshaSmallWinPair)
+                            && !avoidingThreatWouldBreakSoleChangshaSmallWinPair
+                            && !avoidingThreatWouldBreakSoleChineseOfficialPair)
                         {
                             candidates = nonThreatCandidates;
                             filteredByKongThreatAvoidance = true;
@@ -2666,7 +2673,7 @@ public static class BotDiscardAdvisor
                             || (bestNonThreatPotentialOuts == bestPotentialOuts
                                 && bestNonThreatPotentialOutCopies >= bestPotentialOutCopies);
 
-                        if (nonThreatImprovesPotential)
+                        if (nonThreatImprovesPotential && !avoidingThreatWouldBreakSoleChineseOfficialPair)
                         {
                             candidates = nonThreatCandidates;
                             filteredByKongThreatAvoidance = true;
