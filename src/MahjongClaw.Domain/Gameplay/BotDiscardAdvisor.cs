@@ -720,6 +720,7 @@ public static class BotDiscardAdvisor
                             : 0),
                     RemainingCopies = remainingCopies,
                     SafeMeldExposure = safeMeldExposure,
+                    SequencePotential = HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts),
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies,
                     PotentialWinningDrawOuts = potentialOutSummary.TileTypes,
@@ -3687,6 +3688,7 @@ public static class BotDiscardAdvisor
             .ThenByDescending(candidate => prioritizeWinningOuts ? candidate.WinningDrawOutCopies : 0)
             .ThenBy(candidate => useRemainingCopyTieBreaker ? candidate.RemainingCopies : 0)
             .ThenByDescending(candidate => candidate.SafeMeldExposure)
+            .ThenBy(candidate => candidate.SequencePotential ? 1 : 0)
             .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
             .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
             .ThenBy(candidate => candidate.Tile.Suit)
@@ -3707,6 +3709,7 @@ public static class BotDiscardAdvisor
                 .ThenByDescending(candidate => prioritizeWinningOuts ? candidate.WinningDrawOuts : 0)
                 .ThenByDescending(candidate => prioritizeWinningOuts ? candidate.WinningDrawOutCopies : 0)
                 .ThenBy(candidate => useRemainingCopyTieBreaker ? candidate.RemainingCopies : 0)
+                .ThenBy(candidate => candidate.SequencePotential ? 1 : 0)
                 .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
                 .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
                 .ThenBy(candidate => candidate.Tile.Suit)
