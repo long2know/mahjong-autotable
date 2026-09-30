@@ -451,6 +451,21 @@ public static class BotClaimAdvisor
             }
         }
 
+        Tile? soleChineseOfficialPairTile = null;
+        if (ruleset == MahjongRuleset.ChineseOfficial)
+        {
+            var pairEntries = handTiles
+                .GroupBy(static tile => tile)
+                .Where(group => group.Count() == 2 && !group.Key.IsFlower)
+                .Select(group => group.Key)
+                .ToList();
+
+            if (pairEntries.Count == 1)
+            {
+                soleChineseOfficialPairTile = pairEntries[0];
+            }
+        }
+
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
 
         if (ruleset == MahjongRuleset.ChineseOfficial
@@ -574,6 +589,16 @@ public static class BotClaimAdvisor
             visibleCounts,
             ruleset,
             requireMinimumFan: true);
+
+        if (ruleset == MahjongRuleset.ChineseOfficial
+            && soleChineseOfficialPairTile is not null
+            && discardedTile.Equals(soleChineseOfficialPairTile)
+            && preClaimOuts.TileTypes > 0
+            && postClaimOuts.TileTypes == preClaimOuts.TileTypes
+            && postClaimOuts.RemainingCopies <= preClaimOuts.RemainingCopies)
+        {
+            return false;
+        }
 
         if (preClaimOuts.TileTypes > 0 && postClaimOuts.TileTypes == 0)
         {

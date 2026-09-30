@@ -1929,6 +1929,51 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectPungClaim_ReturnsFalse_WhenChineseOfficialPungBreaksSolePairWithoutOutsGain()
+    {
+        var ruleset = MahjongRuleset.ChineseOfficial;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 4)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Characters, 5);
+        var drawTileTypes = BuildDrawTileTypes(ruleset);
+        var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, drawTileTypes, ruleset);
+        var postClaimOuts = CountBestWinningOutsAfterPungClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            drawTileTypes,
+            ruleset);
+
+        preClaimOuts.Should().BeGreaterThan(0);
+        postClaimOuts.Should().Be(preClaimOuts);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectPungClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public void TrySelectPungClaim_ReturnsFalse_WhenChineseOfficialThirteenOrphansLeanWouldBreakForPung()
     {
         var ruleset = MahjongRuleset.ChineseOfficial;
