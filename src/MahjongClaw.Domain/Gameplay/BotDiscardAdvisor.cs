@@ -689,6 +689,8 @@ public static class BotDiscardAdvisor
                     }
                 }
 
+                var sequencePotentialWeight = GetSequencePotentialWeight(tile, handCounts, ownedCounts, visibleCounts);
+
                 return new
                 {
                     Tile = tile,
@@ -720,7 +722,7 @@ public static class BotDiscardAdvisor
                             : 0),
                     RemainingCopies = remainingCopies,
                     SafeMeldExposure = safeMeldExposure,
-                    SequencePotential = HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts),
+                    SequencePotentialWeight = sequencePotentialWeight,
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies,
                     PotentialWinningDrawOuts = potentialOutSummary.TileTypes,
@@ -3688,7 +3690,7 @@ public static class BotDiscardAdvisor
             .ThenByDescending(candidate => prioritizeWinningOuts ? candidate.WinningDrawOutCopies : 0)
             .ThenBy(candidate => useRemainingCopyTieBreaker ? candidate.RemainingCopies : 0)
             .ThenByDescending(candidate => candidate.SafeMeldExposure)
-            .ThenBy(candidate => candidate.SequencePotential ? 1 : 0)
+            .ThenBy(candidate => candidate.SequencePotentialWeight)
             .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
             .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
             .ThenBy(candidate => candidate.Tile.Suit)
@@ -3709,7 +3711,7 @@ public static class BotDiscardAdvisor
                 .ThenByDescending(candidate => prioritizeWinningOuts ? candidate.WinningDrawOuts : 0)
                 .ThenByDescending(candidate => prioritizeWinningOuts ? candidate.WinningDrawOutCopies : 0)
                 .ThenBy(candidate => useRemainingCopyTieBreaker ? candidate.RemainingCopies : 0)
-                .ThenBy(candidate => candidate.SequencePotential ? 1 : 0)
+                .ThenBy(candidate => candidate.SequencePotentialWeight)
                 .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
                 .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
                 .ThenBy(candidate => candidate.Tile.Suit)
@@ -5730,7 +5732,7 @@ public static class BotDiscardAdvisor
             : -6;
     }
 
-    private static bool HasSequencePotential(
+    private static int GetSequencePotentialWeight(
         Tile tile,
         IReadOnlyDictionary<Tile, int> handCounts,
         IReadOnlyDictionary<Tile, int> ownedCounts,
@@ -5738,7 +5740,7 @@ public static class BotDiscardAdvisor
     {
         if (!IsSuitedTile(tile))
         {
-            return false;
+            return 0;
         }
 
         bool IsTileAvailable(Tile candidate)
@@ -5756,19 +5758,38 @@ public static class BotDiscardAdvisor
 
         var rank = tile.Rank;
         var suit = tile.Suit;
+        var weight = 0;
 
-        var hasLowSequence = rank >= 3
+        if (rank >= 3
             && IsTileAvailable(new Tile(suit, rank - 2))
-            && IsTileAvailable(new Tile(suit, rank - 1));
-        var hasMiddleSequence = rank is >= 2 and <= 8
-            && IsTileAvailable(new Tile(suit, rank - 1))
-            && IsTileAvailable(new Tile(suit, rank + 1));
-        var hasHighSequence = rank <= 7
-            && IsTileAvailable(new Tile(suit, rank + 1))
-            && IsTileAvailable(new Tile(suit, rank + 2));
+            && IsTileAvailable(new Tile(suit, rank - 1)))
+        {
+            weight++;
+        }
 
-        return hasLowSequence || hasMiddleSequence || hasHighSequence;
+        if (rank is >= 2 and <= 8
+            && IsTileAvailable(new Tile(suit, rank - 1))
+            && IsTileAvailable(new Tile(suit, rank + 1)))
+        {
+            weight++;
+        }
+
+        if (rank <= 7
+            && IsTileAvailable(new Tile(suit, rank + 1))
+            && IsTileAvailable(new Tile(suit, rank + 2)))
+        {
+            weight++;
+        }
+
+        return weight;
     }
+
+    private static bool HasSequencePotential(
+        Tile tile,
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+        => GetSequencePotentialWeight(tile, handCounts, ownedCounts, visibleCounts) > 0;
 
     private static bool IsSuitedTile(Tile tile)
         => tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos;
