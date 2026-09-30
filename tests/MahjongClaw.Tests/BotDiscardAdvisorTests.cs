@@ -9253,6 +9253,30 @@ public class BotDiscardAdvisorTests
         handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 2));
     }
 
+    [Fact]
+    public void SelectDiscardIndex_PrefersDiscardWithoutSequencePotential_WhenScoresTie()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Characters, 8), new(TileSuit.Characters, 8)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 8));
+    }
+
     private static List<Tile> BuildExhaustedVisibleTiles()
     {
         var tiles = new List<Tile>();
