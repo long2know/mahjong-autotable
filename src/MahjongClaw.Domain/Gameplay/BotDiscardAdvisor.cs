@@ -2958,7 +2958,42 @@ public static class BotDiscardAdvisor
                                         }
                                         else
                                         {
-                                            candidates = nonTerminalCandidates;
+                                            var honorSingletonCandidates = candidates
+                                                .Where(candidate => candidate.Tile.IsHonor
+                                                    && handCounts.TryGetValue(candidate.Tile, out var count)
+                                                    && count == 1)
+                                                .ToList();
+
+                                            if (honorSingletonCandidates.Count > 0)
+                                            {
+                                                var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                                                var bestOverallOutCopies = candidates
+                                                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                                                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                                                var bestHonorOuts = honorSingletonCandidates.Max(candidate => candidate.WinningDrawOuts);
+                                                var bestHonorOutCopies = honorSingletonCandidates
+                                                    .Where(candidate => candidate.WinningDrawOuts == bestHonorOuts)
+                                                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                                                var withinOutsTolerance = bestHonorOuts >= bestOverallOuts - NearDeadHonorSingletonOutsTolerance;
+                                                var withinCopyTolerance = bestHonorOuts < bestOverallOuts
+                                                    || bestHonorOutCopies >= bestOverallOutCopies - NearDeadHonorSingletonOutsTolerance;
+
+                                                if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                                                {
+                                                    allowBreakingSolePairForTerminalHonorLean = false;
+                                                    candidates = honorSingletonCandidates;
+                                                }
+                                                else
+                                                {
+                                                    candidates = nonTerminalCandidates;
+                                                }
+                                            }
+                                            else
+                                            {
+                                                candidates = nonTerminalCandidates;
+                                            }
                                         }
                                     }
                                 }
