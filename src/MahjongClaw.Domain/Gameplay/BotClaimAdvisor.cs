@@ -605,6 +605,53 @@ public static class BotClaimAdvisor
             return false;
         }
 
+        if (ruleset == MahjongRuleset.ChineseOfficial)
+        {
+            var pairEntries = handTiles
+                .GroupBy(static tile => tile)
+                .Where(group => group.Count() >= 2 && !group.Key.IsFlower)
+                .Select(group => group.Key)
+                .ToList();
+
+            if (pairEntries.Count == 1 && pairEntries[0].Equals(discardedTile))
+            {
+                var improvesWinningOuts = postClaimOuts.TileTypes > preClaimOuts.TileTypes
+                    || (postClaimOuts.TileTypes == preClaimOuts.TileTypes
+                        && postClaimOuts.RemainingCopies > preClaimOuts.RemainingCopies);
+
+                if (!improvesWinningOuts)
+                {
+                    if (preClaimOuts.TileTypes > 0)
+                    {
+                        return false;
+                    }
+
+                    var preClaimPotentialOuts = CountWinningDrawOutsAfterDraw(
+                        handTiles,
+                        meldTiles,
+                        visibleCounts,
+                        ruleset,
+                        requireMinimumFan: false);
+                    var postClaimPotentialOuts = CountBestWinningOutsAfterPungClaim(
+                        handTiles,
+                        meldTiles,
+                        discardedTile,
+                        visibleCounts,
+                        ruleset,
+                        requireMinimumFan: false);
+
+                    var improvesPotentialOuts = postClaimPotentialOuts.TileTypes > preClaimPotentialOuts.TileTypes
+                        || (postClaimPotentialOuts.TileTypes == preClaimPotentialOuts.TileTypes
+                            && postClaimPotentialOuts.RemainingCopies > preClaimPotentialOuts.RemainingCopies);
+
+                    if (!improvesPotentialOuts)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+
         if (ruleset == MahjongRuleset.ChineseOfficial
             && IsChineseOfficialSevenPairsLean(handTiles, meldTiles)
             && preClaimOuts.TileTypes > 0
