@@ -690,6 +690,7 @@ public static class BotDiscardAdvisor
                 }
 
                 var sequencePotentialWeight = GetSequencePotentialWeight(tile, handCounts, ownedCounts, visibleCounts);
+                var sequenceAnchorWeight = GetSequenceAnchorWeight(tile, handCounts);
 
                 return new
                 {
@@ -723,6 +724,7 @@ public static class BotDiscardAdvisor
                     RemainingCopies = remainingCopies,
                     SafeMeldExposure = safeMeldExposure,
                     SequencePotentialWeight = sequencePotentialWeight,
+                    SequenceAnchorWeight = sequenceAnchorWeight,
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies,
                     PotentialWinningDrawOuts = potentialOutSummary.TileTypes,
@@ -2476,9 +2478,10 @@ public static class BotDiscardAdvisor
             }
         }
 
+        var opponentKongThreatTiles = new HashSet<Tile>();
         if (kongThreatCounts.Count > 0)
         {
-            var opponentKongThreatTiles = kongThreatCounts
+            opponentKongThreatTiles = kongThreatCounts
                 .Where(entry => entry.Value == 3 || entry.Value >= 6)
                 .Select(entry => entry.Key)
                 .Where(tile => IsKongThreatLive(tile, handCounts, ownedCounts, visibleCounts))
@@ -2639,8 +2642,7 @@ public static class BotDiscardAdvisor
                         else
                         {
                             if (!avoidingThreatWouldDiscardSoleLiveChangshaSmallWinSingleton
-                                && !avoidingThreatWouldBreakSoleChangshaSmallWinPair
-                                && !avoidingThreatWouldBreakSoleChineseOfficialPair)
+                                && !avoidingThreatWouldBreakSoleChangshaSmallWinPair)
                             {
                                 candidates = nonThreatCandidates;
                                 filteredByKongThreatAvoidance = true;
@@ -3267,6 +3269,18 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (filteredByKongThreatAvoidance && opponentKongThreatTiles.Count > 0)
+        {
+            var nonThreatCandidates = candidates
+                .Where(candidate => !opponentKongThreatTiles.Contains(candidate.Tile))
+                .ToList();
+
+            if (nonThreatCandidates.Count > 0)
+            {
+                candidates = nonThreatCandidates;
+            }
+        }
+
         var prioritizedCandidates = candidates;
         if (ruleset == MahjongRuleset.ChineseOfficial
             && sevenPairsPairCount >= 6
@@ -3726,6 +3740,7 @@ public static class BotDiscardAdvisor
             .ThenBy(candidate => useRemainingCopyTieBreaker ? candidate.RemainingCopies : 0)
             .ThenByDescending(candidate => candidate.SafeMeldExposure)
             .ThenBy(candidate => candidate.SequencePotentialWeight)
+            .ThenBy(candidate => candidate.SequenceAnchorWeight)
             .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
             .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
             .ThenBy(candidate => candidate.Tile.Suit)
@@ -3747,6 +3762,7 @@ public static class BotDiscardAdvisor
                 .ThenByDescending(candidate => prioritizeWinningOuts ? candidate.WinningDrawOutCopies : 0)
                 .ThenBy(candidate => useRemainingCopyTieBreaker ? candidate.RemainingCopies : 0)
                 .ThenBy(candidate => candidate.SequencePotentialWeight)
+                .ThenBy(candidate => candidate.SequenceAnchorWeight)
                 .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
                 .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
                 .ThenBy(candidate => candidate.Tile.Suit)
@@ -5791,57 +5807,72 @@ public static class BotDiscardAdvisor
             return 4 - ownedCount - visibleCount > 0;
         }
 
+        var rank = tile.Rank;
+        var suit = tile.Suit;
+        var weight = 0;
+
+        if (rank >= 3
+            && IsTileAvailable(new Tile(suit, rank - 2))
+            && IsTileAvailable(new Tile(suit, rank - 1)))
+        {
+            weight++;
+        }
+
+        if (rank is >= 2 and <= 8
+            && IsTileAvailable(new Tile(suit, rank - 1))
+            && IsTileAvailable(new Tile(suit, rank + 1)))
+        {
+            weight++;
+        }
+
+        if (rank <= 7
+            && IsTileAvailable(new Tile(suit, rank + 1))
+            && IsTileAvailable(new Tile(suit, rank + 2)))
+        {
+            weight++;
+        }
+
+        return weight;
+    }
+
+    private static int GetSequenceAnchorWeight(
+        Tile tile,
+        IReadOnlyDictionary<Tile, int> handCounts)
+    {
+        if (!IsSuitedTile(tile))
+        {
+            return 0;
+        }
+
         bool IsTileInHand(Tile candidate)
             => handCounts.TryGetValue(candidate, out var handCount) && handCount > 0;
 
         var rank = tile.Rank;
         var suit = tile.Suit;
-        var weight = 0;
-        var anchorBonus = 0;
+        var anchorWeight = 0;
 
-        if (rank >= 3)
+        if (rank >= 3
+            && IsTileInHand(new Tile(suit, rank - 2))
+            && IsTileInHand(new Tile(suit, rank - 1)))
         {
-            var lowerGap = new Tile(suit, rank - 2);
-            var lowerNeighbor = new Tile(suit, rank - 1);
-            if (IsTileAvailable(lowerGap) && IsTileAvailable(lowerNeighbor))
-            {
-                weight++;
-                if (IsTileInHand(lowerGap) && IsTileInHand(lowerNeighbor))
-                {
-                    anchorBonus++;
-                }
-            }
+            anchorWeight++;
         }
 
-        if (rank is >= 2 and <= 8)
+        if (rank is >= 2 and <= 8
+            && IsTileInHand(new Tile(suit, rank - 1))
+            && IsTileInHand(new Tile(suit, rank + 1)))
         {
-            var lowerNeighbor = new Tile(suit, rank - 1);
-            var upperNeighbor = new Tile(suit, rank + 1);
-            if (IsTileAvailable(lowerNeighbor) && IsTileAvailable(upperNeighbor))
-            {
-                weight++;
-                if (IsTileInHand(lowerNeighbor) && IsTileInHand(upperNeighbor))
-                {
-                    anchorBonus++;
-                }
-            }
+            anchorWeight++;
         }
 
-        if (rank <= 7)
+        if (rank <= 7
+            && IsTileInHand(new Tile(suit, rank + 1))
+            && IsTileInHand(new Tile(suit, rank + 2)))
         {
-            var upperNeighbor = new Tile(suit, rank + 1);
-            var upperGap = new Tile(suit, rank + 2);
-            if (IsTileAvailable(upperNeighbor) && IsTileAvailable(upperGap))
-            {
-                weight++;
-                if (IsTileInHand(upperNeighbor) && IsTileInHand(upperGap))
-                {
-                    anchorBonus++;
-                }
-            }
+            anchorWeight++;
         }
 
-        return weight + anchorBonus;
+        return anchorWeight;
     }
 
     private static bool HasSequencePotential(
