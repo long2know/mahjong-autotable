@@ -5791,32 +5791,57 @@ public static class BotDiscardAdvisor
             return 4 - ownedCount - visibleCount > 0;
         }
 
+        bool IsTileInHand(Tile candidate)
+            => handCounts.TryGetValue(candidate, out var handCount) && handCount > 0;
+
         var rank = tile.Rank;
         var suit = tile.Suit;
         var weight = 0;
+        var anchorBonus = 0;
 
-        if (rank >= 3
-            && IsTileAvailable(new Tile(suit, rank - 2))
-            && IsTileAvailable(new Tile(suit, rank - 1)))
+        if (rank >= 3)
         {
-            weight++;
+            var lowerGap = new Tile(suit, rank - 2);
+            var lowerNeighbor = new Tile(suit, rank - 1);
+            if (IsTileAvailable(lowerGap) && IsTileAvailable(lowerNeighbor))
+            {
+                weight++;
+                if (IsTileInHand(lowerGap) && IsTileInHand(lowerNeighbor))
+                {
+                    anchorBonus++;
+                }
+            }
         }
 
-        if (rank is >= 2 and <= 8
-            && IsTileAvailable(new Tile(suit, rank - 1))
-            && IsTileAvailable(new Tile(suit, rank + 1)))
+        if (rank is >= 2 and <= 8)
         {
-            weight++;
+            var lowerNeighbor = new Tile(suit, rank - 1);
+            var upperNeighbor = new Tile(suit, rank + 1);
+            if (IsTileAvailable(lowerNeighbor) && IsTileAvailable(upperNeighbor))
+            {
+                weight++;
+                if (IsTileInHand(lowerNeighbor) && IsTileInHand(upperNeighbor))
+                {
+                    anchorBonus++;
+                }
+            }
         }
 
-        if (rank <= 7
-            && IsTileAvailable(new Tile(suit, rank + 1))
-            && IsTileAvailable(new Tile(suit, rank + 2)))
+        if (rank <= 7)
         {
-            weight++;
+            var upperNeighbor = new Tile(suit, rank + 1);
+            var upperGap = new Tile(suit, rank + 2);
+            if (IsTileAvailable(upperNeighbor) && IsTileAvailable(upperGap))
+            {
+                weight++;
+                if (IsTileInHand(upperNeighbor) && IsTileInHand(upperGap))
+                {
+                    anchorBonus++;
+                }
+            }
         }
 
-        return weight;
+        return weight + anchorBonus;
     }
 
     private static bool HasSequencePotential(

@@ -8597,6 +8597,36 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PreservesInHandSequenceAnchor_WhenSequencePotentialTies()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 6));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithDeadHonorSingleton_UsesMaxPotentialOuts()
     {
         var handTiles = new List<Tile>
