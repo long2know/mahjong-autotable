@@ -816,6 +816,13 @@ public static class BotClaimAdvisor
             return false;
         }
 
+        if (ruleset == MahjongRuleset.Changsha258
+            && TryGetChangshaPureSuitLean(handTiles, meldTiles, out var dominantSuit)
+            && discardedTile.Suit != dominantSuit)
+        {
+            return false;
+        }
+
         var chowCandidates = BuildChowCandidates(handTiles, discardedTile);
         if (chowCandidates.Count == 0)
         {
@@ -1868,6 +1875,53 @@ public static class BotClaimAdvisor
         }
 
         return hasOwnedPairPotential || hasMissingPairPotential;
+    }
+
+    private static bool TryGetChangshaPureSuitLean(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        out TileSuit dominantSuit)
+    {
+        dominantSuit = default;
+
+        var ownedTiles = handTiles
+            .Concat(meldTiles)
+            .Where(static tile => !tile.IsHonor)
+            .ToList();
+
+        if (ownedTiles.Count == 0)
+        {
+            return false;
+        }
+
+        var suitCounts = ownedTiles
+            .GroupBy(static tile => tile.Suit)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        if (suitCounts.Count == 0)
+        {
+            return false;
+        }
+
+        var maxSuitCount = suitCounts.Values.Max();
+        var dominantSuitCount = suitCounts.Count(entry => entry.Value == maxSuitCount);
+        if (dominantSuitCount != 1
+            || maxSuitCount < Changsha258Ruleset.BigWinPureSuitEyeFlexibleThreshold)
+        {
+            return false;
+        }
+
+        dominantSuit = suitCounts.First(entry => entry.Value == maxSuitCount).Key;
+
+        var dominantSuitValue = dominantSuit;
+        if (meldTiles.Count > 0
+            && meldTiles.Any(tile => tile.IsHonor || tile.Suit != dominantSuitValue))
+        {
+            dominantSuit = default;
+            return false;
+        }
+
+        return true;
     }
 
     private static bool IsSuitedTile(Tile tile)
