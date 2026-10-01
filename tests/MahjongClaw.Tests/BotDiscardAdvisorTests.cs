@@ -4876,6 +4876,36 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleMeldTiles_PrefersSafelyExposedTile_WhenVisibilityCountsTie()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 1)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1)
+        };
+
+        var visibleMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            visibleMeldTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 1));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrefersMeldExposedTile_WhenDiscardScoresTie()
     {
         var handTiles = new List<Tile>
