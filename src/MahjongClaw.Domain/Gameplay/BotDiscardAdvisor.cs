@@ -3151,6 +3151,18 @@ public static class BotDiscardAdvisor
 
                         if (nonOrphanCandidates.Count == 0)
                         {
+                            var protectedKongTiles = new HashSet<Tile>(concealedKongTiles);
+                            protectedKongTiles.UnionWith(promotableKongTiles);
+
+                            nonOrphanCandidates = allCandidates
+                                .Where(candidate => !candidate.Tile.IsHonor
+                                    && !IsTerminalSuitedTile(candidate.Tile)
+                                    && !protectedKongTiles.Contains(candidate.Tile))
+                                .ToList();
+                        }
+
+                        if (nonOrphanCandidates.Count == 0)
+                        {
                             preferNonOrphanDiscard = false;
                         }
                         else
