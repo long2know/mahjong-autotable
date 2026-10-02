@@ -13,6 +13,7 @@ public static class BotDiscardAdvisor
     private const int OpponentKongFeedAvoidBonus = 12;
     private const int OpponentKongFeedOutsTolerance = 2;
     private const int DeadSmallWinPairOutsTolerance = 1;
+    private const int DeadSmallWinSingletonOutsTolerance = 1;
     private const int ChangshaPureSuitSmallWinOutsTolerance = 1;
     private const int NearDeadSmallWinPairOutsTolerance = 1;
     private const int NearDeadOffRankPairOutsTolerance = 1;
@@ -422,11 +423,28 @@ public static class BotDiscardAdvisor
             hasChangshaPureSuitLean,
             changshaDominantSuit);
 
-        if (forcedDiscardIndex.HasValue
-            && maxWinningOuts > 0
-            && discardOutSummaries[forcedDiscardIndex.Value].TileTypes == 0)
+        if (forcedDiscardIndex.HasValue && maxWinningOuts > 0)
         {
-            forcedDiscardIndex = null;
+            var forcedSummary = discardOutSummaries[forcedDiscardIndex.Value];
+            if (forcedSummary.TileTypes == 0)
+            {
+                forcedDiscardIndex = null;
+            }
+            else
+            {
+                var bestOutCopies = discardOutSummaries
+                    .Where(summary => summary.TileTypes == maxWinningOuts)
+                    .Max(summary => summary.RemainingCopies);
+
+                var withinOutsTolerance = forcedSummary.TileTypes >= maxWinningOuts - DeadSmallWinSingletonOutsTolerance;
+                var withinCopyTolerance = forcedSummary.TileTypes < maxWinningOuts
+                    || forcedSummary.RemainingCopies >= bestOutCopies - DeadSmallWinSingletonOutsTolerance;
+
+                if (!withinOutsTolerance || !withinCopyTolerance)
+                {
+                    forcedDiscardIndex = null;
+                }
+            }
         }
 
         if (forcedDiscardIndex.HasValue)

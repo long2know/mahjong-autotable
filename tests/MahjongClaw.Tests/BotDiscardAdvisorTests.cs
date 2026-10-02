@@ -1726,6 +1726,74 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotDiscardDeadSmallWinSingleton_WhenWinningOutsDropBeyondTolerance()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>()).Should().BeFalse();
+
+        var visibleCounts = visibleTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var deadIndex = handTiles.FindIndex(tile => tile.Equals(new Tile(TileSuit.Dots, 2)));
+        var fillerIndex = handTiles.FindIndex(tile => tile.Equals(new Tile(TileSuit.Dots, 4)));
+
+        deadIndex.Should().BeGreaterThanOrEqualTo(0);
+        fillerIndex.Should().BeGreaterThanOrEqualTo(0);
+
+        var deadOuts = CountWinningDrawOutsAfterDiscard(
+            handTiles,
+            visibleCounts,
+            deadIndex,
+            MahjongRuleset.Changsha258,
+            requireMinimumFan: true);
+
+        var fillerOuts = CountWinningDrawOutsAfterDiscard(
+            handTiles,
+            visibleCounts,
+            fillerIndex,
+            MahjongRuleset.Changsha258,
+            requireMinimumFan: true);
+
+        deadOuts.TileTypes.Should().BeGreaterThan(0,
+            $"deadOuts={deadOuts.TileTypes} fillerOuts={fillerOuts.TileTypes}");
+        fillerOuts.TileTypes.Should().BeGreaterThan(deadOuts.TileTypes,
+            $"deadOuts={deadOuts.TileTypes} fillerOuts={fillerOuts.TileTypes}");
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 2));
+
+        var selectedOuts = CountWinningDrawOutsAfterDiscard(
+            handTiles,
+            visibleCounts,
+            discardIndex,
+            MahjongRuleset.Changsha258,
+            requireMinimumFan: true);
+
+        selectedOuts.TileTypes.Should().BeGreaterThan(deadOuts.TileTypes,
+            $"deadOuts={deadOuts.TileTypes} selectedOuts={selectedOuts.TileTypes}");
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesDiscardingInvalidTile_WhenChangsha258Ruleset()
     {
         var tiles = new List<Tile>
