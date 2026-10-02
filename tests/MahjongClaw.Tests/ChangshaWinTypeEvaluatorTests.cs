@@ -27,6 +27,47 @@ public sealed class ChangshaWinTypeEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_DoesNotDetectMissingOneSuit_WhenHonorPresent()
+    {
+        List<Tile> tiles =
+        [
+            new Tile(TileSuit.Characters, 1), new Tile(TileSuit.Characters, 2), new Tile(TileSuit.Characters, 3),
+            new Tile(TileSuit.Characters, 4), new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 6),
+            new Tile(TileSuit.Characters, 7), new Tile(TileSuit.Characters, 8), new Tile(TileSuit.Characters, 9),
+            new Tile(TileSuit.Dots, 2), new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Dots, 5), new Tile(TileSuit.Dots, 5),
+            new Tile(TileSuit.Winds, 0, Wind.East)
+        ];
+
+        var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 5), WinningPattern.Standard);
+        var evaluation = ChangshaWinTypeEvaluator.Evaluate(
+            tiles,
+            hand,
+            new ChangshaWinContext(IsInitialDeal: true));
+
+        evaluation.WinTypes.Should().NotContain(ChangshaWinType.MissingOneSuit);
+    }
+
+    [Fact]
+    public void Evaluate_DoesNotDetectPureSuit_WhenHonorPresent()
+    {
+        List<Tile> tiles =
+        [
+            new Tile(TileSuit.Characters, 1), new Tile(TileSuit.Characters, 2), new Tile(TileSuit.Characters, 3),
+            new Tile(TileSuit.Characters, 4), new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 6),
+            new Tile(TileSuit.Characters, 7), new Tile(TileSuit.Characters, 8), new Tile(TileSuit.Characters, 9),
+            new Tile(TileSuit.Characters, 1), new Tile(TileSuit.Characters, 2),
+            new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Winds, 0, Wind.East)
+        ];
+
+        var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Characters, 5), WinningPattern.Standard);
+        var evaluation = ChangshaWinTypeEvaluator.Evaluate(tiles, hand);
+
+        evaluation.WinTypes.Should().NotContain(ChangshaWinType.PureSuit);
+    }
+
+    [Fact]
     public void Evaluate_DetectsXiaoHuPatterns_WhenInitialDealContextProvided()
     {
         List<Tile> fourHappinessTiles =

@@ -40,8 +40,9 @@ public static class ChangshaWinTypeEvaluator
         context ??= new ChangshaWinContext();
 
         var winTypes = new HashSet<ChangshaWinType>();
+        var hasOnlyAllowedTiles = allTiles.All(Changsha258Ruleset.IsAllowedTile);
 
-        if (context.IsInitialDeal)
+        if (context.IsInitialDeal && hasOnlyAllowedTiles)
         {
             if (HasAnyQuad(allTiles))
             {
@@ -184,6 +185,11 @@ public static class ChangshaWinTypeEvaluator
 
     private static bool IsMissingOneSuit(IReadOnlyList<Tile> tiles)
     {
+        if (tiles.Any(static tile => !Changsha258Ruleset.IsAllowedTile(tile)))
+        {
+            return false;
+        }
+
         var suitedTiles = tiles.Where(static tile => Changsha258Ruleset.AllowedSuits.Contains(tile.Suit)).ToList();
         if (suitedTiles.Count == 0)
         {
@@ -206,10 +212,16 @@ public static class ChangshaWinTypeEvaluator
             .Count(group => group.Count() >= 3) >= 2;
 
     private static bool IsAllTwoFiveEight(IReadOnlyList<Tile> tiles)
-        => tiles.All(static tile => Changsha258Ruleset.SmallWinPairRanks.Contains(tile.Rank));
+        => tiles.All(static tile => Changsha258Ruleset.IsAllowedTile(tile)
+            && Changsha258Ruleset.SmallWinPairRanks.Contains(tile.Rank));
 
     private static bool IsPureSuit(IReadOnlyList<Tile> tiles)
     {
+        if (tiles.Any(static tile => !Changsha258Ruleset.IsAllowedTile(tile)))
+        {
+            return false;
+        }
+
         var suitedTiles = tiles.Where(static tile => Changsha258Ruleset.AllowedSuits.Contains(tile.Suit)).ToList();
         if (suitedTiles.Count == 0)
         {
