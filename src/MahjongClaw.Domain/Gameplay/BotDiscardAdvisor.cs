@@ -767,11 +767,38 @@ public static class BotDiscardAdvisor
             {
                 var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
                 var bestPairOuts = pairCandidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestPairOutCopies = pairCandidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestPairOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
                 var losesAllWinningOuts = bestOverallOuts > 0 && bestPairOuts == 0;
 
                 var nonPairCandidates = candidates
                     .Where(candidate => !candidate.Tile.Equals(soleChangshaSmallWinPairTile))
                     .ToList();
+
+                var bestNonPairOuts = nonPairCandidates.Count > 0
+                    ? nonPairCandidates.Max(candidate => candidate.WinningDrawOuts)
+                    : 0;
+                var bestNonPairOutCopies = bestNonPairOuts > 0
+                    ? nonPairCandidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestNonPairOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies)
+                    : 0;
+
+                if (bestNonPairOuts > 0)
+                {
+                    var nonPairOutsLead = bestPairOuts < bestNonPairOuts
+                        || (bestPairOuts == bestNonPairOuts && bestPairOutCopies <= bestNonPairOutCopies);
+
+                    if (nonPairOutsLead)
+                    {
+                        allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+                    }
+                }
+                else if (bestPairOuts == 0)
+                {
+                    allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+                }
 
                 var dominantSuitSmallWinOutsDead = changshaDominantSuit.HasValue
                     && visibleCounts.Count > 0
@@ -779,32 +806,49 @@ public static class BotDiscardAdvisor
                         changshaDominantSuit.Value,
                         ownedCounts,
                         visibleCounts);
-                var allowZeroOutsBreak = hasChangshaDominantSuitDistinctSpread
-                    || dominantSuitSmallWinOutsDead;
 
-                if (nonPairCandidates.Count > 0)
+                var bestPairBigWinOuts = pairCandidates.Max(candidate => candidate.BigWinningDrawOuts);
+                var bestPairBigWinCopies = pairCandidates
+                    .Where(candidate => candidate.BigWinningDrawOuts == bestPairBigWinOuts)
+                    .Max(candidate => candidate.BigWinningDrawOutCopies);
+
+                if (bestPairBigWinOuts == 0)
                 {
-                    var bestNonPairSmallWinOuts = nonPairCandidates.Max(candidate => candidate.SmallWinningDrawOuts);
-                    if (bestNonPairSmallWinOuts > 0)
+                    allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+                }
+
+                var bestNonPairSmallWinOuts = nonPairCandidates.Count > 0
+                    ? nonPairCandidates.Max(candidate => candidate.SmallWinningDrawOuts)
+                    : 0;
+                var bestNonPairSmallWinCopies = bestNonPairSmallWinOuts > 0
+                    ? nonPairCandidates
+                        .Where(candidate => candidate.SmallWinningDrawOuts == bestNonPairSmallWinOuts)
+                        .Max(candidate => candidate.SmallWinningDrawOutCopies)
+                    : 0;
+
+                var allowZeroOutsBreak = (hasChangshaDominantSuitDistinctSpread
+                        || dominantSuitSmallWinOutsDead)
+                    && bestPairBigWinOuts > 0
+                    && (bestNonPairSmallWinOuts == 0
+                        || bestPairBigWinOuts > bestNonPairSmallWinOuts
+                        || (bestPairBigWinOuts == bestNonPairSmallWinOuts
+                            && bestPairBigWinCopies >= bestNonPairSmallWinCopies));
+
+                if (bestPairBigWinOuts == 0 && bestNonPairSmallWinOuts == 0)
+                {
+                    allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+                }
+
+                if (nonPairCandidates.Count > 0 && bestNonPairSmallWinOuts > 0)
+                {
+                    var bigWinOutsMissing = bestPairBigWinOuts == 0 && bestNonPairSmallWinOuts > 0;
+                    var bigWinLagsSmallWin = bestPairBigWinOuts + ChangshaPureSuitSmallWinOutsTolerance < bestNonPairSmallWinOuts
+                        || (bestPairBigWinOuts + ChangshaPureSuitSmallWinOutsTolerance == bestNonPairSmallWinOuts
+                            && bestPairBigWinCopies + ChangshaPureSuitSmallWinOutsTolerance < bestNonPairSmallWinCopies);
+
+                    if ((bigWinOutsMissing && !allowZeroOutsBreak) || (bigWinLagsSmallWin && !allowZeroOutsBreak))
                     {
-                        var bestNonPairSmallWinCopies = nonPairCandidates
-                            .Where(candidate => candidate.SmallWinningDrawOuts == bestNonPairSmallWinOuts)
-                            .Max(candidate => candidate.SmallWinningDrawOutCopies);
-
-                        var bestPairBigWinOuts = pairCandidates.Max(candidate => candidate.BigWinningDrawOuts);
-                        var bestPairBigWinCopies = pairCandidates
-                            .Where(candidate => candidate.BigWinningDrawOuts == bestPairBigWinOuts)
-                            .Max(candidate => candidate.BigWinningDrawOutCopies);
-
-                        var bigWinOutsMissing = bestPairBigWinOuts == 0 && bestNonPairSmallWinOuts > 0;
-                        var bigWinLagsSmallWin = bestPairBigWinOuts + ChangshaPureSuitSmallWinOutsTolerance < bestNonPairSmallWinOuts
-                            || (bestPairBigWinOuts + ChangshaPureSuitSmallWinOutsTolerance == bestNonPairSmallWinOuts
-                                && bestPairBigWinCopies + ChangshaPureSuitSmallWinOutsTolerance < bestNonPairSmallWinCopies);
-
-                        if ((bigWinOutsMissing && !allowZeroOutsBreak) || (bigWinLagsSmallWin && !allowZeroOutsBreak))
-                        {
-                            allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
-                        }
+                        allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
                     }
                 }
 
