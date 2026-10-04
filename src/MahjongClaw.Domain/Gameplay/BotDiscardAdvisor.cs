@@ -30,6 +30,7 @@ public static class BotDiscardAdvisor
     private const int ChangshaPureSuitBreakSmallWinPairThreshold = Changsha258Ruleset.BigWinPureSuitEyeFlexibleThreshold + 2;
     private const int ChangshaPureSuitBreakSmallWinPairHighPairRankThreshold = 5;
     private const int ChangshaPureSuitBreakSmallWinPairDistinctRankThreshold = 8;
+    private const int ChangshaPureSuitDeadSmallWinOffSuitThreshold = 2;
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
         => SelectDiscardIndex(handTiles, Array.Empty<Tile>(), ruleset);
@@ -5099,8 +5100,25 @@ public static class BotDiscardAdvisor
 
         var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
 
+        var pureSuitOffSuitCount = 0;
+        if (hasChangshaPureSuitLean && changshaDominantSuit.HasValue)
+        {
+            pureSuitOffSuitCount = ownedCounts
+                .Where(entry => entry.Key.IsHonor || entry.Key.Suit != changshaDominantSuit.Value)
+                .Sum(entry => entry.Value);
+        }
+
         bool ShouldIgnoreSequencePotential(Tile tile)
         {
+            if (hasChangshaPureSuitLean
+                && changshaDominantSuit.HasValue
+                && tile.Suit != changshaDominantSuit.Value
+                && pureSuitOffSuitCount > 0
+                && pureSuitOffSuitCount <= ChangshaPureSuitDeadSmallWinOffSuitThreshold)
+            {
+                return true;
+            }
+
             if (smallWinPairCount < 1 || !Changsha258Ruleset.IsSmallWinPair(tile))
             {
                 return false;

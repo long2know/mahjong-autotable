@@ -2533,13 +2533,13 @@ public class BotClaimAdvisorTests
     {
         var handTiles = new List<Tile>
         {
-            new(TileSuit.Dots, 1), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 4),
             new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 9),
             new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 6),
             new(TileSuit.Characters, 1), new(TileSuit.Characters, 3)
         };
         var meldTiles = new List<Tile>();
-        var discardedTile = new Tile(TileSuit.Dots, 2);
+        var discardedTile = new Tile(TileSuit.Dots, 3);
         var visibleTiles = BuildFullyExhaustedChangshaSmallWinVisibleTiles();
 
         Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles).Should().BeFalse();
@@ -2554,6 +2554,34 @@ public class BotClaimAdvisorTests
 
         shouldClaim.Should().BeFalse();
         claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TrySelectChowClaim_ReturnsTrue_WhenChangshaNoLiveSmallWinPairsAllowDeadFallback()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 6),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.South)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 3);
+        var visibleTiles = BuildFullyExhaustedChangshaSmallWinVisibleTiles();
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles).Should().BeFalse();
+
+        var shouldClaim = BotClaimAdvisor.TrySelectChowClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            visibleTiles,
+            MahjongRuleset.Changsha258,
+            out var claimTiles);
+
+        shouldClaim.Should().BeTrue();
+        claimTiles.Should().BeEquivalentTo(new[] { new Tile(TileSuit.Dots, 1), new Tile(TileSuit.Dots, 2) });
     }
 
     [Fact]

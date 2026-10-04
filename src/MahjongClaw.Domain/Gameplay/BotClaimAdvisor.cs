@@ -1117,6 +1117,7 @@ public static class BotClaimAdvisor
                 && postClaimOuts.TileTypes == 0)
             {
                 if (!allowChangshaFlexibleEyeAfterClaim
+                    && !allowChangshaSmallWinDeadFallback
                     && !HasLiveSmallWinPairCandidate(handAfterChow, meldAfterChow, visibleCounts))
                 {
                     continue;
