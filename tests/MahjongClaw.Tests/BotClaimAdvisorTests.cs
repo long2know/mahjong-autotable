@@ -635,6 +635,59 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectExposedKongClaim_ReturnsFalse_WhenChineseOfficialKongConsumesOnlyDuplicateWithoutOutsGain()
+    {
+        var ruleset = MahjongRuleset.ChineseOfficial;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 4)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 5);
+        var drawTileTypes = BuildDrawTileTypes(ruleset);
+
+        var preClaimOuts = CountWinningDrawOutsAfterDrawSummary(handTiles, meldTiles, drawTileTypes, ruleset);
+        var postClaimOuts = CountWinningDrawOutsAfterExposedKongSummary(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            drawTileTypes,
+            ruleset);
+
+        preClaimOuts.Should().Be(postClaimOuts);
+
+        var preClaimPotentialOuts = CountWinningDrawOutsAfterDrawSummary(
+            handTiles,
+            meldTiles,
+            drawTileTypes,
+            ruleset,
+            requireMinimumFan: false);
+        var postClaimPotentialOuts = CountWinningDrawOutsAfterExposedKongSummary(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            drawTileTypes,
+            ruleset,
+            requireMinimumFan: false);
+
+        preClaimPotentialOuts.Should().Be(postClaimPotentialOuts);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public void TrySelectExposedKongClaim_ReturnsTrue_WhenKongCreatesImmediateWinningOuts()
     {
         var ruleset = MahjongRuleset.ChineseOfficial;
@@ -2773,6 +2826,34 @@ public class BotClaimAdvisorTests
             .ToList();
 
         return CountWinningDrawOutsAfterDraw(handAfterKong, meldAfterKong, drawTileTypes, ruleset, requireMinimumFan);
+    }
+
+    private static WinningOutSummary CountWinningDrawOutsAfterExposedKongSummary(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        Tile discardedTile,
+        IReadOnlyList<Tile> drawTileTypes,
+        MahjongRuleset ruleset,
+        bool requireMinimumFan = true)
+    {
+        var handAfterKong = new List<Tile>(handTiles);
+
+        for (var i = 0; i < 3; i++)
+        {
+            var index = handAfterKong.FindIndex(tile => tile.Equals(discardedTile));
+            if (index < 0)
+            {
+                return default;
+            }
+
+            handAfterKong.RemoveAt(index);
+        }
+
+        var meldAfterKong = meldTiles
+            .Concat(Enumerable.Repeat(discardedTile, 4))
+            .ToList();
+
+        return CountWinningDrawOutsAfterDrawSummary(handAfterKong, meldAfterKong, drawTileTypes, ruleset, requireMinimumFan);
     }
 
     private static int CountBestWinningOutsAfterPungClaim(

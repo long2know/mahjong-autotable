@@ -151,6 +151,21 @@ public static class BotClaimAdvisor
             return false;
         }
 
+        Tile? soleChineseOfficialDuplicateTile = null;
+        if (ruleset == MahjongRuleset.ChineseOfficial)
+        {
+            var duplicateEntries = handTiles
+                .GroupBy(static tile => tile)
+                .Where(group => group.Count() >= 2 && !group.Key.IsFlower)
+                .Select(group => group.Key)
+                .ToList();
+
+            if (duplicateEntries.Count == 1)
+            {
+                soleChineseOfficialDuplicateTile = duplicateEntries[0];
+            }
+        }
+
         var visibleCounts = BuildVisibleCounts(visibleTiles);
         // visibleTiles should exclude the current discard; add it here so outs reflect the new visible tile.
         visibleCounts.TryGetValue(discardedTile, out var discardCount);
@@ -253,6 +268,46 @@ public static class BotClaimAdvisor
         if (preClaimOuts.TileTypes > 0 && postClaimOuts.TileTypes == 0)
         {
             return false;
+        }
+
+        if (ruleset == MahjongRuleset.ChineseOfficial
+            && soleChineseOfficialDuplicateTile is not null
+            && soleChineseOfficialDuplicateTile.Equals(discardedTile))
+        {
+            var improvesWinningOuts = postClaimOuts.TileTypes > preClaimOuts.TileTypes
+                || (postClaimOuts.TileTypes == preClaimOuts.TileTypes
+                    && postClaimOuts.RemainingCopies > preClaimOuts.RemainingCopies);
+
+            if (!improvesWinningOuts)
+            {
+                if (preClaimOuts.TileTypes > 0)
+                {
+                    return false;
+                }
+
+                var preClaimPotentialOuts = CountWinningDrawOutsAfterDraw(
+                    handTiles,
+                    meldTiles,
+                    visibleCounts,
+                    ruleset,
+                    requireMinimumFan: false);
+                var postClaimPotentialOuts = CountWinningDrawOutsAfterExposedKong(
+                    handTiles,
+                    meldTiles,
+                    discardedTile,
+                    visibleCounts,
+                    ruleset,
+                    requireMinimumFan: false);
+
+                var improvesPotentialOuts = postClaimPotentialOuts.TileTypes > preClaimPotentialOuts.TileTypes
+                    || (postClaimPotentialOuts.TileTypes == preClaimPotentialOuts.TileTypes
+                        && postClaimPotentialOuts.RemainingCopies > preClaimPotentialOuts.RemainingCopies);
+
+                if (!improvesPotentialOuts)
+                {
+                    return false;
+                }
+            }
         }
 
         if (ruleset == MahjongRuleset.ChineseOfficial
