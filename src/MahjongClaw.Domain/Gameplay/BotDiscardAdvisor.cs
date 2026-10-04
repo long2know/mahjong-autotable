@@ -5129,7 +5129,8 @@ public static class BotDiscardAdvisor
                 return false;
             }
 
-            return !HasInHandSequenceAnchor(tile, handCounts);
+            return !HasInHandSequenceAnchor(tile, handCounts)
+                && !HasChowFallback(tile, handCounts, ownedCounts, visibleCounts);
         }
 
         var liveSmallWinSingletons = smallWinSingletons
@@ -5313,6 +5314,70 @@ public static class BotDiscardAdvisor
             && HasTileInHand(rank + 2);
 
         return hasLowSequence || hasMiddleSequence || hasHighSequence;
+    }
+
+    private static bool HasChowFallback(
+        Tile tile,
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        if (!IsSuitedTile(tile))
+        {
+            return false;
+        }
+
+        var suit = tile.Suit;
+        var rank = tile.Rank;
+
+        bool HasInHand(int targetRank)
+        {
+            if (targetRank is < Changsha258Ruleset.MinSuitedRank or > Changsha258Ruleset.MaxSuitedRank)
+            {
+                return false;
+            }
+
+            return handCounts.TryGetValue(new Tile(suit, targetRank), out var count) && count > 0;
+        }
+
+        bool HasLiveTile(int targetRank)
+        {
+            if (targetRank is < Changsha258Ruleset.MinSuitedRank or > Changsha258Ruleset.MaxSuitedRank)
+            {
+                return false;
+            }
+
+            var candidate = new Tile(suit, targetRank);
+            if (handCounts.TryGetValue(candidate, out var count) && count > 0)
+            {
+                return true;
+            }
+
+            ownedCounts.TryGetValue(candidate, out var ownedCount);
+            visibleCounts.TryGetValue(candidate, out var visibleCount);
+            return 4 - ownedCount - visibleCount > 0;
+        }
+
+        bool HasOneInHandAndOtherLive(int firstRank, int secondRank)
+            => (HasInHand(firstRank) && HasLiveTile(secondRank))
+                || (HasInHand(secondRank) && HasLiveTile(firstRank));
+
+        if (rank >= 3 && HasOneInHandAndOtherLive(rank - 2, rank - 1))
+        {
+            return true;
+        }
+
+        if (rank is >= 2 and <= 8 && HasOneInHandAndOtherLive(rank - 1, rank + 1))
+        {
+            return true;
+        }
+
+        if (rank <= 7 && HasOneInHandAndOtherLive(rank + 1, rank + 2))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static bool HasAdjacentSuitedTile(
