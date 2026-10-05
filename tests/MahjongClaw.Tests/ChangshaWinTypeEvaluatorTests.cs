@@ -169,6 +169,8 @@ public sealed class ChangshaWinTypeEvaluatorTests
         var allTwoFiveEightHand = ResolveWinningHand(allTwoFiveEightTiles);
         var allTwoFiveEightEval = ChangshaWinTypeEvaluator.Evaluate(allTwoFiveEightTiles, allTwoFiveEightHand);
         allTwoFiveEightEval.WinTypes.Should().Contain(ChangshaWinType.AllTwoFiveEight);
+        allTwoFiveEightEval.IsBigWin.Should().BeTrue();
+        allTwoFiveEightEval.IsSmallWin.Should().BeFalse();
 
         List<Tile> pureSuitTiles =
         [
