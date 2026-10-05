@@ -9510,6 +9510,38 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithKongThreatTiles_AllowsBreakingDeadSolePair_ToAvoidKongFeed()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 9)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5)
+        };
+
+        var kongThreatTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            Array.Empty<Tile>(),
+            kongThreatTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 5));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithKongThreatsAndNoPotentialOuts_DoesNotForceMultiCopyThreatDiscard()
     {
         var handTiles = new List<Tile>

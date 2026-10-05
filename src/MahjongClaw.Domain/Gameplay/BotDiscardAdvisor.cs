@@ -2633,7 +2633,8 @@ public static class BotDiscardAdvisor
                         && nonThreatCandidates.All(candidate => candidate.Tile.Equals(soleChangshaSmallWinPairTile));
                     var avoidingThreatWouldBreakSoleChineseOfficialPair = ruleset == MahjongRuleset.ChineseOfficial
                         && soleChineseOfficialPairTile is not null
-                        && nonThreatCandidates.All(candidate => candidate.Tile.Equals(soleChineseOfficialPairTile));
+                        && nonThreatCandidates.All(candidate => candidate.Tile.Equals(soleChineseOfficialPairTile))
+                        && !IsTileExhausted(soleChineseOfficialPairTile, ownedCounts, visibleCounts);
 
                     if (bestOverallOuts == 0)
                     {
