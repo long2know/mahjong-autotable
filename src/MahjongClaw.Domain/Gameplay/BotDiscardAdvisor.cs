@@ -27,6 +27,7 @@ public static class BotDiscardAdvisor
     private const int DeadSuitedSingletonOutsTolerance = 1;
     private const int NearDeadSuitedSingletonOutsTolerance = 1;
     private const int OffRankConcealedKongOutsTolerance = 0;
+    private const int SafeMeldExposureDiscardPenalty = 4;
     private const int ChangshaPureSuitBreakSmallWinPairThreshold = Changsha258Ruleset.BigWinPureSuitEyeFlexibleThreshold + 2;
     private const int ChangshaPureSuitBreakSmallWinPairHighPairRankThreshold = 5;
     private const int ChangshaPureSuitBreakSmallWinPairDistinctRankThreshold = 8;
@@ -738,6 +739,7 @@ public static class BotDiscardAdvisor
                             visibleCounts,
                             ruleset,
                             enforceSmallWinPairBias)
+                        + (safeMeldExposure > 0 ? -SafeMeldExposureDiscardPenalty * safeMeldExposure : 0)
                         + opponentKongFeedBonus
                         + (lastSmallWinSingleton is not null && tile.Equals(lastSmallWinSingleton)
                             ? LastSmallWinSingletonKeepBonus
