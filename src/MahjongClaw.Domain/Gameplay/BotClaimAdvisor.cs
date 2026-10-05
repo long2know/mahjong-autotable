@@ -464,12 +464,7 @@ public static class BotClaimAdvisor
         }
 
         var matchingCount = handTiles.Count(tile => tile.Equals(discardedTile));
-        if (matchingCount < 2)
-        {
-            return false;
-        }
-
-        if (matchingCount > 3)
+        if (matchingCount != 2)
         {
             return false;
         }
