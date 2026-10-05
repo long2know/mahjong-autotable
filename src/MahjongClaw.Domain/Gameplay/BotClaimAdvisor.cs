@@ -1033,6 +1033,28 @@ public static class BotClaimAdvisor
 
             if (ruleset == MahjongRuleset.Changsha258
                 && !allowChangshaFlexibleEyeAfterClaim
+                && soleSmallWinPairTile is not null
+                && soleSmallWinPairCount == 2
+                && candidate.Any(tile => tile.Equals(soleSmallWinPairTile)))
+            {
+                var ownedCount = handAfterChow.Count(tile => tile.Equals(soleSmallWinPairTile))
+                    + meldAfterChow.Count(tile => tile.Equals(soleSmallWinPairTile));
+                visibleCounts.TryGetValue(soleSmallWinPairTile, out var visibleCount);
+                var remainingCopies = 4 - ownedCount - visibleCount;
+
+                if (remainingCopies <= 2
+                    && !HasAlternateSmallWinPairCandidateExcludingTile(
+                        soleSmallWinPairTile,
+                        handAfterChow,
+                        meldAfterChow,
+                        visibleCounts))
+                {
+                    continue;
+                }
+            }
+
+            if (ruleset == MahjongRuleset.Changsha258
+                && !allowChangshaFlexibleEyeAfterClaim
                 && !allowChangshaSmallWinDeadFallback
                 && HasOnlyThinSmallWinPairCandidate(handAfterChow, meldAfterChow, visibleCounts))
             {
@@ -1791,6 +1813,50 @@ public static class BotClaimAdvisor
                 }
 
                 if (handCount == 0 && remainingCopies >= 2)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasAlternateSmallWinPairCandidateExcludingTile(
+        Tile excludedTile,
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        var handCounts = handTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var ownedCounts = handTiles
+            .Concat(meldTiles)
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        foreach (var suit in Changsha258Ruleset.AllowedSuits)
+        {
+            foreach (var rank in Changsha258Ruleset.SmallWinPairRanks)
+            {
+                var tile = new Tile(suit, rank);
+                if (tile.Equals(excludedTile))
+                {
+                    continue;
+                }
+
+                handCounts.TryGetValue(tile, out var handCount);
+                ownedCounts.TryGetValue(tile, out var ownedCount);
+                visibleCounts.TryGetValue(tile, out var visibleCount);
+
+                var remainingCopies = 4 - ownedCount - visibleCount;
+                if (handCount >= 2)
+                {
+                    return true;
+                }
+
+                if (handCount == 1 && remainingCopies >= 1)
                 {
                     return true;
                 }
