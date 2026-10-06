@@ -535,7 +535,12 @@ public static class BotDiscardAdvisor
                         ownedCounts,
                         visibleCounts);
 
-                    if (candidate.RemainingCopies >= 2 || pairCount == 0 || !hasAlternateStrongSmallWinCandidate)
+                    var preserveNearDeadSingleton = candidate.RemainingCopies == 1 && visibleCounts.Count > 0;
+
+                    if (candidate.RemainingCopies >= 2
+                        || pairCount == 0
+                        || !hasAlternateStrongSmallWinCandidate
+                        || preserveNearDeadSingleton)
                     {
                         if (!hasDominantSuitLiveSmallWinCandidate
                             || candidate.Tile.Suit == changshaDominantSuit.GetValueOrDefault())
@@ -759,6 +764,21 @@ public static class BotDiscardAdvisor
                 };
             })
             .ToList();
+
+        if (ruleset == MahjongRuleset.Changsha258
+            && enforceSmallWinPairBias
+            && lastSmallWinSingleton is not null
+            && lastSmallWinSingletonRemainingCopies == 1)
+        {
+            var nonSingletonCandidates = candidates
+                .Where(candidate => !candidate.Tile.Equals(lastSmallWinSingleton))
+                .ToList();
+
+            if (nonSingletonCandidates.Count > 0)
+            {
+                candidates = nonSingletonCandidates;
+            }
+        }
 
         if (ruleset == MahjongRuleset.Changsha258
             && allowBreakingSoleChangshaSmallWinPairForPureSuitLean
