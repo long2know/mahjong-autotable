@@ -287,6 +287,49 @@ public sealed class ChangshaWinTypeEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_UsesLastTileDiscard_WhenDiscardFlagSet()
+    {
+        List<Tile> tiles =
+        [
+            new Tile(TileSuit.Characters, 1), new Tile(TileSuit.Characters, 2), new Tile(TileSuit.Characters, 3),
+            new Tile(TileSuit.Characters, 4), new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 6),
+            new Tile(TileSuit.Characters, 7), new Tile(TileSuit.Characters, 8), new Tile(TileSuit.Characters, 9),
+            new Tile(TileSuit.Dots, 1), new Tile(TileSuit.Dots, 2), new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Bamboos, 5), new Tile(TileSuit.Bamboos, 5)
+        ];
+
+        var hand = ResolveWinningHand(tiles);
+        var context = new ChangshaWinContext(IsLastTileDiscard: true);
+
+        var evaluation = ChangshaWinTypeEvaluator.Evaluate(tiles, hand, context);
+
+        evaluation.WinTypes.Should().Contain(ChangshaWinType.LastTileDiscard);
+        evaluation.WinTypes.Should().NotContain(ChangshaWinType.LastTileDraw);
+        evaluation.IsBigWin.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Evaluate_PrefersLastTileDraw_WhenBothLastTileFlagsSet()
+    {
+        List<Tile> tiles =
+        [
+            new Tile(TileSuit.Characters, 1), new Tile(TileSuit.Characters, 2), new Tile(TileSuit.Characters, 3),
+            new Tile(TileSuit.Characters, 4), new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 6),
+            new Tile(TileSuit.Characters, 7), new Tile(TileSuit.Characters, 8), new Tile(TileSuit.Characters, 9),
+            new Tile(TileSuit.Dots, 1), new Tile(TileSuit.Dots, 2), new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Bamboos, 5), new Tile(TileSuit.Bamboos, 5)
+        ];
+
+        var hand = ResolveWinningHand(tiles);
+        var context = new ChangshaWinContext(IsLastTileDraw: true, IsLastTileDiscard: true);
+
+        var evaluation = ChangshaWinTypeEvaluator.Evaluate(tiles, hand, context);
+
+        evaluation.WinTypes.Should().Contain(ChangshaWinType.LastTileDraw);
+        evaluation.WinTypes.Should().NotContain(ChangshaWinType.LastTileDiscard);
+    }
+
+    [Fact]
     public void Evaluate_DetectsSanTong_WhenThreeTripletsSameRankAcrossSuitsAtInitialDeal()
     {
         List<Tile> sanTongTiles =

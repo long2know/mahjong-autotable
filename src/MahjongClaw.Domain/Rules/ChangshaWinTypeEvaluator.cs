@@ -109,8 +109,7 @@ public static class ChangshaWinTypeEvaluator
         {
             winTypes.Add(ChangshaWinType.LastTileDraw);
         }
-
-        if (context.IsLastTileDiscard)
+        else if (context.IsLastTileDiscard)
         {
             winTypes.Add(ChangshaWinType.LastTileDiscard);
         }
