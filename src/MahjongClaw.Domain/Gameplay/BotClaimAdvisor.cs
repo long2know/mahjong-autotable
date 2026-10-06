@@ -259,6 +259,10 @@ public static class BotClaimAdvisor
             return false;
         }
 
+        var preserveChineseOfficialPureSuitLean = ruleset == MahjongRuleset.ChineseOfficial
+            && TryGetChineseOfficialPureSuitLean(handTiles, meldTiles, out var chineseOfficialDominantSuit)
+            && discardedTile.Suit != chineseOfficialDominantSuit;
+
         var postClaimOuts = CountWinningDrawOutsAfterExposedKong(
             handTiles,
             meldTiles,
@@ -269,6 +273,44 @@ public static class BotClaimAdvisor
         if (preClaimOuts.TileTypes > 0 && postClaimOuts.TileTypes == 0)
         {
             return false;
+        }
+
+        if (preserveChineseOfficialPureSuitLean)
+        {
+            var improvesWinningOuts = postClaimOuts.TileTypes > preClaimOuts.TileTypes
+                || (postClaimOuts.TileTypes == preClaimOuts.TileTypes
+                    && postClaimOuts.RemainingCopies > preClaimOuts.RemainingCopies);
+
+            if (!improvesWinningOuts)
+            {
+                if (preClaimOuts.TileTypes > 0)
+                {
+                    return false;
+                }
+
+                var preClaimPotentialOutsForPureSuitLean = CountWinningDrawOutsAfterDraw(
+                    handTiles,
+                    meldTiles,
+                    visibleCounts,
+                    ruleset,
+                    requireMinimumFan: false);
+                var postClaimPotentialOutsForPureSuitLean = CountWinningDrawOutsAfterExposedKong(
+                    handTiles,
+                    meldTiles,
+                    discardedTile,
+                    visibleCounts,
+                    ruleset,
+                    requireMinimumFan: false);
+
+                var improvesPotentialOuts = postClaimPotentialOutsForPureSuitLean.TileTypes > preClaimPotentialOutsForPureSuitLean.TileTypes
+                    || (postClaimPotentialOutsForPureSuitLean.TileTypes == preClaimPotentialOutsForPureSuitLean.TileTypes
+                        && postClaimPotentialOutsForPureSuitLean.RemainingCopies > preClaimPotentialOutsForPureSuitLean.RemainingCopies);
+
+                if (!improvesPotentialOuts)
+                {
+                    return false;
+                }
+            }
         }
 
         if (ruleset == MahjongRuleset.ChineseOfficial
@@ -526,6 +568,10 @@ public static class BotClaimAdvisor
             return false;
         }
 
+        var preserveChineseOfficialPureSuitLean = ruleset == MahjongRuleset.ChineseOfficial
+            && TryGetChineseOfficialPureSuitLean(handTiles, meldTiles, out var chineseOfficialDominantSuit)
+            && discardedTile.Suit != chineseOfficialDominantSuit;
+
         var allowChangshaFlexibleEye = ruleset == MahjongRuleset.Changsha258
             && Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
         var allowChangshaFlexibleEyeAfterClaim = false;
@@ -654,6 +700,44 @@ public static class BotClaimAdvisor
         if (preClaimOuts.TileTypes > 0 && postClaimOuts.TileTypes == 0)
         {
             return false;
+        }
+
+        if (preserveChineseOfficialPureSuitLean)
+        {
+            var improvesWinningOuts = postClaimOuts.TileTypes > preClaimOuts.TileTypes
+                || (postClaimOuts.TileTypes == preClaimOuts.TileTypes
+                    && postClaimOuts.RemainingCopies > preClaimOuts.RemainingCopies);
+
+            if (!improvesWinningOuts)
+            {
+                if (preClaimOuts.TileTypes > 0)
+                {
+                    return false;
+                }
+
+                var preClaimPotentialOutsForPureSuitLean = CountWinningDrawOutsAfterDraw(
+                    handTiles,
+                    meldTiles,
+                    visibleCounts,
+                    ruleset,
+                    requireMinimumFan: false);
+                var postClaimPotentialOutsForPureSuitLean = CountBestWinningOutsAfterPungClaim(
+                    handTiles,
+                    meldTiles,
+                    discardedTile,
+                    visibleCounts,
+                    ruleset,
+                    requireMinimumFan: false);
+
+                var improvesPotentialOuts = postClaimPotentialOutsForPureSuitLean.TileTypes > preClaimPotentialOutsForPureSuitLean.TileTypes
+                    || (postClaimPotentialOutsForPureSuitLean.TileTypes == preClaimPotentialOutsForPureSuitLean.TileTypes
+                        && postClaimPotentialOutsForPureSuitLean.RemainingCopies > preClaimPotentialOutsForPureSuitLean.RemainingCopies);
+
+                if (!improvesPotentialOuts)
+                {
+                    return false;
+                }
+            }
         }
 
         if (ruleset == MahjongRuleset.ChineseOfficial)

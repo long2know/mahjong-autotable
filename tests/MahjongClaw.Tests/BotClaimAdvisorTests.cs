@@ -688,6 +688,58 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectExposedKongClaim_ReturnsFalse_WhenChineseOfficialPureSuitLeanKongDoesNotImproveOuts()
+    {
+        var ruleset = MahjongRuleset.ChineseOfficial;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 5), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 3), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 7), new(TileSuit.Dots, 5), new(TileSuit.Dots, 3)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Bamboos, 1);
+        var drawTileTypes = BuildDrawTileTypes(ruleset);
+
+        var preClaimOuts = CountWinningDrawOutsAfterDrawSummary(handTiles, meldTiles, drawTileTypes, ruleset);
+        var postClaimOuts = CountWinningDrawOutsAfterExposedKongSummary(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            drawTileTypes,
+            ruleset);
+
+        preClaimOuts.Should().Be(postClaimOuts);
+
+        var preClaimPotentialOuts = CountWinningDrawOutsAfterDrawSummary(
+            handTiles,
+            meldTiles,
+            drawTileTypes,
+            ruleset,
+            requireMinimumFan: false);
+        var postClaimPotentialOuts = CountWinningDrawOutsAfterExposedKongSummary(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            drawTileTypes,
+            ruleset,
+            requireMinimumFan: false);
+
+        preClaimPotentialOuts.Should().Be(postClaimPotentialOuts);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectExposedKongClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public void TrySelectExposedKongClaim_ReturnsTrue_WhenKongCreatesImmediateWinningOuts()
     {
         var ruleset = MahjongRuleset.ChineseOfficial;
@@ -1484,6 +1536,60 @@ public class BotClaimAdvisorTests
         };
         var meldTiles = new List<Tile>();
         var discardedTile = new Tile(TileSuit.Dots, 5);
+        var drawTileTypes = BuildDrawTileTypes(ruleset);
+
+        var preClaimOuts = CountWinningDrawOutsAfterDrawSummary(handTiles, meldTiles, drawTileTypes, ruleset);
+        var postClaimOuts = CountBestWinningOutsAfterPungClaimSummary(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            drawTileTypes,
+            ruleset);
+
+        preClaimOuts.Should().Be(postClaimOuts);
+
+        var preClaimPotentialOuts = CountWinningDrawOutsAfterDrawSummary(
+            handTiles,
+            meldTiles,
+            drawTileTypes,
+            ruleset,
+            requireMinimumFan: false);
+        var postClaimPotentialOuts = CountBestWinningOutsAfterPungClaimSummary(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            drawTileTypes,
+            ruleset,
+            requireMinimumFan: false);
+
+        preClaimPotentialOuts.Should().Be(postClaimPotentialOuts);
+
+        var shouldClaim = BotClaimAdvisor.TrySelectPungClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TrySelectPungClaim_ReturnsFalse_WhenChineseOfficialPureSuitLeanPungDoesNotImproveOuts()
+    {
+        var ruleset = MahjongRuleset.ChineseOfficial;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 1)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Bamboos, 9);
         var drawTileTypes = BuildDrawTileTypes(ruleset);
 
         var preClaimOuts = CountWinningDrawOutsAfterDrawSummary(handTiles, meldTiles, drawTileTypes, ruleset);
