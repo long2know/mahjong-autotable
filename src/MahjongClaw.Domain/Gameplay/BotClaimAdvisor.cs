@@ -8,6 +8,7 @@ public static class BotClaimAdvisor
     private const int ExposedKongOutsDropTolerance = 0;
     private const int PungOutsDropTolerance = 0;
     private const int ChowOutsDropTolerance = 0;
+    private const int ChineseOfficialPureSuitLeanThreshold = 10;
     private static readonly IReadOnlyList<Tile> ChineseOfficialDrawTileTypes = BuildDrawTileTypes(MahjongRuleset.ChineseOfficial);
     private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
     private static readonly IReadOnlyList<Tile> ChineseOfficialOrphanTileTypes = BuildChineseOfficialOrphanTileTypes();
@@ -964,6 +965,10 @@ public static class BotClaimAdvisor
 
         var preClaimOuts = CountWinningDrawOutsAfterDraw(handTiles, meldTiles, visibleCounts, ruleset, requireMinimumFan: true);
 
+        var preserveChineseOfficialPureSuitLean = ruleset == MahjongRuleset.ChineseOfficial
+            && TryGetChineseOfficialPureSuitLean(handTiles, meldTiles, out var chineseOfficialDominantSuit)
+            && discardedTile.Suit != chineseOfficialDominantSuit;
+
         if (ruleset == MahjongRuleset.ChineseOfficial
             && IsChineseOfficialSevenPairsLean(handTiles, meldTiles)
             && preClaimOuts.TileTypes > 0)
@@ -1171,6 +1176,54 @@ public static class BotClaimAdvisor
 
                     if (preClaimPotentialOuts.TileTypes > 0
                         && IsOutsDropBeyondTolerance(preClaimPotentialOuts, postClaimPotentialOuts, ChowOutsDropTolerance))
+                    {
+                        continue;
+                    }
+                }
+            }
+
+            if (preserveChineseOfficialPureSuitLean)
+            {
+                var improvesOuts = postClaimOuts.TileTypes > preClaimOuts.TileTypes
+                    || (postClaimOuts.TileTypes == preClaimOuts.TileTypes
+                        && postClaimOuts.RemainingCopies > preClaimOuts.RemainingCopies);
+
+                if (!improvesOuts)
+                {
+                    if (preClaimOuts.TileTypes > 0)
+                    {
+                        continue;
+                    }
+
+                    if (!hasPreClaimPotentialOuts)
+                    {
+                        preClaimPotentialOuts = CountWinningDrawOutsAfterDraw(
+                            handTiles,
+                            meldTiles,
+                            visibleCounts,
+                            ruleset,
+                            requireMinimumFan: false);
+                        hasPreClaimPotentialOuts = true;
+                    }
+
+                    if (!hasPostClaimPotentialOuts)
+                    {
+                        postClaimPotentialOuts = CountBestWinningOutsAfterChowClaim(
+                            handTiles,
+                            meldTiles,
+                            discardedTile,
+                            candidate,
+                            visibleCounts,
+                            ruleset,
+                            requireMinimumFan: false);
+                        hasPostClaimPotentialOuts = true;
+                    }
+
+                    var improvesPotentialOuts = postClaimPotentialOuts.TileTypes > preClaimPotentialOuts.TileTypes
+                        || (postClaimPotentialOuts.TileTypes == preClaimPotentialOuts.TileTypes
+                            && postClaimPotentialOuts.RemainingCopies > preClaimPotentialOuts.RemainingCopies);
+
+                    if (!improvesPotentialOuts)
                     {
                         continue;
                     }
@@ -2017,6 +2070,53 @@ public static class BotClaimAdvisor
         var dominantSuitCount = suitCounts.Count(entry => entry.Value == maxSuitCount);
         if (dominantSuitCount != 1
             || maxSuitCount < Changsha258Ruleset.BigWinPureSuitEyeFlexibleThreshold)
+        {
+            return false;
+        }
+
+        dominantSuit = suitCounts.First(entry => entry.Value == maxSuitCount).Key;
+
+        var dominantSuitValue = dominantSuit;
+        if (meldTiles.Count > 0
+            && meldTiles.Any(tile => tile.IsHonor || tile.Suit != dominantSuitValue))
+        {
+            dominantSuit = default;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetChineseOfficialPureSuitLean(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        out TileSuit dominantSuit)
+    {
+        dominantSuit = default;
+
+        var ownedTiles = handTiles
+            .Concat(meldTiles)
+            .Where(static tile => !tile.IsHonor)
+            .ToList();
+
+        if (ownedTiles.Count == 0)
+        {
+            return false;
+        }
+
+        var suitCounts = ownedTiles
+            .GroupBy(static tile => tile.Suit)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        if (suitCounts.Count == 0)
+        {
+            return false;
+        }
+
+        var maxSuitCount = suitCounts.Values.Max();
+        var dominantSuitCount = suitCounts.Count(entry => entry.Value == maxSuitCount);
+        if (dominantSuitCount != 1
+            || maxSuitCount < ChineseOfficialPureSuitLeanThreshold)
         {
             return false;
         }
