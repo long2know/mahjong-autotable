@@ -2396,6 +2396,32 @@ public class BotClaimAdvisorTests
     }
 
     [Fact]
+    public void TrySelectChowClaim_ReturnsFalse_WhenChangshaChowBreaksSoleSmallWinPairWithoutAlternate()
+    {
+        var ruleset = MahjongRuleset.Changsha258;
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 6), new(TileSuit.Characters, 7), new(TileSuit.Characters, 7), new(TileSuit.Characters, 9)
+        };
+        var meldTiles = new List<Tile>();
+        var discardedTile = new Tile(TileSuit.Dots, 1);
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles).Should().BeFalse();
+
+        var shouldClaim = BotClaimAdvisor.TrySelectChowClaim(
+            handTiles,
+            meldTiles,
+            discardedTile,
+            ruleset,
+            out var claimTiles);
+
+        shouldClaim.Should().BeFalse();
+        claimTiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public void TrySelectChowClaim_ReturnsFalse_WhenChangshaBigWinEyeStopsBeingFlexibleAfterClaim()
     {
         var handTiles = new List<Tile>

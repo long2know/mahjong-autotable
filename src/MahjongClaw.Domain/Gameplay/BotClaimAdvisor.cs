@@ -1028,24 +1028,17 @@ public static class BotClaimAdvisor
 
             if (ruleset == MahjongRuleset.Changsha258
                 && !allowChangshaFlexibleEyeAfterClaim
+                && !allowChangshaSmallWinDeadFallback
                 && soleSmallWinPairTile is not null
                 && soleSmallWinPairCount == 2
-                && candidate.Any(tile => tile.Equals(soleSmallWinPairTile)))
+                && candidate.Any(tile => tile.Equals(soleSmallWinPairTile))
+                && !HasAlternateSmallWinPairCandidateExcludingTile(
+                    soleSmallWinPairTile,
+                    handAfterChow,
+                    meldAfterChow,
+                    visibleCounts))
             {
-                var ownedCount = handAfterChow.Count(tile => tile.Equals(soleSmallWinPairTile))
-                    + meldAfterChow.Count(tile => tile.Equals(soleSmallWinPairTile));
-                visibleCounts.TryGetValue(soleSmallWinPairTile, out var visibleCount);
-                var remainingCopies = 4 - ownedCount - visibleCount;
-
-                if (remainingCopies <= 2
-                    && !HasAlternateSmallWinPairCandidateExcludingTile(
-                        soleSmallWinPairTile,
-                        handAfterChow,
-                        meldAfterChow,
-                        visibleCounts))
-                {
-                    continue;
-                }
+                continue;
             }
 
             if (ruleset == MahjongRuleset.Changsha258
