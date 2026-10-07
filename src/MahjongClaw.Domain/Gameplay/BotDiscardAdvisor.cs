@@ -5085,18 +5085,34 @@ public static class BotDiscardAdvisor
             return null;
         }
 
-        var isolatedSmallWinSingletons = smallWinSingletons
-            .Where(tile => !HasNearbySuitedTile(handCounts, tile))
+        var isolatedByAdjacency = smallWinSingletons
+            .Where(tile => !HasAdjacentSuitedTile(handCounts, tile))
             .ToHashSet();
 
-        if (isolatedSmallWinSingletons.Count == 0 || isolatedSmallWinSingletons.Count == smallWinSingletons.Count)
+        if (isolatedByAdjacency.Count == 0)
         {
             return null;
         }
 
+        IReadOnlySet<Tile> discardCandidates = isolatedByAdjacency;
+
+        if (isolatedByAdjacency.Count == smallWinSingletons.Count)
+        {
+            var isolatedByGap = isolatedByAdjacency
+                .Where(tile => !HasNearbySuitedTile(handCounts, tile))
+                .ToHashSet();
+
+            if (isolatedByGap.Count == 0 || isolatedByGap.Count == isolatedByAdjacency.Count)
+            {
+                return null;
+            }
+
+            discardCandidates = isolatedByGap;
+        }
+
         for (var i = 0; i < handTiles.Count; i++)
         {
-            if (isolatedSmallWinSingletons.Contains(handTiles[i]))
+            if (discardCandidates.Contains(handTiles[i]))
             {
                 return i;
             }
