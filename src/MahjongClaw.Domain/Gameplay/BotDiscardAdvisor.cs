@@ -492,6 +492,7 @@ public static class BotDiscardAdvisor
         var isolatedSoleSmallWinSingletonDiscardIndex = TrySelectChangshaIsolatedSoleSmallWinSingletonDiscardIndex(
             handTiles,
             handCounts,
+            ownedCounts,
             visibleCounts,
             enforceSmallWinPairBias,
             hasChangshaPureSuitLean);
@@ -933,6 +934,23 @@ public static class BotDiscardAdvisor
                             && handTiles.Count >= 10
                             && hasAlternateStrongSmallWinCandidate
                             && !HasInHandSequenceAnchor(singletonTile, handCounts));
+
+                    if (shouldProtectSingleton
+                        && remainingCopies > 0
+                        && !HasAdjacentSuitedTile(handCounts, singletonTile))
+                    {
+                        var pairEntries = handCounts
+                            .Where(entry => entry.Value == 2)
+                            .ToList();
+                        var preferOffRankPairOverIsolatedSingleton = pairEntries.Count == 1
+                            && !Changsha258Ruleset.IsSmallWinPair(pairEntries[0].Key)
+                            && HasAdjacentSuitedTile(handCounts, pairEntries[0].Key);
+
+                        if (preferOffRankPairOverIsolatedSingleton)
+                        {
+                            shouldProtectSingleton = false;
+                        }
+                    }
 
                     if (shouldProtectSingleton && remainingCopies > 0)
                     {
@@ -5124,11 +5142,12 @@ public static class BotDiscardAdvisor
     private static int? TrySelectChangshaIsolatedSoleSmallWinSingletonDiscardIndex(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
         IReadOnlyDictionary<Tile, int> visibleCounts,
         bool enforceSmallWinPairBias,
         bool hasChangshaPureSuitLean)
     {
-        if (!enforceSmallWinPairBias || visibleCounts.Count > 0 || hasChangshaPureSuitLean)
+        if (!enforceSmallWinPairBias || hasChangshaPureSuitLean)
         {
             return null;
         }
@@ -5163,6 +5182,16 @@ public static class BotDiscardAdvisor
         }
 
         var smallWinSingleton = isolatedSmallWinSingletons[0];
+
+        if (visibleCounts.Count > 0
+            && !HasAlternateStrongSmallWinPairCandidate(
+                smallWinSingleton,
+                handCounts,
+                ownedCounts,
+                visibleCounts))
+        {
+            return null;
+        }
 
         var pairTile = pairEntries[0].Key;
         if (!HasAdjacentSuitedTile(handCounts, pairTile))
