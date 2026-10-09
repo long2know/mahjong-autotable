@@ -477,9 +477,15 @@ public static class BotDiscardAdvisor
             enforceSmallWinPairBias,
             hasChangshaPureSuitLean);
 
+        var hasAdjacentOffRankPair = ruleset == MahjongRuleset.Changsha258
+            && handCounts.Any(entry => entry.Value == 2
+                && !Changsha258Ruleset.IsSmallWinPair(entry.Key)
+                && HasAdjacentSuitedTile(handCounts, entry.Key));
+
         if (isolatedSmallWinSingletonDiscardIndex.HasValue
             && maxWinningOuts > 0
-            && discardOutSummaries[isolatedSmallWinSingletonDiscardIndex.Value].TileTypes == 0)
+            && discardOutSummaries[isolatedSmallWinSingletonDiscardIndex.Value].TileTypes == 0
+            && !hasAdjacentOffRankPair)
         {
             isolatedSmallWinSingletonDiscardIndex = null;
         }
