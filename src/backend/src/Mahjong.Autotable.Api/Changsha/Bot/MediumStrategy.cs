@@ -222,9 +222,30 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             keepScore += 1;
 
         var humanRank = rank + 1;
-        if (humanRank is 2 or 5 or 8)
+        var isSmallWinRank = humanRank is 2 or 5 or 8;
+        if (isSmallWinRank)
             keepScore += 2;
 
+        if (isSmallWinRank && HasSingleSmallWinTile(logicalCounts))
+            keepScore += 5;
+
         return keepScore;
+    }
+
+    private static bool HasSingleSmallWinTile(Dictionary<int, int> logicalCounts)
+    {
+        var total = 0;
+        foreach (var entry in logicalCounts)
+        {
+            var rank = entry.Key % 9 + 1;
+            if (rank is 2 or 5 or 8)
+            {
+                total += entry.Value;
+                if (total > 1)
+                    return false;
+            }
+        }
+
+        return total == 1;
     }
 }

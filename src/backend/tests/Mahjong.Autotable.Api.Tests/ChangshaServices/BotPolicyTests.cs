@@ -129,4 +129,24 @@ public class BotPolicyTests
         Assert.True(tileId == 72 || tileId == 80,
             $"Expected isolated tile to be discarded, but got {tileId}");
     }
+
+    [Fact]
+    public void Bot_PreservesLast258Singleton_WhenNo258PairExists()
+    {
+        // Only one 2/5/8 tile in the hand (Wan 2). Prefer discarding the
+        // adjacent non-258 tiles so the bot can still chase a 258 pair.
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = [
+                4,   // Wan 2, copy 0 (only 2/5/8 in hand)
+                44,  // Tong 3, copy 0
+                48   // Tong 4, copy 0
+            ]
+        };
+
+        var tileId = ChangshaBotPolicy.SelectDiscardTile(hand);
+        Assert.True(tileId == 44 || tileId == 48,
+            $"Expected non-258 neighbour to be discarded, but got {tileId}");
+    }
 }
