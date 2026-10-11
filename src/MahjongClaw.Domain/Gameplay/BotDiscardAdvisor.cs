@@ -3625,14 +3625,19 @@ public static class BotDiscardAdvisor
 
         if ((allowWinningOutsOverride || allowPureSuitOutsOverride) && maxPrioritizedOuts < maxWinningOuts)
         {
-            prioritizedCandidates = allCandidates
+            var bestOverallOutCandidates = allCandidates
                 .Where(candidate => candidate.WinningDrawOuts == maxWinningOuts)
                 .ToList();
 
-            var bestOverallOutCopies = prioritizedCandidates.Max(candidate => candidate.WinningDrawOutCopies);
-            prioritizedCandidates = prioritizedCandidates
-                .Where(candidate => candidate.WinningDrawOutCopies == bestOverallOutCopies)
-                .ToList();
+            if (bestOverallOutCandidates.Count > 0)
+            {
+                prioritizedCandidates = bestOverallOutCandidates;
+
+                var bestOverallOutCopies = prioritizedCandidates.Max(candidate => candidate.WinningDrawOutCopies);
+                prioritizedCandidates = prioritizedCandidates
+                    .Where(candidate => candidate.WinningDrawOutCopies == bestOverallOutCopies)
+                    .ToList();
+            }
         }
 
         if (ruleset == MahjongRuleset.ChineseOfficial
