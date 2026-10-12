@@ -17,6 +17,8 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 /// </remarks>
 public sealed class MediumStrategy : IChangshaBotStrategy
 {
+    private const int SingleSmallWinDiscardTolerance = 2;
+
     public string Difficulty => "medium";
 
     public BotAction OnTurnStart(ChangshaGameState state, int botSeatIndex)
@@ -196,10 +198,37 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        return hand.ConcealedTiles
-            .OrderBy(t => ComputeKeepScore(t, logicalCounts))
-            .ThenByDescending(t => t)
+        var scored = hand.ConcealedTiles
+            .Select(tileId => new
+            {
+                TileId = tileId,
+                Logical = ChangshaDeckBuilder.GetLogicalTile(tileId),
+                Score = ComputeKeepScore(tileId, logicalCounts)
+            })
+            .ToList();
+
+        var best = scored
+            .OrderBy(entry => entry.Score)
+            .ThenByDescending(entry => entry.TileId)
             .First();
+
+        var smallWinCandidates = scored
+            .Where(entry => IsSmallWinRank(entry.Logical))
+            .ToList();
+
+        if (smallWinCandidates.Count == 1 && best.TileId == smallWinCandidates[0].TileId)
+        {
+            var alternate = scored
+                .Where(entry => entry.TileId != best.TileId && !IsSmallWinRank(entry.Logical))
+                .OrderBy(entry => entry.Score)
+                .ThenByDescending(entry => entry.TileId)
+                .FirstOrDefault();
+
+            if (alternate is not null && alternate.Score <= best.Score + SingleSmallWinDiscardTolerance)
+                return alternate.TileId;
+        }
+
+        return best.TileId;
     }
 
     private static int ComputeKeepScore(int tileId, Dictionary<int, int> logicalCounts)
@@ -232,13 +261,18 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         return keepScore;
     }
 
+    private static bool IsSmallWinRank(int logical)
+    {
+        var rank = logical % 9 + 1;
+        return rank is 2 or 5 or 8;
+    }
+
     private static bool HasSingleSmallWinTile(Dictionary<int, int> logicalCounts)
     {
         var total = 0;
         foreach (var entry in logicalCounts)
         {
-            var rank = entry.Key % 9 + 1;
-            if (rank is 2 or 5 or 8)
+            if (IsSmallWinRank(entry.Key))
             {
                 total += entry.Value;
                 if (total > 1)
