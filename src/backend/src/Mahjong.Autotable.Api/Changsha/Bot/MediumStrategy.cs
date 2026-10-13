@@ -18,6 +18,7 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 public sealed class MediumStrategy : IChangshaBotStrategy
 {
     private const int SingleSmallWinDiscardTolerance = 2;
+    private const int OffRankPairDiscardTolerance = 2;
 
     public string Difficulty => "medium";
 
@@ -106,13 +107,15 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 return new BotDecision(BotAction.DeclareAddedKong(addedKongTile), addedKongTile, Score: 0, reasoning);
             }
 
-            var tileId = SelectDiscardTile(hand);
+            var (tileId, droppedIsolatedSmallWin) = SelectDiscardTileWithMeta(hand);
             var logicalCounts = hand.ConcealedTiles
                 .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
                 .ToDictionary(g => g.Key, g => g.Count());
             var score = ComputeKeepScore(tileId, logicalCounts);
             reasoning.Add($"keep-score primary: discard tile={tileId} score={score} (lower=better to discard)");
             reasoning.Add("tie-breaker: tile-id descending");
+            if (droppedIsolatedSmallWin)
+                reasoning.Add("changsha 258 guard: preserved off-rank pair by discarding isolated 2/5/8 singleton");
             return new BotDecision(BotAction.Discard(tileId), tileId, Score: score, reasoning);
         }
 
@@ -191,6 +194,12 @@ public sealed class MediumStrategy : IChangshaBotStrategy
     /// facade and harness tests can call into the same implementation.</summary>
     public static int SelectDiscardTile(ChangshaHandState hand)
     {
+        var result = SelectDiscardTileWithMeta(hand);
+        return result.TileId;
+    }
+
+    private static (int TileId, bool DroppedIsolatedSmallWin) SelectDiscardTileWithMeta(ChangshaHandState hand)
+    {
         if (hand.ConcealedTiles.Count == 0)
             throw new InvalidOperationException("Cannot discard from empty hand.");
 
@@ -212,6 +221,23 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             .ThenByDescending(entry => entry.TileId)
             .First();
 
+        var hasSingleSmallWin = HasSingleSmallWinTile(logicalCounts);
+        var offRankPairExists = logicalCounts.Any(entry => entry.Value > 1 && !IsSmallWinRank(entry.Key));
+        if (hasSingleSmallWin && offRankPairExists)
+        {
+            var smallWinSingleton = scored.FirstOrDefault(entry =>
+                IsSmallWinRank(entry.Logical)
+                && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                && IsIsolatedSingleton(entry.Logical, logicalCounts));
+            if (smallWinSingleton is not null)
+            {
+                var bestIsOffRankPair = logicalCounts.GetValueOrDefault(best.Logical, 0) > 1
+                    && !IsSmallWinRank(best.Logical);
+                if (bestIsOffRankPair && smallWinSingleton.Score <= best.Score + OffRankPairDiscardTolerance)
+                    return (smallWinSingleton.TileId, true);
+            }
+        }
+
         var smallWinCandidates = scored
             .Where(entry => IsSmallWinRank(entry.Logical))
             .ToList();
@@ -225,10 +251,10 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 .FirstOrDefault();
 
             if (alternate is not null && alternate.Score <= best.Score + SingleSmallWinDiscardTolerance)
-                return alternate.TileId;
+                return (alternate.TileId, false);
         }
 
-        return best.TileId;
+        return (best.TileId, false);
     }
 
     private static int ComputeKeepScore(int tileId, Dictionary<int, int> logicalCounts)
@@ -281,5 +307,23 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         }
 
         return total == 1;
+    }
+
+    private static bool IsIsolatedSingleton(int logical, Dictionary<int, int> logicalCounts)
+    {
+        if (logicalCounts.GetValueOrDefault(logical, 0) != 1)
+            return false;
+
+        var rank = logical % 9;
+        if (rank > 0 && logicalCounts.ContainsKey(logical - 1))
+            return false;
+        if (rank < 8 && logicalCounts.ContainsKey(logical + 1))
+            return false;
+        if (rank > 1 && logicalCounts.ContainsKey(logical - 2))
+            return false;
+        if (rank < 7 && logicalCounts.ContainsKey(logical + 2))
+            return false;
+
+        return true;
     }
 }

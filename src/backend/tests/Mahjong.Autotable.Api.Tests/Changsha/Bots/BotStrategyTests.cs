@@ -188,6 +188,19 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_PreservesOffRankPair_WhenOnlySmallWinIsIsolatedSingleton()
+    {
+        // Changsha 258: keep the off-rank pair, drop the lone 2/5/8 singleton.
+        var hand = Hand(
+            Tiao(3, 0), Tiao(3, 1),                // off-rank pair
+            Tong(2, 0)                              // isolated 2 (only small-win tile)
+        );
+
+        var chosen = MediumStrategy.SelectDiscardTile(hand);
+        Assert.Equal(Tong(2, 0), chosen);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Bot_NeighbourTilesContributeToEfficiency()
     {
         var hand = Hand(
