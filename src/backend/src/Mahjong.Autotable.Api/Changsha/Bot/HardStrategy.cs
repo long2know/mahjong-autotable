@@ -59,6 +59,9 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 /// </summary>
 public sealed class HardStrategy : IChangshaBotStrategy
 {
+    private const int OffRankPairDiscardTolerance = 2;
+
+    private readonly record struct DiscardCandidate(int TileId, int Logical, int Shanten, int Score);
     public string Difficulty => "hard";
 
     public BotAction OnTurnStart(ChangshaGameState state, int botSeatIndex)
@@ -414,11 +417,28 @@ public sealed class HardStrategy : IChangshaBotStrategy
             shantenByLogical[logical] = ShantenAfterDiscardingLogical(logical, hand);
         }
 
-        return hand.ConcealedTiles
-            .OrderBy(t => shantenByLogical[ChangshaDeckBuilder.GetLogicalTile(t)])
-            .ThenBy(t => ComputeDiscardScore(t, logicalCounts, discardedLogicals))
-            .ThenByDescending(t => t)
+        var scored = hand.ConcealedTiles
+            .Select(tileId =>
+            {
+                var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+                return new DiscardCandidate(
+                    tileId,
+                    logical,
+                    shantenByLogical[logical],
+                    ComputeDiscardScore(tileId, logicalCounts, discardedLogicals));
+            })
+            .ToList();
+
+        var best = scored
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
+            .ThenByDescending(entry => entry.TileId)
             .First();
+
+        if (TrySelectIsolatedSmallWinDiscard(logicalCounts, scored, best, out var overrideTile))
+            return overrideTile;
+
+        return best.TileId;
     }
 
     /// <summary>
@@ -483,5 +503,86 @@ public sealed class HardStrategy : IChangshaBotStrategy
             keepScore -= 4;
 
         return keepScore;
+    }
+
+    private static bool TrySelectIsolatedSmallWinDiscard(
+        Dictionary<int, int> logicalCounts,
+        List<DiscardCandidate> scored,
+        DiscardCandidate best,
+        out int tileId)
+    {
+        tileId = -1;
+        if (!HasSingleSmallWinTile(logicalCounts)) return false;
+
+        var offRankPairExists = logicalCounts.Any(entry => entry.Value > 1 && !IsSmallWinRank(entry.Key));
+        if (!offRankPairExists) return false;
+
+        var smallWinSingleton = default(DiscardCandidate);
+        var hasSmallWinSingleton = false;
+        foreach (var entry in scored)
+        {
+            if (IsSmallWinRank(entry.Logical)
+                && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                && IsIsolatedSingleton(entry.Logical, logicalCounts))
+            {
+                smallWinSingleton = entry;
+                hasSmallWinSingleton = true;
+                break;
+            }
+        }
+        if (!hasSmallWinSingleton) return false;
+
+        var bestIsOffRankPair = logicalCounts.GetValueOrDefault(best.Logical, 0) > 1
+            && !IsSmallWinRank(best.Logical);
+        if (!bestIsOffRankPair) return false;
+
+        if (smallWinSingleton.Shanten == best.Shanten
+            && smallWinSingleton.Score <= best.Score + OffRankPairDiscardTolerance)
+        {
+            tileId = smallWinSingleton.TileId;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsSmallWinRank(int logical)
+    {
+        var rank = logical % 9 + 1;
+        return rank is 2 or 5 or 8;
+    }
+
+    private static bool HasSingleSmallWinTile(Dictionary<int, int> logicalCounts)
+    {
+        var total = 0;
+        foreach (var entry in logicalCounts)
+        {
+            if (IsSmallWinRank(entry.Key))
+            {
+                total += entry.Value;
+                if (total > 1)
+                    return false;
+            }
+        }
+
+        return total == 1;
+    }
+
+    private static bool IsIsolatedSingleton(int logical, Dictionary<int, int> logicalCounts)
+    {
+        if (logicalCounts.GetValueOrDefault(logical, 0) != 1)
+            return false;
+
+        var rank = logical % 9;
+        if (rank > 0 && logicalCounts.ContainsKey(logical - 1))
+            return false;
+        if (rank < 8 && logicalCounts.ContainsKey(logical + 1))
+            return false;
+        if (rank > 1 && logicalCounts.ContainsKey(logical - 2))
+            return false;
+        if (rank < 7 && logicalCounts.ContainsKey(logical + 2))
+            return false;
+
+        return true;
     }
 }

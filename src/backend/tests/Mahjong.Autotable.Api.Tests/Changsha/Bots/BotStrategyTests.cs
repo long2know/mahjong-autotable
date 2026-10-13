@@ -201,6 +201,34 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Hard_PreservesOffRankPair_WhenOnlySmallWinIsIsolatedSingleton()
+    {
+        var hand = Hand(
+            Tiao(3, 0), Tiao(3, 1),                // off-rank pair
+            Tong(2, 0)                              // isolated 2 (only small-win tile)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var hard = new HardStrategy();
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Bot_NeighbourTilesContributeToEfficiency()
     {
         var hand = Hand(
