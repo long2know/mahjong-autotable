@@ -1,4 +1,5 @@
 using Mahjong.Autotable.Api.Changsha;
+using Mahjong.Autotable.Api.Tests.Changsha._TestHarness;
 
 namespace Mahjong.Autotable.Api.Tests.ChangshaServices;
 
@@ -148,5 +149,25 @@ public class BotPolicyTests
         var tileId = ChangshaBotPolicy.SelectDiscardTile(hand);
         Assert.True(tileId == 44 || tileId == 48,
             $"Expected non-258 neighbour to be discarded, but got {tileId}");
+    }
+
+    [Fact]
+    public void Bot_PreservesLast258Singleton_WhenOnlyOtherOptionsAreOffRankPairs()
+    {
+        // Wan 2 is the only 2/5/8 tile. The remaining tiles are off-rank pairs,
+        // so the bot should break the off-rank pair before discarding the lone
+        // 2/5/8 singleton.
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = ChangshaTestHelpers.Tiles(
+                (Suit.Wan, 2),
+                (Suit.Tong, 3), (Suit.Tong, 3),
+                (Suit.Tong, 4), (Suit.Tong, 4))
+        };
+
+        var tileId = ChangshaBotPolicy.SelectDiscardTile(hand);
+        var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+        Assert.NotEqual(ChangshaTestHelpers.Logical(Suit.Wan, 2), logical);
     }
 }
