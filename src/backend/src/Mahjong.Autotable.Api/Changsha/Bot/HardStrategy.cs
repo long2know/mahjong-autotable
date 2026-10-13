@@ -60,6 +60,7 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 public sealed class HardStrategy : IChangshaBotStrategy
 {
     private const int OffRankPairDiscardTolerance = 2;
+    private const int OffRankPairShantenTolerance = 1;
 
     private readonly record struct DiscardCandidate(int TileId, int Logical, int Shanten, int Score);
     public string Difficulty => "hard";
@@ -536,7 +537,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
             && !IsSmallWinRank(best.Logical);
         if (!bestIsOffRankPair) return false;
 
-        if (smallWinSingleton.Shanten == best.Shanten
+        if (smallWinSingleton.Shanten <= best.Shanten + OffRankPairShantenTolerance
             && smallWinSingleton.Score <= best.Score + OffRankPairDiscardTolerance)
         {
             tileId = smallWinSingleton.TileId;
