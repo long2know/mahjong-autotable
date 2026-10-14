@@ -46,6 +46,11 @@ public sealed class MasterStrategy : IChangshaBotStrategy
     /// <see cref="ChangshaBotEngine.Resolve"/>.</summary>
     public string Difficulty => "master";
 
+    private const int OffRankPairDiscardTolerance = 2;
+    private const int OffRankPairShantenTolerance = 1;
+
+    private readonly record struct DiscardCandidate(int TileId, int Logical, int Shanten, int Score);
+
     private readonly HardStrategy _hard = new();
 
     public BotAction OnTurnStart(ChangshaGameState state, int botSeatIndex)
@@ -237,14 +242,31 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         // the prior tiers tie: tenpai-aware safety and suit-commitment
         // (清一色 drive). Both return small ints (-1 or 0) so they cannot
         // override the shanten primary.
-        return hand.ConcealedTiles
-            .OrderBy(t => shantenByLogical[ChangshaDeckBuilder.GetLogicalTile(t)])
-            .ThenBy(t => ComputeHardCompatibleDiscardScore(t, logicalCounts, discardedLogicals))
-            .ThenBy(t => OpponentSafetyTieBreaker(t, opponentDiscardLogicals))
-            .ThenBy(t => TenpaiDetector.SafetyBias(t, state, botSeatIndex))
-            .ThenBy(t => SuitCommitment.Bias(t, hand))
-            .ThenByDescending(t => t)
+        var scored = hand.ConcealedTiles
+            .Select(tileId =>
+            {
+                var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+                return new DiscardCandidate(
+                    tileId,
+                    logical,
+                    shantenByLogical[logical],
+                    ComputeHardCompatibleDiscardScore(tileId, logicalCounts, discardedLogicals));
+            })
+            .ToList();
+
+        var best = scored
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
+            .ThenBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
+            .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
+            .ThenBy(entry => SuitCommitment.Bias(entry.TileId, hand))
+            .ThenByDescending(entry => entry.TileId)
             .First();
+
+        if (TrySelectIsolatedSmallWinDiscard(logicalCounts, scored, best, out var overrideTile))
+            return overrideTile;
+
+        return best.TileId;
     }
 
     private static int ShantenAfterDiscardingLogical(int candidateLogical, ChangshaHandState hand)
@@ -309,6 +331,87 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             keepScore -= 4;
 
         return keepScore;
+    }
+
+    private static bool TrySelectIsolatedSmallWinDiscard(
+        Dictionary<int, int> logicalCounts,
+        List<DiscardCandidate> scored,
+        DiscardCandidate best,
+        out int tileId)
+    {
+        tileId = -1;
+        if (!HasSingleSmallWinTile(logicalCounts)) return false;
+
+        var offRankPairExists = logicalCounts.Any(entry => entry.Value > 1 && !IsSmallWinRank(entry.Key));
+        if (!offRankPairExists) return false;
+
+        var smallWinSingleton = default(DiscardCandidate);
+        var hasSmallWinSingleton = false;
+        foreach (var entry in scored)
+        {
+            if (IsSmallWinRank(entry.Logical)
+                && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                && IsIsolatedSingleton(entry.Logical, logicalCounts))
+            {
+                smallWinSingleton = entry;
+                hasSmallWinSingleton = true;
+                break;
+            }
+        }
+        if (!hasSmallWinSingleton) return false;
+
+        var bestIsOffRankPair = logicalCounts.GetValueOrDefault(best.Logical, 0) > 1
+            && !IsSmallWinRank(best.Logical);
+        if (!bestIsOffRankPair) return false;
+
+        if (smallWinSingleton.Shanten <= best.Shanten + OffRankPairShantenTolerance
+            && smallWinSingleton.Score <= best.Score + OffRankPairDiscardTolerance)
+        {
+            tileId = smallWinSingleton.TileId;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsSmallWinRank(int logical)
+    {
+        var rank = logical % 9 + 1;
+        return rank is 2 or 5 or 8;
+    }
+
+    private static bool HasSingleSmallWinTile(Dictionary<int, int> logicalCounts)
+    {
+        var total = 0;
+        foreach (var entry in logicalCounts)
+        {
+            if (IsSmallWinRank(entry.Key))
+            {
+                total += entry.Value;
+                if (total > 1)
+                    return false;
+            }
+        }
+
+        return total == 1;
+    }
+
+    private static bool IsIsolatedSingleton(int logical, Dictionary<int, int> logicalCounts)
+    {
+        if (logicalCounts.GetValueOrDefault(logical, 0) != 1)
+            return false;
+
+        var rank = logical % 9;
+        if (rank > 0 && logicalCounts.ContainsKey(logical - 1))
+            return false;
+        if (rank < 8 && logicalCounts.ContainsKey(logical + 1))
+            return false;
+        if (rank > 1 && logicalCounts.ContainsKey(logical - 2))
+            return false;
+        if (rank < 7 && logicalCounts.ContainsKey(logical + 2))
+            return false;
+
+        return true;
     }
 
     // The Master-only tie-breaker: tiles whose logical id has been discarded
