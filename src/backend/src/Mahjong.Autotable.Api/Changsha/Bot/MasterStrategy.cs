@@ -46,8 +46,6 @@ public sealed class MasterStrategy : IChangshaBotStrategy
     /// <see cref="ChangshaBotEngine.Resolve"/>.</summary>
     public string Difficulty => "master";
 
-    private const int OffRankPairDiscardTolerance = 2;
-    private const int OffRankPairShantenTolerance = 1;
 
     private readonly record struct DiscardCandidate(int TileId, int Logical, int Shanten, int Score);
 
@@ -364,14 +362,8 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             && !IsSmallWinRank(best.Logical);
         if (!bestIsOffRankPair) return false;
 
-        if (smallWinSingleton.Shanten <= best.Shanten + OffRankPairShantenTolerance
-            && smallWinSingleton.Score <= best.Score + OffRankPairDiscardTolerance)
-        {
-            tileId = smallWinSingleton.TileId;
-            return true;
-        }
-
-        return false;
+        tileId = smallWinSingleton.TileId;
+        return true;
     }
 
     private static bool IsSmallWinRank(int logical)
