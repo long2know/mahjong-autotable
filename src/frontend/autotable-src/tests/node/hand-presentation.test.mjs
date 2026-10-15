@@ -140,6 +140,7 @@ function worldHarness() {
     handMode: 'suit', handScale: 1, handPointerDown: false, handPlaces: new Map(),
     presentedHand: [], handSignature: '', handDirty: true, drawnTile: null,
     selected: [], hovered: null, highlightedThing: null, movement: null,
+    ownHandDomSeat: null,
     client: { seat: 0, connected: () => true,
       things: { entries: () => entries.entries(), get: id => entries.get(id) ?? null },
       claim: { get: id => claims.get(id) ?? null },
@@ -329,6 +330,88 @@ test('a genuinely advanced hand clears the draw marker even when a physical tile
   assert.equal(h.world.ownHandPresentation().drawn, null);
   assert.deepEqual(ids(h.world.ownHandPresentation().tiles), [4, 8]);
   assert.deepEqual(h.writes, []);
+});
+
+test('hybrid suppression shares render/select gates and excludes only the confirmed own hand', () => {
+  const h = worldHarness();
+  h.put([
+    tile(8, 2, 0), tile(4, 1, 1), tile(12, 3, 0, 1),
+    { id: 16, face: 4, slotName: 'meld.0.0@0' },
+    { id: 20, face: 5, slotName: 'discard.0.0@0' },
+    { id: 24, face: 6, slotName: 'hand.extra@0' },
+  ]);
+  let rendered = [];
+  h.world.objectView = { updateThings: items => { rendered = items; }, replaceShadows: () => {} };
+  h.world.updateHandPresentation();
+  const before = h.snapshot();
+  h.world.hovered = h.world.things.get(8);
+  h.world.selected = [h.world.things.get(8)];
+  h.world.setOwnHandDomActive(true);
+  h.world.updateViewThings();
+  assert.deepEqual(Array.from(rendered.filter(item => item.hidden), item => item.thingIndex), [8, 4]);
+  assert.deepEqual(Array.from(h.world.toSelect(), item => item.id), [12, 16, 20, 24]);
+  assert.equal(h.world.hovered, null);
+  assert.equal(h.world.selected.length, 0);
+  assert.equal(h.world.canSelect(h.world.things.get(8), []), false);
+  assert.equal(h.world.ownHandThing(8), h.world.things.get(8));
+  assert.equal(h.world.ownHandThing(24), null, 'preview is not a confirmed own tile');
+  assert.equal(h.snapshot(), before);
+  assert.deepEqual(h.writes, []);
+  h.world.hovered = h.world.things.get(8);
+  h.world.isMyDiscardTurn = () => true;
+  assert.equal(h.world.onDragStart(), false);
+  assert.deepEqual(h.writes, [], 'a stale canvas hover must not bypass the DOM confirmation');
+  h.world.setOwnHandDomActive(false);
+  h.world.updateViewThings();
+  assert.equal(rendered.filter(item => item.hidden).length, 0);
+  assert.equal(h.world.toSelect().length, 6);
+  assert.equal(h.snapshot(), before);
+});
+
+test('hybrid visibility fails closed on ownership changes, relay and disconnect without hiding new hands', () => {
+  for (const mode of ['seat-change', 'relay', 'disconnect']) {
+    const h = worldHarness();
+    h.put([tile(8, 2, 0), tile(12, 3, 0, 1), { id: 16, face: 4, slotName: 'meld.0.0@0' }]);
+    h.world.objectView = { replaceShadows: () => {} };
+    h.world.setOwnHandDomActive(true);
+    if (mode === 'seat-change') { h.world.client.seat = 1; h.world.seat = 1; }
+    if (mode === 'relay') h.world.conditions.gameType = GameType.FOUR_PLAYER;
+    if (mode === 'disconnect') h.world.client.connected = () => false;
+    assert.equal(h.world.presentationHidden(h.world.things.get(12)), false, mode);
+    assert.equal(h.world.presentationHidden(h.world.things.get(16)), false, mode);
+    assert.equal(h.world.presentationHidden(h.world.things.get(8)), false, mode);
+    h.world.setOwnHandDomActive(false);
+    assert.equal(h.world.ownHandDomSeat, null);
+  }
+});
+
+test('fresh presentation removes a revoked physical tile even while a pointer defers sorting', () => {
+  const h = worldHarness();
+  h.put([tile(8, 2, 0), tile(4, 1, 1)]);
+  h.world.updateHandPresentation();
+  h.world.setHandPointerDown(true);
+  h.entries.set(8, { slotName: 'discard.0.0@0', rotationIndex: 0 });
+  h.world.handDirty = true;
+  assert.deepEqual(ids(h.world.ownHandPresentation().tiles), [4]);
+  assert.equal(h.world.ownHandThing(8), null);
+  assert.deepEqual(h.writes, []);
+});
+
+test('a mobile confirmation flight blocks a restored canvas discard without changing scene/raycast visibility', () => {
+  const h = worldHarness();
+  h.put([tile(8, 2, 0), tile(4, 1, 1)]);
+  h.world.setMobileDiscardGuard(() => false);
+  h.world.updateHandPresentation();
+  assert.equal(h.world.toSelect().length, 2);
+  assert.equal(h.world.presentationHidden(h.world.things.get(8)), false);
+  h.world.isMyDiscardTurn = () => true;
+  h.world.hovered = h.world.things.get(8);
+  assert.equal(h.world.onDragStart(), false);
+  assert.deepEqual(h.writes, []);
+  h.world.setMobileDiscardGuard(null);
+  h.world.hovered = h.world.things.get(8);
+  h.world.onDragStart();
+  assert.deepEqual(h.writes, [{ seat: 0, tileId: 8 }]);
 });
 
 for (const [width, height] of [[360, 800], [390, 844], [844, 390], [820, 1180], [1280, 900]]) {

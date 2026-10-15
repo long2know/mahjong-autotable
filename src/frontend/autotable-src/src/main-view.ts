@@ -3,6 +3,8 @@ import { World } from './world';
 import { CustomOutline } from './render/custom-outline';
 import { GameType, Size } from './types';
 import { fitTableProjection, localHandFitCorners, responsiveHandScale, type ScreenArea } from './table-fit';
+import { resolveMobileLayout, type MobileLayoutMode } from './mobile-layout';
+import type { CompactTableProfile } from './compact-table';
 
 // Phase K Wave 7 — OutlinePass + EffectComposer + RenderPass are
 // gone.  The renderer is now a single-pass `renderer.render(scene,
@@ -13,6 +15,8 @@ import { fitTableProjection, localHandFitCorners, responsiveHandScale, type Scre
 // parity audit.
 
 const RATIO = 1.5;
+const MOBILE_SEATED_ELEVATION = Math.PI / 3;
+const COMPACT_CAMERA_DISTANCE = 550;
 
 // Phase K Wave 6 — Tree-shake the dev-only FPS overlay out of the
 // production build.  Wave 5's `three-renderer.<hash>.js` carried
@@ -55,6 +59,12 @@ export class MainView {
   private tableStatusInset = 0;
   private tableStatusRegion: 'top' | 'bottom' | null = null;
   private framingSeat: number | null | undefined;
+  private mobileLayoutMode: MobileLayoutMode = null;
+  private resolvedMobileLayout: MobileLayoutMode = null;
+  private mobileHandActive = false;
+  private mobileFooterInset = 0;
+  private compactTable: CompactTableProfile | null = null;
+  private relayFraming = false;
 
   private dummyObject: Object3D;
 
@@ -275,39 +285,76 @@ export class MainView {
     }
   }
 
-  updateCamera(seat: number | null, lookDown: number, zoom: number, mouse2: Vector2 | null, gameType: GameType): void {
+  updateCamera(
+    seat: number | null, lookDown: number, zoom: number, mouse2: Vector2 | null, gameType: GameType,
+    relayCorners: readonly Vector3[] = [],
+  ): void {
+    this.relayFraming = gameType !== GameType.CHANGSHA && relayCorners.length > 0;
+    this.resolvedMobileLayout = resolveMobileLayout(this.mobileLayoutMode, {
+      width: window.innerWidth, height: window.innerHeight, changsha: gameType === GameType.CHANGSHA,
+    });
     if (seat !== this.framingSeat || gameType !== GameType.CHANGSHA) this.tableStatusInset = 0;
     this.framingSeat = seat;
     this.updateCameraProjection(this.width, this.height);
     const angle = (seat ?? 0) * Math.PI * 0.5;
     this.viewGroup.rotation.set(0, 0, angle);
-    // The scene can change variant independently of the URL/HUD (local relay
-    // setup and replays). Never apply Changsha fitting to a relay world.
-    if (gameType !== GameType.CHANGSHA) {
+    // Relay scenes supply their own full slot/tray envelope, never Changsha's
+    // compact or enlarged-hand bounds. Keep callers without a scene unchanged.
+    if (gameType !== GameType.CHANGSHA && !this.relayFraming) {
       if (this.perspective) this.updatePespectiveCamera(seat === null, lookDown, zoom, mouse2);
       else this.updateOrthographicCamera(seat === null, lookDown, zoom, mouse2);
       this.viewGroup.updateMatrixWorld();
       return;
     }
     if (this.perspective) {
-      this.updatePespectiveCamera(seat === null, 0, 0, null);
+      this.updatePespectiveCamera(seat === null, 0, 0, null, this.resolvedMobileLayout !== null);
     } else {
       this.updateOrthographicCamera(seat === null, 0, 0, null);
     }
     this.viewGroup.updateMatrixWorld();
-    const corners = this.fitCorners.concat(localHandFitCorners(seat, this.handPresentationScale));
-    fitTableProjection(this.camera, corners, this.width, this.height, this.playArea());
+    fitTableProjection(this.camera, this.relayFraming ? relayCorners : this.presentedFitCorners,
+      this.width, this.height, this.playArea());
 
     // Fit is the zero-zoom baseline. Do not auto-fit away an intentional zoom,
     // pan or look-down; the existing controls remain independent of resizing.
     const userZoom = Math.max(-1, Math.min(1, zoom));
-    if (this.perspective) this.updatePespectiveCamera(seat === null, lookDown, userZoom, mouse2);
+    if (this.perspective) this.updatePespectiveCamera(seat === null, lookDown, userZoom, mouse2, this.resolvedMobileLayout !== null);
     else this.updateOrthographicCamera(seat === null, lookDown, userZoom, mouse2);
     this.viewGroup.updateMatrixWorld();
   }
 
   get handPresentationScale(): number {
     return responsiveHandScale(this.width, this.height);
+  }
+
+  setCompactTable(profile: CompactTableProfile | null): void {
+    this.compactTable = profile;
+  }
+
+  get presentedFitCorners(): readonly Vector3[] {
+    return this.compactTable?.fitCorners ?? this.fitCorners.concat(this.mobileDomHandActive
+      ? [] : localHandFitCorners(this.framingSeat ?? null, this.handPresentationScale));
+  }
+
+  get tablePlayArea(): ScreenArea {
+    return this.playArea();
+  }
+
+  private get compactSeatedElevation(): number {
+    if (this.width <= this.height) return Math.PI * 5 / 12;
+    return this.height <= 520 ? Math.PI * 2 / 9 : Math.PI * 3 / 10;
+  }
+
+  /** The caller resolves the live connection mode; active describes the DOM hand, not the camera flag. */
+  setMobileLayout(mode: MobileLayoutMode, active: boolean, insetPx: number): void {
+    this.mobileLayoutMode = mode;
+    this.mobileHandActive = active;
+    this.mobileFooterInset = Number.isFinite(insetPx) ? Math.max(0, insetPx) : 0;
+  }
+
+  private get mobileDomHandActive(): boolean {
+    return (this.resolvedMobileLayout === 'hybrid' || this.resolvedMobileLayout === 'readable')
+      && this.mobileHandActive;
   }
 
   private playArea(): ScreenArea {
@@ -373,9 +420,15 @@ export class MainView {
           area.top = Math.max(area.top, bounds.bottom - canvas.top + margin);
         } else if (left > this.width * 0.4) {
           area.right = Math.min(area.right, left - margin);
+        } else if (this.relayFraming) {
+          area.left = Math.max(area.left, right + margin);
         }
       }
     }
+    if (this.mobileDomHandActive) {
+      area.bottom = Math.min(area.bottom, this.height - this.mobileFooterInset - margin);
+    }
+    if (this.compactTable) area.top += 24;
     area.bottom = Math.max(area.top + 1, area.bottom);
     return area;
   }
@@ -384,16 +437,37 @@ export class MainView {
     fromTop: boolean,
     lookDown: number,
     zoom: number,
-    mouse2: Vector2 | null): void
+    mouse2: Vector2 | null,
+    mobileLayout = false): void
   {
     if (fromTop) {
       this.camera.position.set(0, 0, 400);
       this.camera.rotation.set(0, 0, 0);
     } else {
-      this.camera.position.set(0, -World.WIDTH*1.44, World.WIDTH * 1.05);
-      this.camera.rotation.set(Math.PI * 0.3 - lookDown * 0.2, 0, 0);
+      if (this.compactTable) {
+        const elevation = this.compactSeatedElevation;
+        this.camera.position.set(0, -COMPACT_CAMERA_DISTANCE * Math.cos(elevation),
+          COMPACT_CAMERA_DISTANCE * Math.sin(elevation));
+        this.camera.rotation.set(Math.PI / 2 - elevation - lookDown * 0.2, 0, 0);
+      } else if (mobileLayout) {
+        // Orbit the legacy zero-control aim point at the same distance. Position
+        // and pitch must agree before fitting; lookDown remains a separate control.
+        const legacyPitch = Math.PI * 0.3;
+        const targetY = World.WIDTH * (-1.44 + 1.05 * Math.tan(legacyPitch));
+        const distance = World.WIDTH * 1.05 / Math.cos(legacyPitch);
+        this.camera.position.set(0, targetY - distance * Math.cos(MOBILE_SEATED_ELEVATION),
+          distance * Math.sin(MOBILE_SEATED_ELEVATION));
+        this.camera.rotation.set(Math.PI / 2 - MOBILE_SEATED_ELEVATION - lookDown * 0.2, 0, 0);
+      } else {
+        this.camera.position.set(0, -World.WIDTH*1.44, World.WIDTH * 1.05);
+        this.camera.rotation.set(Math.PI * 0.3 - lookDown * 0.2, 0, 0);
+      }
       if (zoom !== 0) {
-        const dist = new Vector3(0, 1.37, -1).multiplyScalar(zoom * 55);
+        const elevation = this.compactTable ? this.compactSeatedElevation : MOBILE_SEATED_ELEVATION;
+        const dist = mobileLayout || this.compactTable
+          ? new Vector3(0, Math.cos(elevation), -Math.sin(elevation)).multiplyScalar(Math.hypot(1.37, 1))
+          : new Vector3(0, 1.37, -1);
+        dist.multiplyScalar(zoom * 55);
         this.camera.position.add(dist);
       }
       if (zoom > 0 && mouse2) {
@@ -418,9 +492,9 @@ export class MainView {
     } else {
       this.camera.position.set(
         0,
-        -53 * lookDown - World.WIDTH,
+        -53 * lookDown - (this.compactTable ? 174 / Math.tan(this.compactSeatedElevation) : World.WIDTH),
         174);
-      this.camera.rotation.set(Math.PI * 0.25, 0, 0);
+      this.camera.rotation.set(this.compactTable ? Math.PI / 2 - this.compactSeatedElevation : Math.PI * 0.25, 0, 0);
       this.camera.scale.setScalar(1 - 0.45 * zoom);
 
       if (zoom > 0 && mouse2) {

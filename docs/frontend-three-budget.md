@@ -230,14 +230,26 @@ Two changes in `vite.config.ts`:
 2. **`mergeGeometries` replaced with `mergeSimpleGeometries`
    (−3.83 kB):** `object-view.ts` only used `mergeGeometries` for
    the static tile-tray geometry consolidation (24 trays sharing
-   identical attribute layout, no indexed geometries). The full
+   identical attribute layout). The full
    `BufferGeometryUtils.js` (1435 lines) was being pulled in for
    that single one-shot call. Replaced with a 36-line hand-rolled
-   helper that handles the simple non-indexed case (see the comment
+   helper that emits the simple non-indexed case (see the comment
    block above `mergeSimpleGeometries` in `object-view.ts` for the
-   contract — all inputs must share attribute names + itemSize,
-   all must be non-indexed). If we ever need to merge indexed
-   geometries we revert to `mergeGeometries` for those callers.
+   contract — all inputs must share attribute names + itemSize).
+   The shipped GLB tray is indexed: inputs are expanded with
+   `toNonIndexed()` before concatenation so triangle order, normals and
+   UVs are preserved. Concatenating only its shared vertices creates
+   the broken triangular wedges in Riichi. The real-asset regression
+   compares all 24 trays with Three's upstream merger without adding
+   that addon back to the production bundle.
+
+   Relay camera framing reserves the full canonical slot layout and actual
+   scoring-tray mesh, not Changsha's table/hand bounds. The slot envelope is
+   cached by layout rather than rebuilt from live tile positions, so drawing
+   or moving tiles cannot pump the camera. Default framing keeps the trays
+   clear of the side panels; intentional zoom and look-down remain available.
+   Separate seat-zone bounds avoid fitting nonexistent outer corners that
+   would otherwise make the playable table unnecessarily small.
 
 3. **Aggressive Rollup tree-shake levers (no measurable impact):**
    Added `propertyReadSideEffects: false`,

@@ -1,4 +1,4 @@
-import { BufferAttribute, BufferGeometry, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshLambertMaterial, Object3D, PlaneGeometry, Vector3 } from "three";
+import { Box3, BufferAttribute, BufferGeometry, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshLambertMaterial, Object3D, PlaneGeometry, Vector3 } from "three";
 // Phase K Wave 8 — Hand-rolled subset of BufferGeometryUtils.mergeGeometries.
 // We only need the simple case used in `addStatic()`: merging N geometries
 // that share the same attribute layout (the tray prototype cloned, rotated,
@@ -9,13 +9,12 @@ import { BufferAttribute, BufferGeometry, Group, InstancedMesh, Mesh, MeshBasicM
 //
 // Same contract as the upstream `mergeGeometries(geometries, false)` call:
 //   • All inputs share the same attribute name set + per-attribute itemSize.
-//   • All inputs are either all indexed or all non-indexed (we only emit
-//     the non-indexed path; the upstream tray geometry is non-indexed after
-//     the GLTFLoader pass).
+//   • Indexed inputs are expanded first, preserving the GLB's triangle order.
 //   • Output is a fresh non-indexed BufferGeometry.
 function mergeSimpleGeometries(geometries: ReadonlyArray<BufferGeometry>): BufferGeometry {
   if (geometries.length === 0) return new BufferGeometry();
-  const first = geometries[0];
+  const expanded = geometries.map(geometry => geometry.index === null ? geometry : geometry.toNonIndexed());
+  const first = expanded[0];
   const attrNames = Object.keys(first.attributes);
   const result = new BufferGeometry();
   for (const name of attrNames) {
@@ -23,11 +22,11 @@ function mergeSimpleGeometries(geometries: ReadonlyArray<BufferGeometry>): Buffe
     const itemSize = firstAttr.itemSize;
     const normalized = firstAttr.normalized;
     let total = 0;
-    for (const g of geometries) total += g.attributes[name].array.length;
+    for (const g of expanded) total += g.attributes[name].array.length;
     const ArrayCtor = firstAttr.array.constructor as { new (length: number): ArrayLike<number> & { set(arr: ArrayLike<number>, offset?: number): void } };
     const merged = new ArrayCtor(total);
     let offset = 0;
-    for (const g of geometries) {
+    for (const g of expanded) {
       const arr = g.attributes[name].array as ArrayLike<number>;
       merged.set(arr, offset);
       offset += arr.length;
@@ -43,7 +42,9 @@ import { AssetLoader } from "./asset-loader";
 import { Center } from "./center";
 import { readVariantFromUrl } from "./client-ui";
 import { ThingParams, ThingGroup, TileThingGroup, StickThingGroup, MarkerThingGroup } from "./thing-group";
-import { ThingType, Place, TileVariant, GameType } from "./types";
+import { ThingType, Place, TileVariant, GameType, Size } from "./types";
+import type { CompactTableProfile } from './compact-table';
+import { boundsFitCorners } from './table-fit';
 
 export interface Render {
   type: ThingType;
@@ -81,6 +82,12 @@ export class ObjectView {
   // verification screenshot (`broken-deal-repro-2026-06-01T20-05-35-522Z.png`).
   // Built once, shown only when the active variant uses sticks.
   private trayMesh: Mesh | null = null;
+  private tableMesh: Mesh | null = null;
+  private tablePosition = new Vector3();
+  private tableScale = new Vector3(1, 1, 1);
+  private sceneryCorners: Vector3[] = [];
+  private compactTableActive = false;
+  private gameType: GameType | null = null;
 
   private thingGroups: Map<ThingType, ThingGroup>;
 
@@ -156,11 +163,35 @@ export class ObjectView {
    * `World.updateConditions`.
    */
   setVariant(gameType: GameType): void {
+    this.gameType = gameType;
     const isChangsha = gameType === GameType.CHANGSHA;
     if (this.trayMesh !== null) {
       this.trayMesh.visible = !isChangsha;
     }
-    this.center.mesh.visible = !isChangsha;
+    this.center.mesh.visible = !isChangsha && !this.compactTableActive;
+  }
+
+  setCompactTable(profile: CompactTableProfile | null): void {
+    this.compactTableActive = profile !== null;
+    if (this.tableMesh !== null) {
+      if (profile === null) {
+        this.tableMesh.position.copy(this.tablePosition);
+        this.tableMesh.scale.copy(this.tableScale);
+      } else {
+        const bounds = profile.feltBounds;
+        const side = World.WIDTH + Size.TILE.y;
+        this.tableMesh.position.set((bounds.min.x + bounds.max.x) / 2,
+          (bounds.min.y + bounds.max.y) / 2, this.tablePosition.z);
+        this.tableMesh.scale.set(this.tableScale.x * (bounds.max.x - bounds.min.x) / side,
+          this.tableScale.y * (bounds.max.y - bounds.min.y) / side, this.tableScale.z);
+      }
+      this.tableMesh.updateMatrixWorld();
+    }
+    this.center.mesh.visible = this.gameType !== GameType.CHANGSHA && !this.compactTableActive;
+  }
+
+  get sceneryFitCorners(): readonly Vector3[] {
+    return this.sceneryCorners;
   }
 
   replaceThings(params: Map<number, ThingParams>): void {
@@ -193,20 +224,17 @@ export class ObjectView {
     const tableMesh = this.assetLoader.makeTable();
     tableMesh.name = 'table';
     tableMesh.position.set(World.WIDTH / 2, World.WIDTH / 2, 0);
+    this.tableMesh = tableMesh;
+    this.tablePosition.copy(tableMesh.position);
+    this.tableScale.copy(tableMesh.scale);
     this.mainGroup.add(tableMesh);
     this.mainGroup.add(this.center.mesh);
 
     tableMesh.updateMatrixWorld();
     this.center.mesh.updateMatrixWorld();
+    this.sceneryCorners.push(...boundsFitCorners(new Box3().setFromObject(tableMesh)));
 
-    // Hicks 2026-06-01 round 2 — skip building the merged stick-tray
-    // geometry entirely when the URL declares a stickless variant
-    // (Changsha).  Just hiding the mesh wasn't enough: THREE still ran
-    // `computeBoundingSphere()` on the merged geometry once per frame
-    // (frustum cull), and the underlying GLB tray prototype has a
-    // degenerate vertex that produces a NaN bounding radius — the exact
-    // `Computed radius is NaN` log Vasquez captured.  Skipping the merge
-    // removes both the visible wedge artefact AND the console error.
+    // Changsha has no scoring sticks, so it needs no tray geometry.
     const urlVariant = readVariantFromUrl();
     if (urlVariant === GameType.CHANGSHA) {
       this.trayMesh = null;
@@ -216,7 +244,9 @@ export class ObjectView {
     const tray = this.assetLoader.makeTray();
     tray.updateMatrixWorld();
     const geometries: Array<BufferGeometry> = [];
+    const sides: Box3[] = [];
     for (let i = 0; i < 4; i++) {
+      const bounds = new Box3();
       for (let j = 0; j < 6; j++) {
         const trayPos = new Vector3(
           25 + 24 * j - World.WIDTH / 2,
@@ -233,15 +263,19 @@ export class ObjectView {
           trayPos.y + World.WIDTH / 2,
           0
         );
+        geometry.computeBoundingBox();
+        bounds.union(geometry.boundingBox!);
 
         geometries.push(geometry);
       }
+      sides.push(bounds);
     }
     tray.geometry = mergeSimpleGeometries(geometries);
     tray.position.set(0, 0, 0);
     this.mainGroup.add(tray);
     tray.updateMatrixWorld();
     this.trayMesh = tray;
+    for (const bounds of sides) this.sceneryCorners.push(...boundsFitCorners(bounds.applyMatrix4(tray.matrixWorld)));
   }
 
   updateScores(scores: Array<number | null>): void {

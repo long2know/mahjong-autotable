@@ -43,6 +43,8 @@ import {
 } from './session-url';
 import { isNewGameActivation, NEW_GAME_ACTION_SELECTOR } from './new-game-action';
 import { DEFAULT_BASE_UNIT, MAX_BASE_UNIT, parseBaseUnit } from './base-unit';
+import { parseMobileLayout } from './mobile-layout';
+import { parseTableLayout } from './table-layout';
 import { onLanguageChange, t } from './i18n';
 // Phase K Wave 19 — Hicks (bundle-audit §3.4).  `matchmaking` (~7.7 KB
 // minified) is now lazy-loaded behind `loadMatchmaking()` /
@@ -487,6 +489,10 @@ function writeLocalStorageDefaults(state: LobbyState): void {
 function buildUrl(state: LobbyState, forceFreshGame = false): string {
   forceFreshGame = forceFreshGame || isJoinOnly();
   const p = new URLSearchParams();
+  const mobileLayout = parseMobileLayout(window.location.search);
+  if (mobileLayout !== null) p.set('mobileLayout', mobileLayout);
+  const tableLayout = parseTableLayout(window.location.search);
+  if (tableLayout !== null) p.set('tableLayout', tableLayout);
   // Phase I Wave 3 — preserve any ?gameId= already on the page URL so
   // a lobby Apply & Start doesn't silently switch the user back to the
   // default game.  client-ui.ts is the source of truth for editing

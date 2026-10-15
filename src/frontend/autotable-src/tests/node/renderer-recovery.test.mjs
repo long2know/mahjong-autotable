@@ -19,10 +19,11 @@ const fit = require(path.join(root, 'src/table-fit.ts'));
 const { Setup } = require(path.join(root, 'src/setup.ts'));
 const { makeSlots } = require(path.join(root, 'src/setup-slots.ts'));
 const groups = require(path.join(root, 'src/thing-group.ts'));
+const browserWindow = { innerWidth: 1280, innerHeight: 900, location: { search: '' } };
 const load = (name, stubs) => {
   const module = { exports: {} };
   runInNewContext(compile(path.join(root, 'src', name + '.ts')), {
-    module, exports: module.exports, console,
+    module, exports: module.exports, console, window: browserWindow, URLSearchParams,
     require: id => stubs[id] ?? (id === 'three' ? THREE : require(path.join(root, 'src', id))),
   });
   return module.exports;
@@ -71,6 +72,7 @@ const assets = {
 const noop = () => {};
 
 function harness(width, height, perspective, seat = 0) {
+  Object.assign(browserWindow, { innerWidth: width, innerHeight: height });
   const setup = new Setup();
   setup.setup({ ...types.Conditions.initial(), dealType: 'INITIAL' });
   const entries = new Map();
@@ -126,7 +128,7 @@ function harness(width, height, perspective, seat = 0) {
   });
   const game = Object.create(Game.prototype);
   Object.assign(game, {
-    world, mainView: view, objectView, mouseUi: mouse,
+    client, world, mainView: view, objectView, mouseUi: mouse,
     lookDown: { pos: 0, update: noop }, zoom: { pos: 0, update: noop },
   });
   const frame = () => game.update();

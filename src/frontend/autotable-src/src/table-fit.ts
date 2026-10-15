@@ -1,5 +1,6 @@
-import { OrthographicCamera, PerspectiveCamera, Vector3 } from 'three';
+import { Box3, OrthographicCamera, PerspectiveCamera, Vector3 } from 'three';
 import { Size, type Place } from './types';
+import type { Slot } from './slot';
 
 const TABLE_CENTER = new Vector3(87, 87, 0);
 const UP = new Vector3(0, 0, 1);
@@ -52,6 +53,39 @@ export interface ScreenArea {
   top: number;
   right: number;
   bottom: number;
+}
+
+export function boundsFitCorners(bounds: Box3): Vector3[] {
+  if (bounds.isEmpty()) return [];
+  const result = [];
+  for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) {
+    for (const z of [bounds.min.z, bounds.max.z]) result.push(new Vector3(x, y, z));
+  }
+  return result;
+}
+
+export function slotLayoutFitCorners(
+  slots: Iterable<Pick<Slot, 'offTable' | 'places' | 'group' | 'seat'>>, scenery: readonly Vector3[] = [],
+): Vector3[] {
+  // Preserve the separated seat zones: enclosing their empty outer corners
+  // in one box unnecessarily shrinks the playable table in perspective.
+  const groups = new Map<string, Box3>();
+  for (const slot of slots) {
+    if (slot.offTable) continue;
+    const key = `${slot.group}/${slot.seat}`;
+    let bounds = groups.get(key);
+    if (bounds === undefined) {
+      bounds = new Box3();
+      groups.set(key, bounds);
+    }
+    for (const place of slot.places) {
+      bounds.expandByPoint(place.position.clone().addScaledVector(place.size, -.5));
+      bounds.expandByPoint(place.position.clone().addScaledVector(place.size, .5));
+    }
+  }
+  const result = scenery.map(point => point.clone());
+  for (const bounds of groups.values()) result.push(...boundsFitCorners(bounds));
+  return result;
 }
 
 /** Fit projected world corners, not the canvas aspect or a flat XY rectangle. */

@@ -15,6 +15,9 @@ import { setElHidden, showEl, hideEl } from './dom-utils';
 import { getGameState, getGameStateStatus, subscribeGameState } from './game-state';
 import { onLanguageChange, t } from './i18n';
 import { getRuleActionControls, type RuleActionControls } from './ui/rule-action-controls';
+import { MobileHandController, type MobileHandLayout } from './ui/mobile-hand-controller';
+import { ReadableBoardController } from './ui/readable-board-controller';
+import { isReadableBoardPhase, type MobileLayoutMode } from './mobile-layout';
 import {
   DealType,
   Conditions,
@@ -459,6 +462,10 @@ export class GameUi {
   // The picker UI keeps this in sync so subsequent deals see the latest.
   private phaseF: Required<PhaseFParams>;
   private ruleActions!: RuleActionControls;
+  private mobileHand: MobileHandController;
+  private mobileHandActive = false;
+  private readableBoard: ReadableBoardController;
+  private publicBoardVisible = false;
 
   constructor(client: Client, world: World) {
     this.client = client;
@@ -574,6 +581,32 @@ export class GameUi {
     this.setupMobileDrawer();
     // Seat/nick subscriptions do not replay a snapshot received before mount.
     this.updateSeats();
+    this.mobileHand = new MobileHandController(this.client, this.world, this.ruleActions);
+    this.readableBoard = new ReadableBoardController(this.client, () => this.mobileHand.publicBoardEntries);
+  }
+
+  refreshMobileHand(mode: MobileLayoutMode): MobileHandLayout {
+    const layout = this.mobileHand.refresh(mode);
+    const result = this.handResultState.presentation();
+    const complete = this.client.gameComplete.get('current');
+    const validResult = result.identity !== null
+      && ['continue', 'pending', 'waiting', 'advancing', 'observer', 'dismiss'].includes(result.mode);
+    const gameComplete = complete?.isComplete === true || complete?.IsComplete === true
+      || complete?.isGameComplete === true || complete?.IsGameComplete === true;
+    this.publicBoardVisible = this.readableBoard.refresh(
+      mode === 'readable' && layout.active
+        && isReadableBoardPhase(this.client.turn.get('current')?.phase, validResult, gameComplete),
+      layout.insetPx, this.mobileHand.publicTileContext,
+    );
+    if (layout.active !== this.mobileHandActive) {
+      this.mobileHandActive = layout.active;
+      this.refreshTurnBanner();
+    }
+    return layout;
+  }
+
+  get publicBoardActive(): boolean {
+    return this.publicBoardVisible;
   }
 
   private setupEvents(): void {
@@ -2016,7 +2049,8 @@ export class GameUi {
     switch (cue.kind) {
       case 'discard':
         this.applyTurnBannerState(
-          'discard', 'Your turn — click a tile to discard', 'discard', null);
+          'discard', this.mobileHandActive ? 'Your turn — select a tile, then Confirm discard'
+            : 'Your turn — click a tile to discard', 'discard', null);
         return;
       case 'waiting':
         this.applyTurnBannerState(

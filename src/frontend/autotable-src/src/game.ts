@@ -10,7 +10,10 @@ import { Group } from "three";
 import { ClientUi } from "./client-ui";
 import { SoundPlayer } from "./sound-player";
 import type { GameUi } from './game-ui';
-import { TileVariant } from "./types";
+import { GameType, TileVariant } from "./types";
+import { parseMobileLayout, resolveMobileLayout } from './mobile-layout';
+import { parseTableLayout, resolveTableLayout } from './table-layout';
+import { CompactTableStatus } from './compact-table-status';
 
 export class Game {
   private assetLoader: AssetLoader;
@@ -22,6 +25,7 @@ export class Game {
   private mouseUi: MouseUi;
   private clientUi: ClientUi;
   private soundPlayer: SoundPlayer;
+  private compactStatus: CompactTableStatus | null = null;
   // Phase K Wave 4 — `gameUi` is now installed lazily via
   // `installGameUi()` so the scene-shell chunk doesn't drag the
   // ~100 kB result modal / settings drawer / replay UI graph into
@@ -55,6 +59,7 @@ export class Game {
     this.soundPlayer = new SoundPlayer(this.client);
     this.world = new World(this.objectView, this.soundPlayer, this.client);
     this.mainView = new MainView(this.mainGroup);
+    this.compactStatus = new CompactTableStatus(document.getElementById('main')!);
     this.mouseUi = new MouseUi(this.world, this.mainGroup);
     this.clientUi = new ClientUi(this.client);
 
@@ -149,11 +154,40 @@ export class Game {
     this.lookDown.update();
     this.zoom.update();
 
+    const mobileLayout = resolveMobileLayout(parseMobileLayout(window.location.search), {
+      width: window.innerWidth, height: window.innerHeight,
+      changsha: this.world.conditions.gameType === GameType.CHANGSHA
+        && this.client.connectionMode === 'changsha' && this.client.connected()
+        && this.client.serverSnapshotGameId !== null
+        && this.client.serverSnapshotGameId === this.client.lastGameId,
+    });
+    const hand = this.gameUi?.refreshMobileHand(mobileLayout) ?? { active: false, insetPx: 0 };
+    this.world.setOwnHandDomActive(hand.active);
+    const tableFlag = parseTableLayout(window.location.search);
+    const tableLayout = resolveTableLayout(tableFlag, {
+      connected: this.client.connected(), connectionMode: this.client.connectionMode,
+      snapshotGameId: this.client.serverSnapshotGameId, lastGameId: this.client.lastGameId,
+      changsha: this.world.conditions.gameType === GameType.CHANGSHA,
+      threeDimensional: !this.gameUi?.publicBoardActive,
+      phase: tableFlag === 'compact' ? this.client.turn.get('current')?.phase : undefined,
+    });
+    this.world.setCompactTable(tableLayout === 'compact');
+    this.mainView.setMobileLayout(mobileLayout, hand.active, hand.insetPx);
     this.mainView.updateViewport();
-    this.world.updateView(this.mainView.handPresentationScale);
+    // A full 3D hand must not pay for the larger public-capacity envelope.
+    // This base boost composes with the existing 1/1.7 scale, never the DOM hand;
+    // World adds any latched capacity expansion before presenting the full row.
+    const compactHandBoost = tableLayout === 'compact' && !hand.active
+      ? (window.innerWidth > window.innerHeight ? (window.innerHeight <= 520 ? 2 : 1.9) : 1.45) : 1;
+    this.world.updateView(this.mainView.handPresentationScale * compactHandBoost);
+    this.mainView.setCompactTable(this.world.tableLayoutProfile);
     this.mainView.updateCamera(
       this.world.viewSeat, this.lookDown.pos, this.zoom.pos, this.mouseUi.mouse2, this.world.conditions.gameType,
+      this.world.conditions.gameType === GameType.CHANGSHA ? undefined : this.world.relayLayoutFitCorners,
     );
+    this.compactStatus?.update(this.world.tableLayoutProfile !== null,
+      this.world.tableLayoutProfile !== null ? this.world.compactTableCounts() : null,
+      this.world.viewSeat, this.world.tableLayoutProfile !== null ? this.mainView.tablePlayArea : null);
     this.mainView.updateOutline(this.objectView.selectedObjects);
     this.mainView.updateHighlight(
       this.objectView.highlightedObjects,
@@ -161,9 +195,11 @@ export class Game {
     );
     this.mouseUi.setCamera(this.mainView.camera);
     this.mouseUi.updateObjects();
-    this.mouseUi.update();
-    this.mouseUi.updateCursors();
-    this.mainView.render();
+    if (!this.gameUi?.publicBoardActive) {
+      this.mouseUi.update();
+      this.mouseUi.updateCursors();
+      this.mainView.render();
+    }
   }
 
   private onKeyPress(event: KeyboardEvent): void {

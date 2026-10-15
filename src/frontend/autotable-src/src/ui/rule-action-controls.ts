@@ -127,6 +127,11 @@ export class RuleActionControls {
     return this.pending?.kind === 'claim';
   }
 
+  get canDiscard(): boolean {
+    return this.client.connectionMode === 'changsha' && this.pending === null
+      && this.chooser.contextKey === null && this.currentDiscardTurn();
+  }
+
   private ownerContext(): string | null {
     const client = this.client;
     const query = new URLSearchParams(location.search);
@@ -143,15 +148,19 @@ export class RuleActionControls {
     return JSON.stringify([this.connectionGeneration, room, client.playerId(), seat]);
   }
 
-  private currentOwn(): OwnTurnEntry | null {
+  private currentDiscardTurn(): boolean {
     const owner = this.ownerContext();
-    const own = this.ownSnapshot;
     const turn = this.client.turn.get('current');
-    if (this.awaitingSnapshot || owner === null || owner !== this.actor || own === null
+    return !this.awaitingSnapshot && owner !== null && owner === this.actor
+      && turn?.phase?.toLowerCase() === 'awaitingdiscard'
+      && turn.activeSeat === this.client.seat && turn.awaitingDiscard === true;
+  }
+
+  private currentOwn(): OwnTurnEntry | null {
+    const own = this.ownSnapshot;
+    if (!this.currentDiscardTurn() || own === null
         || typeof own.gameId !== 'string' || own.gameId === ''
         || !Number.isSafeInteger(own.stateVersion) || own.stateVersion < 0 || own.stateVersion > 0x7fffffff
-        || turn?.phase?.toLowerCase() !== 'awaitingdiscard'
-        || turn.activeSeat !== this.client.seat || turn.awaitingDiscard !== true
         || !Array.isArray(own.concealedKongs) || !Array.isArray(own.addedKongs)) return null;
     return own;
   }

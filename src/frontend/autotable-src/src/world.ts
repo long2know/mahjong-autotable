@@ -39,7 +39,8 @@ import {
 // game is broken.  showToast is the shared `#toast-region` helper.
 import { showToast } from "./toast";
 import { ownHandTiles, sortHand, type HandSortMode, type HandTile } from './hand-sort';
-import { presentLocalHand } from './table-fit';
+import { presentLocalHand, slotLayoutFitCorners } from './table-fit';
+import { COMPACT_CAPACITY_WIDTH, CompactTableProfile, type CompactTableCounts, type CompactSource } from './compact-table';
 
 
 interface Select extends Place {
@@ -108,6 +109,15 @@ export class World {
   private handScale = 1;
   private handSnapshotSeat: number | null = null;
   private shadowSeat: number | null | undefined;
+  private ownHandDomSeat: number | null = null;
+  private mobileDiscardGuard: (() => boolean) | null = null;
+  private compactTableActive = false;
+  private compactTable: CompactTableProfile | null = null;
+  private compactSignature = '';
+  private compactCapacityWidth = COMPACT_CAPACITY_WIDTH;
+  private relayFitSlots: ReadonlyMap<string, Slot> | null = null;
+  private relayFitType: GameType | null = null;
+  private relayFitPoints: readonly Vector3[] = [];
 
   soundPlayer: SoundPlayer;
 
@@ -895,6 +905,10 @@ export class World {
       this.surfaceDiscardRejection('Take a seat first');
       return false;
     }
+    if (this.mobileDiscardGuard?.() === false) {
+      this.surfaceDiscardRejection('Waiting for server confirmation. The discard will not be resent.');
+      return false;
+    }
 
     let tileId: number;
     let tile: Thing | undefined;
@@ -1445,7 +1459,7 @@ export class World {
     // never selectable/raycastable. A PLACED anonymous back (hidden===false) is
     // raycastable via its slot so the SC-4 manual pickup can target it, but it is
     // never discardable/flippable (its slot group + the wall gate below decide).
-    if (thing.hidden) {
+    if (this.presentationHidden(thing)) {
       return false;
     }
     // FE-2 (UAT §9 input allowlist) — in server-authoritative Changsha only the
@@ -1535,6 +1549,11 @@ export class World {
 
   onDragStart(): boolean {
     if (this.seat === null) {
+      return false;
+    }
+    if (this.hovered !== null && this.presentationHidden(this.hovered)) {
+      this.hovered = null;
+      this.selected.splice(0);
       return false;
     }
 
@@ -1773,14 +1792,102 @@ export class World {
 
   updateView(handScale = 1): void {
     this.onSeat();
-    if (handScale !== this.handScale || this.shadowSeat !== this.viewSeat) {
-      this.handScale = handScale;
+    const previousHandScale = this.handScale;
+    this.handScale = handScale;
+    this.updateHandPresentation();
+    const compactChanged = this.updateCompactPresentation();
+    if (compactChanged || this.handScale !== previousHandScale || this.shadowSeat !== this.viewSeat) {
       this.updateViewShadows();
     }
-    this.updateHandPresentation();
     this.updateViewThings();
     this.updateViewDropShadows();
     this.objectView.updateScores(this.setup.getScores());
+  }
+
+  setCompactTable(active: boolean): void {
+    if (active === this.compactTableActive) return;
+    this.compactTableActive = active;
+    this.compactSignature = '';
+    if (!active) {
+      this.compactTable = null;
+      this.compactCapacityWidth = COMPACT_CAPACITY_WIDTH;
+      this.objectView.setCompactTable(null);
+      this.updateViewShadows();
+    }
+  }
+
+  get tableLayoutProfile(): CompactTableProfile | null {
+    return this.compactTable ?? null;
+  }
+
+  get relayLayoutFitCorners(): readonly Vector3[] {
+    if (this.relayFitSlots !== this.slots || this.relayFitType !== this.conditions.gameType) {
+      this.relayFitPoints = slotLayoutFitCorners(this.slots.values(), this.objectView.sceneryFitCorners);
+      this.relayFitSlots = this.slots;
+      this.relayFitType = this.conditions.gameType;
+    }
+    return this.relayFitPoints;
+  }
+
+  compactTableCounts(): CompactTableCounts {
+    const seats = [0, 1, 2, 3].map(seat => ({ seat, hand: 0, discards: 0, melds: 0 }));
+    const melds = seats.map(() => new Set<number>());
+    let wall = 0;
+    for (const thing of this.things.values()) {
+      if (thing.hidden || thing.slot.thing !== thing || thing.slot.offTable) continue;
+      const slot = thing.slot;
+      if (slot.group === 'wall') wall++;
+      if (slot.seat === null) continue;
+      if (slot.group === 'hand') seats[slot.seat].hand++;
+      if (slot.group === 'discard') seats[slot.seat].discards++;
+      if (slot.group === 'meld') melds[slot.seat].add(slot.indexes[0]);
+    }
+    seats.forEach(seat => { seat.melds = melds[seat.seat].size; });
+    return { wall, seats };
+  }
+
+  private updateCompactPresentation(): boolean {
+    if (!this.compactTableActive) return false;
+    const sources: CompactSource[] = [];
+    for (const thing of this.things.values()) {
+      if (!thing.hidden && thing.slot.thing === thing && thing.type === ThingType.TILE
+        && (thing.slot.group === 'discard' || thing.slot.group === 'meld' || thing.slot.group === 'hand')) {
+        sources.push({ slot: thing.slot, place: thing.place() });
+      }
+    }
+    const ownSeat = this.ownHandDomSeat === null && this.hasCurrentHandAuthority() ? this.client.seat : null;
+    const baseHandScale = this.handScale;
+    // Compensate only the latched envelope, never pending width or current hand length.
+    const fittedHandScale = (): number => baseHandScale * (ownSeat === null
+      ? 1 : this.compactCapacityWidth / COMPACT_CAPACITY_WIDTH);
+    this.handScale = fittedHandScale();
+    const signature = `${ownSeat}/${this.ownHandDomSeat}/${baseHandScale}/` + sources.map(({ slot, place }) =>
+      `${slot.name}:${place.rotation.toArray()}:${place.size.toArray()}:${place.scale ?? 1}`)
+      .sort().join(';');
+    if (signature === this.compactSignature) return false;
+    let profile = new CompactTableProfile(sources, {
+      ownSeat, handScale: this.handScale, hiddenHandSeat: this.ownHandDomSeat,
+      capacityWidth: this.compactCapacityWidth,
+    });
+    if (profile.requiredWidth > this.compactCapacityWidth + 1e-6) {
+      // Latch a wider public row and its hand compensation together after a
+      // press/claim; neither may shrink again in this post-deal phase.
+      if (!this.handPointerDown && !this.isHolding()
+        && (this.client.seat === null || this.client.claim.get(String(this.client.seat)) === null)) {
+        this.compactCapacityWidth = profile.requiredWidth;
+        this.handScale = fittedHandScale();
+        profile = new CompactTableProfile(sources, {
+          ownSeat, handScale: this.handScale, hiddenHandSeat: this.ownHandDomSeat,
+          capacityWidth: this.compactCapacityWidth,
+        });
+      } else {
+        this.compactSignature = '';
+      }
+    }
+    this.compactTable = profile;
+    if (profile.requiredWidth <= this.compactCapacityWidth + 1e-6) this.compactSignature = signature;
+    this.objectView.setCompactTable(profile);
+    return true;
   }
 
   setHandSortMode(mode: HandSortMode): void {
@@ -1793,7 +1900,32 @@ export class World {
   }
 
   ownHandPresentation(): { tiles: readonly HandTile[]; drawn: number | null } {
-    return { tiles: this.presentedHand, drawn: this.drawnTile };
+    this.updateHandPresentation();
+    const tiles = this.presentedHand.filter(tile => {
+      const thing = this.ownHandThing(tile.id);
+      return thing !== null && thing.typeIndex === tile.face && thing.slot.name === tile.slotName;
+    });
+    return { tiles, drawn: tiles.some(tile => tile.id === this.drawnTile) ? this.drawnTile : null };
+  }
+
+  ownHandThing(id: number): Thing | null {
+    const thing = this.things.get(id);
+    return thing !== undefined && this.isConfirmedOwnHandThing(thing) ? thing : null;
+  }
+
+  setOwnHandDomActive(active: boolean): void {
+    const seat = active && this.client.connected() && this.hasCurrentHandAuthority()
+      && this.conditions.gameType === GameType.CHANGSHA && this.client.seat === this.seat
+      ? this.client.seat : null;
+    if (seat === this.ownHandDomSeat) return;
+    this.ownHandDomSeat = seat;
+    if (this.hovered !== null && this.presentationHidden(this.hovered)) this.hovered = null;
+    this.selected = this.selected.filter(thing => !this.presentationHidden(thing));
+    this.updateViewShadows();
+  }
+
+  setMobileDiscardGuard(guard: (() => boolean) | null): void {
+    this.mobileDiscardGuard = guard;
   }
 
   clearDrawnHandTile(): void {
@@ -1848,8 +1980,9 @@ export class World {
   private presentedPlace(thing: Thing): Place {
     const handPlace = thing.slot.group === 'hand' && thing.slot.seat === this.client.seat
       ? this.handPlaces.get(thing.index) : undefined;
-    return handPlace && this.client.seat !== null
+    const place = handPlace && this.client.seat !== null
       ? presentLocalHand(handPlace, this.client.seat, this.handScale) : thing.place();
+    return this.compactTable?.present(thing.slot, place) ?? place;
   }
 
   private hasCurrentHandAuthority(): boolean {
@@ -1859,10 +1992,26 @@ export class World {
         && this.handSnapshotSeat === this.client.seat);
   }
 
+  private isConfirmedOwnHandThing(thing: Thing): boolean {
+    const info = this.client.things.get(thing.index);
+    return this.client.connected() && this.hasCurrentHandAuthority()
+      && this.conditions.gameType === GameType.CHANGSHA
+      && this.client.seat !== null && this.client.seat === this.seat
+      && Number.isInteger(thing.index) && thing.index >= 0 && thing.index < 108
+      && this.things.get(thing.index) === thing && thing.type === ThingType.TILE
+      && thing.hiddenHandle === null && !thing.hidden && thing.claimedBy === null
+      && Number.isInteger(thing.typeIndex) && thing.typeIndex >= 0 && thing.typeIndex < 27
+      && thing.slot.group === 'hand' && thing.slot.seat === this.client.seat
+      && /^hand\.\d+@[0-3]$/.test(thing.slot.name) && thing.slot.thing === thing
+      && info !== null && info.slotName === thing.slot.name && info.face !== null;
+  }
+
   private presentationHidden(thing: Thing): boolean {
     return thing.hidden || (this.conditions.gameType === GameType.CHANGSHA
       && thing.type === ThingType.TILE && thing.hiddenHandle === null
-      && thing.slot.group === 'hand' && !this.hasCurrentHandAuthority());
+      && thing.slot.group === 'hand' && !this.hasCurrentHandAuthority())
+      || (this.ownHandDomSeat !== null && this.ownHandDomSeat === this.client.seat
+        && this.isConfirmedOwnHandThing(thing));
   }
 
   private updateViewThings(): void {
@@ -1912,7 +2061,7 @@ export class World {
       }
       let place = this.presentedPlace(thing);
 
-      if (thing.claimedBy !== null && thing.shiftSlot === null) {
+      if (!this.compactTable && thing.claimedBy !== null && thing.shiftSlot === null) {
         let mouse = null, heldMouse = null;
         if (thing.claimedBy === this.seat) {
           mouse = this.mouse;
@@ -1931,11 +2080,11 @@ export class World {
           place.position.x += mouse.x - heldMouse.x;
           place.position.y += mouse.y - heldMouse.y;
         }
-      } else if (thing.lastShiftSlotTime >= now - SHIFT_TIME) {
+      } else if (!this.compactTable && thing.lastShiftSlotTime >= now - SHIFT_TIME) {
         if (thing.lastShiftSlot !== null) {
           place = thing.lastShiftSlot.places[thing.rotationIndex];
         }
-      } else if (thing.claimedBy !== null && thing.shiftSlot !== null) {
+      } else if (!this.compactTable && thing.claimedBy !== null && thing.shiftSlot !== null) {
         place = thing.shiftSlot.places[thing.rotationIndex];
       }
 
@@ -1980,7 +2129,14 @@ export class World {
     const places = [];
     if (this.canDrop()) {
       for (const slot of this.movement!.slots()) {
-        places.push(slot.placeWithOffset(0));
+        if (this.compactTable && slot.thing !== null && !this.presentationHidden(slot.thing)) {
+          places.push(this.presentedPlace(slot.thing));
+        } else {
+          const place = slot.placeWithOffset(0);
+          const handPlace = this.compactTable && slot.group === 'hand' && slot.seat === this.client.seat
+            && this.client.seat !== null ? presentLocalHand(place, this.client.seat, this.handScale) : place;
+          places.push(this.compactTable?.present(slot, handPlace) ?? handPlace);
+        }
       }
     }
     this.objectView.updateDropShadows(places);
@@ -2018,10 +2174,24 @@ export class World {
     const places = [];
     for (const slot of this.slots.values()) {
       if (slot.drawShadow) {
+        if (this.compactTable) {
+          if (slot.group === 'discard' || slot.group === 'hand') {
+            if (slot.thing !== null && !this.presentationHidden(slot.thing)) places.push(this.presentedPlace(slot.thing));
+            else if (slot.group === 'discard') {
+              places.push(this.compactTable.present(slot, slot.places[slot.shadowRotation]));
+            }
+            continue;
+          }
+        }
+        if (this.ownHandDomSeat !== null && this.ownHandDomSeat === this.client.seat
+          && this.client.connected() && this.hasCurrentHandAuthority()
+          && this.conditions.gameType === GameType.CHANGSHA
+          && slot.group === 'hand' && slot.seat === this.ownHandDomSeat) continue;
         const place = slot.places[slot.shadowRotation];
-        places.push(this.conditions.gameType === GameType.CHANGSHA && slot.group === 'hand'
+        const handPlace = this.conditions.gameType === GameType.CHANGSHA && slot.group === 'hand'
           && this.viewSeat !== null && slot.seat === this.viewSeat
-          ? presentLocalHand(place, this.viewSeat, this.handScale) : place);
+          ? presentLocalHand(place, this.viewSeat, this.handScale) : place;
+        places.push(this.compactTable?.present(slot, handPlace) ?? handPlace);
       }
     }
     this.objectView.replaceShadows(places);
