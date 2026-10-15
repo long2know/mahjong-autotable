@@ -222,13 +222,17 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             .First();
 
         var hasSingleSmallWin = HasSingleSmallWinTile(logicalCounts);
-        var offRankPairExists = logicalCounts.Any(entry => entry.Value > 1 && !IsSmallWinRank(entry.Key));
-        if (hasSingleSmallWin && offRankPairExists)
+        var offRankPairs = logicalCounts
+            .Where(entry => entry.Value > 1 && !IsSmallWinRank(entry.Key))
+            .Select(entry => entry.Key)
+            .ToHashSet();
+        if (hasSingleSmallWin && offRankPairs.Count > 0)
         {
             var smallWinSingleton = scored.FirstOrDefault(entry =>
                 IsSmallWinRank(entry.Logical)
                 && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
-                && IsIsolatedSingleton(entry.Logical, logicalCounts));
+                && (IsIsolatedSingleton(entry.Logical, logicalCounts)
+                    || IsSingletonWithOnlyPairedNeighbors(entry.Logical, logicalCounts, offRankPairs)));
             if (smallWinSingleton is not null)
             {
                 var bestIsOffRankPair = logicalCounts.GetValueOrDefault(best.Logical, 0) > 1
@@ -325,5 +329,33 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             return false;
 
         return true;
+    }
+
+    private static bool IsSingletonWithOnlyPairedNeighbors(
+        int logical,
+        Dictionary<int, int> logicalCounts,
+        HashSet<int> offRankPairs)
+    {
+        if (logicalCounts.GetValueOrDefault(logical, 0) != 1)
+            return false;
+
+        var rank = logical % 9;
+        var hasNeighbor = false;
+        var neighbors = new List<int>();
+        if (rank > 0) neighbors.Add(logical - 1);
+        if (rank < 8) neighbors.Add(logical + 1);
+        if (rank > 1) neighbors.Add(logical - 2);
+        if (rank < 7) neighbors.Add(logical + 2);
+
+        foreach (var neighbor in neighbors)
+        {
+            if (!logicalCounts.ContainsKey(neighbor))
+                continue;
+            hasNeighbor = true;
+            if (!offRankPairs.Contains(neighbor))
+                return false;
+        }
+
+        return hasNeighbor;
     }
 }
