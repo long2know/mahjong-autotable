@@ -257,6 +257,75 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_PreservesOffRankPair_WhenSmallWinSingletonOnlyConnectsToPair()
+    {
+        // The only 2/5/8 tile is adjacent to the off-rank pair; keep the pair and drop the singleton.
+        var hand = Hand(
+            Tiao(3, 0), Tiao(3, 1),                // off-rank pair
+            Tiao(2, 0)                              // small-win singleton adjacent to the pair
+        );
+
+        var chosen = MediumStrategy.SelectDiscardTile(hand);
+        Assert.Equal(Tiao(2, 0), chosen);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Hard_PreservesOffRankPair_WhenSmallWinSingletonOnlyConnectsToPair()
+    {
+        var hand = Hand(
+            Tiao(3, 0), Tiao(3, 1),                // off-rank pair
+            Tiao(2, 0)                              // small-win singleton adjacent to the pair
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var hard = new HardStrategy();
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Master_PreservesOffRankPair_WhenSmallWinSingletonOnlyConnectsToPair()
+    {
+        var hand = Hand(
+            Tiao(3, 0), Tiao(3, 1),                // off-rank pair
+            Tiao(2, 0)                              // small-win singleton adjacent to the pair
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Bot_NeighbourTilesContributeToEfficiency()
     {
         var hand = Hand(
