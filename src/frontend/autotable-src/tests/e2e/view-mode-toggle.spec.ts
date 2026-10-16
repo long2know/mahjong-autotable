@@ -68,7 +68,7 @@ const MAX_LIT = 0.99;          // above → canvas is blown out / single fill
 const MIN_MEAN_BRIGHT = 20;    // below → nothing is lit
 const MAX_MEAN_BRIGHT = 236;   // above → white-out
 const MIN_DISTINCT_COLORS = 40;// below → flat/untextured render
-const MIN_MODE_LIT_DELTA = 0.05;    // perspective vs flat must differ
+const MIN_CHANGSHA_MODE_LIT_DELTA = 0.05;
 const MIN_MODE_GRID_DELTA = 0.10;   // >=10% of coarse grid cells differ
 
 interface ViewProbe {
@@ -150,6 +150,14 @@ function gridDelta(a: number[], b: number[], tol = 12): number {
   for (let i = 0; i < n; i++) if (Math.abs(a[i] - b[i]) > tol) diff++;
   return n ? diff / n : 0;
 }
+
+test('spatial frame signature rejects frozen frames despite equal overall coverage', () => {
+  const a = Array.from({ length: 144 }, (_, index) => index < 72 ? 0 : 100);
+  const b = [...a].reverse();
+  expect(a.filter(value => value > 40).length).toBe(b.filter(value => value > 40).length);
+  expect(gridDelta(a, a)).toBe(0);
+  expect(gridDelta(a, b)).toBeGreaterThanOrEqual(MIN_MODE_GRID_DELTA);
+});
 
 async function probe(page: Page): Promise<ViewProbe> {
   return page.evaluate(() => {
@@ -396,6 +404,7 @@ test.describe('#119 view modes — deterministic visual + structural gates', () 
 
     await setPerspective(page, true);
     await paintDice(page);
+    expect((await probe(page)).isPerspective).toBe(true);
     const persp = await frameStats(page);
     assertHealthyFrame(persp, 'perspective');
     await page
@@ -405,6 +414,7 @@ test.describe('#119 view modes — deterministic visual + structural gates', () 
 
     await setPerspective(page, false);
     await paintDice(page);
+    expect((await probe(page)).isOrthographic).toBe(true);
     const flat = await frameStats(page);
     assertHealthyFrame(flat, 'flat');
     await page
@@ -412,20 +422,10 @@ test.describe('#119 view modes — deterministic visual + structural gates', () 
       .screenshot({ path: path.join(SHOT_DIR, 'four_player-flat.png') })
       .catch(() => undefined);
 
-    // The two projections must raster the same scene to DIFFERENT frames
-    // (a no-op camera swap — or a frozen renderer — collapses both deltas).
+    // Full-scene fitting can preserve overall lit coverage across projections.
+    // The spatial raster signature must still change; a frozen renderer fails.
     const litDelta = Math.abs(persp.litFraction - flat.litFraction);
     const gDelta = gridDelta(persp.grid, flat.grid);
-    expect(
-      litDelta,
-      `perspective vs flat lit-fraction delta ${litDelta.toFixed(3)} too small — camera swap may be a no-op`,
-    ).toBeGreaterThanOrEqual(MIN_MODE_LIT_DELTA);
-    expect(
-      gDelta,
-      `perspective vs flat grid delta ${gDelta.toFixed(3)} too small — projections look identical`,
-    ).toBeGreaterThanOrEqual(MIN_MODE_GRID_DELTA);
-
-    expect(errors, `render console errors: ${errors.join(' | ')}`).toEqual([]);
 
     // eslint-disable-next-line no-console
     console.log(
@@ -433,6 +433,11 @@ test.describe('#119 view modes — deterministic visual + structural gates', () 
         `flat lit=${flat.litFraction} mean=${flat.meanBrightness} colors=${flat.distinctColors} | ` +
         `litΔ=${litDelta.toFixed(3)} gridΔ=${gDelta.toFixed(3)} shots=${SHOT_DIR}`,
     );
+    expect(
+      gDelta,
+      `perspective vs flat grid delta ${gDelta.toFixed(3)} too small — projections look identical`,
+    ).toBeGreaterThanOrEqual(MIN_MODE_GRID_DELTA);
+    expect(errors, `render console errors: ${errors.join(' | ')}`).toEqual([]);
   });
 
   test('drawing buffer tracks the viewport on resize and frame stays healthy', async ({
@@ -515,7 +520,7 @@ test.describe('#119 view modes — deterministic visual + structural gates', () 
     expect(
       litDelta,
       `Changsha perspective vs flat lit-fraction delta ${litDelta.toFixed(3)} too small`,
-    ).toBeGreaterThanOrEqual(MIN_MODE_LIT_DELTA);
+    ).toBeGreaterThanOrEqual(MIN_CHANGSHA_MODE_LIT_DELTA);
 
     expect(errors, `render console errors: ${errors.join(' | ')}`).toEqual([]);
   });

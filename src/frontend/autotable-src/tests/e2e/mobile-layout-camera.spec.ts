@@ -167,6 +167,10 @@ async function openLayout(
     await expect(actor.page.locator('body')).toHaveAttribute('data-scene-effects-ready', 'true');
     expect(await ensureConnected(actor.page), 'the test must use the real variant connection').toBe(true);
     await perspective(actor.page);
+    if (variant !== 'changsha') {
+      await actor.page.locator('.seat-button-0 .take-seat').click();
+      await expect.poll(async () => (await probe(actor)).seat).toBe(0);
+    }
     await actor.page.mouse.move(0, 0);
     await frames(actor.page);
     return actor;

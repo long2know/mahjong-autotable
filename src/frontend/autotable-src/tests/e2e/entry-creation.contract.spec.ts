@@ -11,10 +11,14 @@ import { BaseClient } from '../../src/base-client';
 import { hideEl, showEl, setElHidden } from '../../src/dom-utils';
 import { isNewGameActivation, NEW_GAME_ACTION_SELECTOR } from '../../src/new-game-action';
 import { parseBaseUnit, MAX_BASE_UNIT } from '../../src/base-unit';
+import { parseMobileLayout } from '../../src/mobile-layout';
+import { parseTableLayout } from '../../src/table-layout';
 
 const SOURCE = process.env.ENTRY_CREATION_SOURCE_ROOT ?? resolve(__dirname, '../..');
 const sourceText = (name: string): string => readFileSync(resolve(SOURCE, name), 'utf8');
-const sourceHashes = Object.fromEntries(['src/client-ui.ts', 'src/lobby.ts', 'src/session-url.ts'].map(name =>
+const sourceHashes = Object.fromEntries([
+  'src/client-ui.ts', 'src/lobby.ts', 'src/session-url.ts', 'src/mobile-layout.ts', 'src/table-layout.ts',
+].map(name =>
   [name, createHash('sha256').update(sourceText(name)).digest('hex')],
 ));
 const COMPILE = { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS };
@@ -207,7 +211,7 @@ function entryHarness(search: string): {
   };
   const run = (text: string, expression: string, extra: Record<string, unknown> = {}): unknown =>
     runInNewContext(ts.transpileModule(`${text}\n${expression}`, { compilerOptions: COMPILE }).outputText,
-      { ...globals, ...urlModule, ...roomModule, ...extra });
+      { ...globals, ...urlModule, ...roomModule, parseMobileLayout, parseTableLayout, ...extra });
   const bind = run(
     `let newGameControlsBound=false; let newGameNavigationPending=false; let newGameAction=null;\n${functionText('bindNewGameControls')}`,
     'bindNewGameControls;',
@@ -346,11 +350,13 @@ test.describe('Explicit application creation entry — source/normal-protocol co
 
   for (const dealMode of ['manual', 'auto']) {
     test(`actual Quick Match callback preserves ${dealMode}/unit/hand config and uses NEW`, async () => {
-      const h = entryHarness('?variant=changsha&gameId=prior-room');
+      const h = entryHarness('?variant=changsha&gameId=prior-room&mobileLayout=hybrid&tableLayout=compact');
       h.apply({ variant: 'changsha', dealMode, botCount: 0, botDifficulty: 'Hard', handCount: 8, baseUnit: 10, seed: 42, seat: null }, true);
       const id = h.location.searchParams.get('gameId');
       expect(id).not.toBe('prior-room');
       expect(h.location.searchParams.get('createGame')).toBe(id);
+      expect(h.location.searchParams.get('mobileLayout')).toBe('hybrid');
+      expect(h.location.searchParams.get('tableLayout')).toBe('compact');
       const { socket } = await h.boot(); socket.open();
       expect(socket.sent[0]).toEqual({ type: 'NEW' });
       const wire = new URL(socket.url).searchParams;

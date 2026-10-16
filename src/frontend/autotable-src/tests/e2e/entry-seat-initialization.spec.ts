@@ -178,9 +178,11 @@ async function prepare(page: Page): Promise<void> {
     const constructor: unknown = runInNewContext(`${javascript}\nGameUi;`, {
       GameType, computeTurnCue, hideEl, showEl, setElHidden,
       readSpectatorFromUrl: (): boolean => false,
-      // Settings installation is unrelated infrastructure; cue and transport
-      // methods above still execute directly from the production class.
+      // Settings and opt-in display components are unrelated infrastructure;
+      // cue and transport methods still execute from the production class.
       installPerspectiveSetting: (): void => {},
+      MobileHandController: class {},
+      ReadableBoardController: class {},
       Replay: class {},
       URLSearchParams,
       window: { location: { search } },
