@@ -43,6 +43,8 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 public sealed class MasterStrategy : IChangshaBotStrategy
 {
     private const int OffRankPairShantenTolerance = 1;
+    private const int OffRankPairScoreTolerance = 2;
+    private const int ConnectedSmallWinBridgeShantenTolerance = 1;
 
     /// <summary>The lowercase difficulty discriminator used by
     /// <see cref="ChangshaBotEngine.Resolve"/>.</summary>
@@ -263,6 +265,9 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             .ThenByDescending(entry => entry.TileId)
             .First();
 
+        if (TryKeepConnectedSmallWinSingleton(logicalCounts, scored, best, out var preserveTile))
+            return preserveTile;
+
         if (TrySelectIsolatedSmallWinDiscard(logicalCounts, scored, best, out var overrideTile))
             return overrideTile;
 
@@ -333,6 +338,41 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         return keepScore;
     }
 
+    private static bool TryKeepConnectedSmallWinSingleton(
+        Dictionary<int, int> logicalCounts,
+        List<DiscardCandidate> scored,
+        DiscardCandidate best,
+        out int tileId)
+    {
+        tileId = -1;
+
+        if (!HasSingleSmallWinTile(logicalCounts))
+            return false;
+
+        if (!IsSmallWinRank(best.Logical) || logicalCounts.GetValueOrDefault(best.Logical, 0) != 1)
+            return false;
+
+        if (!IsBridgeBetweenOffRankPairs(best.Logical, logicalCounts))
+            return false;
+
+        var alternate = scored
+            .Where(entry => entry.TileId != best.TileId && !IsSmallWinRank(entry.Logical))
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
+
+        if (alternate is null)
+            return false;
+
+        if (alternate.Value.Shanten > best.Shanten + ConnectedSmallWinBridgeShantenTolerance)
+            return false;
+
+        tileId = alternate.Value.TileId;
+        return true;
+    }
+
     private static bool TrySelectIsolatedSmallWinDiscard(
         Dictionary<int, int> logicalCounts,
         List<DiscardCandidate> scored,
@@ -369,6 +409,9 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (!bestIsOffRankPair) return false;
 
         if (smallWinSingleton.Shanten > best.Shanten + OffRankPairShantenTolerance)
+            return false;
+
+        if (smallWinSingleton.Score > best.Score + OffRankPairScoreTolerance)
             return false;
 
         tileId = smallWinSingleton.TileId;
@@ -441,6 +484,21 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         }
 
         return hasNeighbor;
+    }
+
+    private static bool IsBridgeBetweenOffRankPairs(int logical, Dictionary<int, int> logicalCounts)
+    {
+        var rank = logical % 9;
+        if (rank <= 0 || rank >= 8)
+            return false;
+
+        var left = logical - 1;
+        var right = logical + 1;
+
+        return logicalCounts.GetValueOrDefault(left, 0) > 1
+            && logicalCounts.GetValueOrDefault(right, 0) > 1
+            && !IsSmallWinRank(left)
+            && !IsSmallWinRank(right);
     }
 
     // The Master-only tie-breaker: tiles whose logical id has been discarded
