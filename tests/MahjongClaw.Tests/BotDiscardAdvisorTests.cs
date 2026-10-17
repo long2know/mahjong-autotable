@@ -687,6 +687,48 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleTiles_DiscardsIsolatedSmallWinSingleton_WhenSmallWinOutsAreDead()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9)
+        };
+
+        var visibleTiles = new List<Tile>();
+
+        void AddCopies(TileSuit suit, int rank, int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                visibleTiles.Add(new Tile(suit, rank));
+            }
+        }
+
+        AddCopies(TileSuit.Dots, 2, 3);
+        AddCopies(TileSuit.Dots, 5, 3);
+        AddCopies(TileSuit.Dots, 8, 4);
+        AddCopies(TileSuit.Bamboos, 2, 4);
+        AddCopies(TileSuit.Bamboos, 5, 3);
+        AddCopies(TileSuit.Bamboos, 8, 4);
+        AddCopies(TileSuit.Characters, 2, 4);
+        AddCopies(TileSuit.Characters, 5, 3);
+        AddCopies(TileSuit.Characters, 8, 3);
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_DiscardsTrulyIsolatedSmallWinSingleton_WhenGapSequenceExists()
     {
         var handTiles = new List<Tile>

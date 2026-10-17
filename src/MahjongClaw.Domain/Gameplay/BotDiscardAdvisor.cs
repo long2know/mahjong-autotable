@@ -495,13 +495,18 @@ public static class BotDiscardAdvisor
             return isolatedSmallWinSingletonDiscardIndex.Value;
         }
 
+        var allowIsolatedSmallWinSingletonWithoutPairBias = ruleset == MahjongRuleset.Changsha258
+            && !enforceSmallWinPairBias
+            && maxSmallWinOutsForBias == 0;
+
         var isolatedSoleSmallWinSingletonDiscardIndex = TrySelectChangshaIsolatedSoleSmallWinSingletonDiscardIndex(
             handTiles,
             handCounts,
             ownedCounts,
             visibleCounts,
             enforceSmallWinPairBias,
-            hasChangshaPureSuitLean);
+            hasChangshaPureSuitLean,
+            allowIsolatedSmallWinSingletonWithoutPairBias);
 
         if (isolatedSoleSmallWinSingletonDiscardIndex.HasValue)
         {
@@ -5151,9 +5156,10 @@ public static class BotDiscardAdvisor
         IReadOnlyDictionary<Tile, int> ownedCounts,
         IReadOnlyDictionary<Tile, int> visibleCounts,
         bool enforceSmallWinPairBias,
-        bool hasChangshaPureSuitLean)
+        bool hasChangshaPureSuitLean,
+        bool allowWithoutSmallWinBias)
     {
-        if (!enforceSmallWinPairBias || hasChangshaPureSuitLean)
+        if ((!enforceSmallWinPairBias && !allowWithoutSmallWinBias) || hasChangshaPureSuitLean)
         {
             return null;
         }
@@ -5190,6 +5196,7 @@ public static class BotDiscardAdvisor
         var smallWinSingleton = isolatedSmallWinSingletons[0];
 
         if (visibleCounts.Count > 0
+            && !allowWithoutSmallWinBias
             && !HasAlternateStrongSmallWinPairCandidate(
                 smallWinSingleton,
                 handCounts,
