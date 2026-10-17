@@ -84,7 +84,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
                 return BotAction.DeclareAddedKong(addedKongTile);
         }
 
-        return BotAction.Discard(SelectDiscardTile(hand, state));
+        return BotAction.Discard(SelectDiscardTile(hand, state, botSeatIndex));
     }
 
     public BotAction OnOtherDiscard(ChangshaGameState state, int botSeatIndex, int discarderSeat, int discardedTileId)
@@ -169,18 +169,18 @@ public sealed class HardStrategy : IChangshaBotStrategy
                 }
             }
 
-            var tileId = SelectDiscardTile(hand, state);
+            var tileId = SelectDiscardTile(hand, state, botSeatIndex);
             var logicalCounts = hand.ConcealedTiles
                 .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
                 .ToDictionary(g => g.Key, g => g.Count());
-            var discardedLogicals = HandEvaluator.CollectDiscardedLogicals(state);
-            var keepScore = ComputeDiscardScore(tileId, logicalCounts, discardedLogicals);
+            var opponentDiscardLogicals = CollectOpponentDiscardLogicals(state, botSeatIndex);
+            var keepScore = ComputeDiscardScore(tileId, logicalCounts, opponentDiscardLogicals);
             var postShanten = ShantenAfterDiscardingLogical(ChangshaDeckBuilder.GetLogicalTile(tileId), hand);
             reasoning.Add($"shanten-primary: post-discard shanten={postShanten}");
-            reasoning.Add($"keep-score tie-breaker={keepScore} (defensive bias: discarded-logical -4)");
-            if (discardedLogicals.Contains(ChangshaDeckBuilder.GetLogicalTile(tileId)))
+            reasoning.Add($"keep-score tie-breaker={keepScore} (defensive bias: opponent-discarded logical -4)");
+            if (opponentDiscardLogicals.Contains(ChangshaDeckBuilder.GetLogicalTile(tileId)))
             {
-                reasoning.Add("safety: tile already in discard pile (opponents proved they don't need it)");
+                reasoning.Add("safety: tile already in opponent discard pile (reduced claim risk)");
             }
             return new BotDecision(BotAction.Discard(tileId), tileId, Score: postShanten, reasoning);
         }
@@ -392,7 +392,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
         return HandEvaluator.MinShantenToHu(probe, Array.Empty<int>());
     }
 
-    private static int SelectDiscardTile(ChangshaHandState hand, ChangshaGameState state)
+    private static int SelectDiscardTile(ChangshaHandState hand, ChangshaGameState state, int botSeatIndex)
     {
         if (hand.ConcealedTiles.Count == 0)
             throw new InvalidOperationException("Cannot discard from empty hand.");
@@ -401,7 +401,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
             .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        var discardedLogicals = HandEvaluator.CollectDiscardedLogicals(state);
+        var discardedLogicals = CollectOpponentDiscardLogicals(state, botSeatIndex);
 
         // Phase J Wave 4 — shanten is now the primary discard key. The Phase F
         // keep-score (defensive bias + neighbour preservation) and stable tile-id
@@ -468,7 +468,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
     /// <summary>
     /// Lower score = more attractive to discard. Combines Medium's keep score with a
-    /// defensive bonus for tiles already in the discard pile.
+    /// defensive bonus for tiles already discarded by opponents.
     /// </summary>
     private static int ComputeDiscardScore(
         int tileId,
@@ -497,8 +497,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
             keepScore += 2;
 
         // Defensive bonus: subtract from keep score (i.e., bias toward discard) when
-        // this tile is already on the table — opponents have demonstrated they don't
-        // need it.
+        // this tile is already in opponent discards — reduced claim/feed risk.
         if (discardedLogicals.Contains(logical))
             keepScore -= 4;
 
@@ -613,5 +612,19 @@ public sealed class HardStrategy : IChangshaBotStrategy
         }
 
         return hasNeighbor;
+    }
+
+    private static HashSet<int> CollectOpponentDiscardLogicals(ChangshaGameState state, int botSeatIndex)
+    {
+        var result = new HashSet<int>();
+        foreach (var discard in state.DiscardPile)
+        {
+            if (discard.SeatIndex == botSeatIndex)
+                continue;
+
+            result.Add(ChangshaDeckBuilder.GetLogicalTile(discard.TileId));
+        }
+
+        return result;
     }
 }

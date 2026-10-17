@@ -225,8 +225,8 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        var discardedLogicals = HandEvaluator.CollectDiscardedLogicals(state);
         var opponentDiscardLogicals = CollectOpponentDiscardLogicals(state, botSeatIndex);
+        var discardedLogicals = opponentDiscardLogicals;
 
         var shantenByLogical = new Dictionary<int, int>();
         foreach (var logical in logicalCounts.Keys)
