@@ -1009,6 +1009,21 @@ public static class BotDiscardAdvisor
                         }
                     }
 
+                    if (shouldProtectSingleton && !HasAdjacentSuitedTile(handCounts, singletonTile))
+                    {
+                        var pairEntries = handCounts
+                            .Where(entry => entry.Value == 2)
+                            .ToList();
+                        var preferOffRankPairOverIsolatedSingleton = pairEntries.Count == 1
+                            && !Changsha258Ruleset.IsSmallWinPair(pairEntries[0].Key)
+                            && HasAdjacentSuitedTile(handCounts, pairEntries[0].Key);
+
+                        if (preferOffRankPairOverIsolatedSingleton)
+                        {
+                            shouldProtectSingleton = false;
+                        }
+                    }
+
                     if (shouldProtectSingleton)
                     {
                         var nonProtectedCandidates = candidates
