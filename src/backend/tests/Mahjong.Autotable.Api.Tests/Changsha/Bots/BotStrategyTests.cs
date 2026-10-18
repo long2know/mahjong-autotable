@@ -326,6 +326,20 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_KeepsConnected258Singleton_WhenItBridgesTwoOffRankPairs()
+    {
+        var hand = Hand(
+            Tiao(7, 0), Tiao(7, 1),
+            Tiao(8, 0),
+            Tiao(9, 0), Tiao(9, 1)
+        );
+
+        var chosen = MediumStrategy.SelectDiscardTile(hand);
+
+        Assert.NotEqual(Tiao(8, 0), chosen);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Hard_KeepsConnected258Singleton_WhenItBridgesTwoOffRankPairs()
     {
         // 7-8-9 shape with 7 and 9 paired: the lone 8 (small-win rank) is
