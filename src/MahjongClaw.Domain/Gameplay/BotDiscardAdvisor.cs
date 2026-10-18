@@ -560,11 +560,23 @@ public static class BotDiscardAdvisor
                         visibleCounts);
 
                     var preserveNearDeadSingleton = candidate.RemainingCopies == 1 && visibleCounts.Count > 0;
+                    var preferOffRankPairOverIsolatedSingleton = false;
 
-                    if (candidate.RemainingCopies >= 2
-                        || pairCount == 0
-                        || !hasAlternateStrongSmallWinCandidate
-                        || preserveNearDeadSingleton)
+                    if (pairCount == 1 && !HasAdjacentSuitedTile(handCounts, candidate.Tile))
+                    {
+                        var pairTile = handCounts.First(entry => entry.Value >= 2).Key;
+                        if (!Changsha258Ruleset.IsSmallWinPair(pairTile)
+                            && HasAdjacentSuitedTile(handCounts, pairTile))
+                        {
+                            preferOffRankPairOverIsolatedSingleton = true;
+                        }
+                    }
+
+                    if ((candidate.RemainingCopies >= 2
+                            || pairCount == 0
+                            || !hasAlternateStrongSmallWinCandidate
+                            || preserveNearDeadSingleton)
+                        && !preferOffRankPairOverIsolatedSingleton)
                     {
                         if (!hasDominantSuitLiveSmallWinCandidate
                             || candidate.Tile.Suit == changshaDominantSuit.GetValueOrDefault())
