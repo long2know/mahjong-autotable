@@ -59,7 +59,7 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 /// </summary>
 public sealed class HardStrategy : IChangshaBotStrategy
 {
-    private const int OffRankPairShantenTolerance = 1;
+    private const int OffRankPairShantenTolerance = 2;
     private const int OffRankPairScoreTolerance = 2;
     private const int ConnectedSmallWinBridgeShantenTolerance = 1;
 
