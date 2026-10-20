@@ -440,7 +440,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
         if (TryKeepConnectedSmallWinSingleton(logicalCounts, scored, best, out var preserveTile))
             return preserveTile;
 
-        if (TrySelectIsolatedSmallWinDiscard(logicalCounts, scored, best, out var overrideTile))
+        if (TrySelectIsolatedSmallWinDiscard(logicalCounts, scored, best, discardedLogicals, out var overrideTile))
             return overrideTile;
 
         return best.TileId;
@@ -548,6 +548,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
         Dictionary<int, int> logicalCounts,
         List<DiscardCandidate> scored,
         DiscardCandidate best,
+        HashSet<int> discardedLogicals,
         out int tileId)
     {
         tileId = -1;
@@ -582,7 +583,9 @@ public sealed class HardStrategy : IChangshaBotStrategy
         if (smallWinSingleton.Shanten > best.Shanten + OffRankPairShantenTolerance)
             return false;
 
-        if (smallWinSingleton.Score > best.Score + OffRankPairScoreTolerance)
+        var adjustedBestScore = best.Score + (discardedLogicals.Contains(best.Logical) ? 4 : 0);
+        var adjustedSmallWinScore = smallWinSingleton.Score + (discardedLogicals.Contains(smallWinSingleton.Logical) ? 4 : 0);
+        if (adjustedSmallWinScore > adjustedBestScore + OffRankPairScoreTolerance)
             return false;
 
         tileId = smallWinSingleton.TileId;
