@@ -201,6 +201,79 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_DiscardsWeakSmallWinSingleton_WhenAlternateIsOffRankPair()
+    {
+        // The only 2/5/8 tile is a weak singleton; keep pair structure aligned with
+        // Hard/Master by discarding the singleton instead of breaking Tong 3/4 pairs.
+        var hand = Hand(
+            Wan(2, 0),
+            Tong(3, 0), Tong(3, 1),
+            Tong(4, 0), Tong(4, 1)
+        );
+
+        var chosen = MediumStrategy.SelectDiscardTile(hand);
+        Assert.Equal(Wan(2, 0), chosen);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Hard_DiscardsWeakSmallWinSingleton_WhenAlternateIsOffRankPair()
+    {
+        var hand = Hand(
+            Wan(2, 0),
+            Tong(3, 0), Tong(3, 1),
+            Tong(4, 0), Tong(4, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var hard = new HardStrategy();
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Wan(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Master_DiscardsWeakSmallWinSingleton_WhenAlternateIsOffRankPair()
+    {
+        var hand = Hand(
+            Wan(2, 0),
+            Tong(3, 0), Tong(3, 1),
+            Tong(4, 0), Tong(4, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Wan(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Hard_PreservesOffRankPair_WhenOnlySmallWinIsIsolatedSingleton()
     {
         var hand = Hand(
