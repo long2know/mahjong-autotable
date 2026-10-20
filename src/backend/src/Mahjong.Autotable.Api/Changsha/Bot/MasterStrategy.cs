@@ -229,6 +229,7 @@ public sealed class MasterStrategy : IChangshaBotStrategy
 
         var opponentDiscardLogicals = CollectOpponentDiscardLogicals(state, botSeatIndex);
         var discardedLogicals = opponentDiscardLogicals;
+        var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
 
         var shantenByLogical = new Dictionary<int, int>();
         foreach (var logical in logicalCounts.Keys)
@@ -265,7 +266,7 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             .ThenByDescending(entry => entry.TileId)
             .First();
 
-        if (TryKeepConnectedSmallWinSingleton(logicalCounts, scored, best, out var preserveTile))
+        if (TryKeepConnectedSmallWinSingleton(logicalCounts, scored, best, visibleLogicalCounts, out var preserveTile))
             return preserveTile;
 
         if (TrySelectIsolatedSmallWinDiscard(logicalCounts, scored, best, discardedLogicals, out var overrideTile))
@@ -302,6 +303,52 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         }
         return result;
     }
+
+    private static Dictionary<int, int> CollectPublicLogicalCounts(
+        ChangshaGameState state,
+        ChangshaHandState hand,
+        int botSeatIndex)
+    {
+        var counts = new Dictionary<int, int>();
+
+        void AddTile(int tileId)
+        {
+            var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+            counts[logical] = counts.GetValueOrDefault(logical, 0) + 1;
+        }
+
+        foreach (var tileId in hand.ConcealedTiles)
+            AddTile(tileId);
+
+        foreach (var meld in hand.Melds)
+        {
+            foreach (var tileId in meld.TileIds)
+                AddTile(tileId);
+        }
+
+        foreach (var discard in state.DiscardPile)
+            AddTile(discard.TileId);
+
+        foreach (var otherHand in state.Hands)
+        {
+            if (otherHand.SeatIndex == botSeatIndex)
+                continue;
+
+            foreach (var meld in otherHand.Melds)
+            {
+                if (meld.Kind == MeldKind.ConcealedKong)
+                    continue;
+
+                foreach (var tileId in meld.TileIds)
+                    AddTile(tileId);
+            }
+        }
+
+        return counts;
+    }
+
+    private static bool IsLogicalExhausted(int logical, Dictionary<int, int> visibleLogicalCounts)
+        => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 4;
 
     // Bit-for-bit identical to HardStrategy.ComputeDiscardScore. Kept as a
     // private duplicate so the Master tie-breaker can layer on top without
@@ -342,6 +389,7 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         Dictionary<int, int> logicalCounts,
         List<DiscardCandidate> scored,
         DiscardCandidate best,
+        Dictionary<int, int> visibleLogicalCounts,
         out int tileId)
     {
         tileId = -1;
@@ -353,6 +401,11 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             return false;
 
         if (!IsBridgeBetweenOffRankPairs(best.Logical, logicalCounts))
+            return false;
+
+        // If all copies of the bridge singleton are publicly accounted for,
+        // preserving it no longer improves eye potential.
+        if (IsLogicalExhausted(best.Logical, visibleLogicalCounts))
             return false;
 
         var alternate = scored
