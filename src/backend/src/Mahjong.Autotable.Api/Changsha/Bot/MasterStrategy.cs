@@ -266,7 +266,16 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             .ThenByDescending(entry => entry.TileId)
             .First();
 
-        if (TryKeepConnectedSmallWinSingleton(logicalCounts, scored, best, visibleLogicalCounts, out var preserveTile))
+        if (TryKeepConnectedSmallWinSingleton(
+                logicalCounts,
+                scored,
+                best,
+                visibleLogicalCounts,
+                hand,
+                state,
+                botSeatIndex,
+                opponentDiscardLogicals,
+                out var preserveTile))
             return preserveTile;
 
         if (TrySelectIsolatedSmallWinDiscard(logicalCounts, scored, best, discardedLogicals, out var overrideTile))
@@ -390,6 +399,10 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         List<DiscardCandidate> scored,
         DiscardCandidate best,
         Dictionary<int, int> visibleLogicalCounts,
+        ChangshaHandState hand,
+        ChangshaGameState state,
+        int botSeatIndex,
+        HashSet<int> opponentDiscardLogicals,
         out int tileId)
     {
         tileId = -1;
@@ -412,6 +425,9 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             .Where(entry => entry.TileId != best.TileId && !IsSmallWinRank(entry.Logical))
             .OrderBy(entry => entry.Shanten)
             .ThenBy(entry => entry.Score)
+            .ThenBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
+            .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
+            .ThenBy(entry => SuitCommitment.Bias(entry.TileId, hand))
             .ThenByDescending(entry => entry.TileId)
             .Select(entry => (DiscardCandidate?)entry)
             .FirstOrDefault();
