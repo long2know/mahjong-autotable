@@ -226,6 +226,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             .Where(entry => entry.Value > 1 && !IsSmallWinRank(entry.Key))
             .Select(entry => entry.Key)
             .ToHashSet();
+        var suppressSingleSmallWinPreserve = false;
         if (hasSingleSmallWin && offRankPairs.Count > 0)
         {
             var smallWinSingleton = scored.FirstOrDefault(entry =>
@@ -239,6 +240,10 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     && !IsSmallWinRank(best.Logical);
                 if (bestIsOffRankPair && smallWinSingleton.Score <= best.Score + OffRankPairDiscardTolerance)
                     return (smallWinSingleton.TileId, true);
+
+                // If the only 2/5/8 is isolated and off-rank pairs exist, never
+                // invoke the fallback that preserves the singleton; keep the pair.
+                suppressSingleSmallWinPreserve = true;
             }
         }
 
@@ -246,7 +251,9 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             .Where(entry => IsSmallWinRank(entry.Logical))
             .ToList();
 
-        if (smallWinCandidates.Count == 1 && best.TileId == smallWinCandidates[0].TileId)
+        if (!suppressSingleSmallWinPreserve
+            && smallWinCandidates.Count == 1
+            && best.TileId == smallWinCandidates[0].TileId)
         {
             var alternate = scored
                 .Where(entry => entry.TileId != best.TileId && !IsSmallWinRank(entry.Logical))

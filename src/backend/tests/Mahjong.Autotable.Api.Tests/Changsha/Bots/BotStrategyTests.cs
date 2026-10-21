@@ -201,6 +201,21 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_DropsIsolatedSmallWin_WhenOnlyOtherTilesAreOffRankPairs()
+    {
+        // Only 2/5/8 is isolated; the rest of the hand is off-rank pairs.
+        // The singleton should be discarded, not a tile from a pair.
+        var hand = Hand(
+            Tiao(3, 0), Tiao(3, 1),                // off-rank pair
+            Tiao(4, 0), Tiao(4, 1),                // off-rank pair (neighbor boosts keep-score)
+            Tong(2, 0)                              // isolated 2 (only small-win tile)
+        );
+
+        var chosen = MediumStrategy.SelectDiscardTile(hand);
+        Assert.Equal(Tong(2, 0), chosen);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Hard_PreservesOffRankPair_WhenOnlySmallWinIsIsolatedSingleton()
     {
         var hand = Hand(
