@@ -201,6 +201,21 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_DropsIsolatedSmallWin_WhenOnlyOtherTilesAreOffRankPairs()
+    {
+        // Only 2/5/8 is isolated; the rest of the hand is off-rank pairs.
+        // The singleton should be discarded, not a tile from a pair.
+        var hand = Hand(
+            Tiao(3, 0), Tiao(3, 1),                // off-rank pair
+            Tiao(4, 0), Tiao(4, 1),                // off-rank pair (neighbor boosts keep-score)
+            Tong(2, 0)                              // isolated 2 (only small-win tile)
+        );
+
+        var chosen = MediumStrategy.SelectDiscardTile(hand);
+        Assert.Equal(Tong(2, 0), chosen);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Medium_DiscardsWeakSmallWinSingleton_WhenAlternateIsOffRankPair()
     {
         // The only 2/5/8 tile is a weak singleton; keep pair structure aligned with
@@ -609,6 +624,53 @@ public class BotStrategyTests
 
         Assert.Equal(BotActionType.Discard, action.Type);
         Assert.Equal(Tiao(8, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Master_PrefersGenbutsuAlternate_WhenPreservingConnected258Singleton()
+    {
+        var hand = Hand(
+            Tiao(7, 0), Tiao(7, 1),
+            Tiao(8, 0),
+            Tiao(9, 0), Tiao(9, 1),
+            Wan(3, 0), Wan(3, 1),
+            Tong(3, 0), Tong(3, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(4, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0)))
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(3, 2), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tong(3, 2), TurnNumber = 2 }
+            }
+        };
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(
+            ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0)),
+            ChangshaDeckBuilder.GetLogicalTile(action.TileId!.Value));
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
