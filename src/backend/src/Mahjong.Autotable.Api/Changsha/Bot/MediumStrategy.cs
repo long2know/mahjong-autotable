@@ -262,7 +262,20 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 .FirstOrDefault();
 
             if (alternate is not null && alternate.Score <= best.Score + SingleSmallWinDiscardTolerance)
+            {
+                var alternateIsOffRankPair = logicalCounts.GetValueOrDefault(alternate.Logical, 0) > 1
+                    && !IsSmallWinRank(alternate.Logical);
+                var singletonIsWeak = IsIsolatedSingleton(best.Logical, logicalCounts)
+                    || IsSingletonWithOnlyPairedNeighbors(best.Logical, logicalCounts, offRankPairs);
+
+                // Keep Medium aligned with Hard/Master: when the only 2/5/8 tile is
+                // a weak singleton and the alternate is an off-rank pair, discard the
+                // singleton instead of breaking pair structure.
+                if (alternateIsOffRankPair && singletonIsWeak)
+                    return (best.TileId, true);
+
                 return (alternate.TileId, false);
+            }
         }
 
         return (best.TileId, false);

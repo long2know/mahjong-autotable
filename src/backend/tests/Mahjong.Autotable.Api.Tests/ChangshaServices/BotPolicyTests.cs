@@ -152,11 +152,11 @@ public class BotPolicyTests
     }
 
     [Fact]
-    public void Bot_PreservesLast258Singleton_WhenOnlyOtherOptionsAreOffRankPairs()
+    public void Bot_DiscardsWeak258Singleton_WhenOnlyOtherOptionsAreOffRankPairs()
     {
-        // Wan 2 is the only 2/5/8 tile. The remaining tiles are off-rank pairs,
-        // so the bot should break the off-rank pair before discarding the lone
-        // 2/5/8 singleton.
+        // Wan 2 is the only 2/5/8 tile and sits as a weak singleton while the
+        // other candidates are off-rank pairs. Prefer discarding the weak singleton
+        // to keep pair structure (Medium now aligned with Hard/Master behavior).
         var hand = new ChangshaHandState
         {
             SeatIndex = 0,
@@ -168,6 +168,6 @@ public class BotPolicyTests
 
         var tileId = ChangshaBotPolicy.SelectDiscardTile(hand);
         var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
-        Assert.NotEqual(ChangshaTestHelpers.Logical(Suit.Wan, 2), logical);
+        Assert.Equal(ChangshaTestHelpers.Logical(Suit.Wan, 2), logical);
     }
 }
