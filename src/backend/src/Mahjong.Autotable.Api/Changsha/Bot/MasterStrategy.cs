@@ -266,6 +266,8 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             .ThenByDescending(entry => entry.TileId)
             .First();
 
+        var selectedTileId = best.TileId;
+
         if (TryKeepConnectedSmallWinSingleton(
                 logicalCounts,
                 scored,
@@ -276,12 +278,35 @@ public sealed class MasterStrategy : IChangshaBotStrategy
                 botSeatIndex,
                 opponentDiscardLogicals,
                 out var preserveTile))
-            return preserveTile;
+        {
+            selectedTileId = preserveTile;
+        }
+        else if (TrySelectIsolatedSmallWinDiscard(
+                     logicalCounts,
+                     scored,
+                     best,
+                     discardedLogicals,
+                     state,
+                     botSeatIndex,
+                     out var overrideTile))
+        {
+            selectedTileId = overrideTile;
+        }
 
-        if (TrySelectIsolatedSmallWinDiscard(logicalCounts, scored, best, discardedLogicals, out var overrideTile))
-            return overrideTile;
+        if (TrySelectTenpaiSafeOffRankPair(
+                logicalCounts,
+                scored,
+                selectedTileId,
+                hand,
+                state,
+                botSeatIndex,
+                opponentDiscardLogicals,
+                out var safePairTileId))
+        {
+            selectedTileId = safePairTileId;
+        }
 
-        return best.TileId;
+        return selectedTileId;
     }
 
     private static int ShantenAfterDiscardingLogical(int candidateLogical, ChangshaHandState hand)
@@ -448,6 +473,8 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         List<DiscardCandidate> scored,
         DiscardCandidate best,
         HashSet<int> discardedLogicals,
+        ChangshaGameState state,
+        int botSeatIndex,
         out int tileId)
     {
         tileId = -1;
@@ -486,6 +513,27 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         var adjustedSmallWinScore = smallWinSingleton.Score + (discardedLogicals.Contains(smallWinSingleton.Logical) ? 4 : 0);
         if (adjustedSmallWinScore > adjustedBestScore + OffRankPairScoreTolerance)
             return false;
+
+        // Master keeps the isolated-small-win override by default, but when
+        // a dangerous opponent exists (3+ exposed melds), do not spend defense
+        // equity by overriding away from a strictly safer off-rank discard.
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count > 0)
+        {
+            var bestOpponentSafety = OpponentSafetyTieBreaker(best.TileId, discardedLogicals);
+            var singletonOpponentSafety = OpponentSafetyTieBreaker(smallWinSingleton.TileId, discardedLogicals);
+
+            if (singletonOpponentSafety > bestOpponentSafety)
+                return false;
+
+            if (singletonOpponentSafety == bestOpponentSafety)
+            {
+                var bestTenpaiSafety = TenpaiDetector.SafetyBias(best.TileId, state, botSeatIndex);
+                var singletonTenpaiSafety = TenpaiDetector.SafetyBias(smallWinSingleton.TileId, state, botSeatIndex);
+                if (singletonTenpaiSafety > bestTenpaiSafety)
+                    return false;
+            }
+        }
 
         tileId = smallWinSingleton.TileId;
         return true;
@@ -572,6 +620,63 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             && logicalCounts.GetValueOrDefault(right, 0) > 1
             && !IsSmallWinRank(left)
             && !IsSmallWinRank(right);
+    }
+
+    private static bool TrySelectTenpaiSafeOffRankPair(
+        Dictionary<int, int> logicalCounts,
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaHandState hand,
+        ChangshaGameState state,
+        int botSeatIndex,
+        HashSet<int> opponentDiscardLogicals,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count == 0)
+            return false;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
+            return false;
+
+        var saferOffRankPair = scored
+            .Where(entry => logicalCounts.GetValueOrDefault(entry.Logical, 0) > 1 && !IsSmallWinRank(entry.Logical))
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
+            .ThenBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
+            .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
+            .ThenBy(entry => SuitCommitment.Bias(entry.TileId, hand))
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
+
+        if (saferOffRankPair is null)
+            return false;
+
+        if (saferOffRankPair.Value.Shanten > selected.Shanten + OffRankPairShantenTolerance)
+            return false;
+
+        var selectedOpponentSafety = OpponentSafetyTieBreaker(selected.TileId, opponentDiscardLogicals);
+        var pairOpponentSafety = OpponentSafetyTieBreaker(saferOffRankPair.Value.TileId, opponentDiscardLogicals);
+        if (pairOpponentSafety > selectedOpponentSafety)
+            return false;
+
+        var selectedTenpaiSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+        var pairTenpaiSafety = TenpaiDetector.SafetyBias(saferOffRankPair.Value.TileId, state, botSeatIndex);
+        if (pairOpponentSafety == selectedOpponentSafety && pairTenpaiSafety > selectedTenpaiSafety)
+            return false;
+
+        if (pairOpponentSafety == selectedOpponentSafety && pairTenpaiSafety == selectedTenpaiSafety)
+            return false;
+
+        tileId = saferOffRankPair.Value.TileId;
+        return true;
     }
 
     // The Master-only tie-breaker: tiles whose logical id has been discarded
