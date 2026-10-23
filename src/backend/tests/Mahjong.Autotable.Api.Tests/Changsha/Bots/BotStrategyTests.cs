@@ -846,6 +846,51 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Master_PreservesTenpaiSafeOffRankPair_WhenOnlySingleton258IsUnsafe()
+    {
+        var hand = Hand(
+            Tiao(2, 0),
+            Tiao(3, 0), Tiao(3, 1),
+            Tiao(4, 0), Tiao(4, 1),
+            Wan(7, 0), Wan(7, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(7, 2), TurnNumber = 1 }
+            }
+        };
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(
+            ChangshaDeckBuilder.GetLogicalTile(Wan(7, 0)),
+            ChangshaDeckBuilder.GetLogicalTile(action.TileId!.Value));
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Hard_DoesNotTreatSelfDiscardedTileAsDefensiveSafeBias()
     {
         var hand = Hand(
