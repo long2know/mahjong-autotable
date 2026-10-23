@@ -528,9 +528,10 @@ public sealed class HardStrategy : IChangshaBotStrategy
         if (!IsBridgeBetweenOffRankPairs(best.Logical, logicalCounts))
             return false;
 
-        // If all copies of the bridge singleton are already publicly visible,
-        // it cannot improve into an eye and should no longer force pair breaks.
-        if (IsLogicalExhausted(best.Logical, visibleLogicalCounts))
+        // If three copies of the bridge singleton are already publicly visible,
+        // only one live draw remains. That near-dead lane is too thin to justify
+        // breaking both neighboring off-rank pairs.
+        if (IsLogicalNearExhausted(best.Logical, visibleLogicalCounts))
             return false;
 
         var alternate = scored
@@ -725,8 +726,8 @@ public sealed class HardStrategy : IChangshaBotStrategy
         return counts;
     }
 
-    private static bool IsLogicalExhausted(int logical, Dictionary<int, int> visibleLogicalCounts)
-        => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 4;
+    private static bool IsLogicalNearExhausted(int logical, Dictionary<int, int> visibleLogicalCounts)
+        => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 3;
 
     private static HashSet<int> CollectOpponentDiscardLogicals(ChangshaGameState state, int botSeatIndex)
     {

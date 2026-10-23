@@ -356,8 +356,8 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         return counts;
     }
 
-    private static bool IsLogicalExhausted(int logical, Dictionary<int, int> visibleLogicalCounts)
-        => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 4;
+    private static bool IsLogicalNearExhausted(int logical, Dictionary<int, int> visibleLogicalCounts)
+        => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 3;
 
     // Bit-for-bit identical to HardStrategy.ComputeDiscardScore. Kept as a
     // private duplicate so the Master tie-breaker can layer on top without
@@ -416,9 +416,10 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (!IsBridgeBetweenOffRankPairs(best.Logical, logicalCounts))
             return false;
 
-        // If all copies of the bridge singleton are publicly accounted for,
-        // preserving it no longer improves eye potential.
-        if (IsLogicalExhausted(best.Logical, visibleLogicalCounts))
+        // If three copies of the bridge singleton are publicly accounted for,
+        // only one live draw remains. That near-dead lane is too thin to justify
+        // breaking both neighboring off-rank pairs.
+        if (IsLogicalNearExhausted(best.Logical, visibleLogicalCounts))
             return false;
 
         var alternate = scored
