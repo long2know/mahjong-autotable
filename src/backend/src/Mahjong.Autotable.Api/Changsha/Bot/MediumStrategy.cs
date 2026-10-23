@@ -239,9 +239,16 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
             if (connectedSmallWinSingleton is not null)
             {
-                var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
-                if (IsLogicalNearExhausted(connectedSmallWinSingleton.Logical, visibleLogicalCounts))
-                    return (connectedSmallWinSingleton.TileId, true);
+                var leftBridgeLogical = connectedSmallWinSingleton.Logical - 1;
+                var rightBridgeLogical = connectedSmallWinSingleton.Logical + 1;
+                var bestBreaksBridgePair = best.Logical == leftBridgeLogical || best.Logical == rightBridgeLogical;
+
+                if (bestBreaksBridgePair)
+                {
+                    var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
+                    if (IsLogicalNearExhausted(connectedSmallWinSingleton.Logical, visibleLogicalCounts))
+                        return (connectedSmallWinSingleton.TileId, true);
+                }
             }
         }
 
