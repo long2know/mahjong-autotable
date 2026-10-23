@@ -25,7 +25,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
     public BotAction OnTurnStart(ChangshaGameState state, int botSeatIndex)
     {
         var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
-        return DecideDiscardPhase(state, hand);
+        return DecideDiscardPhase(state, hand, botSeatIndex);
     }
 
     public BotAction OnOtherDiscard(ChangshaGameState state, int botSeatIndex, int discarderSeat, int discardedTileId)
@@ -107,15 +107,15 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 return new BotDecision(BotAction.DeclareAddedKong(addedKongTile), addedKongTile, Score: 0, reasoning);
             }
 
-            var (tileId, droppedIsolatedSmallWin) = SelectDiscardTileWithMeta(hand);
+            var (tileId, droppedSmallWinSingleton) = SelectDiscardTileWithMeta(hand, state, botSeatIndex);
             var logicalCounts = hand.ConcealedTiles
                 .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
                 .ToDictionary(g => g.Key, g => g.Count());
             var score = ComputeKeepScore(tileId, logicalCounts);
             reasoning.Add($"keep-score primary: discard tile={tileId} score={score} (lower=better to discard)");
             reasoning.Add("tie-breaker: tile-id descending");
-            if (droppedIsolatedSmallWin)
-                reasoning.Add("changsha 258 guard: preserved off-rank pair by discarding isolated 2/5/8 singleton");
+            if (droppedSmallWinSingleton)
+                reasoning.Add("changsha 258 guard: discarded weak/near-dead 2/5/8 singleton to preserve stronger structure");
             return new BotDecision(BotAction.Discard(tileId), tileId, Score: score, reasoning);
         }
 
@@ -144,7 +144,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         return new BotDecision(BotAction.Wait(), null, Score: 0, reasoning);
     }
 
-    private static BotAction DecideDiscardPhase(ChangshaGameState state, ChangshaHandState hand)
+    private static BotAction DecideDiscardPhase(ChangshaGameState state, ChangshaHandState hand, int botSeatIndex)
     {
         if (ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, hand.SeatIndex))
             return BotAction.DeclareWin();
@@ -157,7 +157,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (addedKongTile >= 0)
             return BotAction.DeclareAddedKong(addedKongTile);
 
-        var tileId = SelectDiscardTile(hand);
+        var tileId = SelectDiscardTile(hand, state, botSeatIndex);
         return BotAction.Discard(tileId);
     }
 
@@ -194,11 +194,20 @@ public sealed class MediumStrategy : IChangshaBotStrategy
     /// facade and harness tests can call into the same implementation.</summary>
     public static int SelectDiscardTile(ChangshaHandState hand)
     {
-        var result = SelectDiscardTileWithMeta(hand);
+        var result = SelectDiscardTileWithMeta(hand, state: null, botSeatIndex: -1);
         return result.TileId;
     }
 
-    private static (int TileId, bool DroppedIsolatedSmallWin) SelectDiscardTileWithMeta(ChangshaHandState hand)
+    private static int SelectDiscardTile(ChangshaHandState hand, ChangshaGameState state, int botSeatIndex)
+    {
+        var result = SelectDiscardTileWithMeta(hand, state, botSeatIndex);
+        return result.TileId;
+    }
+
+    private static (int TileId, bool DroppedIsolatedSmallWin) SelectDiscardTileWithMeta(
+        ChangshaHandState hand,
+        ChangshaGameState? state,
+        int botSeatIndex)
     {
         if (hand.ConcealedTiles.Count == 0)
             throw new InvalidOperationException("Cannot discard from empty hand.");
@@ -220,6 +229,21 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             .OrderBy(entry => entry.Score)
             .ThenByDescending(entry => entry.TileId)
             .First();
+
+        if (state is not null && botSeatIndex >= 0)
+        {
+            var connectedSmallWinSingleton = scored.FirstOrDefault(entry =>
+                IsSmallWinRank(entry.Logical)
+                && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                && IsBridgeBetweenOffRankPairs(entry.Logical, logicalCounts));
+
+            if (connectedSmallWinSingleton is not null)
+            {
+                var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
+                if (IsLogicalNearExhausted(connectedSmallWinSingleton.Logical, visibleLogicalCounts))
+                    return (connectedSmallWinSingleton.TileId, true);
+            }
+        }
 
         var hasSingleSmallWin = HasSingleSmallWinTile(logicalCounts);
         var offRankPairs = logicalCounts
@@ -378,4 +402,65 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
         return hasNeighbor;
     }
+
+    private static bool IsBridgeBetweenOffRankPairs(int logical, Dictionary<int, int> logicalCounts)
+    {
+        var rank = logical % 9;
+        if (rank <= 0 || rank >= 8)
+            return false;
+
+        var left = logical - 1;
+        var right = logical + 1;
+
+        return logicalCounts.GetValueOrDefault(left, 0) > 1
+            && logicalCounts.GetValueOrDefault(right, 0) > 1
+            && !IsSmallWinRank(left)
+            && !IsSmallWinRank(right);
+    }
+
+    private static Dictionary<int, int> CollectPublicLogicalCounts(
+        ChangshaGameState state,
+        ChangshaHandState hand,
+        int botSeatIndex)
+    {
+        var counts = new Dictionary<int, int>();
+
+        void AddTile(int tileId)
+        {
+            var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+            counts[logical] = counts.GetValueOrDefault(logical, 0) + 1;
+        }
+
+        foreach (var tileId in hand.ConcealedTiles)
+            AddTile(tileId);
+
+        foreach (var meld in hand.Melds)
+        {
+            foreach (var tileId in meld.TileIds)
+                AddTile(tileId);
+        }
+
+        foreach (var discard in state.DiscardPile)
+            AddTile(discard.TileId);
+
+        foreach (var otherHand in state.Hands)
+        {
+            if (otherHand.SeatIndex == botSeatIndex)
+                continue;
+
+            foreach (var meld in otherHand.Melds)
+            {
+                if (meld.Kind == MeldKind.ConcealedKong)
+                    continue;
+
+                foreach (var tileId in meld.TileIds)
+                    AddTile(tileId);
+            }
+        }
+
+        return counts;
+    }
+
+    private static bool IsLogicalNearExhausted(int logical, Dictionary<int, int> visibleLogicalCounts)
+        => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 3;
 }
