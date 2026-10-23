@@ -592,6 +592,40 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Hard_DiscardsConnected258Singleton_WhenOnlyOneBridgeCopyRemains()
+    {
+        var hand = Hand(
+            Tiao(7, 0), Tiao(7, 1),
+            Tiao(8, 0),
+            Tiao(9, 0), Tiao(9, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tiao(8, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tiao(8, 2), TurnNumber = 2 }
+            }
+        };
+
+        var hard = new HardStrategy();
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(8, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Master_DiscardsConnected258Singleton_WhenBridgeTileIsExhausted()
     {
         var hand = Hand(
@@ -616,6 +650,40 @@ public class BotStrategyTests
                 new() { SeatIndex = 1, TileId = Tiao(8, 1), TurnNumber = 1 },
                 new() { SeatIndex = 2, TileId = Tiao(8, 2), TurnNumber = 2 },
                 new() { SeatIndex = 3, TileId = Tiao(8, 3), TurnNumber = 3 }
+            }
+        };
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(8, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Master_DiscardsConnected258Singleton_WhenOnlyOneBridgeCopyRemains()
+    {
+        var hand = Hand(
+            Tiao(7, 0), Tiao(7, 1),
+            Tiao(8, 0),
+            Tiao(9, 0), Tiao(9, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tiao(8, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tiao(8, 2), TurnNumber = 2 }
             }
         };
 
