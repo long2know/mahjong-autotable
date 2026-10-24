@@ -265,6 +265,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                         deadIsolatedSmallWinSingleton.Value.TileId,
                         state,
                         botSeatIndex,
+                        visibleLogicalCounts,
                         out var tenpaiSafePairTileId))
                 {
                     return (tenpaiSafePairTileId, false);
@@ -297,6 +298,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                                 connectedSmallWinSingleton.Value.TileId,
                                 state,
                                 botSeatIndex,
+                                visibleLogicalCounts,
                                 out var tenpaiSafePairTileId))
                         {
                             return (tenpaiSafePairTileId, false);
@@ -557,6 +559,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         int selectedTileId,
         ChangshaGameState state,
         int botSeatIndex,
+        Dictionary<int, int> visibleLogicalCounts,
         out int tileId)
     {
         tileId = -1;
@@ -570,6 +573,12 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             return false;
 
         if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
+            return false;
+
+        // If all four copies are publicly accounted for, this singleton is dead and
+        // universally safe to discard. Do not override to an off-rank pair solely on
+        // genbutsu bias in that situation.
+        if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
             return false;
 
         var opponentDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex, dangerousOpponents);
