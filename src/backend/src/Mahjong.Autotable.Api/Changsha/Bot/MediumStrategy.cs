@@ -280,6 +280,27 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     return (tenpaiSafePairTileId, false);
                 }
 
+                // Prefer dead-singleton shedding by default, but do not force it when
+                // dangerous-opponent defense would get strictly worse than the current
+                // top-scored candidate (e.g. best is dangerous-opponent genbutsu).
+                if (dangerousOpponents is not null
+                    && dangerousOpponents.Count > 0
+                    && safetyDiscardLogicals is not null)
+                {
+                    var bestOpponentSafety = OpponentSafetyTieBreaker(best.TileId, safetyDiscardLogicals);
+                    var singletonOpponentSafety = OpponentSafetyTieBreaker(deadSmallWinSingleton.Value.TileId, safetyDiscardLogicals);
+                    if (singletonOpponentSafety > bestOpponentSafety)
+                        return (best.TileId, false);
+
+                    if (singletonOpponentSafety == bestOpponentSafety)
+                    {
+                        var bestTenpaiSafety = TenpaiDetector.SafetyBias(best.TileId, state, botSeatIndex);
+                        var singletonTenpaiSafety = TenpaiDetector.SafetyBias(deadSmallWinSingleton.Value.TileId, state, botSeatIndex);
+                        if (singletonTenpaiSafety > bestTenpaiSafety)
+                            return (best.TileId, false);
+                    }
+                }
+
                 return (deadSmallWinSingleton.Value.TileId, true);
             }
 
