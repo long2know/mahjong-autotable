@@ -277,7 +277,20 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 if (bestBreaksBridgePair)
                 {
                     if (IsLogicalNearExhausted(connectedSmallWinSingleton.Value.Logical, visibleLogicalCounts))
+                    {
+                        if (TrySelectTenpaiSafeOffRankPair(
+                                logicalCounts,
+                                scored,
+                                connectedSmallWinSingleton.Value.TileId,
+                                state,
+                                botSeatIndex,
+                                out var tenpaiSafePairTileId))
+                        {
+                            return (tenpaiSafePairTileId, false);
+                        }
+
                         return (connectedSmallWinSingleton.Value.TileId, true);
+                    }
                 }
             }
         }
