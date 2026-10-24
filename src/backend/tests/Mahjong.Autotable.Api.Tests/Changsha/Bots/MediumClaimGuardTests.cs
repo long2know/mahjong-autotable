@@ -54,10 +54,72 @@ public class MediumClaimGuardTests
         Assert.Equal(TableClaimType.Pung, action.ClaimType);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W26")]
+    public void Medium_PrefersChowOverPung_WhenPungWorsensSmallWinPairDistance()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(5, 0), Wan(5, 1),
+                Wan(4, 0), Wan(6, 0),
+                Tong(1, 0), Tong(2, 0), Tong(3, 0),
+                Tong(7, 0), Tong(8, 0), Tong(9, 0),
+                Tiao(1, 0), Tiao(3, 0), Tiao(4, 0)
+            }
+        };
+
+        var state = BuildClaimState(
+            hand,
+            discardTileId: Wan(5, 2),
+            opportunities: new[] { TableClaimType.Pung, TableClaimType.Chow });
+
+        var action = new MediumStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W26")]
+    public void Medium_StillPrioritizesPungOverChow_WhenBothKeepSmallWinPairDistance()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Tong(2, 0), Tong(2, 1), // stable 2/5/8 eye survives either claim
+                Wan(9, 0), Wan(9, 1),
+                Wan(8, 0), Wan(7, 0),
+                Tong(4, 0), Tong(5, 0), Tong(6, 0),
+                Tiao(1, 0), Tiao(3, 0), Tiao(4, 0), Tiao(6, 0)
+            }
+        };
+
+        var state = BuildClaimState(
+            hand,
+            discardTileId: Wan(9, 2),
+            opportunities: new[] { TableClaimType.Pung, TableClaimType.Chow });
+
+        var action = new MediumStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Pung, action.ClaimType);
+    }
+
     private static ChangshaGameState BuildSingleClaimState(
         ChangshaHandState hand,
         int discardTileId,
         TableClaimType claimType)
+    {
+        return BuildClaimState(hand, discardTileId, new[] { claimType });
+    }
+
+    private static ChangshaGameState BuildClaimState(
+        ChangshaHandState hand,
+        int discardTileId,
+        IReadOnlyList<TableClaimType> opportunities)
     {
         return new ChangshaGameState
         {
@@ -74,15 +136,12 @@ public class MediumClaimGuardTests
             {
                 DiscardSeatIndex = 0,
                 DiscardTileId = discardTileId,
-                Opportunities = new()
+                Opportunities = opportunities.Select(claimType => new ChangshaClaimOpportunity
                 {
-                    new()
-                    {
-                        SeatIndex = 1,
-                        ClaimType = claimType,
-                        Priority = ChangshaClaimPriority.TierOf(claimType)
-                    }
-                }
+                    SeatIndex = 1,
+                    ClaimType = claimType,
+                    Priority = ChangshaClaimPriority.TierOf(claimType)
+                }).ToList()
             }
         };
     }
