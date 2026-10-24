@@ -137,7 +137,7 @@ public sealed class MasterStrategy : IChangshaBotStrategy
 
             var tileId = SelectDiscardTile(hand, state, botSeatIndex);
             var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
-            var opponentDiscardLogicals = CollectOpponentDiscardLogicals(state, botSeatIndex);
+            var opponentDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex);
             var postShanten = ShantenAfterDiscardingLogical(logical, hand);
             reasoning.Add($"shanten-primary: post-discard shanten={postShanten}");
             // Safety analysis is Master's signature tier — surface it
@@ -227,7 +227,7 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        var opponentDiscardLogicals = CollectOpponentDiscardLogicals(state, botSeatIndex);
+        var opponentDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex);
         var discardedLogicals = opponentDiscardLogicals;
         var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
 
@@ -325,6 +325,15 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             Melds = hand.Melds
         };
         return HandEvaluator.MinShantenToHu(probe, Array.Empty<int>());
+    }
+
+    private static HashSet<int> CollectSafetyDiscardLogicals(ChangshaGameState state, int botSeatIndex)
+    {
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count > 0)
+            return TenpaiDetector.CollectGenbutsuLogicals(state, dangerousOpponents);
+
+        return CollectOpponentDiscardLogicals(state, botSeatIndex);
     }
 
     private static HashSet<int> CollectOpponentDiscardLogicals(ChangshaGameState state, int botSeatIndex)

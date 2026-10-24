@@ -176,14 +176,14 @@ public sealed class HardStrategy : IChangshaBotStrategy
             var logicalCounts = hand.ConcealedTiles
                 .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
                 .ToDictionary(g => g.Key, g => g.Count());
-            var opponentDiscardLogicals = CollectOpponentDiscardLogicals(state, botSeatIndex);
-            var keepScore = ComputeDiscardScore(tileId, logicalCounts, opponentDiscardLogicals);
+            var safetyDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex);
+            var keepScore = ComputeDiscardScore(tileId, logicalCounts, safetyDiscardLogicals);
             var postShanten = ShantenAfterDiscardingLogical(ChangshaDeckBuilder.GetLogicalTile(tileId), hand);
             reasoning.Add($"shanten-primary: post-discard shanten={postShanten}");
             reasoning.Add($"keep-score tie-breaker={keepScore} (defensive bias: opponent-discarded logical -4)");
-            if (opponentDiscardLogicals.Contains(ChangshaDeckBuilder.GetLogicalTile(tileId)))
+            if (safetyDiscardLogicals.Contains(ChangshaDeckBuilder.GetLogicalTile(tileId)))
             {
-                reasoning.Add("safety: tile already in opponent discard pile (reduced claim risk)");
+                reasoning.Add("safety: tile already in safety discard set (reduced claim risk)");
             }
             return new BotDecision(BotAction.Discard(tileId), tileId, Score: postShanten, reasoning);
         }
@@ -404,7 +404,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
             .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        var discardedLogicals = CollectOpponentDiscardLogicals(state, botSeatIndex);
+        var discardedLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex);
         var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
 
         // Phase J Wave 4 — shanten is now the primary discard key. The Phase F
@@ -820,6 +820,15 @@ public sealed class HardStrategy : IChangshaBotStrategy
     {
         var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
         return opponentDiscardLogicals.Contains(logical) ? -1 : 0;
+    }
+
+    private static HashSet<int> CollectSafetyDiscardLogicals(ChangshaGameState state, int botSeatIndex)
+    {
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count > 0)
+            return TenpaiDetector.CollectGenbutsuLogicals(state, dangerousOpponents);
+
+        return CollectOpponentDiscardLogicals(state, botSeatIndex);
     }
 
     private static HashSet<int> CollectOpponentDiscardLogicals(ChangshaGameState state, int botSeatIndex)
