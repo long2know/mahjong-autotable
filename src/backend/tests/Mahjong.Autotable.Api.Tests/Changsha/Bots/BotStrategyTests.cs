@@ -518,6 +518,114 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_DiscardsDeadSmallWinSingleton_EvenWhenAdjacentSingletonExists()
+    {
+        var hand = Hand(
+            Tiao(1, 0),
+            Tiao(2, 0),
+            Wan(7, 0), Wan(7, 1),
+            Tong(9, 0), Tong(9, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tiao(2, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tiao(2, 2), TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = Tiao(2, 3), TurnNumber = 3 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Hard_DiscardsDeadSmallWinSingleton_EvenWhenAdjacentSingletonExists()
+    {
+        var hand = Hand(
+            Tiao(1, 0),
+            Tiao(2, 0),
+            Wan(7, 0), Wan(7, 1),
+            Tong(9, 0), Tong(9, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tiao(2, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tiao(2, 2), TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = Tiao(2, 3), TurnNumber = 3 }
+            }
+        };
+
+        var hard = new HardStrategy();
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Master_DiscardsDeadSmallWinSingleton_EvenWhenAdjacentSingletonExists()
+    {
+        var hand = Hand(
+            Tiao(1, 0),
+            Tiao(2, 0),
+            Wan(7, 0), Wan(7, 1),
+            Tong(9, 0), Tong(9, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tiao(2, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tiao(2, 2), TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = Tiao(2, 3), TurnNumber = 3 }
+            }
+        };
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Medium_DiscardsDeadSmallWinSingleton_EvenWhenDangerousOpponentHasSafeOffRankPair()
     {
         var hand = Hand(

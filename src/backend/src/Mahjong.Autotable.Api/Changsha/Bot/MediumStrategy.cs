@@ -252,21 +252,20 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         {
             var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
 
-            var deadIsolatedSmallWinSingleton = scored
+            var deadSmallWinSingleton = scored
                 .Where(entry =>
                     IsSmallWinRank(entry.Logical)
                     && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
-                    && IsLogicalDead(entry.Logical, visibleLogicalCounts)
-                    && IsIsolatedSingleton(entry.Logical, logicalCounts))
+                    && IsLogicalDead(entry.Logical, visibleLogicalCounts))
                 .Select(entry => (DiscardCandidate?)entry)
                 .FirstOrDefault();
 
-            if (deadIsolatedSmallWinSingleton is not null)
+            if (deadSmallWinSingleton is not null)
             {
                 if (TrySelectTenpaiSafeOffRankPair(
                         logicalCounts,
                         scored,
-                        deadIsolatedSmallWinSingleton.Value.TileId,
+                        deadSmallWinSingleton.Value.TileId,
                         state,
                         botSeatIndex,
                         visibleLogicalCounts,
@@ -275,7 +274,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     return (tenpaiSafePairTileId, false);
                 }
 
-                return (deadIsolatedSmallWinSingleton.Value.TileId, true);
+                return (deadSmallWinSingleton.Value.TileId, true);
             }
 
             var connectedSmallWinSingleton = scored
