@@ -301,6 +301,16 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     }
                 }
 
+                if (TryPromoteFullDangerousGenbutsuOnScoreTolerance(
+                        scored,
+                        deadSmallWinSingleton.Value.TileId,
+                        state,
+                        botSeatIndex,
+                        out var promotedFullSafetyTileId))
+                {
+                    return (promotedFullSafetyTileId, false);
+                }
+
                 return (deadSmallWinSingleton.Value.TileId, true);
             }
 
