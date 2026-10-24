@@ -133,4 +133,51 @@ public class MediumStrategySafetyRegressionTests
             ChangshaDeckBuilder.GetLogicalTile(Tong(9, 0)),
             ChangshaDeckBuilder.GetLogicalTile(action.TileId!.Value));
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_PrefersDangerousOpponentGenbutsu_WhenSingleDangerousSafetyUpgradeWithinTolerance()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(1, 0),  // lowest keep-score but unsafe
+                Tong(4, 0), // dangerous-opponent genbutsu with +1 keep-score
+                Tong(6, 0)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 1))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tong(4, 1), TurnNumber = 1 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(4, 0), action.TileId);
+    }
 }

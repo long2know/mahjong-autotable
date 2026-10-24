@@ -20,6 +20,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 {
     private const int SingleSmallWinDiscardTolerance = 2;
     private const int OffRankPairDiscardTolerance = 2;
+    private const int DangerousGenbutsuScoreTolerance = 1;
     private const int FullDangerousGenbutsuScoreTolerance = 2;
 
     private readonly record struct DiscardCandidate(int TileId, int Logical, int Score);
@@ -442,6 +443,19 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         var selectedTileId = best.TileId;
         if (state is not null
             && botSeatIndex >= 0
+            && TryPromoteSingleDangerousGenbutsuOnScoreTolerance(
+                logicalCounts,
+                scored,
+                selectedTileId,
+                state,
+                botSeatIndex,
+                out var dangerousSafetyTileId))
+        {
+            selectedTileId = dangerousSafetyTileId;
+        }
+
+        if (state is not null
+            && botSeatIndex >= 0
             && TryPromoteFullDangerousGenbutsuOnScoreTolerance(
                 scored,
                 selectedTileId,
@@ -641,11 +655,9 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             && !IsBridgeBetweenOffRankPairs(selected.Logical, logicalCounts))
             return false;
 
-        // Even when a 2/5/8 singleton is dead for improvement (all copies are
-        // already accounted for from our perspective), discarding that last copy
-        // can still deal in. Allow this path to swap to an off-rank pair when the
-        // pair is strictly safer against dangerous opponents.
-
+        // Dead singleton (all four copies visible) has no future value, but it may
+        // still be riskier than a dangerous-opponent genbutsu off-rank pair.
+        // Keep the singleton unless the pair is strictly safer.
         var opponentDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex, dangerousOpponents);
 
         var saferOffRankPair = scored
@@ -674,6 +686,54 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             return false;
 
         tileId = saferOffRankPair.Value.TileId;
+        return true;
+    }
+
+    private static bool TryPromoteSingleDangerousGenbutsuOnScoreTolerance(
+        Dictionary<int, int> logicalCounts,
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaGameState state,
+        int botSeatIndex,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count != 1)
+            return false;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        if (IsSmallWinRank(selected.Logical) && logicalCounts.GetValueOrDefault(selected.Logical, 0) == 1)
+            return false;
+
+        var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+        if (selectedSafety <= -1)
+            return false;
+
+        DiscardCandidate? dangerousGenbutsuCandidate = null;
+        foreach (var entry in scored
+                     .Where(entry => entry.TileId != selectedTileId)
+                     .OrderBy(entry => entry.Score)
+                     .ThenByDescending(entry => entry.TileId))
+        {
+            if (TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -1)
+            {
+                dangerousGenbutsuCandidate = entry;
+                break;
+            }
+        }
+
+        if (dangerousGenbutsuCandidate is null)
+            return false;
+
+        if (dangerousGenbutsuCandidate.Value.Score > selected.Score + DangerousGenbutsuScoreTolerance)
+            return false;
+
+        tileId = dangerousGenbutsuCandidate.Value.TileId;
         return true;
     }
 
