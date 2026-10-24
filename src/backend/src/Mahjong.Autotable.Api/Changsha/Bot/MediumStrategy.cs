@@ -600,13 +600,14 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         // draw left. Keep that discard instead of swapping to an off-rank pair
         // purely on dangerous-opponent safety bias.
         if (IsLogicalNearExhausted(selected.Logical, visibleLogicalCounts)
+            && !IsLogicalDead(selected.Logical, visibleLogicalCounts)
             && !IsBridgeBetweenOffRankPairs(selected.Logical, logicalCounts))
             return false;
 
-        // Dead singleton (all four copies visible) is universally safe and has no
-        // future value. Keep the singleton discard in that situation too.
-        if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
-            return false;
+        // Even when a 2/5/8 singleton is dead for improvement (all copies are
+        // already accounted for from our perspective), discarding that last copy
+        // can still deal in. Allow this path to swap to an off-rank pair when the
+        // pair is strictly safer against dangerous opponents.
 
         var opponentDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex, dangerousOpponents);
 
