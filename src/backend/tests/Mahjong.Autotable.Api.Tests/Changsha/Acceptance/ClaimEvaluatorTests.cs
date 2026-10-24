@@ -240,36 +240,18 @@ public class ClaimEvaluatorTests
     }
 
     /// <summary>
-    /// Among multiple shanten-dropping claims, the gate's tie-breaker prefers
-    /// the higher tier — Pung &gt; Chow per Bishop's
-    /// <c>ClaimAcceptanceRank</c> (Pung=2, Chow=1). Mirrors
-    /// <see cref="ChangshaClaimPriority.TierOf"/> ordering. Fixture is
-    /// crafted so both options are simultaneously legal AND both strictly
-    /// drop pre-claim shanten=2 to post-claim shanten=1, so the only
-    /// remaining decision is the tier rank.
+    /// Phase K Wave 25 precedence pin: when multiple claims can drop shanten,
+    /// Hard must still reject any option that worsens Changsha 2/5/8 eye
+    /// readiness before applying tier tie-breaks.
     ///
-    /// <para><b>Why Pung-vs-Chow and not Kong-vs-Pung:</b> the shanten
-    /// counter treats any 3-of-a-kind in the concealed list as a complete
-    /// pung group already. Promoting that pung to a declared Kong (which
-    /// requires 3 in concealed by definition) cannot strictly drop shanten
-    /// — the group is "moved" rather than gained. So Bishop's explicit
-    /// Kong-over-Pung lift in <c>ClaimAcceptanceRank</c> is reachable in
-    /// theory but not exercisable through realistic adjudicator output;
-    /// pinning the same tie-breaker mechanism via Pung-over-Chow proves
-    /// the rank-comparison logic without relying on an unrealisable
-    /// fixture.</para>
-    ///
-    /// <para><b>Fixture mechanics:</b> bot holds 3xTong-5, Tong-4, Tong-6
-    /// plus three ryanmen partials and a Tiao-7 pair. The discard is
-    /// Tong-5 (the fourth copy in the deck). Pung claim removes 2 Tong-5
-    /// (leaving 1 dangling that forms a Tong-4–5–6 chow with the
-    /// neighbours); Chow Tong-4–5–6 claim removes Tong-4 + Tong-6
-    /// (leaving the original 3-of-a-kind as a concealed pung group).
-    /// Both decompositions land at the same shanten (1), so Bishop's
-    /// rank tie-breaker decides — and it must pick Pung.</para>
+    /// <para>Fixture uses Tong-5 as the contested discard with both Pung and
+    /// Chow legal. Both routes improve shanten from 2 to 1, but Pung consumes
+    /// the only 2/5/8 pair in hand (Tong-5) and worsens small-win pair-distance,
+    /// while Chow preserves that pair-distance. The gate must therefore choose
+    /// Chow even though Pung is the higher claim tier.</para>
     /// </summary>
-    [Fact, Trait("Category", "Changsha"), Trait("Wave", "Phase-J-1")]
-    public void Hard_PrefersHigherPriorityTier_AmongShantenDroppingClaims()
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "Phase-K-W25")]
+    public void Hard_PrefersSmallWinPairGuardOverTier_WhenPungWorsensEyeReadiness()
     {
         var (hard, iface) = ResolveStrategy("hard");
 
@@ -311,6 +293,6 @@ public class ClaimEvaluatorTests
             seat: 1, discarderSeat: 0, discardedTileId: discardedTile);
 
         Assert.Equal(BotActionType.Claim, action.Type);
-        Assert.Equal(TableClaimType.Pung, action.ClaimType);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
     }
 }

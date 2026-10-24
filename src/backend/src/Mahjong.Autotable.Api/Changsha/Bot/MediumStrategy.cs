@@ -184,6 +184,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
 
         ChangshaClaimOpportunity? best = null;
+        int[]? bestClaimTileIds = null;
         var bestPostShanten = int.MaxValue;
         var bestPostSmallWinPairDistance = int.MaxValue;
         var bestClaimRank = int.MinValue;
@@ -196,12 +197,12 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             if (opp.ClaimType == TableClaimType.Chow && hand.Melds.Count >= 3)
                 continue;
 
-            var (postShanten, postSmallWinPairDistance) = opp.ClaimType switch
+            var (postShanten, postSmallWinPairDistance, claimTileIds) = opp.ClaimType switch
             {
                 TableClaimType.Kong => ProbeAfterExposedKongClaim(hand, discardLogical, discardTileId),
                 TableClaimType.Pung => ProbeAfterPungClaim(hand, discardLogical, discardTileId),
                 TableClaimType.Chow => ProbeAfterChowClaim(hand, discardLogical, discardTileId),
-                _ => (int.MaxValue, int.MaxValue)
+                _ => (int.MaxValue, int.MaxValue, null)
             };
 
             if (postShanten > preShanten)
@@ -222,12 +223,13 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 continue;
 
             best = opp;
+            bestClaimTileIds = claimTileIds;
             bestPostShanten = postShanten;
             bestPostSmallWinPairDistance = postSmallWinPairDistance;
             bestClaimRank = claimRank;
         }
 
-        return best is null ? BotAction.Pass() : BotAction.Claim(best.ClaimType);
+        return best is null ? BotAction.Pass() : BotAction.Claim(best.ClaimType, bestClaimTileIds);
     }
 
     private static int ClaimPreferenceRank(TableClaimType claimType) => claimType switch
@@ -239,31 +241,33 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         _ => 0
     };
 
-    private static (int Shanten, int SmallWinPairDistance) ProbeAfterPungClaim(
+    private static (int Shanten, int SmallWinPairDistance, int[]? ClaimTileIds) ProbeAfterPungClaim(
         ChangshaHandState hand,
         int discardLogical,
         int discardTileId)
     {
         var concealedAfter = new List<int>(hand.ConcealedTiles);
         if (!TryRemoveByLogical(concealedAfter, discardLogical, 2))
-            return (int.MaxValue, int.MaxValue);
+            return (int.MaxValue, int.MaxValue, null);
 
-        return ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Pung, discardTileId);
+        var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Pung, discardTileId);
+        return (probe.Shanten, probe.SmallWinPairDistance, null);
     }
 
-    private static (int Shanten, int SmallWinPairDistance) ProbeAfterExposedKongClaim(
+    private static (int Shanten, int SmallWinPairDistance, int[]? ClaimTileIds) ProbeAfterExposedKongClaim(
         ChangshaHandState hand,
         int discardLogical,
         int discardTileId)
     {
         var concealedAfter = new List<int>(hand.ConcealedTiles);
         if (!TryRemoveByLogical(concealedAfter, discardLogical, 3))
-            return (int.MaxValue, int.MaxValue);
+            return (int.MaxValue, int.MaxValue, null);
 
-        return ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, discardTileId);
+        var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, discardTileId);
+        return (probe.Shanten, probe.SmallWinPairDistance, null);
     }
 
-    private static (int Shanten, int SmallWinPairDistance) ProbeAfterChowClaim(
+    private static (int Shanten, int SmallWinPairDistance, int[]? ClaimTileIds) ProbeAfterChowClaim(
         ChangshaHandState hand,
         int discardLogical,
         int discardTileId)
@@ -274,11 +278,12 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (rank >= 1 && rank <= 7) patterns.Add((discardLogical - 1, discardLogical + 1));
         if (rank <= 6) patterns.Add((discardLogical + 1, discardLogical + 2));
 
-        var best = (Shanten: int.MaxValue, SmallWinPairDistance: int.MaxValue);
+        var best = (Shanten: int.MaxValue, SmallWinPairDistance: int.MaxValue, ClaimTileIds: (int[]?)null);
         foreach (var (a, b) in patterns)
         {
             var concealedAfter = new List<int>(hand.ConcealedTiles);
-            if (!TryRemoveByLogical(concealedAfter, a, 1) || !TryRemoveByLogical(concealedAfter, b, 1))
+            if (!TryTakeTileByLogical(concealedAfter, a, out var tileA)
+                || !TryTakeTileByLogical(concealedAfter, b, out var tileB))
                 continue;
 
             var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Chow, discardTileId);
@@ -287,7 +292,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     && probe.SmallWinPairDistance < best.SmallWinPairDistance);
 
             if (isBetter)
-                best = probe;
+                best = (probe.Shanten, probe.SmallWinPairDistance, new[] { tileA, tileB });
         }
 
         return best;
@@ -304,6 +309,19 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             tiles.RemoveAt(idx);
         }
 
+        return true;
+    }
+
+    private static bool TryTakeTileByLogical(List<int> tiles, int logical, out int tileId)
+    {
+        tileId = -1;
+
+        var idx = tiles.FindIndex(t => ChangshaDeckBuilder.GetLogicalTile(t) == logical);
+        if (idx < 0)
+            return false;
+
+        tileId = tiles[idx];
+        tiles.RemoveAt(idx);
         return true;
     }
 

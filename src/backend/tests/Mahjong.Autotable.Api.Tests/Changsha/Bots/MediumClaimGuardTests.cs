@@ -185,6 +185,18 @@ public class MediumClaimGuardTests
 
         Assert.Equal(BotActionType.Claim, action.Type);
         Assert.Equal(TableClaimType.Chow, action.ClaimType);
+        Assert.NotNull(action.ClaimTileIds);
+        Assert.Equal(2, action.ClaimTileIds!.Length);
+        Assert.Equal(
+            new[]
+            {
+                ChangshaDeckBuilder.GetLogicalTile(Tong(7, 0)),
+                ChangshaDeckBuilder.GetLogicalTile(Tong(8, 0))
+            },
+            action.ClaimTileIds
+                .Select(ChangshaDeckBuilder.GetLogicalTile)
+                .OrderBy(logical => logical)
+                .ToArray());
     }
 
     private static ChangshaGameState BuildSingleClaimState(
