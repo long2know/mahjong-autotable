@@ -3704,7 +3704,7 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
-    public void Bot_PrioritizesPungOverChow_WhenBothAvailable_OnMedium()
+    public void Bot_PrefersChowOverPung_WhenPungWouldWorsenSmallWinPairDistance_OnMedium()
     {
         var state = BuildClaimWindowState(
             new (int Seat, TableClaimType Type)[]
@@ -3713,13 +3713,14 @@ public class BotStrategyTests
                 (1, TableClaimType.Pung)
             });
 
-        // Seat 1 has fewer than 3 melds so Medium would accept Chow if no Pung; but
-        // Pung is offered too — Pung must win.
+        // Seat 1 has fewer than 3 melds so both Chow and Pung are claimable. In this
+        // fixture, claiming Pung on the discarded 5 would worsen the hand's 2/5/8-eye
+        // readiness, while Chow preserves it — Medium should prefer Chow.
         var strategy = ChangshaBotEngine.Resolve("medium");
         var action = strategy.DecideAction(state, botSeatIndex: 1);
 
         Assert.Equal(BotActionType.Claim, action.Type);
-        Assert.Equal(TableClaimType.Pung, action.ClaimType);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
     }
 
     // ──────────────────────────────────────────────────────────────────

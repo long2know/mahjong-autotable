@@ -8,7 +8,7 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 /// legacy <see cref="ChangshaBotPolicy"/>. Scores each candidate discard by how much
 /// it contributes to potential pairs, sequences, and the 2/5/8 bias common in
 /// Changsha rule sets. Claim selection keeps Medium's greedy Hu/Kong/Pung/Chow
-/// ordering, but now refuses a lone non-Hu claim when it worsens Changsha small-win
+/// ordering, but now refuses any non-Hu claim that worsens Changsha small-win
 /// (2/5/8) eye readiness.
 /// </summary>
 /// <remarks>
@@ -179,7 +179,6 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             return BotAction.Pass();
 
         var preSmallWinPairDistance = ComputeSmallWinPairDistance(hand.ConcealedTiles);
-        var enforceSmallWinPairGuard = opportunities.Count(o => o.ClaimType != TableClaimType.Hu) == 1;
         var discardTileId = claimWindow.DiscardTileId;
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
 
@@ -199,7 +198,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 _ => (int.MaxValue, int.MaxValue)
             };
 
-            if (enforceSmallWinPairGuard && postSmallWinPairDistance > preSmallWinPairDistance)
+            if (postSmallWinPairDistance > preSmallWinPairDistance)
                 continue;
 
             return BotAction.Claim(opp.ClaimType);
