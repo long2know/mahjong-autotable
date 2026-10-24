@@ -28,7 +28,7 @@ public class HardClaimSmallWinPairGuardTests
             }
         };
 
-        var state = BuildChowOnlyClaimState(hand, discardTileId: Wan(3, 1));
+        var state = BuildSingleClaimState(hand, discardTileId: Wan(3, 1), claimType: TableClaimType.Chow);
 
         var action = new HardStrategy().DecideAction(state, botSeatIndex: 1);
 
@@ -51,7 +51,7 @@ public class HardClaimSmallWinPairGuardTests
             }
         };
 
-        var state = BuildChowOnlyClaimState(hand, discardTileId: Wan(3, 1));
+        var state = BuildSingleClaimState(hand, discardTileId: Wan(3, 1), claimType: TableClaimType.Chow);
 
         var action = new HardStrategy().DecideAction(state, botSeatIndex: 1);
 
@@ -59,7 +59,74 @@ public class HardClaimSmallWinPairGuardTests
         Assert.Equal(TableClaimType.Chow, action.ClaimType);
     }
 
-    private static ChangshaGameState BuildChowOnlyClaimState(ChangshaHandState hand, int discardTileId)
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W25")]
+    public void Hard_PassesPung_WhenClaimWorsensSmallWinPairDistance()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(6, 0), Wan(8, 0),
+                Tong(2, 0), Tong(3, 0), Tong(9, 0), Tong(9, 1),
+                Tiao(3, 0), Tiao(4, 0), Tiao(5, 0), Tiao(5, 1), Tiao(5, 2), Tiao(8, 0), Tiao(9, 0)
+            }
+        };
+
+        var state = BuildSingleClaimState(hand, discardTileId: Tiao(5, 3), claimType: TableClaimType.Pung);
+
+        var action = new HardStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W25")]
+    public void Hard_StillClaimsPung_WhenClaimKeepsSmallWinPairDistance()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(6, 0), Wan(8, 0),
+                Tong(2, 0), Tong(3, 0), Tong(9, 0), Tong(9, 1),
+                Tiao(3, 0), Tiao(4, 0), Tiao(5, 0), Tiao(5, 1), Tiao(5, 2), Tiao(8, 0), Tiao(9, 0)
+            }
+        };
+
+        var state = BuildSingleClaimState(hand, discardTileId: Tong(9, 3), claimType: TableClaimType.Pung);
+
+        var action = new HardStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Pung, action.ClaimType);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W25")]
+    public void Master_DelegatesPungGuard_AndPassesWhenClaimWorsensSmallWinPairDistance()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(6, 0), Wan(8, 0),
+                Tong(2, 0), Tong(3, 0), Tong(9, 0), Tong(9, 1),
+                Tiao(3, 0), Tiao(4, 0), Tiao(5, 0), Tiao(5, 1), Tiao(5, 2), Tiao(8, 0), Tiao(9, 0)
+            }
+        };
+
+        var state = BuildSingleClaimState(hand, discardTileId: Tiao(5, 3), claimType: TableClaimType.Pung);
+
+        var action = ChangshaBotEngine.Resolve("master").DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
+    private static ChangshaGameState BuildSingleClaimState(
+        ChangshaHandState hand,
+        int discardTileId,
+        TableClaimType claimType)
     {
         return new ChangshaGameState
         {
@@ -81,8 +148,8 @@ public class HardClaimSmallWinPairGuardTests
                     new()
                     {
                         SeatIndex = 1,
-                        ClaimType = TableClaimType.Chow,
-                        Priority = ChangshaClaimPriority.TierOf(TableClaimType.Chow)
+                        ClaimType = claimType,
+                        Priority = ChangshaClaimPriority.TierOf(claimType)
                     }
                 }
             }
