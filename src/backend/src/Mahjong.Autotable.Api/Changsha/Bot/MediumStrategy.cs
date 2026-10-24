@@ -7,8 +7,9 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 /// Phase F "Medium" difficulty strategy — a direct port of the heuristics from the
 /// legacy <see cref="ChangshaBotPolicy"/>. Scores each candidate discard by how much
 /// it contributes to potential pairs, sequences, and the 2/5/8 bias common in
-/// Changsha rule sets, and claims Hu/Kong/Pung greedily plus Chow when the hand has
-/// fewer than 3 melds.
+/// Changsha rule sets. Claim selection keeps Medium's greedy Hu/Kong/Pung/Chow
+/// ordering, but now refuses a lone non-Hu claim when it worsens Changsha small-win
+/// (2/5/8) eye readiness.
 /// </summary>
 /// <remarks>
 /// This is the default difficulty when none is specified. The legacy
@@ -177,22 +178,141 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (opportunities.Count == 0)
             return BotAction.Pass();
 
+        var preSmallWinPairDistance = ComputeSmallWinPairDistance(hand.ConcealedTiles);
+        var enforceSmallWinPairGuard = opportunities.Count(o => o.ClaimType != TableClaimType.Hu) == 1;
+        var discardTileId = claimWindow.DiscardTileId;
+        var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
+
         foreach (var opp in opportunities)
         {
             if (opp.ClaimType == TableClaimType.Hu)
                 return BotAction.Claim(TableClaimType.Hu);
 
-            if (opp.ClaimType == TableClaimType.Kong)
-                return BotAction.Claim(TableClaimType.Kong);
+            if (opp.ClaimType == TableClaimType.Chow && hand.Melds.Count >= 3)
+                continue;
 
-            if (opp.ClaimType == TableClaimType.Pung)
-                return BotAction.Claim(TableClaimType.Pung);
+            var (_, postSmallWinPairDistance) = opp.ClaimType switch
+            {
+                TableClaimType.Kong => ProbeAfterExposedKongClaim(hand, discardLogical, discardTileId),
+                TableClaimType.Pung => ProbeAfterPungClaim(hand, discardLogical, discardTileId),
+                TableClaimType.Chow => ProbeAfterChowClaim(hand, discardLogical, discardTileId),
+                _ => (int.MaxValue, int.MaxValue)
+            };
 
-            if (opp.ClaimType == TableClaimType.Chow && hand.Melds.Count < 3)
-                return BotAction.Claim(TableClaimType.Chow);
+            if (enforceSmallWinPairGuard && postSmallWinPairDistance > preSmallWinPairDistance)
+                continue;
+
+            return BotAction.Claim(opp.ClaimType);
         }
 
         return BotAction.Pass();
+    }
+
+    private static (int Shanten, int SmallWinPairDistance) ProbeAfterPungClaim(
+        ChangshaHandState hand,
+        int discardLogical,
+        int discardTileId)
+    {
+        var concealedAfter = new List<int>(hand.ConcealedTiles);
+        if (!TryRemoveByLogical(concealedAfter, discardLogical, 2))
+            return (int.MaxValue, int.MaxValue);
+
+        return ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Pung, discardTileId);
+    }
+
+    private static (int Shanten, int SmallWinPairDistance) ProbeAfterExposedKongClaim(
+        ChangshaHandState hand,
+        int discardLogical,
+        int discardTileId)
+    {
+        var concealedAfter = new List<int>(hand.ConcealedTiles);
+        if (!TryRemoveByLogical(concealedAfter, discardLogical, 3))
+            return (int.MaxValue, int.MaxValue);
+
+        return ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, discardTileId);
+    }
+
+    private static (int Shanten, int SmallWinPairDistance) ProbeAfterChowClaim(
+        ChangshaHandState hand,
+        int discardLogical,
+        int discardTileId)
+    {
+        var rank = discardLogical % 9;
+        var patterns = new List<(int A, int B)>();
+        if (rank >= 2) patterns.Add((discardLogical - 2, discardLogical - 1));
+        if (rank >= 1 && rank <= 7) patterns.Add((discardLogical - 1, discardLogical + 1));
+        if (rank <= 6) patterns.Add((discardLogical + 1, discardLogical + 2));
+
+        foreach (var (a, b) in patterns)
+        {
+            var concealedAfter = new List<int>(hand.ConcealedTiles);
+            if (TryRemoveByLogical(concealedAfter, a, 1) && TryRemoveByLogical(concealedAfter, b, 1))
+                return ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Chow, discardTileId);
+        }
+
+        return (int.MaxValue, int.MaxValue);
+    }
+
+    private static bool TryRemoveByLogical(List<int> tiles, int logical, int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            var idx = tiles.FindIndex(t => ChangshaDeckBuilder.GetLogicalTile(t) == logical);
+            if (idx < 0)
+                return false;
+
+            tiles.RemoveAt(idx);
+        }
+
+        return true;
+    }
+
+    private static (int Shanten, int SmallWinPairDistance) ProbeClaimOutcomeWithExtraMeld(
+        ChangshaHandState hand,
+        List<int> concealedAfter,
+        MeldKind kind,
+        int discardTileId)
+    {
+        var simulatedMelds = new List<Meld>(hand.Melds.Count + 1);
+        simulatedMelds.AddRange(hand.Melds);
+        simulatedMelds.Add(new Meld
+        {
+            Kind = kind,
+            TileIds = new List<int> { discardTileId }
+        });
+
+        var probe = new ChangshaHandState
+        {
+            SeatIndex = hand.SeatIndex,
+            ConcealedTiles = concealedAfter,
+            Melds = simulatedMelds
+        };
+
+        return (
+            HandEvaluator.MinShantenToHu(probe, Array.Empty<int>()),
+            ComputeSmallWinPairDistance(concealedAfter));
+    }
+
+    private static int ComputeSmallWinPairDistance(IReadOnlyList<int> concealedTileIds)
+    {
+        var counts = concealedTileIds
+            .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var hasSingleton = false;
+        foreach (var (logical, count) in counts)
+        {
+            if (!IsSmallWinRank(logical))
+                continue;
+
+            if (count >= 2)
+                return 0;
+
+            if (count == 1)
+                hasSingleton = true;
+        }
+
+        return hasSingleton ? 1 : 2;
     }
 
     /// <summary>Public so the legacy <see cref="ChangshaBotPolicy.SelectDiscardTile"/>
