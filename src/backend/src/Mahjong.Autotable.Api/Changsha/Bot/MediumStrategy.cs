@@ -329,7 +329,30 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 var bestIsOffRankPair = logicalCounts.GetValueOrDefault(best.Logical, 0) > 1
                     && !IsSmallWinRank(best.Logical);
                 if (bestIsOffRankPair && smallWinSingleton.Value.Score <= best.Score + OffRankPairDiscardTolerance)
+                {
+                    if (state is not null
+                        && botSeatIndex >= 0
+                        && dangerousOpponents is not null
+                        && dangerousOpponents.Count > 0
+                        && safetyDiscardLogicals is not null)
+                    {
+                        var bestOpponentSafety = OpponentSafetyTieBreaker(best.TileId, safetyDiscardLogicals);
+                        var singletonOpponentSafety = OpponentSafetyTieBreaker(smallWinSingleton.Value.TileId, safetyDiscardLogicals);
+
+                        if (singletonOpponentSafety > bestOpponentSafety)
+                            return (best.TileId, false);
+
+                        if (singletonOpponentSafety == bestOpponentSafety)
+                        {
+                            var bestTenpaiSafety = TenpaiDetector.SafetyBias(best.TileId, state, botSeatIndex);
+                            var singletonTenpaiSafety = TenpaiDetector.SafetyBias(smallWinSingleton.Value.TileId, state, botSeatIndex);
+                            if (singletonTenpaiSafety > bestTenpaiSafety)
+                                return (best.TileId, false);
+                        }
+                    }
+
                     return (smallWinSingleton.Value.TileId, true);
+                }
 
                 // If the only 2/5/8 is isolated and off-rank pairs exist, never
                 // invoke the fallback that preserves the singleton; keep the pair.
