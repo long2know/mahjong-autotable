@@ -269,16 +269,14 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
             if (deadSmallWinSingleton is not null)
             {
-                if (TrySelectTenpaiSafeOffRankPair(
-                        logicalCounts,
+                if (TryPromoteFullDangerousGenbutsuOnScoreTolerance(
                         scored,
                         deadSmallWinSingleton.Value.TileId,
                         state,
                         botSeatIndex,
-                        visibleLogicalCounts,
-                        out var tenpaiSafePairTileId))
+                        out var promotedFullSafetyTileId))
                 {
-                    return (tenpaiSafePairTileId, false);
+                    return (promotedFullSafetyTileId, false);
                 }
 
                 // Prefer dead-singleton shedding by default, but do not force it when
@@ -299,17 +297,24 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                         var singletonTenpaiSafety = TenpaiDetector.SafetyBias(deadSmallWinSingleton.Value.TileId, state, botSeatIndex);
                         if (singletonTenpaiSafety > bestTenpaiSafety)
                             return (best.TileId, false);
+
+                        if (singletonTenpaiSafety == bestTenpaiSafety
+                            && bestTenpaiSafety <= -2
+                            && best.Score < deadSmallWinSingleton.Value.Score)
+                            return (best.TileId, false);
                     }
                 }
 
-                if (TryPromoteFullDangerousGenbutsuOnScoreTolerance(
+                if (TrySelectTenpaiSafeOffRankPair(
+                        logicalCounts,
                         scored,
                         deadSmallWinSingleton.Value.TileId,
                         state,
                         botSeatIndex,
-                        out var promotedFullSafetyTileId))
+                        visibleLogicalCounts,
+                        out var tenpaiSafePairTileId))
                 {
-                    return (promotedFullSafetyTileId, false);
+                    return (tenpaiSafePairTileId, false);
                 }
 
                 return (deadSmallWinSingleton.Value.TileId, true);

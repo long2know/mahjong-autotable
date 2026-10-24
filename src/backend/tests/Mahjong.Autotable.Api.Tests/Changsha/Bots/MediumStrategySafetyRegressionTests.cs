@@ -180,4 +180,70 @@ public class MediumStrategySafetyRegressionTests
         Assert.Equal(BotActionType.Discard, action.Type);
         Assert.Equal(Tong(4, 0), action.TileId);
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_PrefersFullDangerousGenbutsu_OverPartialSafeOffRankPair_WhenDeadSmallWinSingletonExists()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tiao(2, 0), // dead 2/5/8 singleton
+                Wan(4, 0), Wan(4, 1), // off-rank pair (safe vs one dangerous opponent only)
+                Tong(9, 0) // full dangerous-opponent genbutsu singleton
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(5, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(8, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                // dead 2 singleton (all four copies visible)
+                new() { SeatIndex = 1, TileId = Tiao(2, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tiao(2, 2), TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = Tiao(2, 3), TurnNumber = 3 },
+
+                // partial-safe off-rank pair candidate (seat 1 only)
+                new() { SeatIndex = 1, TileId = Wan(4, 2), TurnNumber = 4 },
+
+                // full dangerous-opponent genbutsu candidate (both seat 1 and 2)
+                new() { SeatIndex = 1, TileId = Tong(9, 1), TurnNumber = 5 },
+                new() { SeatIndex = 2, TileId = Tong(9, 2), TurnNumber = 6 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(9, 0), action.TileId);
+    }
 }
