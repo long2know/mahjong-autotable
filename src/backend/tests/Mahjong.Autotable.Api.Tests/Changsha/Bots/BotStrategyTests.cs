@@ -953,6 +953,146 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Hard_PrefersFullDangerousGenbutsu_WhenScoreGapIsThree_OnShantenTie()
+    {
+        var hand = Hand(
+            Wan(2, 2), Wan(3, 1), Wan(3, 3), Wan(4, 2), Wan(8, 2),
+            Tong(1, 2), Tong(5, 3), Tong(6, 0), Tong(9, 3),
+            Tiao(2, 0), Tiao(2, 1), Tiao(6, 0), Tiao(6, 1), Tiao(7, 3)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(4, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(5, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(6, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tong(2, 2), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Wan(2, 2), TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = Tiao(5, 3), TurnNumber = 3 },
+                new() { SeatIndex = 1, TileId = Tiao(3, 3), TurnNumber = 4 },
+                new() { SeatIndex = 2, TileId = Tiao(9, 0), TurnNumber = 5 },
+                new() { SeatIndex = 3, TileId = Tiao(8, 3), TurnNumber = 6 },
+                new() { SeatIndex = 1, TileId = Tiao(3, 3), TurnNumber = 7 },
+                new() { SeatIndex = 2, TileId = Tiao(4, 2), TurnNumber = 8 },
+                new() { SeatIndex = 3, TileId = Tong(7, 1), TurnNumber = 9 },
+                new() { SeatIndex = 1, TileId = Tiao(7, 3), TurnNumber = 10 },
+                new() { SeatIndex = 2, TileId = Tong(4, 1), TurnNumber = 11 },
+                new() { SeatIndex = 3, TileId = Tong(4, 2), TurnNumber = 12 },
+                new() { SeatIndex = 1, TileId = Wan(7, 3), TurnNumber = 13 },
+                new() { SeatIndex = 2, TileId = Tong(6, 1), TurnNumber = 14 },
+                new() { SeatIndex = 3, TileId = Tong(3, 0), TurnNumber = 15 },
+                new() { SeatIndex = 1, TileId = Tong(9, 2), TurnNumber = 16 },
+                new() { SeatIndex = 2, TileId = Wan(4, 2), TurnNumber = 17 },
+                new() { SeatIndex = 3, TileId = Tong(9, 2), TurnNumber = 18 },
+                new() { SeatIndex = 1, TileId = Wan(3, 1), TurnNumber = 19 },
+                new() { SeatIndex = 2, TileId = Tiao(7, 1), TurnNumber = 20 }
+            }
+        };
+
+        var hard = new HardStrategy();
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(7, 3), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Master_PrefersFullDangerousGenbutsu_WhenScoreGapIsThree_OnShantenTie()
+    {
+        var hand = Hand(
+            Wan(2, 2), Wan(3, 1), Wan(3, 3), Wan(4, 2), Wan(8, 2),
+            Tong(1, 2), Tong(5, 3), Tong(6, 0), Tong(9, 3),
+            Tiao(2, 0), Tiao(2, 1), Tiao(6, 0), Tiao(6, 1), Tiao(7, 3)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(4, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(5, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(6, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tong(2, 2), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Wan(2, 2), TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = Tiao(5, 3), TurnNumber = 3 },
+                new() { SeatIndex = 1, TileId = Tiao(3, 3), TurnNumber = 4 },
+                new() { SeatIndex = 2, TileId = Tiao(9, 0), TurnNumber = 5 },
+                new() { SeatIndex = 3, TileId = Tiao(8, 3), TurnNumber = 6 },
+                new() { SeatIndex = 1, TileId = Tiao(3, 3), TurnNumber = 7 },
+                new() { SeatIndex = 2, TileId = Tiao(4, 2), TurnNumber = 8 },
+                new() { SeatIndex = 3, TileId = Tong(7, 1), TurnNumber = 9 },
+                new() { SeatIndex = 1, TileId = Tiao(7, 3), TurnNumber = 10 },
+                new() { SeatIndex = 2, TileId = Tong(4, 1), TurnNumber = 11 },
+                new() { SeatIndex = 3, TileId = Tong(4, 2), TurnNumber = 12 },
+                new() { SeatIndex = 1, TileId = Wan(7, 3), TurnNumber = 13 },
+                new() { SeatIndex = 2, TileId = Tong(6, 1), TurnNumber = 14 },
+                new() { SeatIndex = 3, TileId = Tong(3, 0), TurnNumber = 15 },
+                new() { SeatIndex = 1, TileId = Tong(9, 2), TurnNumber = 16 },
+                new() { SeatIndex = 2, TileId = Wan(4, 2), TurnNumber = 17 },
+                new() { SeatIndex = 3, TileId = Tong(9, 2), TurnNumber = 18 },
+                new() { SeatIndex = 1, TileId = Wan(3, 1), TurnNumber = 19 },
+                new() { SeatIndex = 2, TileId = Tiao(7, 1), TurnNumber = 20 }
+            }
+        };
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(7, 3), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Hard_PrefersFullDangerousGenbutsu_OverPartialSmallWinSingleton_OnShantenTie()
     {
         var hand = Hand(

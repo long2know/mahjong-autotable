@@ -45,7 +45,10 @@ public sealed class MasterStrategy : IChangshaBotStrategy
     private const int OffRankPairShantenTolerance = 2;
     private const int OffRankPairScoreTolerance = 2;
     private const int ConnectedSmallWinBridgeShantenTolerance = 1;
-    private const int FullDangerousGenbutsuScoreTolerance = 2;
+    // Allow a slightly wider score gap when upgrading from partial to full
+    // dangerous-opponent genbutsu on the same shanten tier. Full coverage
+    // materially reduces deal-in risk and is worth a small shape concession.
+    private const int FullDangerousGenbutsuScoreTolerance = 3;
 
     /// <summary>The lowercase difficulty discriminator used by
     /// <see cref="ChangshaBotEngine.Resolve"/>.</summary>

@@ -63,7 +63,10 @@ public sealed class HardStrategy : IChangshaBotStrategy
     private const int OffRankPairShantenTolerance = 2;
     private const int OffRankPairScoreTolerance = 2;
     private const int ConnectedSmallWinBridgeShantenTolerance = 1;
-    private const int FullDangerousGenbutsuScoreTolerance = 2;
+    // Allow a slightly wider score gap when upgrading from partial to full
+    // dangerous-opponent genbutsu on the same shanten tier. Full coverage
+    // materially reduces deal-in risk and is worth a small shape concession.
+    private const int FullDangerousGenbutsuScoreTolerance = 3;
 
     private readonly record struct DiscardCandidate(int TileId, int Logical, int Shanten, int Score);
     public string Difficulty => "hard";
