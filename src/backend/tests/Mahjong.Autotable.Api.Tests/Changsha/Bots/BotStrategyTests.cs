@@ -566,6 +566,56 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Hard_PrefersDangerousOpponentGenbutsu_WhenDeadSingletonSafetyConflictsWithKeepScore()
+    {
+        var hand = Hand(
+            Tiao(2, 0),
+            Tong(5, 0),
+            Tong(4, 0),
+            Tong(3, 0),
+            Tong(7, 0),
+            Wan(1, 0)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(9, 1))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(8, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tong(5, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tong(5, 2), TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = Tong(5, 3), TurnNumber = 3 },
+                new() { SeatIndex = 2, TileId = Tiao(2, 1), TurnNumber = 4 },
+                new() { SeatIndex = 3, TileId = Tiao(2, 2), TurnNumber = 5 },
+                new() { SeatIndex = 2, TileId = Tiao(2, 3), TurnNumber = 6 }
+            }
+        };
+
+        var hard = new HardStrategy();
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(5, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Hard_PrefersDangerousOpponentGenbutsu_WhenChoosingBetweenDeadSmallWinSingletons_WithShapeTie()
     {
         var hand = Hand(
@@ -609,6 +659,56 @@ public class BotStrategyTests
 
         var hard = new HardStrategy();
         var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(5, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Master_PrefersDangerousOpponentGenbutsu_WhenDeadSingletonSafetyConflictsWithKeepScore()
+    {
+        var hand = Hand(
+            Tiao(2, 0),
+            Tong(5, 0),
+            Tong(4, 0),
+            Tong(3, 0),
+            Tong(7, 0),
+            Wan(1, 0)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(9, 1))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(8, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tong(5, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tong(5, 2), TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = Tong(5, 3), TurnNumber = 3 },
+                new() { SeatIndex = 2, TileId = Tiao(2, 1), TurnNumber = 4 },
+                new() { SeatIndex = 3, TileId = Tiao(2, 2), TurnNumber = 5 },
+                new() { SeatIndex = 2, TileId = Tiao(2, 3), TurnNumber = 6 }
+            }
+        };
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
 
         Assert.Equal(BotActionType.Discard, action.Type);
         Assert.Equal(Tong(5, 0), action.TileId);
