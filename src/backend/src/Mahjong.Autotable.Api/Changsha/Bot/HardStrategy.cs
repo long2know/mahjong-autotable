@@ -878,6 +878,12 @@ public sealed class HardStrategy : IChangshaBotStrategy
         if (candidateTenpaiSafety > selectedTenpaiSafety)
             return false;
 
+        if (candidateOpponentSafety == selectedOpponentSafety
+            && candidateTenpaiSafety == selectedTenpaiSafety
+            && selectedTenpaiSafety <= -2
+            && candidate.Score > selected.Score)
+            return false;
+
         if (candidate.Score > selected.Score + FullDangerousGenbutsuScoreTolerance)
             return false;
 
