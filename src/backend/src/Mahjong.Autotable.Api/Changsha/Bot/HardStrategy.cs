@@ -479,6 +479,19 @@ public sealed class HardStrategy : IChangshaBotStrategy
             selectedTileId = fullSafetyTileId;
         }
 
+        if (TryPromoteDeadSmallWinSingletonDiscard(
+                logicalCounts,
+                visibleLogicalCounts,
+                scored,
+                selectedTileId,
+                state,
+                botSeatIndex,
+                discardedLogicals,
+                out var deadSmallWinTileId))
+        {
+            selectedTileId = deadSmallWinTileId;
+        }
+
         return selectedTileId;
     }
 
@@ -767,6 +780,60 @@ public sealed class HardStrategy : IChangshaBotStrategy
             return false;
 
         tileId = fullSafetyCandidate.Value.TileId;
+        return true;
+    }
+
+    private static bool TryPromoteDeadSmallWinSingletonDiscard(
+        Dictionary<int, int> logicalCounts,
+        Dictionary<int, int> visibleLogicalCounts,
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaGameState state,
+        int botSeatIndex,
+        HashSet<int> opponentDiscardLogicals,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        var deadSmallWinSingleton = scored
+            .Where(entry =>
+                entry.TileId != selectedTileId
+                && IsSmallWinRank(entry.Logical)
+                && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                && IsLogicalDead(entry.Logical, visibleLogicalCounts))
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
+            .ThenBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
+            .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
+
+        if (deadSmallWinSingleton is null)
+            return false;
+
+        var candidate = deadSmallWinSingleton.Value;
+        if (candidate.Shanten > selected.Shanten)
+            return false;
+
+        var selectedOpponentSafety = OpponentSafetyTieBreaker(selected.TileId, opponentDiscardLogicals);
+        var candidateOpponentSafety = OpponentSafetyTieBreaker(candidate.TileId, opponentDiscardLogicals);
+        if (candidateOpponentSafety > selectedOpponentSafety)
+            return false;
+
+        var selectedTenpaiSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+        var candidateTenpaiSafety = TenpaiDetector.SafetyBias(candidate.TileId, state, botSeatIndex);
+        if (candidateTenpaiSafety > selectedTenpaiSafety)
+            return false;
+
+        if (candidate.Score > selected.Score + FullDangerousGenbutsuScoreTolerance)
+            return false;
+
+        tileId = candidate.TileId;
         return true;
     }
 
