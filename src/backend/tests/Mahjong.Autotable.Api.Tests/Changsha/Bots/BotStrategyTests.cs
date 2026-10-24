@@ -1078,6 +1078,60 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Hard_KeepsNearDeadSmallWinSingletonDiscard_WhenAlternativeIsFullDangerousGenbutsu()
+    {
+        var hand = Hand(
+            Tiao(2, 0),
+            Wan(7, 0), Wan(7, 1),
+            Tong(4, 0), Tong(4, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(5, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(8, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(7, 2), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Wan(7, 3), TurnNumber = 2 },
+                new() { SeatIndex = 1, TileId = Tiao(2, 1), TurnNumber = 3 },
+                new() { SeatIndex = 3, TileId = Tiao(2, 2), TurnNumber = 4 }
+            }
+        };
+
+        var hard = new HardStrategy();
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Master_DiscardsDeadSmallWinSingleton_WhenNoPairPathRemains()
     {
         var hand = Hand(
@@ -1192,6 +1246,60 @@ public class BotStrategyTests
                 new() { SeatIndex = 1, TileId = Wan(7, 2), TurnNumber = 1 },
                 new() { SeatIndex = 2, TileId = Tiao(2, 1), TurnNumber = 2 },
                 new() { SeatIndex = 3, TileId = Tiao(2, 2), TurnNumber = 3 }
+            }
+        };
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Master_KeepsNearDeadSmallWinSingletonDiscard_WhenAlternativeIsFullDangerousGenbutsu()
+    {
+        var hand = Hand(
+            Tiao(2, 0),
+            Wan(7, 0), Wan(7, 1),
+            Tong(4, 0), Tong(4, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(5, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(8, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(7, 2), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Wan(7, 3), TurnNumber = 2 },
+                new() { SeatIndex = 1, TileId = Tiao(2, 1), TurnNumber = 3 },
+                new() { SeatIndex = 3, TileId = Tiao(2, 2), TurnNumber = 4 }
             }
         };
 
