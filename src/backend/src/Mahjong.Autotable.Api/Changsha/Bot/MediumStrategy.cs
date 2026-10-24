@@ -183,6 +183,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         var discardTileId = claimWindow.DiscardTileId;
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
 
+        ChangshaClaimOpportunity? best = null;
+        var bestPostShanten = int.MaxValue;
+        var bestPostSmallWinPairDistance = int.MaxValue;
+        var bestClaimRank = int.MinValue;
+
         foreach (var opp in opportunities)
         {
             if (opp.ClaimType == TableClaimType.Hu)
@@ -205,11 +210,34 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             if (postSmallWinPairDistance > preSmallWinPairDistance)
                 continue;
 
-            return BotAction.Claim(opp.ClaimType);
+            var claimRank = ClaimPreferenceRank(opp.ClaimType);
+            var isBetter = best is null
+                || postShanten < bestPostShanten
+                || (postShanten == bestPostShanten && postSmallWinPairDistance < bestPostSmallWinPairDistance)
+                || (postShanten == bestPostShanten
+                    && postSmallWinPairDistance == bestPostSmallWinPairDistance
+                    && claimRank > bestClaimRank);
+
+            if (!isBetter)
+                continue;
+
+            best = opp;
+            bestPostShanten = postShanten;
+            bestPostSmallWinPairDistance = postSmallWinPairDistance;
+            bestClaimRank = claimRank;
         }
 
-        return BotAction.Pass();
+        return best is null ? BotAction.Pass() : BotAction.Claim(best.ClaimType);
     }
+
+    private static int ClaimPreferenceRank(TableClaimType claimType) => claimType switch
+    {
+        TableClaimType.Hu => 4,
+        TableClaimType.Kong => 3,
+        TableClaimType.Pung => 2,
+        TableClaimType.Chow => 1,
+        _ => 0
+    };
 
     private static (int Shanten, int SmallWinPairDistance) ProbeAfterPungClaim(
         ChangshaHandState hand,
