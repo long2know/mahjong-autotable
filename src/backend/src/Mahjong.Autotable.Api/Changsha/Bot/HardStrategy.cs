@@ -252,16 +252,19 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
         ChangshaClaimOpportunity? best = null;
         int[]? bestClaimTileIds = null;
-        var bestRank = -1;
+        var bestPostShanten = int.MaxValue;
+        var bestPostSmallWinPairDistance = int.MaxValue;
+        var bestLiveWinningOuts = int.MinValue;
+        var bestRank = int.MinValue;
 
         foreach (var opp in opportunities)
         {
-            var (postShanten, postSmallWinPairDistance, claimTileIds) = opp.ClaimType switch
+            var (postShanten, postSmallWinPairDistance, postLiveWinningOuts, claimTileIds) = opp.ClaimType switch
             {
                 TableClaimType.Kong => ProbeAfterExposedKongClaim(hand, discardLogical, discardTileId),
                 TableClaimType.Pung => ProbeAfterPungClaim(hand, discardLogical, discardTileId),
                 TableClaimType.Chow => ProbeAfterChowClaim(hand, discardLogical, discardTileId),
-                _ => (int.MaxValue, int.MaxValue, null)
+                _ => (int.MaxValue, int.MaxValue, int.MinValue, null)
             };
 
             if (postShanten >= preShanten)
@@ -271,16 +274,32 @@ public sealed class HardStrategy : IChangshaBotStrategy
                 && postSmallWinPairDistance > preSmallWinPairDistance)
                 continue;
 
-            // Tie-breaker: Hu > Kong > Pung > Chow. Hu was handled above; among the
-            // remaining tiers Kong and Pung share TierOf == 2, so we lift Kong above
-            // Pung explicitly via ClaimAcceptanceRank.
+            // Phase K Wave 26.1: among claims that pass the strict-drop + small-win
+            // gate, prefer stronger structural outcomes first: lower post-claim
+            // shanten, then tighter 2/5/8-eye readiness, then higher immediate live
+            // winning outs. Claim tier (Hu>Kong>Pung>Chow) remains the final tie-break.
             var rank = ClaimAcceptanceRank(opp.ClaimType);
-            if (rank > bestRank)
-            {
-                best = opp;
-                bestClaimTileIds = claimTileIds;
-                bestRank = rank;
-            }
+            var isBetter = best is null
+                || postShanten < bestPostShanten
+                || (postShanten == bestPostShanten
+                    && postSmallWinPairDistance < bestPostSmallWinPairDistance)
+                || (postShanten == bestPostShanten
+                    && postSmallWinPairDistance == bestPostSmallWinPairDistance
+                    && postLiveWinningOuts > bestLiveWinningOuts)
+                || (postShanten == bestPostShanten
+                    && postSmallWinPairDistance == bestPostSmallWinPairDistance
+                    && postLiveWinningOuts == bestLiveWinningOuts
+                    && rank > bestRank);
+
+            if (!isBetter)
+                continue;
+
+            best = opp;
+            bestClaimTileIds = claimTileIds;
+            bestPostShanten = postShanten;
+            bestPostSmallWinPairDistance = postSmallWinPairDistance;
+            bestLiveWinningOuts = postLiveWinningOuts;
+            bestRank = rank;
         }
 
         return best is null ? BotAction.Pass() : BotAction.Claim(best.ClaimType, bestClaimTileIds);
@@ -311,17 +330,17 @@ public sealed class HardStrategy : IChangshaBotStrategy
     /// if the bot doesn't actually hold the matching pair (defensive; the
     /// adjudicator already filters).
     /// </summary>
-    private static (int Shanten, int SmallWinPairDistance, int[]? ClaimTileIds) ProbeAfterPungClaim(
+    private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) ProbeAfterPungClaim(
         ChangshaHandState hand,
         int discardLogical,
         int discardTileId)
     {
         var concealedAfter = new List<int>(hand.ConcealedTiles);
         if (!TryRemoveByLogical(concealedAfter, discardLogical, 2))
-            return (int.MaxValue, int.MaxValue, null);
+            return (int.MaxValue, int.MaxValue, int.MinValue, null);
 
         var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Pung, discardTileId);
-        return (probe.Shanten, probe.SmallWinPairDistance, null);
+        return (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, null);
     }
 
     /// <summary>
@@ -331,17 +350,17 @@ public sealed class HardStrategy : IChangshaBotStrategy
     /// (claim-from-discard) — concealed/added kongs come from the bot's own draw and
     /// don't flow through the claim-window opportunity list.
     /// </summary>
-    private static (int Shanten, int SmallWinPairDistance, int[]? ClaimTileIds) ProbeAfterExposedKongClaim(
+    private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) ProbeAfterExposedKongClaim(
         ChangshaHandState hand,
         int discardLogical,
         int discardTileId)
     {
         var concealedAfter = new List<int>(hand.ConcealedTiles);
         if (!TryRemoveByLogical(concealedAfter, discardLogical, 3))
-            return (int.MaxValue, int.MaxValue, null);
+            return (int.MaxValue, int.MaxValue, int.MinValue, null);
 
         var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, discardTileId);
-        return (probe.Shanten, probe.SmallWinPairDistance, null);
+        return (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, null);
     }
 
     /// <summary>
@@ -351,7 +370,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
     /// Medium's "best-shape" probing while still preserving Hard's claim-type ranking
     /// (Hu &gt; Kong &gt; Pung &gt; Chow) in <see cref="DecideClaimPhase"/>.
     /// </summary>
-    private static (int Shanten, int SmallWinPairDistance, int[]? ClaimTileIds) ProbeAfterChowClaim(
+    private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) ProbeAfterChowClaim(
         ChangshaHandState hand,
         int discardLogical,
         int discardTileId)
@@ -362,7 +381,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
         if (rank >= 1 && rank <= 7) patterns.Add((discardLogical - 1, discardLogical + 1));
         if (rank <= 6) patterns.Add((discardLogical + 1, discardLogical + 2));
 
-        var best = (Shanten: int.MaxValue, SmallWinPairDistance: int.MaxValue, ClaimTileIds: (int[]?)null);
+        var best = (Shanten: int.MaxValue, SmallWinPairDistance: int.MaxValue, LiveWinningOuts: int.MinValue, ClaimTileIds: (int[]?)null);
         foreach (var (a, b) in patterns)
         {
             var concealedAfter = new List<int>(hand.ConcealedTiles);
@@ -373,10 +392,13 @@ public sealed class HardStrategy : IChangshaBotStrategy
             var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Chow, discardTileId);
             var isBetter = probe.Shanten < best.Shanten
                 || (probe.Shanten == best.Shanten
-                    && probe.SmallWinPairDistance < best.SmallWinPairDistance);
+                    && probe.SmallWinPairDistance < best.SmallWinPairDistance)
+                || (probe.Shanten == best.Shanten
+                    && probe.SmallWinPairDistance == best.SmallWinPairDistance
+                    && probe.LiveWinningOuts > best.LiveWinningOuts);
 
             if (isBetter)
-                best = (probe.Shanten, probe.SmallWinPairDistance, new[] { tileA, tileB });
+                best = (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, new[] { tileA, tileB });
         }
 
         return best;
@@ -417,7 +439,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
     /// post-claim concealed list and an extra declared meld, then evaluates both
     /// shanten and 2/5/8-eye readiness for claim-gate decisions.
     /// </summary>
-    private static (int Shanten, int SmallWinPairDistance) ProbeClaimOutcomeWithExtraMeld(
+    private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts) ProbeClaimOutcomeWithExtraMeld(
         ChangshaHandState hand,
         List<int> concealedAfter,
         MeldKind kind,
@@ -439,7 +461,53 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
         return (
             HandEvaluator.MinShantenToHu(probe, Array.Empty<int>()),
-            ComputeSmallWinPairDistance(concealedAfter));
+            ComputeSmallWinPairDistance(concealedAfter),
+            CountLiveWinningOuts(probe));
+    }
+
+    private static int CountLiveWinningOuts(ChangshaHandState hand)
+    {
+        var currentShanten = HandEvaluator.MinShantenToHu(hand, Array.Empty<int>());
+        var ownedLogicalCounts = new Dictionary<int, int>();
+
+        void AddOwnedTile(int tileId)
+        {
+            var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+            ownedLogicalCounts[logical] = ownedLogicalCounts.GetValueOrDefault(logical, 0) + 1;
+        }
+
+        foreach (var tileId in hand.ConcealedTiles)
+            AddOwnedTile(tileId);
+
+        foreach (var meld in hand.Melds)
+        {
+            foreach (var tileId in meld.TileIds)
+                AddOwnedTile(tileId);
+        }
+
+        var liveWinningOuts = 0;
+        for (var logical = 0; logical < ChangshaDeckBuilder.LogicalTileCount; logical++)
+        {
+            var owned = ownedLogicalCounts.GetValueOrDefault(logical, 0);
+            if (owned >= ChangshaDeckBuilder.CopiesPerTile)
+                continue;
+
+            var probe = new ChangshaHandState
+            {
+                SeatIndex = hand.SeatIndex,
+                ConcealedTiles = new List<int>(hand.ConcealedTiles)
+                {
+                    logical * ChangshaDeckBuilder.CopiesPerTile
+                },
+                Melds = hand.Melds
+            };
+
+            var shantenAfterDraw = HandEvaluator.MinShantenToHu(probe, Array.Empty<int>());
+            if (shantenAfterDraw < currentShanten)
+                liveWinningOuts += ChangshaDeckBuilder.CopiesPerTile - owned;
+        }
+
+        return liveWinningOuts;
     }
 
     /// <summary>
