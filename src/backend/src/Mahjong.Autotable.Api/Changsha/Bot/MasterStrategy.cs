@@ -464,6 +464,23 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (alternate.Value.Shanten > best.Shanten + ConnectedSmallWinBridgeShantenTolerance)
             return false;
 
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count > 0)
+        {
+            var bestTenpaiSafety = TenpaiDetector.SafetyBias(best.TileId, state, botSeatIndex);
+            var alternateTenpaiSafety = TenpaiDetector.SafetyBias(alternate.Value.TileId, state, botSeatIndex);
+            if (alternateTenpaiSafety > bestTenpaiSafety)
+                return false;
+
+            if (alternateTenpaiSafety == bestTenpaiSafety)
+            {
+                var bestOpponentSafety = OpponentSafetyTieBreaker(best.TileId, opponentDiscardLogicals);
+                var alternateOpponentSafety = OpponentSafetyTieBreaker(alternate.Value.TileId, opponentDiscardLogicals);
+                if (alternateOpponentSafety > bestOpponentSafety)
+                    return false;
+            }
+        }
+
         tileId = alternate.Value.TileId;
         return true;
     }
