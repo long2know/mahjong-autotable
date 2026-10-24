@@ -1878,7 +1878,10 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                     return;
                 }
             }
-            instance.PendingClaims[seatIndex] = new ClaimResponse(decided, null);
+            var chosenTileIds = decided == TableClaimType.Chow
+                ? action.ClaimTileIds?.ToArray()
+                : null;
+            instance.PendingClaims[seatIndex] = new ClaimResponse(decided, chosenTileIds);
         }
         finally { instance.Lock.Release(); }
 

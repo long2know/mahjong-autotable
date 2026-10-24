@@ -112,6 +112,94 @@ public class BotBehaviorTests
     }
 
     [Fact, Trait("Category", "Changsha")]
+    public async Task Bot_ClaimWindow_UsesExplicitChowTileIds_WhenStrategyProvidesBestShape()
+    {
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 2_000;
+            o.BotTurnDelayMs = 5_000;
+            o.BotClaimDelayMs = 1;
+            o.ClaimWindowTimeoutMs = 2_000;
+        });
+
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        var gameId = await runtime.CreateGameAsync(
+            seed: 1226,
+            botSeatIndexes: new[] { 1 },
+            hostPlayerId: null,
+            hostConnectionId: null,
+            cts.Token);
+
+        Assert.True(runtime.TryGetSnapshot(gameId, out var state));
+        state!.DealerSeatIndex = 0;
+        foreach (var seat in state.Seats) seat.IsDealer = seat.SeatIndex == 0;
+        state.DealMode = DealMode.Auto;
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase == ChangshaPhase.AwaitingDiscard
+               && Snapshot(runtime, gameId).ActiveSeatIndex == 0,
+            TimeSpan.FromSeconds(2),
+            "auto-deal never reached AwaitingDiscard with seat 0 active");
+
+        var live = Snapshot(runtime, gameId);
+        var discardTong6 = ChangshaTestHelpers.Tid(Suit.Tong, 6, 1);
+        var chosenTong7 = ChangshaTestHelpers.Tid(Suit.Tong, 7, 3);
+        var chosenTong8 = ChangshaTestHelpers.Tid(Suit.Tong, 8, 0);
+
+        // Seat 1 can chow Tong-6 either as 5-6-7 (legacy lowest-pattern fallback)
+        // or 6-7-8 (stronger shape). The injected bot strategy requests 6-7-8.
+        live.Hands[1].ConcealedTiles.Clear();
+        live.Hands[1].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Wan, 1, 1), ChangshaTestHelpers.Tid(Suit.Wan, 6, 0), ChangshaTestHelpers.Tid(Suit.Wan, 7, 3),
+            ChangshaTestHelpers.Tid(Suit.Tong, 3, 0), ChangshaTestHelpers.Tid(Suit.Tong, 5, 2),
+            ChangshaTestHelpers.Tid(Suit.Tong, 6, 0), ChangshaTestHelpers.Tid(Suit.Tong, 6, 3),
+            chosenTong7, chosenTong8,
+            ChangshaTestHelpers.Tid(Suit.Tiao, 1, 3), ChangshaTestHelpers.Tid(Suit.Tiao, 2, 1), ChangshaTestHelpers.Tid(Suit.Tiao, 4, 3), ChangshaTestHelpers.Tid(Suit.Tiao, 7, 0)
+        });
+        live.Hands[1].Melds.Clear();
+
+        // Seat 0 holds the discard tile and no one else is set up to claim.
+        live.Hands[0].ConcealedTiles.Clear();
+        live.Hands[0].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Tong, 9, 0), ChangshaTestHelpers.Tid(Suit.Tong, 9, 1),
+            ChangshaTestHelpers.Tid(Suit.Tong, 8, 1), ChangshaTestHelpers.Tid(Suit.Tong, 7, 1),
+            ChangshaTestHelpers.Tid(Suit.Tong, 5, 0), ChangshaTestHelpers.Tid(Suit.Tong, 4, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 9, 0), ChangshaTestHelpers.Tid(Suit.Wan, 8, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 7, 0), ChangshaTestHelpers.Tid(Suit.Wan, 2, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 9, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 8, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 7, 0),
+            discardTong6
+        });
+        live.Hands[0].Melds.Clear();
+
+        var scripted = new SlowBotStrategy(delayMs: 0, decision: (s, _) =>
+            s.Phase == ChangshaPhase.AwaitingClaim
+                ? BotAction.Claim(TableClaimType.Chow, new[] { chosenTong7, chosenTong8 })
+                : BotAction.Pass());
+        InjectStrategyOrFail(runtime, scripted);
+
+        await runtime.DiscardAsync(gameId, seatIndex: 0, tileId: discardTong6, cts.Token);
+
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).ClaimWindow is null
+               && Snapshot(runtime, gameId).Hands[1].Melds.Any(),
+            TimeSpan.FromSeconds(3),
+            "bot chow claim was not resolved");
+
+        var meld = Snapshot(runtime, gameId).Hands[1].Melds.Single();
+        Assert.Equal(MeldKind.Chow, meld.Kind);
+        Assert.Contains(discardTong6, meld.TileIds);
+        Assert.Contains(chosenTong7, meld.TileIds);
+        Assert.Contains(chosenTong8, meld.TileIds);
+        Assert.DoesNotContain(ChangshaTestHelpers.Tid(Suit.Tong, 5, 2), meld.TileIds);
+    }
+
+    [Fact, Trait("Category", "Changsha")]
     public void Bot_DeterministicWithSeed_ProducesSameEventLog()
     {
         var o1 = BotMatchHarness.RunUntilHandFinished(seed: 12345);

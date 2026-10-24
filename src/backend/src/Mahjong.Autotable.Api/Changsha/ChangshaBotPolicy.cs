@@ -37,6 +37,12 @@ public sealed class BotAction
     public int? LogicalTile { get; init; }
     public Tables.TableClaimType? ClaimType { get; init; }
 
+    /// <summary>
+    /// Optional explicit concealed tile IDs for claim resolution (currently used for Chow shape choice).
+    /// When null/empty the resolver falls back to legacy lowest-pattern chow selection.
+    /// </summary>
+    public int[]? ClaimTileIds { get; init; }
+
     public static BotAction Wait() => new() { Type = BotActionType.Wait };
     public static BotAction Discard(int tileId) => new() { Type = BotActionType.Discard, TileId = tileId };
     public static BotAction DeclareWin() => new() { Type = BotActionType.DeclareWin };
@@ -44,8 +50,8 @@ public sealed class BotAction
         new() { Type = BotActionType.DeclareConcealedKong, LogicalTile = logicalTile };
     public static BotAction DeclareAddedKong(int tileId) =>
         new() { Type = BotActionType.DeclareAddedKong, TileId = tileId };
-    public static BotAction Claim(Tables.TableClaimType claimType) =>
-        new() { Type = BotActionType.Claim, ClaimType = claimType };
+    public static BotAction Claim(Tables.TableClaimType claimType, int[]? tileIds = null) =>
+        new() { Type = BotActionType.Claim, ClaimType = claimType, ClaimTileIds = tileIds };
     public static BotAction Pass() => new() { Type = BotActionType.Pass };
 }
 
