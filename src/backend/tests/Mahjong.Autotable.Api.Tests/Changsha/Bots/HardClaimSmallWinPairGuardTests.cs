@@ -201,6 +201,66 @@ public class HardClaimSmallWinPairGuardTests
                 .ToArray());
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W26")]
+    public void Hard_PrefersLargerShantenDropChowOverPung_WhenBothKeepSmallWinPairDistance()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(4, 0),
+                Wan(5, 1), Wan(5, 2),
+                Wan(6, 2), Wan(6, 3),
+                Wan(7, 0),
+                Wan(8, 0), Wan(8, 3),
+                Wan(9, 3),
+                Tong(4, 2), Tong(9, 2),
+                Tiao(2, 0), Tiao(4, 3)
+            }
+        };
+
+        var state = BuildClaimState(
+            hand,
+            discardTileId: Wan(5, 3),
+            opportunities: new[] { TableClaimType.Pung, TableClaimType.Chow });
+
+        var action = new HardStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W26")]
+    public void Master_DelegatesLargerShantenDropChowPreferenceOverPung()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(4, 0),
+                Wan(5, 1), Wan(5, 2),
+                Wan(6, 2), Wan(6, 3),
+                Wan(7, 0),
+                Wan(8, 0), Wan(8, 3),
+                Wan(9, 3),
+                Tong(4, 2), Tong(9, 2),
+                Tiao(2, 0), Tiao(4, 3)
+            }
+        };
+
+        var state = BuildClaimState(
+            hand,
+            discardTileId: Wan(5, 3),
+            opportunities: new[] { TableClaimType.Pung, TableClaimType.Chow });
+
+        var action = ChangshaBotEngine.Resolve("master").DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
+    }
+
     private static ChangshaGameState BuildSingleClaimState(
         ChangshaHandState hand,
         int discardTileId,
