@@ -452,7 +452,15 @@ public sealed class HardStrategy : IChangshaBotStrategy
             selectedTileId = overrideTile;
         }
 
-        if (TrySelectTenpaiSafeOffRankPair(logicalCounts, scored, selectedTileId, state, botSeatIndex, discardedLogicals, out var saferTile))
+        if (TrySelectTenpaiSafeOffRankPair(
+                logicalCounts,
+                scored,
+                selectedTileId,
+                state,
+                botSeatIndex,
+                visibleLogicalCounts,
+                discardedLogicals,
+                out var saferTile))
             return saferTile;
 
         return selectedTileId;
@@ -639,6 +647,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
         int selectedTileId,
         ChangshaGameState state,
         int botSeatIndex,
+        Dictionary<int, int> visibleLogicalCounts,
         HashSet<int> opponentDiscardLogicals,
         out int tileId)
     {
@@ -653,6 +662,12 @@ public sealed class HardStrategy : IChangshaBotStrategy
             return false;
 
         if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
+            return false;
+
+        // Dead singleton (all four copies visible) is universally safe and has no
+        // future value. Keep the dead-tile discard instead of swapping to an
+        // off-rank pair purely for dangerous-opponent genbutsu bias.
+        if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
             return false;
 
         var saferOffRankPair = scored
@@ -817,6 +832,9 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
     private static bool IsLogicalNearExhausted(int logical, Dictionary<int, int> visibleLogicalCounts)
         => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 3;
+
+    private static bool IsLogicalDead(int logical, Dictionary<int, int> visibleLogicalCounts)
+        => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 4;
 
     // Lower is safer in ThenBy ordering.
     private static int OpponentSafetyTieBreaker(int tileId, HashSet<int> opponentDiscardLogicals)

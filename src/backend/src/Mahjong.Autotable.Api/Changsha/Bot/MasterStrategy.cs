@@ -300,6 +300,7 @@ public sealed class MasterStrategy : IChangshaBotStrategy
                 hand,
                 state,
                 botSeatIndex,
+                visibleLogicalCounts,
                 opponentDiscardLogicals,
                 out var safePairTileId))
         {
@@ -392,6 +393,9 @@ public sealed class MasterStrategy : IChangshaBotStrategy
 
     private static bool IsLogicalNearExhausted(int logical, Dictionary<int, int> visibleLogicalCounts)
         => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 3;
+
+    private static bool IsLogicalDead(int logical, Dictionary<int, int> visibleLogicalCounts)
+        => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 4;
 
     // Bit-for-bit identical to HardStrategy.ComputeDiscardScore. Kept as a
     // private duplicate so the Master tie-breaker can layer on top without
@@ -655,6 +659,7 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         ChangshaHandState hand,
         ChangshaGameState state,
         int botSeatIndex,
+        Dictionary<int, int> visibleLogicalCounts,
         HashSet<int> opponentDiscardLogicals,
         out int tileId)
     {
@@ -669,6 +674,12 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             return false;
 
         if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
+            return false;
+
+        // Dead singleton (all four copies visible) is universally safe and has no
+        // future value. Preserve the dead-tile discard instead of swapping to an
+        // off-rank pair just because the pair is genbutsu.
+        if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
             return false;
 
         var saferOffRankPair = scored
