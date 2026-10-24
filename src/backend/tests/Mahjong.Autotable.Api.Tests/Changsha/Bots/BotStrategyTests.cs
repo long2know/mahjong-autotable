@@ -565,6 +565,48 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_IgnoresNonDangerousOpponentDiscardBias_WhenDangerousOpponentExists_ForDeadSmallWinSingletonSwap()
+    {
+        var hand = Hand(
+            Tiao(2, 0),
+            Wan(7, 0), Wan(7, 1),
+            Tong(4, 0), Tong(4, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(2, 1))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0)))
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 2, TileId = Wan(7, 2), TurnNumber = 1 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Hard_DiscardsDeadSmallWinSingleton_WhenNoPairPathRemains()
     {
         var hand = Hand(

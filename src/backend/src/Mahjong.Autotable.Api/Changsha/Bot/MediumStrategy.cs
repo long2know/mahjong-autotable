@@ -536,7 +536,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
             return false;
 
-        var opponentDiscardLogicals = CollectOpponentDiscardLogicals(state, botSeatIndex);
+        var opponentDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex, dangerousOpponents);
 
         var saferOffRankPair = scored
             .Where(entry => logicalCounts.GetValueOrDefault(entry.Logical, 0) > 1 && !IsSmallWinRank(entry.Logical))
@@ -571,6 +571,18 @@ public sealed class MediumStrategy : IChangshaBotStrategy
     {
         var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
         return opponentDiscardLogicals.Contains(logical) ? -1 : 0;
+    }
+
+    private static HashSet<int> CollectSafetyDiscardLogicals(
+        ChangshaGameState state,
+        int botSeatIndex,
+        IReadOnlyList<int>? dangerousOpponents = null)
+    {
+        dangerousOpponents ??= TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count > 0)
+            return TenpaiDetector.CollectGenbutsuLogicals(state, dangerousOpponents);
+
+        return CollectOpponentDiscardLogicals(state, botSeatIndex);
     }
 
     private static HashSet<int> CollectOpponentDiscardLogicals(ChangshaGameState state, int botSeatIndex)
