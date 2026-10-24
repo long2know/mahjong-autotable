@@ -1421,6 +1421,155 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void TenpaiDetector_SafetyBias_GradesByDangerousOpponentCoverage()
+    {
+        var state = new ChangshaGameState
+        {
+            Hands = new List<ChangshaHandState>
+            {
+                new() { SeatIndex = 0, ConcealedTiles = new List<int> { Wan(1, 0) } },
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(4, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(6, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(5, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(7, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(1, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Wan(1, 2), TurnNumber = 2 },
+                new() { SeatIndex = 1, TileId = Tong(1, 1), TurnNumber = 3 }
+            }
+        };
+
+        Assert.Equal(-2, TenpaiDetector.SafetyBias(Wan(1, 0), state, botSeatIndex: 0));
+        Assert.Equal(-1, TenpaiDetector.SafetyBias(Tong(1, 0), state, botSeatIndex: 0));
+        Assert.Equal(0, TenpaiDetector.SafetyBias(Tiao(1, 0), state, botSeatIndex: 0));
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Hard_PrefersAllDangerousGenbutsu_OverPartialDangerousGenbutsu()
+    {
+        var hand = Hand(
+            Tiao(3, 0), Tiao(3, 1),
+            Wan(1, 0),
+            Tong(1, 0)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(4, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(6, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(5, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(7, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(1, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Wan(1, 2), TurnNumber = 2 },
+                new() { SeatIndex = 1, TileId = Tong(1, 1), TurnNumber = 3 }
+            }
+        };
+
+        var hard = new HardStrategy();
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Wan(1, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Master_PrefersAllDangerousGenbutsu_OverPartialDangerousGenbutsu()
+    {
+        var hand = Hand(
+            Tiao(3, 0), Tiao(3, 1),
+            Wan(1, 0),
+            Tong(1, 0)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(4, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(6, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(5, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(7, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(1, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Wan(1, 2), TurnNumber = 2 },
+                new() { SeatIndex = 1, TileId = Tong(1, 1), TurnNumber = 3 }
+            }
+        };
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Wan(1, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Master_DoesNotTreatSelfDiscardedTileAsDefensiveSafeBias()
     {
         var hand = Hand(
