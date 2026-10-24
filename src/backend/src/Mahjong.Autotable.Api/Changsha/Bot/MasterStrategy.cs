@@ -731,9 +731,15 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
             return false;
 
+        // Near-dead singleton (three copies already visible) has only one live
+        // draw left. Preserve that discard instead of swapping to an off-rank
+        // pair just because the pair is genbutsu.
+        if (IsLogicalNearExhausted(selected.Logical, visibleLogicalCounts)
+            && !IsBridgeBetweenOffRankPairs(selected.Logical, logicalCounts))
+            return false;
+
         // Dead singleton (all four copies visible) is universally safe and has no
-        // future value. Preserve the dead-tile discard instead of swapping to an
-        // off-rank pair just because the pair is genbutsu.
+        // future value. Preserve the dead-tile discard as well.
         if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
             return false;
 

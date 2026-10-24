@@ -677,9 +677,15 @@ public sealed class HardStrategy : IChangshaBotStrategy
         if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
             return false;
 
+        // Near-dead singleton (three copies already visible) has only one live
+        // draw left. Keep that discard instead of swapping to an off-rank pair
+        // purely for dangerous-opponent genbutsu bias.
+        if (IsLogicalNearExhausted(selected.Logical, visibleLogicalCounts)
+            && !IsBridgeBetweenOffRankPairs(selected.Logical, logicalCounts))
+            return false;
+
         // Dead singleton (all four copies visible) is universally safe and has no
-        // future value. Keep the dead-tile discard instead of swapping to an
-        // off-rank pair purely for dangerous-opponent genbutsu bias.
+        // future value. Keep the dead-tile discard as well.
         if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
             return false;
 
