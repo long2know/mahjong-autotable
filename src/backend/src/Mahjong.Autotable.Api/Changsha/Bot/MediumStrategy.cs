@@ -1,3 +1,4 @@
+using Mahjong.Autotable.Api.Changsha.Bot.Heuristics;
 using Mahjong.Autotable.Api.Tables;
 
 namespace Mahjong.Autotable.Api.Changsha.Bot;
@@ -19,6 +20,8 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 {
     private const int SingleSmallWinDiscardTolerance = 2;
     private const int OffRankPairDiscardTolerance = 2;
+
+    private readonly record struct DiscardCandidate(int TileId, int Logical, int Score);
 
     public string Difficulty => "medium";
 
@@ -217,12 +220,10 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             .ToDictionary(g => g.Key, g => g.Count());
 
         var scored = hand.ConcealedTiles
-            .Select(tileId => new
-            {
-                TileId = tileId,
-                Logical = ChangshaDeckBuilder.GetLogicalTile(tileId),
-                Score = ComputeKeepScore(tileId, logicalCounts)
-            })
+            .Select(tileId => new DiscardCandidate(
+                tileId,
+                ChangshaDeckBuilder.GetLogicalTile(tileId),
+                ComputeKeepScore(tileId, logicalCounts)))
             .ToList();
 
         var best = scored
@@ -234,30 +235,49 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         {
             var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
 
-            var deadIsolatedSmallWinSingleton = scored.FirstOrDefault(entry =>
-                IsSmallWinRank(entry.Logical)
-                && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
-                && IsLogicalDead(entry.Logical, visibleLogicalCounts)
-                && IsIsolatedSingleton(entry.Logical, logicalCounts));
+            var deadIsolatedSmallWinSingleton = scored
+                .Where(entry =>
+                    IsSmallWinRank(entry.Logical)
+                    && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                    && IsLogicalDead(entry.Logical, visibleLogicalCounts)
+                    && IsIsolatedSingleton(entry.Logical, logicalCounts))
+                .Select(entry => (DiscardCandidate?)entry)
+                .FirstOrDefault();
 
             if (deadIsolatedSmallWinSingleton is not null)
-                return (deadIsolatedSmallWinSingleton.TileId, true);
+            {
+                if (TrySelectTenpaiSafeOffRankPair(
+                        logicalCounts,
+                        scored,
+                        deadIsolatedSmallWinSingleton.Value.TileId,
+                        state,
+                        botSeatIndex,
+                        out var tenpaiSafePairTileId))
+                {
+                    return (tenpaiSafePairTileId, false);
+                }
 
-            var connectedSmallWinSingleton = scored.FirstOrDefault(entry =>
-                IsSmallWinRank(entry.Logical)
-                && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
-                && IsBridgeBetweenOffRankPairs(entry.Logical, logicalCounts));
+                return (deadIsolatedSmallWinSingleton.Value.TileId, true);
+            }
+
+            var connectedSmallWinSingleton = scored
+                .Where(entry =>
+                    IsSmallWinRank(entry.Logical)
+                    && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                    && IsBridgeBetweenOffRankPairs(entry.Logical, logicalCounts))
+                .Select(entry => (DiscardCandidate?)entry)
+                .FirstOrDefault();
 
             if (connectedSmallWinSingleton is not null)
             {
-                var leftBridgeLogical = connectedSmallWinSingleton.Logical - 1;
-                var rightBridgeLogical = connectedSmallWinSingleton.Logical + 1;
+                var leftBridgeLogical = connectedSmallWinSingleton.Value.Logical - 1;
+                var rightBridgeLogical = connectedSmallWinSingleton.Value.Logical + 1;
                 var bestBreaksBridgePair = best.Logical == leftBridgeLogical || best.Logical == rightBridgeLogical;
 
                 if (bestBreaksBridgePair)
                 {
-                    if (IsLogicalNearExhausted(connectedSmallWinSingleton.Logical, visibleLogicalCounts))
-                        return (connectedSmallWinSingleton.TileId, true);
+                    if (IsLogicalNearExhausted(connectedSmallWinSingleton.Value.Logical, visibleLogicalCounts))
+                        return (connectedSmallWinSingleton.Value.TileId, true);
                 }
             }
         }
@@ -270,17 +290,20 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         var suppressSingleSmallWinPreserve = false;
         if (hasSingleSmallWin && offRankPairs.Count > 0)
         {
-            var smallWinSingleton = scored.FirstOrDefault(entry =>
-                IsSmallWinRank(entry.Logical)
-                && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
-                && (IsIsolatedSingleton(entry.Logical, logicalCounts)
-                    || IsSingletonWithOnlyPairedNeighbors(entry.Logical, logicalCounts, offRankPairs)));
+            var smallWinSingleton = scored
+                .Where(entry =>
+                    IsSmallWinRank(entry.Logical)
+                    && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                    && (IsIsolatedSingleton(entry.Logical, logicalCounts)
+                        || IsSingletonWithOnlyPairedNeighbors(entry.Logical, logicalCounts, offRankPairs)))
+                .Select(entry => (DiscardCandidate?)entry)
+                .FirstOrDefault();
             if (smallWinSingleton is not null)
             {
                 var bestIsOffRankPair = logicalCounts.GetValueOrDefault(best.Logical, 0) > 1
                     && !IsSmallWinRank(best.Logical);
-                if (bestIsOffRankPair && smallWinSingleton.Score <= best.Score + OffRankPairDiscardTolerance)
-                    return (smallWinSingleton.TileId, true);
+                if (bestIsOffRankPair && smallWinSingleton.Value.Score <= best.Score + OffRankPairDiscardTolerance)
+                    return (smallWinSingleton.Value.TileId, true);
 
                 // If the only 2/5/8 is isolated and off-rank pairs exist, never
                 // invoke the fallback that preserves the singleton; keep the pair.
@@ -300,12 +323,13 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 .Where(entry => entry.TileId != best.TileId && !IsSmallWinRank(entry.Logical))
                 .OrderBy(entry => entry.Score)
                 .ThenByDescending(entry => entry.TileId)
+                .Select(entry => (DiscardCandidate?)entry)
                 .FirstOrDefault();
 
-            if (alternate is not null && alternate.Score <= best.Score + SingleSmallWinDiscardTolerance)
+            if (alternate is not null && alternate.Value.Score <= best.Score + SingleSmallWinDiscardTolerance)
             {
-                var alternateIsOffRankPair = logicalCounts.GetValueOrDefault(alternate.Logical, 0) > 1
-                    && !IsSmallWinRank(alternate.Logical);
+                var alternateIsOffRankPair = logicalCounts.GetValueOrDefault(alternate.Value.Logical, 0) > 1
+                    && !IsSmallWinRank(alternate.Value.Logical);
                 var singletonIsWeak = IsIsolatedSingleton(best.Logical, logicalCounts)
                     || IsSingletonWithOnlyPairedNeighbors(best.Logical, logicalCounts, offRankPairs);
 
@@ -315,7 +339,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 if (alternateIsOffRankPair && singletonIsWeak)
                     return (best.TileId, true);
 
-                return (alternate.TileId, false);
+                return (alternate.Value.TileId, false);
             }
         }
 
@@ -476,6 +500,78 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         }
 
         return counts;
+    }
+
+    private static bool TrySelectTenpaiSafeOffRankPair(
+        Dictionary<int, int> logicalCounts,
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaGameState state,
+        int botSeatIndex,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count == 0)
+            return false;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
+            return false;
+
+        var opponentDiscardLogicals = CollectOpponentDiscardLogicals(state, botSeatIndex);
+
+        var saferOffRankPair = scored
+            .Where(entry => logicalCounts.GetValueOrDefault(entry.Logical, 0) > 1 && !IsSmallWinRank(entry.Logical))
+            .OrderBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
+            .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
+            .ThenBy(entry => entry.Score)
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
+
+        if (saferOffRankPair is null)
+            return false;
+
+        var selectedOpponentSafety = OpponentSafetyTieBreaker(selected.TileId, opponentDiscardLogicals);
+        var pairOpponentSafety = OpponentSafetyTieBreaker(saferOffRankPair.Value.TileId, opponentDiscardLogicals);
+        if (pairOpponentSafety > selectedOpponentSafety)
+            return false;
+
+        var selectedTenpaiSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+        var pairTenpaiSafety = TenpaiDetector.SafetyBias(saferOffRankPair.Value.TileId, state, botSeatIndex);
+        if (pairOpponentSafety == selectedOpponentSafety && pairTenpaiSafety > selectedTenpaiSafety)
+            return false;
+
+        if (pairOpponentSafety == selectedOpponentSafety && pairTenpaiSafety == selectedTenpaiSafety)
+            return false;
+
+        tileId = saferOffRankPair.Value.TileId;
+        return true;
+    }
+
+    private static int OpponentSafetyTieBreaker(int tileId, HashSet<int> opponentDiscardLogicals)
+    {
+        var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+        return opponentDiscardLogicals.Contains(logical) ? -1 : 0;
+    }
+
+    private static HashSet<int> CollectOpponentDiscardLogicals(ChangshaGameState state, int botSeatIndex)
+    {
+        var result = new HashSet<int>();
+        foreach (var discard in state.DiscardPile)
+        {
+            if (discard.SeatIndex == botSeatIndex)
+                continue;
+
+            result.Add(ChangshaDeckBuilder.GetLogicalTile(discard.TileId));
+        }
+
+        return result;
     }
 
     private static bool IsLogicalNearExhausted(int logical, Dictionary<int, int> visibleLogicalCounts)
