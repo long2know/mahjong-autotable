@@ -240,7 +240,13 @@ public sealed class HardStrategy : IChangshaBotStrategy
         // Same-or-worse shanten claims are refused — this eliminates the prior
         // heuristic-only path that occasionally turned strong hands into broken
         // shapes (most visibly the Phase F "fussy chow" rule).
+        //
+        // Phase K Wave 25: for Chow claims specifically, avoid claims that worsen
+        // the hand's 2/5/8-eye readiness (Changsha small-win pair route). This
+        // prevents shape-improving but eye-breaking chow claims from being accepted
+        // on shanten alone.
         var preShanten = HandEvaluator.MinShantenToHu(hand, Array.Empty<int>());
+        var preSmallWinPairDistance = ComputeSmallWinPairDistance(hand.ConcealedTiles);
         var discardTileId = state.ClaimWindow.DiscardTileId;
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
 
@@ -249,15 +255,18 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
         foreach (var opp in opportunities)
         {
-            var postShanten = opp.ClaimType switch
+            var (postShanten, postSmallWinPairDistance) = opp.ClaimType switch
             {
-                TableClaimType.Kong => ShantenAfterExposedKongClaim(hand, discardLogical, discardTileId),
-                TableClaimType.Pung => ShantenAfterPungClaim(hand, discardLogical, discardTileId),
-                TableClaimType.Chow => ShantenAfterChowClaim(hand, discardLogical, discardTileId),
-                _ => int.MaxValue
+                TableClaimType.Kong => ProbeAfterExposedKongClaim(hand, discardLogical, discardTileId),
+                TableClaimType.Pung => ProbeAfterPungClaim(hand, discardLogical, discardTileId),
+                TableClaimType.Chow => ProbeAfterChowClaim(hand, discardLogical, discardTileId),
+                _ => (int.MaxValue, int.MaxValue)
             };
 
             if (postShanten >= preShanten)
+                continue;
+
+            if (opp.ClaimType == TableClaimType.Chow && postSmallWinPairDistance > preSmallWinPairDistance)
                 continue;
 
             // Tie-breaker: Hu > Kong > Pung > Chow. Hu was handled above; among the
@@ -292,47 +301,60 @@ public sealed class HardStrategy : IChangshaBotStrategy
     };
 
     /// <summary>
-    /// Probes the shanten of the hand assuming the bot claims a Pung on
+    /// Probes the post-claim hand assuming the bot claims a Pung on
     /// <paramref name="discardTileId"/>: 2 concealed copies of
     /// <paramref name="discardLogical"/> are moved into a new declared meld alongside
-    /// the discard. Returns <see cref="int.MaxValue"/> if the bot doesn't actually
-    /// hold the matching pair (defensive; the adjudicator already filters).
+    /// the discard. Returns (<see cref="int.MaxValue"/>, <see cref="int.MaxValue"/>)
+    /// if the bot doesn't actually hold the matching pair (defensive; the
+    /// adjudicator already filters).
     /// </summary>
-    private static int ShantenAfterPungClaim(ChangshaHandState hand, int discardLogical, int discardTileId)
+    private static (int Shanten, int SmallWinPairDistance) ProbeAfterPungClaim(
+        ChangshaHandState hand,
+        int discardLogical,
+        int discardTileId)
     {
         var concealedAfter = new List<int>(hand.ConcealedTiles);
         if (!TryRemoveByLogical(concealedAfter, discardLogical, 2))
-            return int.MaxValue;
-        return ProbeShantenWithExtraMeld(hand, concealedAfter, MeldKind.Pung, discardTileId);
+            return (int.MaxValue, int.MaxValue);
+
+        return ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Pung, discardTileId);
     }
 
     /// <summary>
-    /// Probes the shanten of the hand assuming the bot claims an exposed Kong on
+    /// Probes the post-claim hand assuming the bot claims an exposed Kong on
     /// <paramref name="discardTileId"/>: 3 concealed copies move into a new declared
     /// meld alongside the discard. Note this models an <see cref="MeldKind.ExposedKong"/>
     /// (claim-from-discard) — concealed/added kongs come from the bot's own draw and
     /// don't flow through the claim-window opportunity list.
     /// </summary>
-    private static int ShantenAfterExposedKongClaim(ChangshaHandState hand, int discardLogical, int discardTileId)
+    private static (int Shanten, int SmallWinPairDistance) ProbeAfterExposedKongClaim(
+        ChangshaHandState hand,
+        int discardLogical,
+        int discardTileId)
     {
         var concealedAfter = new List<int>(hand.ConcealedTiles);
         if (!TryRemoveByLogical(concealedAfter, discardLogical, 3))
-            return int.MaxValue;
-        return ProbeShantenWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, discardTileId);
+            return (int.MaxValue, int.MaxValue);
+
+        return ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, discardTileId);
     }
 
     /// <summary>
-    /// Probes the shanten of the hand assuming the bot claims a Chow on
+    /// Probes the post-claim hand assuming the bot claims a Chow on
     /// <paramref name="discardTileId"/>. Mirrors
     /// <c>ChangshaGameStateMachine.RemoveChowTilesByLowestPattern</c> — the runtime
     /// resolves bot chow claims (which never supply explicit tile IDs) by walking
     /// the three possible chow shapes in lowest-rank-first order and taking the
     /// first viable one. Replicating that selection here means the gate decision
     /// reflects the chow shape that will actually be played, not an idealised best
-    /// case. Returns <see cref="int.MaxValue"/> if no chow form is mechanically
-    /// possible (defensive; the adjudicator only surfaces Chow when at least one is).
+    /// case. Returns (<see cref="int.MaxValue"/>, <see cref="int.MaxValue"/>) if no
+    /// chow form is mechanically possible (defensive; the adjudicator only surfaces
+    /// Chow when at least one is).
     /// </summary>
-    private static int ShantenAfterChowClaim(ChangshaHandState hand, int discardLogical, int discardTileId)
+    private static (int Shanten, int SmallWinPairDistance) ProbeAfterChowClaim(
+        ChangshaHandState hand,
+        int discardLogical,
+        int discardTileId)
     {
         var rank = discardLogical % 9;
         var patterns = new List<(int A, int B)>();
@@ -345,10 +367,11 @@ public sealed class HardStrategy : IChangshaBotStrategy
             var concealedAfter = new List<int>(hand.ConcealedTiles);
             if (TryRemoveByLogical(concealedAfter, a, 1) && TryRemoveByLogical(concealedAfter, b, 1))
             {
-                return ProbeShantenWithExtraMeld(hand, concealedAfter, MeldKind.Chow, discardTileId);
+                return ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Chow, discardTileId);
             }
         }
-        return int.MaxValue;
+
+        return (int.MaxValue, int.MaxValue);
     }
 
     /// <summary>
@@ -370,14 +393,10 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
     /// <summary>
     /// Constructs a probe <see cref="ChangshaHandState"/> with the supplied
-    /// post-claim concealed list and an extra declared meld, then runs the rigorous
-    /// shanten counter. Only <c>Melds.Count</c> influences
-    /// <see cref="HandEvaluator.MinShantenToHu"/>'s standard-shape decomposition (the
-    /// groupsNeeded budget) and its SevenPairs path (which disqualifies any hand
-    /// with declared melds), so the placeholder meld is content-free apart from
-    /// carrying the discard tile for traceability.
+    /// post-claim concealed list and an extra declared meld, then evaluates both
+    /// shanten and 2/5/8-eye readiness for claim-gate decisions.
     /// </summary>
-    private static int ProbeShantenWithExtraMeld(
+    private static (int Shanten, int SmallWinPairDistance) ProbeClaimOutcomeWithExtraMeld(
         ChangshaHandState hand,
         List<int> concealedAfter,
         MeldKind kind,
@@ -396,7 +415,36 @@ public sealed class HardStrategy : IChangshaBotStrategy
             ConcealedTiles = concealedAfter,
             Melds = simulatedMelds
         };
-        return HandEvaluator.MinShantenToHu(probe, Array.Empty<int>());
+
+        return (
+            HandEvaluator.MinShantenToHu(probe, Array.Empty<int>()),
+            ComputeSmallWinPairDistance(concealedAfter));
+    }
+
+    /// <summary>
+    /// Small-win eye readiness distance for concealed tiles:
+    /// 0 = already holds a 2/5/8 pair, 1 = holds a 2/5/8 singleton, 2 = no 2/5/8 tiles.
+    /// </summary>
+    private static int ComputeSmallWinPairDistance(IReadOnlyList<int> concealedTileIds)
+    {
+        var counts = concealedTileIds
+            .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var hasSingleton = false;
+        foreach (var (logical, count) in counts)
+        {
+            if (!IsSmallWinRank(logical))
+                continue;
+
+            if (count >= 2)
+                return 0;
+
+            if (count == 1)
+                hasSingleton = true;
+        }
+
+        return hasSingleton ? 1 : 2;
     }
 
     private static int SelectDiscardTile(ChangshaHandState hand, ChangshaGameState state, int botSeatIndex)
