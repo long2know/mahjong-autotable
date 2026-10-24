@@ -720,9 +720,54 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
-    public void Medium_DoesNotForceNearDeadBridgeDiscard_WhenLowerKeepScoreSingletonExists()
+    public void Medium_PreservesTenpaiSafeBridgePair_WhenNearDeadConnected258SingletonIsUnsafe()
     {
         var hand = Hand(
+            Tiao(7, 0), Tiao(7, 1),
+            Tiao(8, 0),
+            Tiao(9, 0), Tiao(9, 1)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(4, 0)))
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tiao(9, 2), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tiao(8, 1), TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = Tiao(8, 2), TurnNumber = 3 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(
+            ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)),
+            ChangshaDeckBuilder.GetLogicalTile(action.TileId!.Value));
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_DoesNotForceNearDeadBridgeDiscard_WhenLowerKeepScoreSingletonExists()
+    {        var hand = Hand(
             Tiao(7, 0), Tiao(7, 1),
             Tiao(8, 0),
             Tiao(9, 0), Tiao(9, 1),
