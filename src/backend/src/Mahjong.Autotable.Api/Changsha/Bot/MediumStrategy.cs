@@ -232,6 +232,17 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
         if (state is not null && botSeatIndex >= 0)
         {
+            var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
+
+            var deadIsolatedSmallWinSingleton = scored.FirstOrDefault(entry =>
+                IsSmallWinRank(entry.Logical)
+                && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                && IsLogicalDead(entry.Logical, visibleLogicalCounts)
+                && IsIsolatedSingleton(entry.Logical, logicalCounts));
+
+            if (deadIsolatedSmallWinSingleton is not null)
+                return (deadIsolatedSmallWinSingleton.TileId, true);
+
             var connectedSmallWinSingleton = scored.FirstOrDefault(entry =>
                 IsSmallWinRank(entry.Logical)
                 && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
@@ -245,7 +256,6 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
                 if (bestBreaksBridgePair)
                 {
-                    var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
                     if (IsLogicalNearExhausted(connectedSmallWinSingleton.Logical, visibleLogicalCounts))
                         return (connectedSmallWinSingleton.TileId, true);
                 }
@@ -470,4 +480,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
     private static bool IsLogicalNearExhausted(int logical, Dictionary<int, int> visibleLogicalCounts)
         => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 3;
+
+    private static bool IsLogicalDead(int logical, Dictionary<int, int> visibleLogicalCounts)
+        => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 4;
 }
