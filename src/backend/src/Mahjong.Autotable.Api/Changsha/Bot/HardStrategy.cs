@@ -1,3 +1,4 @@
+using Mahjong.Autotable.Api.Changsha.Bot.Heuristics;
 using Mahjong.Autotable.Api.Tables;
 
 namespace Mahjong.Autotable.Api.Changsha.Bot;
@@ -438,13 +439,21 @@ public sealed class HardStrategy : IChangshaBotStrategy
             .ThenByDescending(entry => entry.TileId)
             .First();
 
+        var selectedTileId = best.TileId;
+
         if (TryKeepConnectedSmallWinSingleton(logicalCounts, scored, best, visibleLogicalCounts, out var preserveTile))
-            return preserveTile;
+        {
+            selectedTileId = preserveTile;
+        }
+        else if (TrySelectIsolatedSmallWinDiscard(logicalCounts, scored, best, discardedLogicals, out var overrideTile))
+        {
+            selectedTileId = overrideTile;
+        }
 
-        if (TrySelectIsolatedSmallWinDiscard(logicalCounts, scored, best, discardedLogicals, out var overrideTile))
-            return overrideTile;
+        if (TrySelectTenpaiSafeOffRankPair(logicalCounts, scored, selectedTileId, state, botSeatIndex, discardedLogicals, out var saferTile))
+            return saferTile;
 
-        return best.TileId;
+        return selectedTileId;
     }
 
     /// <summary>
@@ -600,6 +609,61 @@ public sealed class HardStrategy : IChangshaBotStrategy
         return true;
     }
 
+    private static bool TrySelectTenpaiSafeOffRankPair(
+        Dictionary<int, int> logicalCounts,
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaGameState state,
+        int botSeatIndex,
+        HashSet<int> opponentDiscardLogicals,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count == 0)
+            return false;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
+            return false;
+
+        var saferOffRankPair = scored
+            .Where(entry => logicalCounts.GetValueOrDefault(entry.Logical, 0) > 1 && !IsSmallWinRank(entry.Logical))
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
+            .ThenBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
+            .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
+
+        if (saferOffRankPair is null)
+            return false;
+
+        if (saferOffRankPair.Value.Shanten > selected.Shanten + OffRankPairShantenTolerance)
+            return false;
+
+        var selectedOpponentSafety = OpponentSafetyTieBreaker(selected.TileId, opponentDiscardLogicals);
+        var pairOpponentSafety = OpponentSafetyTieBreaker(saferOffRankPair.Value.TileId, opponentDiscardLogicals);
+        if (pairOpponentSafety > selectedOpponentSafety)
+            return false;
+
+        var selectedTenpaiSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+        var pairTenpaiSafety = TenpaiDetector.SafetyBias(saferOffRankPair.Value.TileId, state, botSeatIndex);
+        if (pairOpponentSafety == selectedOpponentSafety && pairTenpaiSafety > selectedTenpaiSafety)
+            return false;
+
+        if (pairOpponentSafety == selectedOpponentSafety && pairTenpaiSafety == selectedTenpaiSafety)
+            return false;
+
+        tileId = saferOffRankPair.Value.TileId;
+        return true;
+    }
+
     private static bool IsSmallWinRank(int logical)
     {
         var rank = logical % 9 + 1;
@@ -728,6 +792,13 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
     private static bool IsLogicalNearExhausted(int logical, Dictionary<int, int> visibleLogicalCounts)
         => visibleLogicalCounts.GetValueOrDefault(logical, 0) >= 3;
+
+    // Lower is safer in ThenBy ordering.
+    private static int OpponentSafetyTieBreaker(int tileId, HashSet<int> opponentDiscardLogicals)
+    {
+        var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+        return opponentDiscardLogicals.Contains(logical) ? -1 : 0;
+    }
 
     private static HashSet<int> CollectOpponentDiscardLogicals(ChangshaGameState state, int botSeatIndex)
     {
