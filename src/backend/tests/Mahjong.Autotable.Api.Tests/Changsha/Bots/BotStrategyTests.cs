@@ -744,6 +744,61 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_PrefersFullDangerousGenbutsu_OnScoreTolerance_WhenPartialHasBetterKeepScore()
+    {
+        var hand = Hand(
+            Wan(3, 0),
+            Tong(5, 0),
+            Tiao(1, 0),
+            Tiao(2, 0),
+            Tiao(3, 0)
+        );
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(4, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(7, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(8, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(3, 1), TurnNumber = 1 },
+                new() { SeatIndex = 1, TileId = Tong(5, 1), TurnNumber = 2 },
+                new() { SeatIndex = 2, TileId = Tong(5, 2), TurnNumber = 3 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(5, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Hard_PrefersFullDangerousGenbutsu_OnShantenTie_WhenPartialHasBetterKeepScore()
     {
         var hand = Hand(
