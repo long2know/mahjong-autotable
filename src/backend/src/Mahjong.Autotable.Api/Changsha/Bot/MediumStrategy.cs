@@ -219,6 +219,15 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
             .ToDictionary(g => g.Key, g => g.Count());
 
+        IReadOnlyList<int>? dangerousOpponents = null;
+        HashSet<int>? safetyDiscardLogicals = null;
+        if (state is not null && botSeatIndex >= 0)
+        {
+            dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+            if (dangerousOpponents.Count > 0)
+                safetyDiscardLogicals = TenpaiDetector.CollectGenbutsuLogicals(state, dangerousOpponents);
+        }
+
         var scored = hand.ConcealedTiles
             .Select(tileId => new DiscardCandidate(
                 tileId,
@@ -228,6 +237,10 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
         var best = scored
             .OrderBy(entry => entry.Score)
+            .ThenBy(entry => safetyDiscardLogicals is null ? 0 : OpponentSafetyTieBreaker(entry.TileId, safetyDiscardLogicals))
+            .ThenBy(entry => state is null || botSeatIndex < 0 || dangerousOpponents is null || dangerousOpponents.Count == 0
+                ? 0
+                : TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
             .ThenByDescending(entry => entry.TileId)
             .First();
 
