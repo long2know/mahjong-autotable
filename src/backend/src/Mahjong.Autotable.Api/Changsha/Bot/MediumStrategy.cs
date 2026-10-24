@@ -225,8 +225,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (state is not null && botSeatIndex >= 0)
         {
             dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
-            if (dangerousOpponents.Count > 0)
-                safetyDiscardLogicals = TenpaiDetector.CollectGenbutsuLogicals(state, dangerousOpponents);
+            // Keep Medium's tie-break safety-aware even before a strict
+            // dangerous-opponent signal exists: use opponent-discarded logicals
+            // as the fallback safety set, and automatically switch to
+            // dangerous-opponent genbutsu once tenpai pressure appears.
+            safetyDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex, dangerousOpponents);
         }
 
         var scored = hand.ConcealedTiles
