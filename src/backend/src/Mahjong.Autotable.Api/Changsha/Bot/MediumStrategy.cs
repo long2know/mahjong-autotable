@@ -339,6 +339,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                         && dangerousOpponents.Count > 0
                         && safetyDiscardLogicals is not null)
                     {
+                        var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
+                        if (IsLogicalNearExhausted(smallWinSingleton.Value.Logical, visibleLogicalCounts)
+                            && !IsBridgeBetweenOffRankPairs(smallWinSingleton.Value.Logical, logicalCounts))
+                            return (smallWinSingleton.Value.TileId, true);
+
                         var bestOpponentSafety = OpponentSafetyTieBreaker(best.TileId, safetyDiscardLogicals);
                         var singletonOpponentSafety = OpponentSafetyTieBreaker(smallWinSingleton.Value.TileId, safetyDiscardLogicals);
 
@@ -589,9 +594,15 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
             return false;
 
-        // If all four copies are publicly accounted for, this singleton is dead and
-        // universally safe to discard. Do not override to an off-rank pair solely on
-        // genbutsu bias in that situation.
+        // Near-dead singleton (three copies already visible) has only one live
+        // draw left. Keep that discard instead of swapping to an off-rank pair
+        // purely on dangerous-opponent safety bias.
+        if (IsLogicalNearExhausted(selected.Logical, visibleLogicalCounts)
+            && !IsBridgeBetweenOffRankPairs(selected.Logical, logicalCounts))
+            return false;
+
+        // Dead singleton (all four copies visible) is universally safe and has no
+        // future value. Keep the singleton discard in that situation too.
         if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
             return false;
 
