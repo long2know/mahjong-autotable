@@ -123,10 +123,96 @@ public class HardClaimSmallWinPairGuardTests
         Assert.Equal(BotActionType.Pass, action.Type);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W26")]
+    public void Hard_PrefersBestChowPatternOverPung_WhenOnlyLaterChowShapeImprovesShanten()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(1, 1), Wan(6, 0), Wan(7, 3),
+                Tong(3, 0), Tong(5, 2),
+                Tong(6, 0), Tong(6, 3),
+                Tong(7, 3), Tong(8, 0),
+                Tiao(1, 3), Tiao(2, 1), Tiao(4, 3), Tiao(7, 0)
+            }
+        };
+
+        var state = BuildClaimState(
+            hand,
+            discardTileId: Tong(6, 1),
+            opportunities: new[] { TableClaimType.Pung, TableClaimType.Chow });
+
+        var action = new HardStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
+        Assert.NotNull(action.ClaimTileIds);
+        Assert.Equal(2, action.ClaimTileIds!.Length);
+        Assert.Equal(
+            new[]
+            {
+                ChangshaDeckBuilder.GetLogicalTile(Tong(7, 0)),
+                ChangshaDeckBuilder.GetLogicalTile(Tong(8, 0))
+            },
+            action.ClaimTileIds
+                .Select(ChangshaDeckBuilder.GetLogicalTile)
+                .OrderBy(logical => logical)
+                .ToArray());
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W26")]
+    public void Master_DelegatesBestChowPatternChoice_WhenOnlyLaterChowShapeImprovesShanten()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(1, 1), Wan(6, 0), Wan(7, 3),
+                Tong(3, 0), Tong(5, 2),
+                Tong(6, 0), Tong(6, 3),
+                Tong(7, 3), Tong(8, 0),
+                Tiao(1, 3), Tiao(2, 1), Tiao(4, 3), Tiao(7, 0)
+            }
+        };
+
+        var state = BuildClaimState(
+            hand,
+            discardTileId: Tong(6, 1),
+            opportunities: new[] { TableClaimType.Pung, TableClaimType.Chow });
+
+        var action = ChangshaBotEngine.Resolve("master").DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
+        Assert.NotNull(action.ClaimTileIds);
+        Assert.Equal(2, action.ClaimTileIds!.Length);
+        Assert.Equal(
+            new[]
+            {
+                ChangshaDeckBuilder.GetLogicalTile(Tong(7, 0)),
+                ChangshaDeckBuilder.GetLogicalTile(Tong(8, 0))
+            },
+            action.ClaimTileIds
+                .Select(ChangshaDeckBuilder.GetLogicalTile)
+                .OrderBy(logical => logical)
+                .ToArray());
+    }
+
     private static ChangshaGameState BuildSingleClaimState(
         ChangshaHandState hand,
         int discardTileId,
         TableClaimType claimType)
+    {
+        return BuildClaimState(hand, discardTileId, new[] { claimType });
+    }
+
+    private static ChangshaGameState BuildClaimState(
+        ChangshaHandState hand,
+        int discardTileId,
+        IReadOnlyList<TableClaimType> opportunities)
     {
         return new ChangshaGameState
         {
@@ -143,15 +229,12 @@ public class HardClaimSmallWinPairGuardTests
             {
                 DiscardSeatIndex = 0,
                 DiscardTileId = discardTileId,
-                Opportunities = new()
+                Opportunities = opportunities.Select(claimType => new ChangshaClaimOpportunity
                 {
-                    new()
-                    {
-                        SeatIndex = 1,
-                        ClaimType = claimType,
-                        Priority = ChangshaClaimPriority.TierOf(claimType)
-                    }
-                }
+                    SeatIndex = 1,
+                    ClaimType = claimType,
+                    Priority = ChangshaClaimPriority.TierOf(claimType)
+                }).ToList()
             }
         };
     }
