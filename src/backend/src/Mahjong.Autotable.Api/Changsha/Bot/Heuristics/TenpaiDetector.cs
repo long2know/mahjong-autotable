@@ -102,19 +102,23 @@ public static class TenpaiDetector
     }
 
     /// <summary>
-    /// Returns the safety bias for <paramref name="tileId"/>: −1 when at
-    /// least one opponent is likely tenpai AND that opponent has already
-    /// discarded a tile with the same logical id (genbutsu against a
-    /// dangerous opponent); 0 otherwise.
+    /// Returns the safety bias for <paramref name="tileId"/> based on how
+    /// many dangerous opponents have already discarded that logical tile:
+    /// <list type="bullet">
+    /// <item><description>−2 when there are multiple dangerous opponents and the tile is genbutsu against <b>all</b> of them.</description></item>
+    /// <item><description>−1 when exactly one dangerous opponent exists and has discarded the tile, or when the tile is genbutsu against only part of a multi-dangerous set.</description></item>
+    /// <item><description>0 when no dangerous opponent has discarded it.</description></item>
+    /// </list>
     /// </summary>
     /// <remarks>
     /// <para>This is a stronger signal than the generic "anyone has
     /// discarded this tile" bias used by Hard/Master: a generic discard
     /// only tells us the table once didn't need the tile, but a discard
     /// <i>from a dangerous opponent</i> tells us that specific dangerous
-    /// opponent can't capitalise on its return. We treat it as a tiny
-    /// negative integer (−1) suitable for tier-breakers; callers layer
-    /// it after shanten and keep-score so it never overrides shape.</para>
+    /// opponent can't capitalise on its return. We grade by dangerous-seat
+    /// coverage so full genbutsu (safe against everyone dangerous) outranks
+    /// partial genbutsu during tie-breaks, while still preserving a smaller
+    /// preference for partial safety.</para>
     ///
     /// <para>Returns 0 when no opponent is dangerous — falling back
     /// silently keeps the bot's offensive tempo intact during the
@@ -127,8 +131,25 @@ public static class TenpaiDetector
         var dangerous = CollectDangerousOpponents(state, botSeatIndex);
         if (dangerous.Count == 0) return 0;
 
-        var genbutsu = CollectGenbutsuLogicals(state, dangerous);
         var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
-        return genbutsu.Contains(logical) ? -1 : 0;
+        var coveredDangerousOpponents = 0;
+
+        foreach (var seat in dangerous)
+        {
+            var hasSeatDiscardedLogical = state.DiscardPile.Any(discard =>
+                discard.SeatIndex == seat
+                && ChangshaDeckBuilder.GetLogicalTile(discard.TileId) == logical);
+
+            if (hasSeatDiscardedLogical)
+                coveredDangerousOpponents++;
+        }
+
+        if (coveredDangerousOpponents == 0)
+            return 0;
+
+        if (dangerous.Count == 1)
+            return -1;
+
+        return coveredDangerousOpponents == dangerous.Count ? -2 : -1;
     }
 }

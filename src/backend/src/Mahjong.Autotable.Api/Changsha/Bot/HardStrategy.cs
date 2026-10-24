@@ -408,8 +408,9 @@ public sealed class HardStrategy : IChangshaBotStrategy
         var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
 
         // Phase J Wave 4 — shanten is now the primary discard key. The Phase F
-        // keep-score (defensive bias + neighbour preservation) and stable tile-id
-        // serve as tie-breakers. Promotion was safe-gated by the Phase J Wave 1
+        // keep-score (defensive bias + neighbour preservation), then tenpai-aware
+        // safety bias, and finally stable tile-id serve as tie-breakers. Promotion
+        // was safe-gated by the Phase J Wave 1
         // claim-acceptance shanten gate (see DecideClaimPhase): with the bot
         // refusing shape-breaking claims, shanten-greedy discards no longer lose
         // ground to opponents capitalising on broken meld shapes. The seed-40595
@@ -436,6 +437,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
         var best = scored
             .OrderBy(entry => entry.Shanten)
             .ThenBy(entry => entry.Score)
+            .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
             .ThenByDescending(entry => entry.TileId)
             .First();
 
