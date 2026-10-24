@@ -805,14 +805,13 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         // draw left. Preserve that discard instead of swapping to an off-rank
         // pair just because the pair is genbutsu.
         if (IsLogicalNearExhausted(selected.Logical, visibleLogicalCounts)
+            && !IsLogicalDead(selected.Logical, visibleLogicalCounts)
             && !IsBridgeBetweenOffRankPairs(selected.Logical, logicalCounts))
             return false;
 
-        // Dead singleton (all four copies visible) is universally safe and has no
-        // future value. Preserve the dead-tile discard as well.
-        if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
-            return false;
-
+        // A dead singleton can still be the final deal-in tile. Keep it only when
+        // it is at least as safe as alternatives; otherwise allow a swap to a
+        // strictly safer off-rank pair under dangerous-opponent pressure.
         var saferOffRankPair = scored
             .Where(entry => logicalCounts.GetValueOrDefault(entry.Logical, 0) > 1 && !IsSmallWinRank(entry.Logical))
             .Where(entry => entry.Shanten <= selected.Shanten + OffRankPairShantenTolerance)

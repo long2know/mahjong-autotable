@@ -697,14 +697,14 @@ public sealed class HardStrategy : IChangshaBotStrategy
         // draw left. Keep that discard instead of swapping to an off-rank pair
         // purely for dangerous-opponent genbutsu bias.
         if (IsLogicalNearExhausted(selected.Logical, visibleLogicalCounts)
+            && !IsLogicalDead(selected.Logical, visibleLogicalCounts)
             && !IsBridgeBetweenOffRankPairs(selected.Logical, logicalCounts))
             return false;
 
-        // Dead singleton (all four copies visible) is universally safe and has no
-        // future value. Keep the dead-tile discard as well.
-        if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
-            return false;
-
+        // Even when a 2/5/8 singleton is dead for improvement (all copies are
+        // already accounted for from our perspective), discarding that last copy
+        // can still deal in. Allow this path to swap to an off-rank pair when the
+        // pair is strictly safer against dangerous opponents.
         var saferOffRankPair = scored
             .Where(entry => logicalCounts.GetValueOrDefault(entry.Logical, 0) > 1 && !IsSmallWinRank(entry.Logical))
             .Where(entry => entry.Shanten <= selected.Shanten + OffRankPairShantenTolerance)

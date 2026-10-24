@@ -1524,7 +1524,7 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
-    public void Hard_DiscardsDeadSmallWinSingleton_EvenWhenDangerousOpponentHasSafeOffRankPair()
+    public void Hard_PrefersDangerousOpponentSafeOffRankPair_OverDeadSmallWinSingleton()
     {
         var hand = Hand(
             Tiao(2, 0),
@@ -1565,7 +1565,9 @@ public class BotStrategyTests
         var action = hard.DecideAction(state, botSeatIndex: 0);
 
         Assert.Equal(BotActionType.Discard, action.Type);
-        Assert.Equal(Tiao(2, 0), action.TileId);
+        Assert.Equal(
+            ChangshaDeckBuilder.GetLogicalTile(Wan(7, 0)),
+            ChangshaDeckBuilder.GetLogicalTile(action.TileId!.Value));
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
@@ -1667,7 +1669,7 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
-    public void Hard_KeepsDeadSmallWinSingletonDiscard_WhenAlternativeIsFullDangerousGenbutsu()
+    public void Hard_PrefersFullDangerousGenbutsu_OverDeadSmallWinSingletonDiscard()
     {
         var hand = Hand(
             Tiao(2, 0),
@@ -1718,7 +1720,9 @@ public class BotStrategyTests
         var action = hard.DecideAction(state, botSeatIndex: 0);
 
         Assert.Equal(BotActionType.Discard, action.Type);
-        Assert.Equal(Tiao(2, 0), action.TileId);
+        Assert.Equal(
+            ChangshaDeckBuilder.GetLogicalTile(Wan(7, 0)),
+            ChangshaDeckBuilder.GetLogicalTile(action.TileId!.Value));
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
@@ -1758,7 +1762,7 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
-    public void Master_DiscardsDeadSmallWinSingleton_EvenWhenDangerousOpponentHasSafeOffRankPair()
+    public void Master_PrefersDangerousOpponentSafeOffRankPair_OverDeadSmallWinSingleton()
     {
         var hand = Hand(
             Tiao(2, 0),
@@ -1799,7 +1803,9 @@ public class BotStrategyTests
         var action = master.DecideAction(state, botSeatIndex: 0);
 
         Assert.Equal(BotActionType.Discard, action.Type);
-        Assert.Equal(Tiao(2, 0), action.TileId);
+        Assert.Equal(
+            ChangshaDeckBuilder.GetLogicalTile(Wan(7, 0)),
+            ChangshaDeckBuilder.GetLogicalTile(action.TileId!.Value));
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
@@ -1901,7 +1907,7 @@ public class BotStrategyTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
-    public void Master_KeepsDeadSmallWinSingletonDiscard_WhenAlternativeIsFullDangerousGenbutsu()
+    public void Master_PrefersFullDangerousGenbutsu_OverDeadSmallWinSingletonDiscard()
     {
         var hand = Hand(
             Tiao(2, 0),
@@ -1952,7 +1958,9 @@ public class BotStrategyTests
         var action = master.DecideAction(state, botSeatIndex: 0);
 
         Assert.Equal(BotActionType.Discard, action.Type);
-        Assert.Equal(Tiao(2, 0), action.TileId);
+        Assert.Equal(
+            ChangshaDeckBuilder.GetLogicalTile(Wan(7, 0)),
+            ChangshaDeckBuilder.GetLogicalTile(action.TileId!.Value));
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
