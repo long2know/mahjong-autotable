@@ -187,6 +187,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         int[]? bestClaimTileIds = null;
         var bestPostShanten = int.MaxValue;
         var bestPostSmallWinPairDistance = int.MaxValue;
+        var bestLiveWinningOuts = int.MinValue;
         var bestClaimRank = int.MinValue;
 
         foreach (var opp in opportunities)
@@ -197,12 +198,12 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             if (opp.ClaimType == TableClaimType.Chow && hand.Melds.Count >= 3)
                 continue;
 
-            var (postShanten, postSmallWinPairDistance, claimTileIds) = opp.ClaimType switch
+            var (postShanten, postSmallWinPairDistance, postLiveWinningOuts, claimTileIds) = opp.ClaimType switch
             {
                 TableClaimType.Kong => ProbeAfterExposedKongClaim(hand, discardLogical, discardTileId),
                 TableClaimType.Pung => ProbeAfterPungClaim(hand, discardLogical, discardTileId),
                 TableClaimType.Chow => ProbeAfterChowClaim(hand, discardLogical, discardTileId),
-                _ => (int.MaxValue, int.MaxValue, null)
+                _ => (int.MaxValue, int.MaxValue, int.MinValue, null)
             };
 
             if (postShanten > preShanten)
@@ -217,6 +218,10 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 || (postShanten == bestPostShanten && postSmallWinPairDistance < bestPostSmallWinPairDistance)
                 || (postShanten == bestPostShanten
                     && postSmallWinPairDistance == bestPostSmallWinPairDistance
+                    && postLiveWinningOuts > bestLiveWinningOuts)
+                || (postShanten == bestPostShanten
+                    && postSmallWinPairDistance == bestPostSmallWinPairDistance
+                    && postLiveWinningOuts == bestLiveWinningOuts
                     && claimRank > bestClaimRank);
 
             if (!isBetter)
@@ -226,6 +231,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             bestClaimTileIds = claimTileIds;
             bestPostShanten = postShanten;
             bestPostSmallWinPairDistance = postSmallWinPairDistance;
+            bestLiveWinningOuts = postLiveWinningOuts;
             bestClaimRank = claimRank;
         }
 
@@ -241,33 +247,33 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         _ => 0
     };
 
-    private static (int Shanten, int SmallWinPairDistance, int[]? ClaimTileIds) ProbeAfterPungClaim(
+    private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) ProbeAfterPungClaim(
         ChangshaHandState hand,
         int discardLogical,
         int discardTileId)
     {
         var concealedAfter = new List<int>(hand.ConcealedTiles);
         if (!TryRemoveByLogical(concealedAfter, discardLogical, 2))
-            return (int.MaxValue, int.MaxValue, null);
+            return (int.MaxValue, int.MaxValue, int.MinValue, null);
 
         var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Pung, discardTileId);
-        return (probe.Shanten, probe.SmallWinPairDistance, null);
+        return (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, null);
     }
 
-    private static (int Shanten, int SmallWinPairDistance, int[]? ClaimTileIds) ProbeAfterExposedKongClaim(
+    private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) ProbeAfterExposedKongClaim(
         ChangshaHandState hand,
         int discardLogical,
         int discardTileId)
     {
         var concealedAfter = new List<int>(hand.ConcealedTiles);
         if (!TryRemoveByLogical(concealedAfter, discardLogical, 3))
-            return (int.MaxValue, int.MaxValue, null);
+            return (int.MaxValue, int.MaxValue, int.MinValue, null);
 
         var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, discardTileId);
-        return (probe.Shanten, probe.SmallWinPairDistance, null);
+        return (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, null);
     }
 
-    private static (int Shanten, int SmallWinPairDistance, int[]? ClaimTileIds) ProbeAfterChowClaim(
+    private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) ProbeAfterChowClaim(
         ChangshaHandState hand,
         int discardLogical,
         int discardTileId)
@@ -278,7 +284,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (rank >= 1 && rank <= 7) patterns.Add((discardLogical - 1, discardLogical + 1));
         if (rank <= 6) patterns.Add((discardLogical + 1, discardLogical + 2));
 
-        var best = (Shanten: int.MaxValue, SmallWinPairDistance: int.MaxValue, ClaimTileIds: (int[]?)null);
+        var best = (Shanten: int.MaxValue, SmallWinPairDistance: int.MaxValue, LiveWinningOuts: int.MinValue, ClaimTileIds: (int[]?)null);
         foreach (var (a, b) in patterns)
         {
             var concealedAfter = new List<int>(hand.ConcealedTiles);
@@ -289,10 +295,13 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Chow, discardTileId);
             var isBetter = probe.Shanten < best.Shanten
                 || (probe.Shanten == best.Shanten
-                    && probe.SmallWinPairDistance < best.SmallWinPairDistance);
+                    && probe.SmallWinPairDistance < best.SmallWinPairDistance)
+                || (probe.Shanten == best.Shanten
+                    && probe.SmallWinPairDistance == best.SmallWinPairDistance
+                    && probe.LiveWinningOuts > best.LiveWinningOuts);
 
             if (isBetter)
-                best = (probe.Shanten, probe.SmallWinPairDistance, new[] { tileA, tileB });
+                best = (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, new[] { tileA, tileB });
         }
 
         return best;
@@ -325,7 +334,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         return true;
     }
 
-    private static (int Shanten, int SmallWinPairDistance) ProbeClaimOutcomeWithExtraMeld(
+    private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts) ProbeClaimOutcomeWithExtraMeld(
         ChangshaHandState hand,
         List<int> concealedAfter,
         MeldKind kind,
@@ -348,7 +357,53 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
         return (
             HandEvaluator.MinShantenToHu(probe, Array.Empty<int>()),
-            ComputeSmallWinPairDistance(concealedAfter));
+            ComputeSmallWinPairDistance(concealedAfter),
+            CountLiveWinningOuts(probe));
+    }
+
+    private static int CountLiveWinningOuts(ChangshaHandState hand)
+    {
+        var currentShanten = HandEvaluator.MinShantenToHu(hand, Array.Empty<int>());
+        var ownedLogicalCounts = new Dictionary<int, int>();
+
+        void AddOwnedTile(int tileId)
+        {
+            var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+            ownedLogicalCounts[logical] = ownedLogicalCounts.GetValueOrDefault(logical, 0) + 1;
+        }
+
+        foreach (var tileId in hand.ConcealedTiles)
+            AddOwnedTile(tileId);
+
+        foreach (var meld in hand.Melds)
+        {
+            foreach (var tileId in meld.TileIds)
+                AddOwnedTile(tileId);
+        }
+
+        var liveWinningOuts = 0;
+        for (var logical = 0; logical < ChangshaDeckBuilder.LogicalTileCount; logical++)
+        {
+            var owned = ownedLogicalCounts.GetValueOrDefault(logical, 0);
+            if (owned >= ChangshaDeckBuilder.CopiesPerTile)
+                continue;
+
+            var probe = new ChangshaHandState
+            {
+                SeatIndex = hand.SeatIndex,
+                ConcealedTiles = new List<int>(hand.ConcealedTiles)
+                {
+                    logical * ChangshaDeckBuilder.CopiesPerTile
+                },
+                Melds = hand.Melds
+            };
+
+            var shantenAfterDraw = HandEvaluator.MinShantenToHu(probe, Array.Empty<int>());
+            if (shantenAfterDraw < currentShanten)
+                liveWinningOuts += ChangshaDeckBuilder.CopiesPerTile - owned;
+        }
+
+        return liveWinningOuts;
     }
 
     private static int ComputeSmallWinPairDistance(IReadOnlyList<int> concealedTileIds)
