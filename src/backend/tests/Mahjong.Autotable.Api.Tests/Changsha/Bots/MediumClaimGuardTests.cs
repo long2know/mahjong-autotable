@@ -33,6 +33,28 @@ public class MediumClaimGuardTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W26")]
+    public void Medium_PassesPung_WhenClaimWorsensShantenEvenIfSmallWinPairDistanceKeeps()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(5, 3), Tong(7, 2), Wan(4, 2),
+                Tiao(4, 1), Tiao(7, 1),
+                Tong(5, 0), Tong(6, 2), Tong(4, 1), Tong(8, 2),
+                Wan(9, 3), Wan(2, 2), Tong(6, 3), Tiao(3, 3)
+            }
+        };
+
+        var state = BuildSingleClaimState(hand, discardTileId: Tong(6, 0), claimType: TableClaimType.Pung);
+
+        var action = new MediumStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W26")]
     public void Medium_StillClaimsPung_WhenClaimKeepsShantenAndSmallWinPairDistance()
     {
         var hand = new ChangshaHandState

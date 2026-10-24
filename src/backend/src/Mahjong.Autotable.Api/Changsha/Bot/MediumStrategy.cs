@@ -135,7 +135,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             }
             else
             {
-                reasoning.Add("no claim opportunity matched gate (chow requires <3 melds)");
+                reasoning.Add("no claim opportunity matched gate (chow cap, shanten guard, or 2/5/8-eye guard)");
             }
             return new BotDecision(action, action.TileId, Score: 0, reasoning);
         }
@@ -178,6 +178,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (opportunities.Count == 0)
             return BotAction.Pass();
 
+        var preShanten = HandEvaluator.MinShantenToHu(hand, Array.Empty<int>());
         var preSmallWinPairDistance = ComputeSmallWinPairDistance(hand.ConcealedTiles);
         var discardTileId = claimWindow.DiscardTileId;
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
@@ -190,13 +191,16 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             if (opp.ClaimType == TableClaimType.Chow && hand.Melds.Count >= 3)
                 continue;
 
-            var (_, postSmallWinPairDistance) = opp.ClaimType switch
+            var (postShanten, postSmallWinPairDistance) = opp.ClaimType switch
             {
                 TableClaimType.Kong => ProbeAfterExposedKongClaim(hand, discardLogical, discardTileId),
                 TableClaimType.Pung => ProbeAfterPungClaim(hand, discardLogical, discardTileId),
                 TableClaimType.Chow => ProbeAfterChowClaim(hand, discardLogical, discardTileId),
                 _ => (int.MaxValue, int.MaxValue)
             };
+
+            if (postShanten > preShanten)
+                continue;
 
             if (postSmallWinPairDistance > preSmallWinPairDistance)
                 continue;
