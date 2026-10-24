@@ -663,9 +663,9 @@ public sealed class MasterStrategy : IChangshaBotStrategy
                 && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
                 && IsLogicalDead(entry.Logical, visibleLogicalCounts))
             .OrderBy(entry => entry.Shanten)
-            .ThenBy(entry => entry.Score)
             .ThenBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
             .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
+            .ThenBy(entry => entry.Score)
             .ThenByDescending(entry => entry.TileId)
             .Select(entry => (DiscardCandidate?)entry)
             .FirstOrDefault();
