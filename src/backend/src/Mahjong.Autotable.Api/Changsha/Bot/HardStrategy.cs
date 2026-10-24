@@ -657,10 +657,11 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
         var saferOffRankPair = scored
             .Where(entry => logicalCounts.GetValueOrDefault(entry.Logical, 0) > 1 && !IsSmallWinRank(entry.Logical))
-            .OrderBy(entry => entry.Shanten)
-            .ThenBy(entry => entry.Score)
-            .ThenBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
+            .Where(entry => entry.Shanten <= selected.Shanten + OffRankPairShantenTolerance)
+            .OrderBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
             .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
+            .ThenBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
             .ThenByDescending(entry => entry.TileId)
             .Select(entry => (DiscardCandidate?)entry)
             .FirstOrDefault();
