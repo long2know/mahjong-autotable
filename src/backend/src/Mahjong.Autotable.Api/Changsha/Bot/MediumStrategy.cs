@@ -274,14 +274,23 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (rank >= 1 && rank <= 7) patterns.Add((discardLogical - 1, discardLogical + 1));
         if (rank <= 6) patterns.Add((discardLogical + 1, discardLogical + 2));
 
+        var best = (Shanten: int.MaxValue, SmallWinPairDistance: int.MaxValue);
         foreach (var (a, b) in patterns)
         {
             var concealedAfter = new List<int>(hand.ConcealedTiles);
-            if (TryRemoveByLogical(concealedAfter, a, 1) && TryRemoveByLogical(concealedAfter, b, 1))
-                return ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Chow, discardTileId);
+            if (!TryRemoveByLogical(concealedAfter, a, 1) || !TryRemoveByLogical(concealedAfter, b, 1))
+                continue;
+
+            var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Chow, discardTileId);
+            var isBetter = probe.Shanten < best.Shanten
+                || (probe.Shanten == best.Shanten
+                    && probe.SmallWinPairDistance < best.SmallWinPairDistance);
+
+            if (isBetter)
+                best = probe;
         }
 
-        return (int.MaxValue, int.MaxValue);
+        return best;
     }
 
     private static bool TryRemoveByLogical(List<int> tiles, int logical, int count)

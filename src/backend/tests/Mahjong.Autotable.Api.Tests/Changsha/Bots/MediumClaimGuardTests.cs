@@ -160,6 +160,33 @@ public class MediumClaimGuardTests
         Assert.Equal(TableClaimType.Chow, action.ClaimType);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W26")]
+    public void Medium_PrefersBestChowPatternOverPung_WhenOnlyLaterChowShapeImprovesShanten()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(1, 1), Wan(6, 0), Wan(7, 3),
+                Tong(3, 0), Tong(5, 2),
+                Tong(6, 0), Tong(6, 3),
+                Tong(7, 3), Tong(8, 0),
+                Tiao(1, 3), Tiao(2, 1), Tiao(4, 3), Tiao(7, 0)
+            }
+        };
+
+        var state = BuildClaimState(
+            hand,
+            discardTileId: Tong(6, 1),
+            opportunities: new[] { TableClaimType.Pung, TableClaimType.Chow });
+
+        var action = new MediumStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
+    }
+
     private static ChangshaGameState BuildSingleClaimState(
         ChangshaHandState hand,
         int discardTileId,
