@@ -441,7 +441,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
         var selectedTileId = best.TileId;
 
-        if (TryKeepConnectedSmallWinSingleton(logicalCounts, scored, best, visibleLogicalCounts, out var preserveTile))
+        if (TryKeepConnectedSmallWinSingleton(logicalCounts, scored, best, visibleLogicalCounts, state, botSeatIndex, discardedLogicals, out var preserveTile))
         {
             selectedTileId = preserveTile;
         }
@@ -524,6 +524,9 @@ public sealed class HardStrategy : IChangshaBotStrategy
         List<DiscardCandidate> scored,
         DiscardCandidate best,
         Dictionary<int, int> visibleLogicalCounts,
+        ChangshaGameState state,
+        int botSeatIndex,
+        HashSet<int> opponentDiscardLogicals,
         out int tileId)
     {
         tileId = -1;
@@ -547,6 +550,8 @@ public sealed class HardStrategy : IChangshaBotStrategy
             .Where(entry => entry.TileId != best.TileId && !IsSmallWinRank(entry.Logical))
             .OrderBy(entry => entry.Shanten)
             .ThenBy(entry => entry.Score)
+            .ThenBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
+            .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
             .ThenByDescending(entry => entry.TileId)
             .Select(entry => (DiscardCandidate?)entry)
             .FirstOrDefault();
