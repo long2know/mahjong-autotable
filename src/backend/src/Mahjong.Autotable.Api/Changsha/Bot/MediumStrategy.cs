@@ -641,11 +641,9 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             && !IsBridgeBetweenOffRankPairs(selected.Logical, logicalCounts))
             return false;
 
-        // Even when a 2/5/8 singleton is dead for improvement (all copies are
-        // already accounted for from our perspective), discarding that last copy
-        // can still deal in. Allow this path to swap to an off-rank pair when the
-        // pair is strictly safer against dangerous opponents.
-
+        // Dead singleton (all four copies visible) has no future value, but it may
+        // still be riskier than a dangerous-opponent genbutsu off-rank pair.
+        // Keep the singleton unless the pair is strictly safer.
         var opponentDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex, dangerousOpponents);
 
         var saferOffRankPair = scored
