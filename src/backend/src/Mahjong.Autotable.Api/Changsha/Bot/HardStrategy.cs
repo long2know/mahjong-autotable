@@ -241,10 +241,10 @@ public sealed class HardStrategy : IChangshaBotStrategy
         // heuristic-only path that occasionally turned strong hands into broken
         // shapes (most visibly the Phase F "fussy chow" rule).
         //
-        // Phase K Wave 25: for Chow claims specifically, avoid claims that worsen
-        // the hand's 2/5/8-eye readiness (Changsha small-win pair route). This
-        // prevents shape-improving but eye-breaking chow claims from being accepted
-        // on shanten alone.
+        // Phase K Wave 25: for non-Hu claims, avoid claims that worsen the
+        // hand's 2/5/8-eye readiness (Changsha small-win pair route). This
+        // prevents shape-improving but eye-breaking Chow/Pung/Kong claims from
+        // being accepted on shanten alone.
         var preShanten = HandEvaluator.MinShantenToHu(hand, Array.Empty<int>());
         var preSmallWinPairDistance = ComputeSmallWinPairDistance(hand.ConcealedTiles);
         var discardTileId = state.ClaimWindow.DiscardTileId;
@@ -266,7 +266,8 @@ public sealed class HardStrategy : IChangshaBotStrategy
             if (postShanten >= preShanten)
                 continue;
 
-            if (opp.ClaimType == TableClaimType.Chow && postSmallWinPairDistance > preSmallWinPairDistance)
+            if (opp.ClaimType is TableClaimType.Chow or TableClaimType.Pung or TableClaimType.Kong
+                && postSmallWinPairDistance > preSmallWinPairDistance)
                 continue;
 
             // Tie-breaker: Hu > Kong > Pung > Chow. Hu was handled above; among the
