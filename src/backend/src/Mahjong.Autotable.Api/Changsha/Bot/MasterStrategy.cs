@@ -45,6 +45,7 @@ public sealed class MasterStrategy : IChangshaBotStrategy
     private const int OffRankPairShantenTolerance = 2;
     private const int OffRankPairScoreTolerance = 2;
     private const int ConnectedSmallWinBridgeShantenTolerance = 1;
+    private const int FullDangerousGenbutsuScoreTolerance = 2;
 
     /// <summary>The lowercase difficulty discriminator used by
     /// <see cref="ChangshaBotEngine.Resolve"/>.</summary>
@@ -307,6 +308,16 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             selectedTileId = safePairTileId;
         }
 
+        if (TryPromoteFullDangerousGenbutsuOnShantenTie(
+                scored,
+                selectedTileId,
+                state,
+                botSeatIndex,
+                out var fullSafetyTileId))
+        {
+            selectedTileId = fullSafetyTileId;
+        }
+
         return selectedTileId;
     }
 
@@ -566,6 +577,50 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         }
 
         tileId = smallWinSingleton.TileId;
+        return true;
+    }
+
+    private static bool TryPromoteFullDangerousGenbutsuOnShantenTie(
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaGameState state,
+        int botSeatIndex,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count < 2)
+            return false;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+        if (selectedSafety <= -2)
+            return false;
+
+        DiscardCandidate? fullSafetyCandidate = null;
+        foreach (var entry in scored
+                     .Where(entry => entry.TileId != selectedTileId && entry.Shanten == selected.Shanten)
+                     .OrderBy(entry => entry.Score)
+                     .ThenByDescending(entry => entry.TileId))
+        {
+            if (TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -2)
+            {
+                fullSafetyCandidate = entry;
+                break;
+            }
+        }
+
+        if (fullSafetyCandidate is null)
+            return false;
+
+        if (fullSafetyCandidate.Value.Score > selected.Score + FullDangerousGenbutsuScoreTolerance)
+            return false;
+
+        tileId = fullSafetyCandidate.Value.TileId;
         return true;
     }
 
