@@ -257,6 +257,12 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     IsSmallWinRank(entry.Logical)
                     && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
                     && IsLogicalDead(entry.Logical, visibleLogicalCounts))
+                .OrderBy(entry => safetyDiscardLogicals is null ? 0 : OpponentSafetyTieBreaker(entry.TileId, safetyDiscardLogicals))
+                .ThenBy(entry => state is null || botSeatIndex < 0 || dangerousOpponents is null || dangerousOpponents.Count == 0
+                    ? 0
+                    : TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
+                .ThenBy(entry => entry.Score)
+                .ThenByDescending(entry => entry.TileId)
                 .Select(entry => (DiscardCandidate?)entry)
                 .FirstOrDefault();
 
