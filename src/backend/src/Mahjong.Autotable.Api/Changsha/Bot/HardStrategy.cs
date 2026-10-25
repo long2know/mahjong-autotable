@@ -247,6 +247,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
         // being accepted on shanten alone.
         var preShanten = HandEvaluator.MinShantenToHu(hand, Array.Empty<int>());
         var preSmallWinPairDistance = ComputeSmallWinPairDistance(hand.ConcealedTiles);
+        var externallyVisibleLogicalCounts = CollectExternallyVisibleLogicalCountsForClaimOuts(state, botSeatIndex);
         var discardTileId = state.ClaimWindow.DiscardTileId;
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
 
@@ -261,9 +262,9 @@ public sealed class HardStrategy : IChangshaBotStrategy
         {
             var (postShanten, postSmallWinPairDistance, postLiveWinningOuts, claimTileIds) = opp.ClaimType switch
             {
-                TableClaimType.Kong => ProbeAfterExposedKongClaim(hand, discardLogical, discardTileId),
-                TableClaimType.Pung => ProbeAfterPungClaim(hand, discardLogical, discardTileId),
-                TableClaimType.Chow => ProbeAfterChowClaim(hand, discardLogical, discardTileId),
+                TableClaimType.Kong => ProbeAfterExposedKongClaim(hand, discardLogical, discardTileId, externallyVisibleLogicalCounts),
+                TableClaimType.Pung => ProbeAfterPungClaim(hand, discardLogical, discardTileId, externallyVisibleLogicalCounts),
+                TableClaimType.Chow => ProbeAfterChowClaim(hand, discardLogical, discardTileId, externallyVisibleLogicalCounts),
                 _ => (int.MaxValue, int.MaxValue, int.MinValue, null)
             };
 
@@ -333,14 +334,15 @@ public sealed class HardStrategy : IChangshaBotStrategy
     private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) ProbeAfterPungClaim(
         ChangshaHandState hand,
         int discardLogical,
-        int discardTileId)
+        int discardTileId,
+        IReadOnlyDictionary<int, int> visibleLogicalCounts)
     {
         var concealedAfter = new List<int>(hand.ConcealedTiles);
         if (!TryTakeTilesByLogical(concealedAfter, discardLogical, 2, out var claimedTileIds))
             return (int.MaxValue, int.MaxValue, int.MinValue, null);
 
         claimedTileIds.Add(discardTileId);
-        var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Pung, claimedTileIds);
+        var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Pung, claimedTileIds, visibleLogicalCounts);
         return (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, null);
     }
 
@@ -354,14 +356,15 @@ public sealed class HardStrategy : IChangshaBotStrategy
     private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) ProbeAfterExposedKongClaim(
         ChangshaHandState hand,
         int discardLogical,
-        int discardTileId)
+        int discardTileId,
+        IReadOnlyDictionary<int, int> visibleLogicalCounts)
     {
         var concealedAfter = new List<int>(hand.ConcealedTiles);
         if (!TryTakeTilesByLogical(concealedAfter, discardLogical, 3, out var claimedTileIds))
             return (int.MaxValue, int.MaxValue, int.MinValue, null);
 
         claimedTileIds.Add(discardTileId);
-        var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, claimedTileIds);
+        var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, claimedTileIds, visibleLogicalCounts);
         return (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, null);
     }
 
@@ -375,7 +378,8 @@ public sealed class HardStrategy : IChangshaBotStrategy
     private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) ProbeAfterChowClaim(
         ChangshaHandState hand,
         int discardLogical,
-        int discardTileId)
+        int discardTileId,
+        IReadOnlyDictionary<int, int> visibleLogicalCounts)
     {
         var rank = discardLogical % 9;
         var patterns = new List<(int A, int B)>();
@@ -391,7 +395,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
                 || !TryTakeTileByLogical(concealedAfter, b, out var tileB))
                 continue;
 
-            var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Chow, new[] { tileA, tileB, discardTileId });
+            var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Chow, new[] { tileA, tileB, discardTileId }, visibleLogicalCounts);
             var isBetter = probe.Shanten < best.Shanten
                 || (probe.Shanten == best.Shanten
                     && probe.SmallWinPairDistance < best.SmallWinPairDistance)
@@ -447,7 +451,8 @@ public sealed class HardStrategy : IChangshaBotStrategy
         ChangshaHandState hand,
         List<int> concealedAfter,
         MeldKind kind,
-        IReadOnlyCollection<int> meldTileIds)
+        IReadOnlyCollection<int> meldTileIds,
+        IReadOnlyDictionary<int, int> visibleLogicalCounts)
     {
         var simulatedMelds = new List<Meld>(hand.Melds.Count + 1);
         simulatedMelds.AddRange(hand.Melds);
@@ -466,10 +471,10 @@ public sealed class HardStrategy : IChangshaBotStrategy
         return (
             HandEvaluator.MinShantenToHu(probe, Array.Empty<int>()),
             ComputeSmallWinPairDistance(concealedAfter),
-            CountLiveWinningOuts(probe));
+            CountLiveWinningOuts(probe, visibleLogicalCounts));
     }
 
-    private static int CountLiveWinningOuts(ChangshaHandState hand)
+    private static int CountLiveWinningOuts(ChangshaHandState hand, IReadOnlyDictionary<int, int> externallyVisibleLogicalCounts)
     {
         var currentShanten = HandEvaluator.MinShantenToHu(hand, Array.Empty<int>());
         var ownedLogicalCounts = new Dictionary<int, int>();
@@ -492,8 +497,10 @@ public sealed class HardStrategy : IChangshaBotStrategy
         var liveWinningOuts = 0;
         for (var logical = 0; logical < ChangshaDeckBuilder.LogicalTileCount; logical++)
         {
-            var owned = ownedLogicalCounts.GetValueOrDefault(logical, 0);
-            if (owned >= ChangshaDeckBuilder.CopiesPerTile)
+            var unavailableCopies = externallyVisibleLogicalCounts.GetValueOrDefault(logical, 0)
+                                  + ownedLogicalCounts.GetValueOrDefault(logical, 0);
+            var remainingCopies = ChangshaDeckBuilder.CopiesPerTile - unavailableCopies;
+            if (remainingCopies <= 0)
                 continue;
 
             var probe = new ChangshaHandState
@@ -508,7 +515,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
             var shantenAfterDraw = HandEvaluator.MinShantenToHu(probe, Array.Empty<int>());
             if (shantenAfterDraw < currentShanten)
-                liveWinningOuts += ChangshaDeckBuilder.CopiesPerTile - owned;
+                liveWinningOuts += remainingCopies;
         }
 
         return liveWinningOuts;
@@ -1087,6 +1094,39 @@ public sealed class HardStrategy : IChangshaBotStrategy
         {
             foreach (var tileId in meld.TileIds)
                 AddTile(tileId);
+        }
+
+        foreach (var discard in state.DiscardPile)
+            AddTile(discard.TileId);
+
+        foreach (var otherHand in state.Hands)
+        {
+            if (otherHand.SeatIndex == botSeatIndex)
+                continue;
+
+            foreach (var meld in otherHand.Melds)
+            {
+                if (meld.Kind == MeldKind.ConcealedKong)
+                    continue;
+
+                foreach (var tileId in meld.TileIds)
+                    AddTile(tileId);
+            }
+        }
+
+        return counts;
+    }
+
+    private static Dictionary<int, int> CollectExternallyVisibleLogicalCountsForClaimOuts(
+        ChangshaGameState state,
+        int botSeatIndex)
+    {
+        var counts = new Dictionary<int, int>();
+
+        void AddTile(int tileId)
+        {
+            var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+            counts[logical] = counts.GetValueOrDefault(logical, 0) + 1;
         }
 
         foreach (var discard in state.DiscardPile)
