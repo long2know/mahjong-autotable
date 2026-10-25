@@ -1141,6 +1141,8 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         DiscardCandidate? fullSafetyCandidate = null;
         foreach (var entry in scored
                      .Where(entry => entry.TileId != selectedTileId)
+                     // Full-coverage safety promotions should not regress hand shape quality.
+                     .Where(entry => entry.Shanten <= selected.Shanten)
                      .OrderBy(entry => entry.Score)
                      .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
                      .ThenByDescending(entry => entry.TileId))
