@@ -1041,6 +1041,13 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
             return false;
 
+        // In multi-lane small-win shapes (3+ distinct 2/5/8 singletons), avoid
+        // forcing this pair-swap defensive override; keep Master's baseline
+        // ordering and apply safety via the normal tie-break tiers.
+        var smallWinSingletonCount = logicalCounts.Count(entry => IsSmallWinRank(entry.Key) && entry.Value == 1);
+        if (smallWinSingletonCount >= 3)
+            return false;
+
         // Near-dead singleton (three copies already visible) has only one live
         // draw left. Preserve that discard instead of swapping to an off-rank
         // pair just because the pair is genbutsu.
