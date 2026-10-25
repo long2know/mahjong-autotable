@@ -251,6 +251,30 @@ public class MediumClaimGuardTests
         Assert.Equal(2, action.ClaimTileIds!.Length);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W27")]
+    public void Medium_PassesChow_WhenLiveOutsDropAfterCountingClaimedTilesInMeld()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(1, 0),
+                Wan(3, 0), Wan(3, 2),
+                Wan(6, 0),
+                Wan(9, 3),
+                Tong(5, 3), Tong(6, 0),
+                Tiao(2, 3), Tiao(3, 3), Tiao(4, 0), Tiao(5, 2), Tiao(7, 1), Tiao(9, 0)
+            }
+        };
+
+        var state = BuildSingleClaimState(hand, discardTileId: Tiao(2, 2), claimType: TableClaimType.Chow);
+
+        var action = new MediumStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
     private static ChangshaGameState BuildSingleClaimState(
         ChangshaHandState hand,
         int discardTileId,
