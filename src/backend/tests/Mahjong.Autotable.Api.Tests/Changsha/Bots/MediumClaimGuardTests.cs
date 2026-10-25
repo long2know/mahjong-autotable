@@ -275,18 +275,54 @@ public class MediumClaimGuardTests
         Assert.Equal(BotActionType.Pass, action.Type);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W27")]
+    public void Medium_PrefersChow_WhenPublicVisibilityMakesPungOutsDead()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(2, 0), Wan(6, 3), Wan(8, 1),
+                Tong(1, 0), Tong(3, 2), Tong(3, 3),
+                Tong(4, 0), Tong(4, 1), Tong(4, 2),
+                Tong(5, 0), Tong(8, 1),
+                Tiao(8, 2), Tiao(9, 2)
+            }
+        };
+
+        var state = BuildClaimState(
+            hand,
+            discardTileId: Tong(4, 3),
+            opportunities: new[] { TableClaimType.Pung, TableClaimType.Chow },
+            discardPileTileIds: new[]
+            {
+                Wan(1, 1), Wan(1, 2), Wan(1, 3), Wan(2, 2), Wan(3, 1), Wan(4, 0),
+                Tong(2, 2), Tong(3, 1), Tong(5, 2),
+                Tong(6, 0), Tong(6, 1), Tong(6, 2),
+                Tiao(2, 2), Tiao(3, 0), Tiao(3, 2), Tiao(3, 3), Tiao(5, 0), Tiao(7, 2), Tiao(8, 0), Tiao(8, 3), Tiao(9, 1)
+            });
+
+        var action = new MediumStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
+    }
+
     private static ChangshaGameState BuildSingleClaimState(
         ChangshaHandState hand,
         int discardTileId,
-        TableClaimType claimType)
+        TableClaimType claimType,
+        IReadOnlyList<int>? discardPileTileIds = null)
     {
-        return BuildClaimState(hand, discardTileId, new[] { claimType });
+        return BuildClaimState(hand, discardTileId, new[] { claimType }, discardPileTileIds);
     }
 
     private static ChangshaGameState BuildClaimState(
         ChangshaHandState hand,
         int discardTileId,
-        IReadOnlyList<TableClaimType> opportunities)
+        IReadOnlyList<TableClaimType> opportunities,
+        IReadOnlyList<int>? discardPileTileIds = null)
     {
         return new ChangshaGameState
         {
@@ -299,6 +335,9 @@ public class MediumClaimGuardTests
                 new() { SeatIndex = 2 },
                 new() { SeatIndex = 3 }
             },
+            DiscardPile = (discardPileTileIds ?? Array.Empty<int>())
+                .Select(tileId => new ChangshaDiscard { SeatIndex = 0, TileId = tileId })
+                .ToList(),
             ClaimWindow = new ChangshaClaimWindow
             {
                 DiscardSeatIndex = 0,
