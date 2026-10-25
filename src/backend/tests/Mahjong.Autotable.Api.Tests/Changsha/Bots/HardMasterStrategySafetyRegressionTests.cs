@@ -815,6 +815,40 @@ public class HardMasterStrategySafetyRegressionTests
         Assert.NotEqual(Tong(2, 0), action.TileId);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W36")]
+    public void HardAndMaster_DoNotSpendLiveSmallWinSingleton_WhenBackupSingletonIsDeadViaMeldVisibilityOnly()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0),
+                Wan(5, 0),
+                Wan(1, 0),
+                Tiao(9, 0)
+            }
+        };
+
+        var state = BuildFullDangerousState(hand, Tong(2, 1), Tong(2, 2));
+        state.Hands[3].Melds = new List<Meld>
+        {
+            FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(5, 1)))
+        };
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var hardAction = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, hardAction.Type);
+        Assert.NotEqual(Tong(2, 0), hardAction.TileId);
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var masterAction = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, masterAction.Type);
+        Assert.NotEqual(Tong(2, 0), masterAction.TileId);
+    }
+
     private static ChangshaGameState BuildSingleDangerousState(ChangshaHandState hand, int dangerousGenbutsuTileId)
     {
         return new ChangshaGameState

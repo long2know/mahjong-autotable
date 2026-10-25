@@ -530,7 +530,23 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                         botSeatIndex,
                         out var promotedFullSafetyTileId))
                 {
-                    return (promotedFullSafetyTileId, false);
+                    var promotedLogical = ChangshaDeckBuilder.GetLogicalTile(promotedFullSafetyTileId);
+                    var promotedIsLiveSmallWinSingleton =
+                        IsSmallWinRank(promotedLogical)
+                        && logicalCounts.GetValueOrDefault(promotedLogical, 0) == 1
+                        && !IsLogicalDead(promotedLogical, visibleLogicalCounts);
+
+                    if (!promotedIsLiveSmallWinSingleton)
+                        return (promotedFullSafetyTileId, false);
+
+                    var hasOtherLiveSmallWinSingleton = logicalCounts.Any(entry =>
+                        entry.Key != promotedLogical
+                        && IsSmallWinRank(entry.Key)
+                        && entry.Value == 1
+                        && !IsLogicalDead(entry.Key, visibleLogicalCounts));
+
+                    if (hasOtherLiveSmallWinSingleton)
+                        return (promotedFullSafetyTileId, false);
                 }
 
                 // Prefer dead-singleton shedding by default, but do not force it when
@@ -1135,11 +1151,14 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
         // If another live 2/5/8 singleton exists, we can keep full dangerous-
         // opponent genbutsu here without collapsing small-win flexibility.
-        var hasAlternateSmallWinSingleton = logicalCounts.Any(entry =>
+        // Dead backup singletons (all copies already visible) do not keep a live
+        // small-win route alive and should not block this safety override.
+        var hasAlternateLiveSmallWinSingleton = logicalCounts.Any(entry =>
             entry.Key != selected.Logical
             && IsSmallWinRank(entry.Key)
-            && entry.Value == 1);
-        if (hasAlternateSmallWinSingleton)
+            && entry.Value == 1
+            && !IsLogicalDead(entry.Key, visibleLogicalCounts));
+        if (hasAlternateLiveSmallWinSingleton)
             return false;
 
         if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
@@ -1154,21 +1173,15 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (alternates.Count == 0)
             return false;
 
-        var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
-
-        // Keep the full-dangerous-genbutsu preference whenever ANY alternate has
-        // dangerous-opponent coverage. This override only protects the edge
-        // where full safety would spend the lone live 2/5/8 eye and every
-        // fallback is fully unsafe.
-        if (selectedSafety > -2
-            || alternates.Any(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) < 0))
-            return false;
-
+        // Medium safety override: once this branch is reached we have a lone live
+        // 2/5/8 singleton and no alternate live 2/5/8 backup. Under multi-dangerous
+        // pressure we should preserve that live small-win route rather than spending
+        // it for immediate full-genbutsu comfort.
+        //
+        // Keep existing scoring order among non-2/5/8 fallbacks (already sorted by
+        // keep-score then stable tile id), but do not force additional safety/score
+        // tolerances here.
         var alternate = alternates[0];
-
-        if (alternate.Score > selected.Score + DangerousGenbutsuScoreTolerance)
-            return false;
-
         tileId = alternate.TileId;
         return true;
     }
