@@ -108,20 +108,26 @@ public sealed class PlayerIdentityImpersonationWsTests : IAsyncLifetime
 
     // ── 2. tampered SIGNED cookie is no better than a raw one ───────────────────
 
-    [Fact, Trait("Category", "Identity"), Trait("Contract", "identity-impersonation")]
-    public async Task TamperedCredential_OverWebSocket_YieldsAFreshIdentity_NotTheVictims()
+    [Theory, Trait("Category", "Identity"), Trait("Contract", "identity-impersonation")]
+    [InlineData('A')]
+    [InlineData('8')]
+    public async Task TamperedCredential_OverWebSocket_YieldsAFreshIdentity_NotTheVictims(char macSuffix)
     {
         const string relayGameId = "IDENTITY-IMPERSONATE-2";
-        var (runtimeGameId, victimPublicId) = await SeatVictimAndDealAsync(relayGameId, seed: 42);
+        // Cover the zero-valued MAC tail that made the old A -> B mutation a padding-bit no-op.
+        var victimPublicId = Enumerable.Range(0, 1024)
+            .Select(i => $"tampered-victim-{i}")
+            .First(id => Identity.Protect(id).EndsWith(macSuffix));
+        var (runtimeGameId, _) = await SeatVictimAndDealAsync(
+            relayGameId, seed: 42, victimPublicId: victimPublicId);
 
-        // The attacker gets hold of the token SHAPE and flips one MAC character.
+        // The first character contains only MAC bits; the last also contains unused padding bits.
         var parts = Identity.Protect(victimPublicId).Split('.');
         var mac = parts[3].ToCharArray();
-        // Mutate a guaranteed-significant character (index 0) so the decoded MAC bytes
-        // always change; mutating the final base64url character can preserve bytes when
-        // only padding bits differ.
         mac[0] = mac[0] == 'A' ? 'B' : 'A';
         var tampered = string.Join('.', parts[0], parts[1], parts[2], new string(mac));
+        Assert.Equal(PlayerIdentityTokenStatus.BadSignature,
+            _factory!.Services.GetRequiredService<PlayerIdentityTokenProtector>().Unprotect(tampered).Status);
 
         await using var attacker = await OpenAsync(relayGameId, rawCookieValue: tampered);
         var joined = await attacker.JoinAndReadAsync(relayGameId);
@@ -173,7 +179,7 @@ public sealed class PlayerIdentityImpersonationWsTests : IAsyncLifetime
     /// and the victim's PUBLIC player id — the value an attacker can read off the wire.
     /// </summary>
     private async Task<(string RuntimeGameId, string VictimPublicId)> SeatVictimAndDealAsync(
-        string relayGameId, int seed)
+        string relayGameId, int seed, string? victimPublicId = null)
     {
         var runtimeGameId = await Runtime.CreateGameAsync(
             seed: seed, botSeatIndexes: new[] { 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null);
@@ -182,7 +188,7 @@ public sealed class PlayerIdentityImpersonationWsTests : IAsyncLifetime
             && s.Phase != ChangshaPhase.Seating, 10000), "The table must reach a dealt phase.");
         Manager.BindRuntimeGameForTest(relayGameId, runtimeGameId);
 
-        var victimPublicId = "victim-" + Guid.NewGuid().ToString("N");
+        victimPublicId ??= "victim-" + Guid.NewGuid().ToString("N");
         await using (var victim = await OpenAsync(relayGameId, signedPlayerId: victimPublicId))
         {
             var joined = await victim.JoinAndReadAsync(relayGameId);

@@ -52,7 +52,7 @@ internal sealed class LobbyRepairFixture : IAsyncDisposable
             builder.UseSetting("Authentication:JwtSigningKeys:0", _key);
             // Capacity tests exercise the shared chat/invite quota, not the independent HTTP-IP quota.
             builder.UseSetting("RateLimiting:Enabled", "false");
-            builder.ConfigureLogging(logging => logging.ClearProviders());
+            builder.ConfigureLogging(logging => logging.ClearProviders().AddConsole().SetMinimumLevel(LogLevel.Warning));
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<TimeProvider>();

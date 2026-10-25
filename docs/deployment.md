@@ -40,6 +40,12 @@ and platform aligned with the imported image.
 | backend-build | mcr.microsoft.com/dotnet/sdk:10.0 | Release API at `/out/api/` |
 | runtime | mcr.microsoft.com/dotnet/aspnet:10.0 | API `/app/`, bundle `/frontend/autotable/` |
 
+Both build stages run natively on BuildKit's `BUILDPLATFORM`. The frontend
+produces architecture-independent static assets, while .NET restore and publish
+use `TARGETARCH` to select the runtime's native dependencies. Only the final
+runtime stage targets `TARGETPLATFORM`; npm and compiler processes do not run
+under QEMU when building an ARM64 image on an AMD64 builder.
+
 The context excludes host dist/bin/obj/node_modules, test execution output,
 `session-files/`, `playtest-artifacts/`, agent scratch, and local env files.
 It never substitutes a host-published DLL, host bundle, or cached application

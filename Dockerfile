@@ -12,7 +12,8 @@
 ############################
 # Stage 1 — frontend build #
 ############################
-FROM node:20-alpine AS frontend-build
+# Static assets are architecture-independent; running npm under QEMU can crash.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-build
 WORKDIR /src/frontend/autotable-src
 
 # Install dependencies first so the layer caches when source changes only.
@@ -40,8 +41,9 @@ RUN --mount=type=cache,id=mahjong-vite,target=/src/frontend/autotable-src/node_m
 ############################
 # Stage 2 — backend build  #
 ############################
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend-build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS backend-build
 WORKDIR /src
+ARG TARGETARCH
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_NOLOGO=1 \
     DOTNET_EnableDiagnostics=0
@@ -55,9 +57,12 @@ COPY src/backend/ ./backend/
 # filesystem; build servers and their sockets must not survive publication.
 RUN --mount=type=tmpfs,target=/build-work \
     TMPDIR=/build-work dotnet restore backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj \
+    -a "$TARGETARCH" \
     --disable-build-servers
 RUN --mount=type=tmpfs,target=/build-work \
     TMPDIR=/build-work dotnet publish backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj \
+    -a "$TARGETARCH" \
+    --self-contained false \
     -c Release \
     -o /out/api \
     --no-restore \
@@ -68,7 +73,7 @@ RUN --mount=type=tmpfs,target=/build-work \
 ############################
 # Stage 3 — runtime        #
 ############################
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
 # `curl` powers the HEALTHCHECK directive. tini gives PID 1 a proper signal
 # handler so `docker stop` shuts the dotnet host down cleanly.

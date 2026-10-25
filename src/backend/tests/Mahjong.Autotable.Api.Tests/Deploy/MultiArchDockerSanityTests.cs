@@ -37,6 +37,32 @@ public class MultiArchDockerSanityTests
 {
     private static readonly string RepoRoot = LocateRepoRoot();
 
+    [Fact]
+    public void FrontendBuildStage_RunsNatively_ForEveryTargetArchitecture()
+    {
+        var content = ReadDockerfileOrNull();
+        Assert.NotNull(content);
+        Assert.Matches(
+            @"(?im)^FROM\s+--platform=\$BUILDPLATFORM\s+\S+\s+AS\s+frontend-build\s*$",
+            content);
+    }
+
+    [Theory]
+    [InlineData("restore")]
+    [InlineData("publish")]
+    public void BackendCommand_CrossCompilesForTheRequestedTargetArchitecture(string command)
+    {
+        var content = ReadDockerfileOrNull();
+        Assert.NotNull(content);
+        var instructions = Regex.Replace(content, @"\\\r?\n\s*", " ");
+        var instruction = Regex.Match(instructions,
+            $@"\bdotnet\s+{command}\b[^\r\n]*").Value;
+
+        Assert.NotEmpty(instruction);
+        Assert.Matches(@"(?:^|\s)-a\s+""?\$TARGETARCH\b", instruction);
+        Assert.Matches(@"(?m)^ARG TARGETARCH\s*$", content);
+    }
+
     private static string LocateRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

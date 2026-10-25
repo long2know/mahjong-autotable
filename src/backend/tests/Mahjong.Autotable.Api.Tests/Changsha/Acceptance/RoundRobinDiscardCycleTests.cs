@@ -85,8 +85,31 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
 
     // ── Test: WS discard advances loop, then drains 10+ discards ─────────────
 
-    [Fact, Trait("Category", "Acceptance"), Trait("Audit", "Bishop-Backend")]
-    public async Task DealerDiscardViaWs_AdvancesToSeat1_ThenLoopDrains10PlusDiscards()
+    [Fact, Trait("Category", "Acceptance")]
+    public void ClaimedDiscard_StillProvesDealerProgress_AfterItLeavesTheRiver()
+    {
+        var state = AcceptanceFixture.NewDealtGame(seed: 11, dealerSeat: 0);
+        var tile = ChangshaTestHelpers.Tid(Suit.Wan, 3, 2);
+        foreach (var hand in state.Hands) hand.ConcealedTiles.Clear();
+        state.Hands[0].ConcealedTiles.Add(tile);
+        state.Hands[1].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Wan, 3, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 3, 1)
+        });
+        ChangshaGameStateMachine.Discard(state, 0, tile);
+        ChangshaGameStateMachine.ResolveClaim(state, 1, Tables.TableClaimType.Pung);
+
+        Assert.Empty(state.DiscardPile);
+        Assert.Contains(state.EventLog,
+            e => e.EventType == "tile-discarded" && e.SeatIndex == 0 && e.TileId == tile);
+        Assert.Contains(state.Hands[1].Melds, meld => meld.TileIds.Contains(tile));
+    }
+
+    [Theory, Trait("Category", "Acceptance"), Trait("Audit", "Bishop-Backend")]
+    [InlineData(11)]
+    [InlineData(42)]
+    public async Task DealerDiscardViaWs_AdvancesToSeat1_ThenLoopDrains10PlusDiscards(int seed)
     {
         // Stephen's audit gate: drive a full Changsha hand from manual deal through
         // (a) the dealer's first WS-driven discard (proves Bishop's Int64 seat-key fix
@@ -102,108 +125,48 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
         // <see cref="DealerExtraTransitionsToAwaitingDiscardTests.WsEndpoint_DealerDiscardAfterDealerExtra_LandsInDiscardSlot"/>
         // for the same pattern's intermittent failure under load).
         var gameId = $"rrobin-ws-{Guid.NewGuid():N}";
-        await using var session = await OpenAsync(seat: 0, gameId: gameId);
+        await using var session = await OpenAsync(seat: 0, gameId: gameId, seed: seed);
 
         var runtime = _factory!.Services.GetRequiredService<IChangshaGameRuntime>();
         var runtimeGameId = await DriveToDealerAwaitingDiscardAsync(session, gameId);
 
-        // Snapshot pre-discard invariants. TryGetSnapshot returns the LIVE state, so
-        // we capture scalar values into locals before any further action.
-        Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var ready));
+        // Collections must be read from one lock-protected, isolated snapshot.
+        var ready = await runtime.TryGetSnapshotCopyAsync(runtimeGameId);
         Assert.NotNull(ready);
         var dealerHandCountPre = ready!.Hands.Single(h => h.SeatIndex == 0).ConcealedTiles.Count;
         Assert.Equal(ChangshaPhase.AwaitingDiscard, ready.Phase);
         Assert.Equal(0, ready.ActiveSeatIndex);
         Assert.Equal(14, dealerHandCountPre);
 
-        // Any dealer discard-count growth means the dealer discard landed (we don't
-        // care WHICH tile, just that it discharged from seat 0's hand).
-        var initialSeat0DiscardCount = ready.DiscardPile.Count(d => d.SeatIndex == 0);
+        // Claimed discards leave DiscardPile immediately; the event log is permanent.
+        var initialSeat0DiscardCount = ready.EventLog.Count(e => e.EventType == "tile-discarded" && e.SeatIndex == 0);
         var initialDiscardEventCount = ready.EventLog.Count(e => e.EventType == "tile-discarded");
         var initialHandNumber = ready.HandNumber;
         await DrainAsync(session, timeoutMs: 100);
 
         // ── Phase 1: dealer discards via WS, prove it lands + loop advances ──
         //
-        // The WS handler has a known race window: the push can arrive the millisecond
-        // before the runtime parks at AwaitingDiscard (W23 follow-up:
-        // TryAutoAckSeatedConnectionAsync + StateChanged ordering), causing DiscardAsync's
-        // RequirePhase check to throw an InvalidOperationException that the handler
-        // swallows. We defend against that with two layers:
-        //   (1) Re-send the WS push every 250ms for up to 4s — covers the normal race.
-        //       Each resend re-reads ConcealedTiles[^1] from a FRESH snapshot so we
-        //       never send a stale tile id (which the runtime would reject with
-        //       "tile not in hand").
-        //   (2) If WS still hasn't landed after the resend budget, fall back to the
-        //       runtime API directly. The runtime path is the SAME code that the WS
-        //       handler calls underneath, so this still exercises the post-discard
-        //       advance/draw/bot-schedule pipeline the audit cares about; the WS path
-        //       remains the primary attempt. This backstop exists purely to keep the
-        //       audit gate deterministic under WebApplicationFactory startup load.
+        // The human dealer is parked at AwaitingDiscard. Send once over the real
+        // socket and observe permanent events, even if a bot immediately claims it.
+        await session.SendUpdateAsync(new object[]
+        {
+            new object[] { "discard", 0, new { tileId = ready.Hands[0].ConcealedTiles[^1] } }
+        });
         var dealerLandedAt = DateTime.MinValue;
         var firstNonDealerLandedAt = DateTime.MinValue;
         var seatsObservedInPile = new HashSet<int>();
-        var usedRuntimeFallback = false;
         var phase1Deadline = DateTime.UtcNow.AddSeconds(8);
-        var wsResendDeadline = DateTime.UtcNow.AddSeconds(4);
-        var nextResend = DateTime.UtcNow;
 
         while (DateTime.UtcNow < phase1Deadline)
         {
-            if (dealerLandedAt == DateTime.MinValue
-                && DateTime.UtcNow >= nextResend
-                && DateTime.UtcNow < wsResendDeadline)
+            var live = await runtime.TryGetSnapshotCopyAsync(runtimeGameId);
+            if (live is not null)
             {
-                if (runtime.TryGetSnapshot(runtimeGameId, out var resendSnap)
-                    && resendSnap is not null
-                    && resendSnap.Phase == ChangshaPhase.AwaitingDiscard
-                    && resendSnap.ActiveSeatIndex == 0)
-                {
-                    var freshHand = resendSnap.Hands.Single(h => h.SeatIndex == 0).ConcealedTiles;
-                    if (freshHand.Count > 0)
-                    {
-                        var freshTile = freshHand[^1];
-                        await session.SendUpdateAsync(new object[]
-                        {
-                            new object[] { "discard", 0, new { tileId = freshTile } }
-                        });
-                    }
-                }
-                nextResend = DateTime.UtcNow.AddMilliseconds(250);
-            }
-
-            // Runtime fallback once the WS resend window is spent — documented backstop.
-            if (dealerLandedAt == DateTime.MinValue
-                && !usedRuntimeFallback
-                && DateTime.UtcNow >= wsResendDeadline)
-            {
-                if (runtime.TryGetSnapshot(runtimeGameId, out var fbSnap)
-                    && fbSnap is not null
-                    && fbSnap.Phase == ChangshaPhase.AwaitingDiscard
-                    && fbSnap.ActiveSeatIndex == 0)
-                {
-                    var fbHand = fbSnap.Hands.Single(h => h.SeatIndex == 0).ConcealedTiles;
-                    if (fbHand.Count > 0)
-                    {
-                        try
-                        {
-                            await runtime.DiscardAsync(runtimeGameId, seatIndex: 0, tileId: fbHand[^1]);
-                        }
-                        catch
-                        {
-                            // A late WS attempt may have landed concurrently — fine.
-                        }
-                    }
-                }
-                usedRuntimeFallback = true;
-            }
-
-            if (runtime.TryGetSnapshot(runtimeGameId, out var live) && live is not null)
-            {
-                var pileSeats = live.DiscardPile.Select(d => d.SeatIndex).ToArray();
+                var pileSeats = live.EventLog.Where(e => e.EventType == "tile-discarded")
+                    .Select(e => e.SeatIndex).OfType<int>().ToArray();
                 foreach (var seat in pileSeats) seatsObservedInPile.Add(seat);
 
-                var currentSeat0DiscardCount = live.DiscardPile.Count(d => d.SeatIndex == 0);
+                var currentSeat0DiscardCount = live.EventLog.Count(e => e.EventType == "tile-discarded" && e.SeatIndex == 0);
                 if (dealerLandedAt == DateTime.MinValue
                     && currentSeat0DiscardCount > initialSeat0DiscardCount)
                 {
@@ -222,12 +185,12 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
         }
 
         Assert.True(dealerLandedAt != DateTime.MinValue,
-            "Dealer's WS discard never landed in the discard pile — the discard handler " +
+            "Dealer's WS discard never produced a tile-discarded event — the discard handler " +
             "silently dropped the push (Int64 regression or RequirePhase race window).");
         Assert.True(firstNonDealerLandedAt != DateTime.MinValue,
             $"Round-robin did not advance past dealer seat 0 after WS discard — only seats " +
             $"{{{string.Join(",", seatsObservedInPile.OrderBy(x => x))}}} were observed in the " +
-            $"discard pile. DriveAfterAdvanceAsync failed or the bot scheduler never fired.");
+            $"discard events. DriveAfterAdvanceAsync failed or the bot scheduler never fired.");
 
         // ── Phase 2: drain to 10+ discards, asserting no exceptions or deadlocks ──
         //
@@ -242,10 +205,12 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
 
         while (DateTime.UtcNow < phase2Deadline)
         {
-            if (!runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null)
+            var snap = await runtime.TryGetSnapshotCopyAsync(runtimeGameId);
+            if (snap is null)
                 throw new InvalidOperationException("runtime snapshot disappeared mid-loop");
 
-            foreach (var d in snap.DiscardPile) seatsObservedInPile.Add(d.SeatIndex);
+            foreach (var e in snap.EventLog.Where(e => e.EventType == "tile-discarded"))
+                if (e.SeatIndex is int seat) seatsObservedInPile.Add(seat);
 
             var discardEventCount = snap.EventLog.Count(e => e.EventType == "tile-discarded");
             var phase = snap.Phase;
@@ -291,7 +256,7 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
         }
 
         // Capture final state for invariant checks.
-        Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var final));
+        var final = await runtime.TryGetSnapshotCopyAsync(runtimeGameId);
         Assert.NotNull(final);
         var finalState = final!;
         var finalDiscardEventCount = finalState.EventLog.Count(e => e.EventType == "tile-discarded");
@@ -459,11 +424,11 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
         return predicate();
     }
 
-    private async Task<WsSession> OpenAsync(int seat, string gameId)
+    private async Task<WsSession> OpenAsync(int seat, string gameId, int seed)
     {
         var server = _factory!.Server;
         var wsClient = server.CreateWebSocketClient();
-        var path = $"autotable/ws?seat={seat}&gameId={Uri.EscapeDataString(gameId)}&dealMode=manual&botCount=3";
+        var path = $"autotable/ws?seat={seat}&gameId={Uri.EscapeDataString(gameId)}&dealMode=manual&botCount=3&seed={seed}";
         var uri = new Uri(server.BaseAddress, path);
         var ws = await wsClient.ConnectAsync(uri, CancellationToken.None);
         return new WsSession(ws);
