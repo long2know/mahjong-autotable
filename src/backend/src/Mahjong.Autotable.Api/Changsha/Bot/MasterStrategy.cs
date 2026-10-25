@@ -314,6 +314,7 @@ public sealed class MasterStrategy : IChangshaBotStrategy
 
         if (TryPromoteSingleDangerousGenbutsuOnShantenTie(
                 logicalCounts,
+                visibleLogicalCounts,
                 scored,
                 selectedTileId,
                 state,
@@ -344,6 +345,20 @@ public sealed class MasterStrategy : IChangshaBotStrategy
                 out var deadSmallWinTileId))
         {
             selectedTileId = deadSmallWinTileId;
+        }
+
+        if (TryAvoidLiveSmallWinSingletonDiscardUnderSingleDangerousPressure(
+                logicalCounts,
+                visibleLogicalCounts,
+                scored,
+                selectedTileId,
+                hand,
+                state,
+                botSeatIndex,
+                opponentDiscardLogicals,
+                out var preservedSmallWinTileId))
+        {
+            selectedTileId = preservedSmallWinTileId;
         }
 
         return selectedTileId;
@@ -610,6 +625,7 @@ public sealed class MasterStrategy : IChangshaBotStrategy
 
     private static bool TryPromoteSingleDangerousGenbutsuOnShantenTie(
         Dictionary<int, int> logicalCounts,
+        Dictionary<int, int> visibleLogicalCounts,
         List<DiscardCandidate> scored,
         int selectedTileId,
         ChangshaGameState state,
@@ -639,6 +655,16 @@ public sealed class MasterStrategy : IChangshaBotStrategy
                      .OrderBy(entry => entry.Score)
                      .ThenByDescending(entry => entry.TileId))
         {
+            // Keep a live lone 2/5/8 eye route unless it is already near-dead.
+            // Single-opponent genbutsu pressure alone is not enough to spend the
+            // only live Changsha small-win singleton.
+            if (IsSmallWinRank(entry.Logical)
+                && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                && !IsLogicalNearExhausted(entry.Logical, visibleLogicalCounts))
+            {
+                continue;
+            }
+
             if (TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -1)
             {
                 dangerousGenbutsuCandidate = entry;
@@ -763,6 +789,58 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             return false;
 
         tileId = candidate.TileId;
+        return true;
+    }
+
+    private static bool TryAvoidLiveSmallWinSingletonDiscardUnderSingleDangerousPressure(
+        Dictionary<int, int> logicalCounts,
+        Dictionary<int, int> visibleLogicalCounts,
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaHandState hand,
+        ChangshaGameState state,
+        int botSeatIndex,
+        HashSet<int> opponentDiscardLogicals,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count != 1)
+            return false;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
+            return false;
+
+        if (IsLogicalNearExhausted(selected.Logical, visibleLogicalCounts))
+            return false;
+
+        if (IsBridgeBetweenOffRankPairs(selected.Logical, logicalCounts))
+            return false;
+
+        var alternate = scored
+            .Where(entry => entry.TileId != selectedTileId && !IsSmallWinRank(entry.Logical))
+            .Where(entry => entry.Shanten <= selected.Shanten + ConnectedSmallWinBridgeShantenTolerance)
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
+            .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
+            .ThenBy(entry => entry.Score)
+            .ThenBy(entry => SuitCommitment.Bias(entry.TileId, hand))
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
+
+        if (alternate is null)
+            return false;
+
+        if (alternate.Value.Score > selected.Score + SingleDangerousGenbutsuScoreTolerance)
+            return false;
+
+        tileId = alternate.Value.TileId;
         return true;
     }
 
