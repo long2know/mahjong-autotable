@@ -184,6 +184,8 @@ public class ContainerHardeningTests
         // into the runtime stage would land a multi-hundred-MB image
         // carrying gcc/git/nuget — fail the smoke before it lands.
         var contents = LoadDockerfile();
-        Assert.Matches(@"FROM\s+mcr\.microsoft\.com/dotnet/aspnet:", contents);
+        Assert.Matches(
+            @"(?im)^FROM\s+(?:--platform=\S+\s+)?mcr\.microsoft\.com/dotnet/aspnet:\S+\s+AS\s+runtime\s*$",
+            contents);
     }
 }
