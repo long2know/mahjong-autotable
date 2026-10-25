@@ -901,4 +901,62 @@ public class MediumStrategySafetyRegressionTests
         Assert.Equal(BotActionType.Discard, action.Type);
         Assert.Equal(ChangshaDeckBuilder.GetLogicalTile(Tong(9, 0)), ChangshaDeckBuilder.GetLogicalTile(action.TileId!.Value));
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W45")]
+    public void Medium_DoesNotTradeShantenForSingleDangerousGenbutsuPromotion()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(3, 0),
+                Wan(6, 2), // single-dangerous-opponent genbutsu candidate
+                Wan(8, 2),
+                Wan(9, 1),
+                Wan(9, 2),
+                Tong(3, 2),
+                Tong(5, 1),
+                Tong(5, 2),
+                Tiao(3, 3),
+                Tiao(4, 3),
+                Tiao(5, 2),
+                Tiao(6, 0),
+                Tiao(7, 1),
+                Tiao(8, 0)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(1, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(1, 0)))
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(6, 3), TurnNumber = 1 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Wan(3, 0), action.TileId);
+    }
 }

@@ -24,7 +24,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
     private const int DangerousGenbutsuScoreTolerance = 1;
     private const int FullDangerousGenbutsuScoreTolerance = 2;
 
-    private readonly record struct DiscardCandidate(int TileId, int Logical, int Score);
+    private readonly record struct DiscardCandidate(int TileId, int Logical, int Shanten, int Score);
 
     public string Difficulty => "medium";
 
@@ -487,11 +487,19 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             safetyDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex, dangerousOpponents);
         }
 
+        var shantenByLogical = logicalCounts.Keys
+            .ToDictionary(logical => logical, logical => ShantenAfterDiscardingLogical(logical, hand));
+
         var scored = hand.ConcealedTiles
-            .Select(tileId => new DiscardCandidate(
-                tileId,
-                ChangshaDeckBuilder.GetLogicalTile(tileId),
-                ComputeKeepScore(tileId, logicalCounts)))
+            .Select(tileId =>
+            {
+                var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+                return new DiscardCandidate(
+                    tileId,
+                    logical,
+                    shantenByLogical[logical],
+                    ComputeKeepScore(tileId, logicalCounts));
+            })
             .ToList();
 
         var best = scored
@@ -762,6 +770,25 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         }
 
         return (selectedTileId, false);
+    }
+
+    private static int ShantenAfterDiscardingLogical(int candidateLogical, ChangshaHandState hand)
+    {
+        var idx = hand.ConcealedTiles.FindIndex(t => ChangshaDeckBuilder.GetLogicalTile(t) == candidateLogical);
+        if (idx < 0)
+            return int.MaxValue;
+
+        var concealedAfter = new List<int>(hand.ConcealedTiles);
+        concealedAfter.RemoveAt(idx);
+
+        var probe = new ChangshaHandState
+        {
+            SeatIndex = hand.SeatIndex,
+            ConcealedTiles = concealedAfter,
+            Melds = hand.Melds
+        };
+
+        return HandEvaluator.MinShantenToHu(probe, Array.Empty<int>());
     }
 
     private static int ComputeKeepScore(int tileId, Dictionary<int, int> logicalCounts)
@@ -1068,6 +1095,8 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         DiscardCandidate? dangerousGenbutsuCandidate = null;
         foreach (var entry in scored
                      .Where(entry => entry.TileId != selectedTileId)
+                     // Safety promotion should not regress hand shape quality.
+                     .Where(entry => entry.Shanten <= selected.Shanten)
                      .OrderBy(entry => entry.Score)
                      .ThenByDescending(entry => entry.TileId))
         {
