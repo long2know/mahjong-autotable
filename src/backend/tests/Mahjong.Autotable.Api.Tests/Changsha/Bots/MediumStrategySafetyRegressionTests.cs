@@ -1080,4 +1080,72 @@ public class MediumStrategySafetyRegressionTests
         Assert.Equal(BotActionType.Discard, action.Type);
         Assert.Equal(Tiao(2, 0), action.TileId);
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W48")]
+    public void Medium_KeepsFullDangerousLiveSmallWinSingleton_WhenDeadBackupSwapWouldRegressShanten()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0),
+                Wan(5, 0),
+                Wan(1, 0), Wan(1, 1),
+                Wan(3, 0), Wan(4, 0), Wan(6, 0),
+                Tong(3, 0), Tong(3, 3), Tong(4, 0), Tong(6, 0),
+                Tiao(3, 0), Tiao(4, 0), Tiao(6, 0)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(7, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(7, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(8, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(1, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                // full dangerous-opponent genbutsu coverage for the live Tong 2 singleton
+                new() { SeatIndex = 1, TileId = Tong(2, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tong(2, 2), TurnNumber = 2 },
+
+                // backup Wan 5 singleton is dead
+                new() { SeatIndex = 1, TileId = Wan(5, 1), TurnNumber = 3 },
+                new() { SeatIndex = 2, TileId = Wan(5, 2), TurnNumber = 4 },
+                new() { SeatIndex = 3, TileId = Wan(5, 3), TurnNumber = 5 },
+
+                new() { SeatIndex = 1, TileId = Wan(1, 2), TurnNumber = 6 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(2, 0), action.TileId);
+    }
 }

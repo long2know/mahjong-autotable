@@ -612,6 +612,26 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     return (tenpaiSafePairTileId, false);
                 }
 
+                var fullDangerousLiveSmallWinSingleton = scored
+                    .Where(entry =>
+                        IsSmallWinRank(entry.Logical)
+                        && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                        && !IsLogicalDead(entry.Logical, visibleLogicalCounts)
+                        && TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -2)
+                    .OrderBy(entry => entry.Shanten)
+                    .ThenBy(entry => entry.Score)
+                    .ThenByDescending(entry => entry.TileId)
+                    .Select(entry => (DiscardCandidate?)entry)
+                    .FirstOrDefault();
+
+                // Keep a full-dangerous live 2/5/8 singleton when swapping to a dead
+                // backup singleton would regress post-discard shanten.
+                if (fullDangerousLiveSmallWinSingleton is not null
+                    && deadSmallWinSingleton.Value.Shanten > fullDangerousLiveSmallWinSingleton.Value.Shanten)
+                {
+                    return (fullDangerousLiveSmallWinSingleton.Value.TileId, false);
+                }
+
                 return (deadSmallWinSingleton.Value.TileId, true);
             }
 
