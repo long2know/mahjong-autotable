@@ -906,6 +906,43 @@ public class HardMasterStrategySafetyRegressionTests
         Assert.Equal(Tong(2, 0), masterAction.TileId);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W40")]
+    public void HardAndMaster_PreserveLiveSmallWinSingleton_WhenEqualFullSafetyOffRankExists()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0), // lone live 2/5/8 singleton
+                Wan(1, 0),  // non-small-win alternate with full dangerous-opponent genbutsu
+                Wan(2, 0),  // dead backup small-win singleton (all copies visible)
+                Tiao(9, 0)
+            }
+        };
+
+        var state = BuildFullDangerousState(hand, Tong(2, 1), Tong(2, 2));
+
+        // Make the off-rank alternate full dangerous-opponent genbutsu.
+        state.DiscardPile.Add(new ChangshaDiscard { SeatIndex = 1, TileId = Wan(1, 1), TurnNumber = 3 });
+        state.DiscardPile.Add(new ChangshaDiscard { SeatIndex = 2, TileId = Wan(1, 2), TurnNumber = 4 });
+
+        // Dead backup singleton should not count as a live alternate 2/5/8 route.
+        state.DiscardPile.Add(new ChangshaDiscard { SeatIndex = 3, TileId = Wan(2, 1), TurnNumber = 5 });
+        state.DiscardPile.Add(new ChangshaDiscard { SeatIndex = 3, TileId = Wan(2, 2), TurnNumber = 6 });
+        state.DiscardPile.Add(new ChangshaDiscard { SeatIndex = 3, TileId = Wan(2, 3), TurnNumber = 7 });
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var hardAction = hard.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, hardAction.Type);
+        Assert.Equal(Wan(1, 0), hardAction.TileId);
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var masterAction = master.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, masterAction.Type);
+        Assert.Equal(Wan(1, 0), masterAction.TileId);
+    }
+
     private static ChangshaGameState BuildSingleDangerousState(ChangshaHandState hand, int dangerousGenbutsuTileId)
     {
         return new ChangshaGameState
