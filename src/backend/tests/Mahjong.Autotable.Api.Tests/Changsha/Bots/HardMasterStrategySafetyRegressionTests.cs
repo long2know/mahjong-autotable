@@ -849,6 +849,34 @@ public class HardMasterStrategySafetyRegressionTests
         Assert.NotEqual(Tong(2, 0), masterAction.TileId);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W39")]
+    public void HardAndMaster_KeepFullDangerousGenbutsu_WhenBackupSmallWinPairExistsAndAlternatesAreUnsafe()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0),
+                Wan(5, 0), Wan(5, 1), // backup small-win pair already secures 2/5/8 eye route
+                Wan(1, 0),
+                Tiao(9, 0)
+            }
+        };
+
+        var state = BuildFullDangerousState(hand, Tong(2, 1), Tong(2, 2));
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var hardAction = hard.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, hardAction.Type);
+        Assert.Equal(Tong(2, 0), hardAction.TileId);
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var masterAction = master.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, masterAction.Type);
+        Assert.Equal(Tong(2, 0), masterAction.TileId);
+    }
+
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W38")]
     public void HardAndMaster_KeepFullDangerousGenbutsu_WhenBackupSmallWinPairExists()
     {

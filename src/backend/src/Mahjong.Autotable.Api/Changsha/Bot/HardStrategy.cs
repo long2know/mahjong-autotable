@@ -1173,16 +1173,18 @@ public sealed class HardStrategy : IChangshaBotStrategy
         if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
             return false;
 
-        // If another live 2/5/8 singleton exists, we can keep full dangerous-
-        // opponent genbutsu here without collapsing small-win flexibility.
-        // Dead backup singletons (all copies already visible) do not keep a live
-        // small-win route alive and should not block this safety override.
-        var hasAlternateLiveSmallWinSingleton = logicalCounts.Any(entry =>
+        // If another live 2/5/8 route already exists, we can keep full
+        // dangerous-opponent genbutsu here without collapsing small-win
+        // flexibility. A route is considered live when we already hold a
+        // backup pair/triplet, or when another singleton still has live copies.
+        // Dead backup singletons (all copies already visible) do not keep a
+        // live small-win route alive and should not block this safety override.
+        var hasAlternateLiveSmallWinRoute = logicalCounts.Any(entry =>
             entry.Key != selected.Logical
             && IsSmallWinRank(entry.Key)
-            && entry.Value == 1
-            && !IsLogicalDead(entry.Key, visibleLogicalCounts));
-        if (hasAlternateLiveSmallWinSingleton)
+            && (entry.Value >= 2
+                || (entry.Value == 1 && !IsLogicalDead(entry.Key, visibleLogicalCounts))));
+        if (hasAlternateLiveSmallWinRoute)
             return false;
 
         if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
