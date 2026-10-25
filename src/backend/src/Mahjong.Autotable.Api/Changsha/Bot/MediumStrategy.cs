@@ -1133,6 +1133,15 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
             return false;
 
+        // If another live 2/5/8 singleton exists, we can keep full dangerous-
+        // opponent genbutsu here without collapsing small-win flexibility.
+        var hasAlternateSmallWinSingleton = logicalCounts.Any(entry =>
+            entry.Key != selected.Logical
+            && IsSmallWinRank(entry.Key)
+            && entry.Value == 1);
+        if (hasAlternateSmallWinSingleton)
+            return false;
+
         if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
             return false;
 

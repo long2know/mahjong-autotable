@@ -639,6 +639,54 @@ public class HardMasterStrategySafetyRegressionTests
         Assert.Equal(Tong(2, 0), action.TileId);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W34")]
+    public void Hard_KeepsFullDangerousGenbutsu_WhenBackupSmallWinSingletonExistsAndAlternatesAreUnsafe()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0), // full dangerous-opponent genbutsu singleton
+                Wan(5, 0),  // backup 2/5/8 singleton keeps small-win route alive
+                Wan(1, 0),
+                Tiao(9, 0)
+            }
+        };
+
+        var state = BuildFullDangerousState(hand, Tong(2, 1), Tong(2, 2));
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W34")]
+    public void Master_KeepsFullDangerousGenbutsu_WhenBackupSmallWinSingletonExistsAndAlternatesAreUnsafe()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0), // full dangerous-opponent genbutsu singleton
+                Wan(5, 0),  // backup 2/5/8 singleton keeps small-win route alive
+                Wan(1, 0),
+                Tiao(9, 0)
+            }
+        };
+
+        var state = BuildFullDangerousState(hand, Tong(2, 1), Tong(2, 2));
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(2, 0), action.TileId);
+    }
+
     private static ChangshaGameState BuildSingleDangerousState(ChangshaHandState hand, int dangerousGenbutsuTileId)
     {
         return new ChangshaGameState
