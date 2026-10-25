@@ -1173,20 +1173,30 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (alternates.Count == 0)
             return false;
 
-        // Medium safety override: once this branch is reached we have a lone live
-        // 2/5/8 singleton and no alternate live 2/5/8 backup. Under multi-dangerous
-        // pressure we should preserve that live small-win route rather than spending
-        // it for immediate full-genbutsu comfort.
-        //
-        // Preserve keep-score ordering, but if any non-2/5/8 fallback already has
-        // dangerous-opponent coverage (partial/full genbutsu), choose the best such
-        // covered fallback before falling back to fully unsafe candidates.
-        var coveredAlternate = alternates
-            .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) < 0)
-            .Select(entry => (DiscardCandidate?)entry)
-            .FirstOrDefault();
+        var hasBackupSmallWinPair = logicalCounts.Any(entry =>
+            entry.Key != selected.Logical
+            && IsSmallWinRank(entry.Key)
+            && entry.Value >= 2);
 
-        var alternate = coveredAlternate ?? alternates[0];
+        var coveredAlternates = alternates
+            .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) < 0)
+            .ToList();
+
+        // If a backup 2/5/8 pair already secures the eye route and every non-small-win
+        // fallback is fully unsafe, keep the current full dangerous-opponent genbutsu
+        // discard instead of forcing an unsafe swap.
+        if (hasBackupSmallWinPair
+            && coveredAlternates.Count == 0
+            && alternates.Count >= 2)
+        {
+            return false;
+        }
+
+        // Medium safety override: once this branch is reached we have a lone live
+        // 2/5/8 singleton and no alternate live 2/5/8 backup singleton. Under
+        // multi-dangerous pressure we preserve that live small-win route by swapping
+        // to the safest available non-small-win fallback.
+        var alternate = coveredAlternates.Count > 0 ? coveredAlternates[0] : alternates[0];
         tileId = alternate.TileId;
         return true;
     }
