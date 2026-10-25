@@ -381,6 +381,64 @@ public class HardClaimSmallWinPairGuardTests
         Assert.Equal(TableClaimType.Pung, action.ClaimType);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W29")]
+    public void Hard_ClaimsChow_WhenShantenTiesAndLiveWinningOutsIncrease()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(3, 2), Wan(4, 1), Wan(8, 2),
+                Tong(2, 0), Tong(4, 1), Tong(5, 3), Tong(6, 0), Tong(8, 0), Tong(8, 2),
+                Tiao(2, 0), Tiao(2, 2), Tiao(4, 0), Tiao(9, 2)
+            }
+        };
+
+        var state = BuildSingleClaimState(hand, discardTileId: Tong(6, 1), claimType: TableClaimType.Chow);
+
+        var action = new HardStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
+        Assert.NotNull(action.ClaimTileIds);
+        Assert.Equal(2, action.ClaimTileIds!.Length);
+        Assert.Equal(
+            new[]
+            {
+                ChangshaDeckBuilder.GetLogicalTile(Tong(4, 1)),
+                ChangshaDeckBuilder.GetLogicalTile(Tong(5, 3))
+            },
+            action.ClaimTileIds
+                .Select(ChangshaDeckBuilder.GetLogicalTile)
+                .OrderBy(logical => logical)
+                .ToArray());
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W29")]
+    public void Master_DelegatesChowClaim_WhenShantenTiesAndLiveWinningOutsIncrease()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(3, 2), Wan(4, 1), Wan(8, 2),
+                Tong(2, 0), Tong(4, 1), Tong(5, 3), Tong(6, 0), Tong(8, 0), Tong(8, 2),
+                Tiao(2, 0), Tiao(2, 2), Tiao(4, 0), Tiao(9, 2)
+            }
+        };
+
+        var state = BuildSingleClaimState(hand, discardTileId: Tong(6, 1), claimType: TableClaimType.Chow);
+
+        var action = ChangshaBotEngine.Resolve("master").DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
+        Assert.NotNull(action.ClaimTileIds);
+        Assert.Equal(2, action.ClaimTileIds!.Length);
+    }
+
     private static ChangshaGameState BuildSingleClaimState(
         ChangshaHandState hand,
         int discardTileId,
