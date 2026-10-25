@@ -526,4 +526,69 @@ public class MediumStrategySafetyRegressionTests
         Assert.Equal(BotActionType.Discard, action.Type);
         Assert.Equal(Tong(2, 0), action.TileId);
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W35")]
+    public void Medium_DoesNotSpendOnlyLiveSmallWinSingleton_WhenBackupSingletonIsDead()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0), // live lone 2/5/8 singleton with full dangerous-opponent genbutsu
+                Wan(4, 0),
+                Wan(5, 0),  // backup 2/5/8 singleton but dead (all copies visible)
+                Wan(6, 0),
+                Tiao(9, 0)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 1)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(5, 1))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(8, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                // full dangerous-opponent genbutsu for Tong(2)
+                new() { SeatIndex = 1, TileId = Tong(2, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tong(2, 2), TurnNumber = 2 },
+
+                // backup small-win singleton is dead (all four 5-wan copies visible)
+                new() { SeatIndex = 1, TileId = Wan(5, 1), TurnNumber = 3 },
+                new() { SeatIndex = 2, TileId = Wan(5, 2), TurnNumber = 4 },
+                new() { SeatIndex = 3, TileId = Wan(5, 3), TurnNumber = 5 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.NotEqual(Tong(2, 0), action.TileId);
+    }
 }
