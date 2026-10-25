@@ -882,11 +882,14 @@ public sealed class MasterStrategy : IChangshaBotStrategy
 
         // If another live 2/5/8 singleton exists, we can keep full dangerous-
         // opponent genbutsu here without collapsing small-win flexibility.
-        var hasAlternateSmallWinSingleton = logicalCounts.Any(entry =>
+        // Dead backup singletons (all copies already visible) do not keep a live
+        // small-win route alive and should not block this safety override.
+        var hasAlternateLiveSmallWinSingleton = logicalCounts.Any(entry =>
             entry.Key != selected.Logical
             && IsSmallWinRank(entry.Key)
-            && entry.Value == 1);
-        if (hasAlternateSmallWinSingleton)
+            && entry.Value == 1
+            && !IsLogicalDead(entry.Key, visibleLogicalCounts));
+        if (hasAlternateLiveSmallWinSingleton)
             return false;
 
         if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
