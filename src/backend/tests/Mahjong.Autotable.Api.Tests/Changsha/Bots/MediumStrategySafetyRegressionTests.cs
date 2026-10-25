@@ -1247,4 +1247,83 @@ public class MediumStrategySafetyRegressionTests
         Assert.Equal(bestShanten, chosenShanten);
         Assert.Equal(1, bestShanten);
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W51")]
+    public void Medium_DoesNotTradeShantenForLiveSmallWinPreservationSwap_UnderFullDangerousPressure()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                93, 81, 37, 61, 80, 38, 56, 60, 39, 13, 23, 86, 41, 96
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(4, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(7, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(8, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = 41, TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = 42, TurnNumber = 2 },
+                new() { SeatIndex = 1, TileId = 56, TurnNumber = 3 },
+                new() { SeatIndex = 2, TileId = 101, TurnNumber = 4 },
+                new() { SeatIndex = 1, TileId = 2, TurnNumber = 5 },
+                new() { SeatIndex = 2, TileId = 63, TurnNumber = 6 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+
+        var singletonDiscardHand = new List<int>(hand.ConcealedTiles);
+        singletonDiscardHand.Remove(41);
+        var singletonDiscardShanten = HandEvaluator.MinShantenToHu(new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = singletonDiscardHand,
+            Melds = hand.Melds
+        }, Array.Empty<int>());
+
+        var chosenDiscardHand = new List<int>(hand.ConcealedTiles);
+        chosenDiscardHand.Remove(action.TileId!.Value);
+        var chosenDiscardShanten = HandEvaluator.MinShantenToHu(new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = chosenDiscardHand,
+            Melds = hand.Melds
+        }, Array.Empty<int>());
+
+        Assert.True(chosenDiscardShanten <= singletonDiscardShanten,
+            $"expected shanten-safe swap (chosen={action.TileId}, chosenShanten={chosenDiscardShanten}, singletonShanten={singletonDiscardShanten})");
+    }
 }
