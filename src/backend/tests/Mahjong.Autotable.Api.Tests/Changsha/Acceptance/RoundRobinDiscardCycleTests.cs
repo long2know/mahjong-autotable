@@ -106,8 +106,10 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
         Assert.Contains(state.Hands[1].Melds, meld => meld.TileIds.Contains(tile));
     }
 
-    [Fact, Trait("Category", "Acceptance"), Trait("Audit", "Bishop-Backend")]
-    public async Task DealerDiscardViaWs_AdvancesToSeat1_ThenLoopDrains10PlusDiscards()
+    [Theory, Trait("Category", "Acceptance"), Trait("Audit", "Bishop-Backend")]
+    [InlineData(11)]
+    [InlineData(42)]
+    public async Task DealerDiscardViaWs_AdvancesToSeat1_ThenLoopDrains10PlusDiscards(int seed)
     {
         // Stephen's audit gate: drive a full Changsha hand from manual deal through
         // (a) the dealer's first WS-driven discard (proves Bishop's Int64 seat-key fix
@@ -123,7 +125,7 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
         // <see cref="DealerExtraTransitionsToAwaitingDiscardTests.WsEndpoint_DealerDiscardAfterDealerExtra_LandsInDiscardSlot"/>
         // for the same pattern's intermittent failure under load).
         var gameId = $"rrobin-ws-{Guid.NewGuid():N}";
-        await using var session = await OpenAsync(seat: 0, gameId: gameId);
+        await using var session = await OpenAsync(seat: 0, gameId: gameId, seed: seed);
 
         var runtime = _factory!.Services.GetRequiredService<IChangshaGameRuntime>();
         var runtimeGameId = await DriveToDealerAwaitingDiscardAsync(session, gameId);
@@ -422,11 +424,11 @@ public sealed class RoundRobinDiscardCycleTests : IAsyncLifetime
         return predicate();
     }
 
-    private async Task<WsSession> OpenAsync(int seat, string gameId)
+    private async Task<WsSession> OpenAsync(int seat, string gameId, int seed)
     {
         var server = _factory!.Server;
         var wsClient = server.CreateWebSocketClient();
-        var path = $"autotable/ws?seat={seat}&gameId={Uri.EscapeDataString(gameId)}&dealMode=manual&botCount=3";
+        var path = $"autotable/ws?seat={seat}&gameId={Uri.EscapeDataString(gameId)}&dealMode=manual&botCount=3&seed={seed}";
         var uri = new Uri(server.BaseAddress, path);
         var ws = await wsClient.ConnectAsync(uri, CancellationToken.None);
         return new WsSession(ws);
