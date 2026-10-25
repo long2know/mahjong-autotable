@@ -1203,15 +1203,22 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
         var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
 
-        // Keep the existing full-genbutsu preference whenever ANY alternate has
-        // dangerous-opponent coverage. This override is only for the sharp edge
-        // where full safety would spend the lone live 2/5/8 eye and every
-        // fallback is fully unsafe.
-        if (selectedSafety > -2
-            || alternates.Any(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) < 0))
+        if (selectedSafety > -2)
             return false;
 
-        var alternate = alternates[0];
+        // If a non-small-win alternate is also full dangerous-opponent genbutsu,
+        // spend that tile first to preserve the lone live 2/5/8 route without
+        // sacrificing safety. Keep the previous behavior when alternates only
+        // offer partial dangerous coverage: in that case we still hold full safety.
+        var fullSafetyAlternates = alternates
+            .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -2)
+            .ToList();
+
+        if (fullSafetyAlternates.Count == 0
+            && alternates.Any(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) < 0))
+            return false;
+
+        var alternate = fullSafetyAlternates.Count > 0 ? fullSafetyAlternates[0] : alternates[0];
         if (alternate.Score > selected.Score + SingleDangerousGenbutsuScoreTolerance)
             return false;
 
