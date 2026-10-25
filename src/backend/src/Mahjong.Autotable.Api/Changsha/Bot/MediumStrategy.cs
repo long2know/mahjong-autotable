@@ -259,10 +259,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         int discardTileId)
     {
         var concealedAfter = new List<int>(hand.ConcealedTiles);
-        if (!TryRemoveByLogical(concealedAfter, discardLogical, 2))
+        if (!TryTakeTilesByLogical(concealedAfter, discardLogical, 2, out var claimedTileIds))
             return (int.MaxValue, int.MaxValue, int.MinValue, null);
 
-        var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Pung, discardTileId);
+        claimedTileIds.Add(discardTileId);
+        var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Pung, claimedTileIds);
         return (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, null);
     }
 
@@ -272,10 +273,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         int discardTileId)
     {
         var concealedAfter = new List<int>(hand.ConcealedTiles);
-        if (!TryRemoveByLogical(concealedAfter, discardLogical, 3))
+        if (!TryTakeTilesByLogical(concealedAfter, discardLogical, 3, out var claimedTileIds))
             return (int.MaxValue, int.MaxValue, int.MinValue, null);
 
-        var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, discardTileId);
+        claimedTileIds.Add(discardTileId);
+        var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, claimedTileIds);
         return (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, null);
     }
 
@@ -298,7 +300,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 || !TryTakeTileByLogical(concealedAfter, b, out var tileB))
                 continue;
 
-            var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Chow, discardTileId);
+            var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Chow, new[] { tileA, tileB, discardTileId });
             var isBetter = probe.Shanten < best.Shanten
                 || (probe.Shanten == best.Shanten
                     && probe.SmallWinPairDistance < best.SmallWinPairDistance)
@@ -313,14 +315,16 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         return best;
     }
 
-    private static bool TryRemoveByLogical(List<int> tiles, int logical, int count)
+    private static bool TryTakeTilesByLogical(List<int> tiles, int logical, int count, out List<int> takenTileIds)
     {
+        takenTileIds = new List<int>(count);
         for (var i = 0; i < count; i++)
         {
             var idx = tiles.FindIndex(t => ChangshaDeckBuilder.GetLogicalTile(t) == logical);
             if (idx < 0)
                 return false;
 
+            takenTileIds.Add(tiles[idx]);
             tiles.RemoveAt(idx);
         }
 
@@ -344,14 +348,14 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         ChangshaHandState hand,
         List<int> concealedAfter,
         MeldKind kind,
-        int discardTileId)
+        IReadOnlyCollection<int> meldTileIds)
     {
         var simulatedMelds = new List<Meld>(hand.Melds.Count + 1);
         simulatedMelds.AddRange(hand.Melds);
         simulatedMelds.Add(new Meld
         {
             Kind = kind,
-            TileIds = new List<int> { discardTileId }
+            TileIds = new List<int>(meldTileIds)
         });
 
         var probe = new ChangshaHandState
