@@ -754,6 +754,7 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (dangerousOpponents.Count > 0
             && candidateOpponentSafety == selectedOpponentSafety
             && candidateTenpaiSafety == selectedTenpaiSafety
+            && selectedOpponentSafety < 0
             && candidate.Score > selected.Score
             && !candidateHasAdjacentSingleton)
             return false;
