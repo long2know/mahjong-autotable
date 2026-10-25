@@ -1200,7 +1200,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (fullSafetyCandidate is null)
             return false;
 
-        if (fullSafetyCandidate.Value.Score > selected.Score + FullDangerousGenbutsuScoreTolerance)
+        // If the full-dangerous candidate also improves post-discard shanten,
+        // prefer shape improvement over raw keep-score delta. Otherwise enforce
+        // the usual score-tolerance guard.
+        if (fullSafetyCandidate.Value.Shanten == selected.Shanten
+            && fullSafetyCandidate.Value.Score > selected.Score + FullDangerousGenbutsuScoreTolerance)
             return false;
 
         tileId = fullSafetyCandidate.Value.TileId;
@@ -1244,8 +1248,15 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
             return false;
 
+        // Keep full-dangerous live-singleton preservation swaps shanten-safe
+        // once the hand is within practical striking distance. If no non-small-win
+        // fallback can keep (or improve) post-discard shanten at this depth, keep
+        // the current discard instead of forcing a shape-regressing safety swap.
+        var protectPracticalShape = selected.Shanten <= 2;
+
         var alternates = scored
             .Where(entry => entry.TileId != selectedTileId && !IsSmallWinRank(entry.Logical))
+            .Where(entry => !protectPracticalShape || entry.Shanten <= selected.Shanten)
             .OrderBy(entry => entry.Score)
             .ThenByDescending(entry => entry.TileId)
             .ToList();
