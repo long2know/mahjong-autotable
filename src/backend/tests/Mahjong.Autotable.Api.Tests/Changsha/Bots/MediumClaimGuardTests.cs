@@ -77,6 +77,30 @@ public class MediumClaimGuardTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W26")]
+    public void Medium_PassesPung_WhenClaimKeepsShapeButDropsLiveWinningOuts()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(2, 0),
+                Wan(3, 1), Wan(3, 2),
+                Wan(4, 0), Wan(4, 3),
+                Wan(6, 0),
+                Tong(2, 0), Tong(4, 1), Tong(9, 1),
+                Tiao(2, 2), Tiao(5, 1), Tiao(6, 0), Tiao(6, 3)
+            }
+        };
+
+        var state = BuildSingleClaimState(hand, discardTileId: Wan(4, 1), claimType: TableClaimType.Pung);
+
+        var action = new MediumStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W26")]
     public void Medium_PrefersChowOverPung_WhenPungWorsensSmallWinPairDistance()
     {
         var hand = new ChangshaHandState

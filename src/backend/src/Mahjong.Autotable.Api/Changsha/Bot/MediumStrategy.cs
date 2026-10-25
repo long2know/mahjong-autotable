@@ -180,6 +180,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
         var preShanten = HandEvaluator.MinShantenToHu(hand, Array.Empty<int>());
         var preSmallWinPairDistance = ComputeSmallWinPairDistance(hand.ConcealedTiles);
+        var preLiveWinningOuts = CountLiveWinningOuts(hand);
         var discardTileId = claimWindow.DiscardTileId;
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
 
@@ -210,6 +211,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 continue;
 
             if (postSmallWinPairDistance > preSmallWinPairDistance)
+                continue;
+
+            if (postShanten == preShanten
+                && postSmallWinPairDistance == preSmallWinPairDistance
+                && postLiveWinningOuts < preLiveWinningOuts)
                 continue;
 
             var claimRank = ClaimPreferenceRank(opp.ClaimType);
