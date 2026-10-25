@@ -1148,4 +1148,103 @@ public class MediumStrategySafetyRegressionTests
         Assert.Equal(BotActionType.Discard, action.Type);
         Assert.Equal(Tong(2, 0), action.TileId);
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W49")]
+    public void Medium_KeepsNearTenpaiShanten_WhenDeadSmallWinSingletonIsFullSafeButShapeWorse()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(7, 3),
+                Tiao(7, 3), Tiao(7, 1),
+                Wan(8, 0), Wan(7, 3),
+                Wan(5, 2),
+                Tiao(3, 1),
+                Wan(2, 2), Wan(3, 1),
+                Tiao(2, 0),
+                Wan(9, 3),
+                Wan(4, 1), Wan(4, 3),
+                Tong(9, 1)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(2, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(3, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(7, 0), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Wan(7, 1), TurnNumber = 2 },
+                new() { SeatIndex = 1, TileId = Tiao(3, 0), TurnNumber = 3 },
+                new() { SeatIndex = 2, TileId = Tong(8, 0), TurnNumber = 4 },
+                new() { SeatIndex = 3, TileId = Wan(9, 0), TurnNumber = 5 },
+                new() { SeatIndex = 1, TileId = Wan(4, 0), TurnNumber = 6 },
+                new() { SeatIndex = 2, TileId = Tong(9, 0), TurnNumber = 7 },
+                new() { SeatIndex = 3, TileId = Wan(8, 1), TurnNumber = 8 },
+                new() { SeatIndex = 1, TileId = Wan(8, 2), TurnNumber = 9 },
+                new() { SeatIndex = 2, TileId = Wan(8, 3), TurnNumber = 10 },
+                new() { SeatIndex = 3, TileId = Tiao(5, 0), TurnNumber = 11 },
+                new() { SeatIndex = 1, TileId = Wan(1, 0), TurnNumber = 12 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.NotNull(action.TileId);
+
+        var shantenByLogical = hand.ConcealedTiles
+            .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var probeTiles = new List<int>(hand.ConcealedTiles);
+                    var idx = probeTiles.FindIndex(tileId => ChangshaDeckBuilder.GetLogicalTile(tileId) == g.Key);
+                    probeTiles.RemoveAt(idx);
+                    var probeHand = new ChangshaHandState
+                    {
+                        SeatIndex = hand.SeatIndex,
+                        ConcealedTiles = probeTiles,
+                        Melds = hand.Melds
+                    };
+                    return HandEvaluator.MinShantenToHu(probeHand, Array.Empty<int>());
+                });
+
+        var chosenLogical = ChangshaDeckBuilder.GetLogicalTile(action.TileId.Value);
+        var chosenShanten = shantenByLogical[chosenLogical];
+        var bestShanten = shantenByLogical.Values.Min();
+
+        Assert.Equal(bestShanten, chosenShanten);
+        Assert.Equal(1, bestShanten);
+    }
 }
