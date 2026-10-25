@@ -1143,9 +1143,15 @@ public sealed class HardStrategy : IChangshaBotStrategy
         if (IsBridgeBetweenOffRankPairs(selected.Logical, logicalCounts))
             return false;
 
+        // Near tenpai (0-1 shanten), preserve completion tempo: do not
+        // regress shanten just to protect a live 2/5/8 singleton under
+        // single-dangerous pressure.
+        var protectNearTenpaiShape = selected.Shanten <= 1;
+
         var alternate = scored
             .Where(entry => entry.TileId != selectedTileId && !IsSmallWinRank(entry.Logical))
             .Where(entry => entry.Shanten <= selected.Shanten + ConnectedSmallWinBridgeShantenTolerance)
+            .Where(entry => !protectNearTenpaiShape || entry.Shanten <= selected.Shanten)
             .OrderBy(entry => entry.Shanten)
             .ThenBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
             .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
