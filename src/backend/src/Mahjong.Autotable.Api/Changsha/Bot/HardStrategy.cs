@@ -673,6 +673,18 @@ public sealed class HardStrategy : IChangshaBotStrategy
             selectedTileId = preservedSmallWinTileId;
         }
 
+        if (TryAvoidLiveSmallWinSingletonDiscardUnderFullDangerousPressure(
+                logicalCounts,
+                visibleLogicalCounts,
+                scored,
+                selectedTileId,
+                state,
+                botSeatIndex,
+                out var preservedUnderFullDangerTileId))
+        {
+            selectedTileId = preservedUnderFullDangerTileId;
+        }
+
         return selectedTileId;
     }
 
@@ -1130,6 +1142,60 @@ public sealed class HardStrategy : IChangshaBotStrategy
             .FirstOrDefault();
 
         if (alternate is null)
+            return false;
+
+        if (alternate.Value.Score > selected.Score + SingleDangerousGenbutsuScoreTolerance)
+            return false;
+
+        tileId = alternate.Value.TileId;
+        return true;
+    }
+
+    private static bool TryAvoidLiveSmallWinSingletonDiscardUnderFullDangerousPressure(
+        Dictionary<int, int> logicalCounts,
+        Dictionary<int, int> visibleLogicalCounts,
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaGameState state,
+        int botSeatIndex,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count < 2)
+            return false;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
+            return false;
+
+        if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
+            return false;
+
+        var alternate = scored
+            .Where(entry => entry.TileId != selectedTileId && !IsSmallWinRank(entry.Logical))
+            .Where(entry => entry.Shanten <= selected.Shanten + ConnectedSmallWinBridgeShantenTolerance)
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
+
+        if (alternate is null)
+            return false;
+
+        var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+        var alternateSafety = TenpaiDetector.SafetyBias(alternate.Value.TileId, state, botSeatIndex);
+
+        // Keep the existing full-genbutsu preference whenever an alternate has
+        // any dangerous-opponent coverage. This override is only for the sharp
+        // edge where full-safety would spend the lone live 2/5/8 eye and the
+        // only fallback is fully unsafe.
+        if (selectedSafety > -2 || alternateSafety != 0)
             return false;
 
         if (alternate.Value.Score > selected.Score + SingleDangerousGenbutsuScoreTolerance)

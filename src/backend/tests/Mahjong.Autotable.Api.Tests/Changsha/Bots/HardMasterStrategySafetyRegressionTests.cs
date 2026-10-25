@@ -345,6 +345,52 @@ public class HardMasterStrategySafetyRegressionTests
         Assert.NotEqual(Tong(2, 0), action.TileId);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W31")]
+    public void Hard_DoesNotPromoteLiveSmallWinSingleton_ForFullDangerousGenbutsuTie()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(9, 0),
+                Tong(2, 0), // live lone 2/5/8 singleton (only one copy remains live)
+                Tiao(7, 0)
+            }
+        };
+
+        var state = BuildFullDangerousState(hand, Tong(2, 1), Tong(2, 2));
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.NotEqual(Tong(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W31")]
+    public void Master_DoesNotPromoteLiveSmallWinSingleton_ForFullDangerousGenbutsuTie()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(9, 0),
+                Tong(2, 0), // live lone 2/5/8 singleton (only one copy remains live)
+                Tiao(7, 0)
+            }
+        };
+
+        var state = BuildFullDangerousState(hand, Tong(2, 1), Tong(2, 2));
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.NotEqual(Tong(2, 0), action.TileId);
+    }
+
     private static ChangshaGameState BuildSingleDangerousState(ChangshaHandState hand, int dangerousGenbutsuTileId)
     {
         return new ChangshaGameState
@@ -403,6 +449,46 @@ public class HardMasterStrategySafetyRegressionTests
                 new() { SeatIndex = 2, TileId = Tiao(2, 1), TurnNumber = 1 },
                 new() { SeatIndex = 3, TileId = Tiao(2, 2), TurnNumber = 2 },
                 new() { SeatIndex = 2, TileId = Tiao(2, 3), TurnNumber = 3 }
+            }
+        };
+    }
+
+    private static ChangshaGameState BuildFullDangerousState(ChangshaHandState hand, int seatOneGenbutsuTileId, int seatTwoGenbutsuTileId)
+    {
+        return new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(5, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(8, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                // Both dangerous opponents have discarded the same logical tile.
+                new() { SeatIndex = 1, TileId = seatOneGenbutsuTileId, TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = seatTwoGenbutsuTileId, TurnNumber = 2 }
             }
         };
     }
