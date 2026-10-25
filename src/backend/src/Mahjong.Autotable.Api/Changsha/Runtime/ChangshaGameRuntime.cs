@@ -1848,8 +1848,10 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             // takes precedence; null falls back to the runtime default.
             var state = instance.State;
             var strategy = instance.BotStrategy ?? _strategy;
+            // A timed-out strategy keeps running after the lock is released.
+            var decisionState = CopyState(state);
             var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
-                () => strategy.DecideWithReasoning(state, seatIndex),
+                () => strategy.DecideWithReasoning(decisionState, seatIndex),
                 _options.BotDecisionTimeoutMs,
                 () => BotDecision.FromAction(BotAction.Pass()),
                 _logger,
@@ -2220,10 +2222,11 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 var state = instance.State;
                 var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
                 var strategy = instance.BotStrategy ?? _strategy;
+                var decisionState = CopyState(state);
                 BotDecision DiscardFallback() =>
                     BotDecision.FromAction(BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(hand)));
                 var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
-                    () => strategy.DecideWithReasoning(state, seatIndex),
+                    () => strategy.DecideWithReasoning(decisionState, seatIndex),
                     _options.BotDecisionTimeoutMs,
                     DiscardFallback,
                     _logger,

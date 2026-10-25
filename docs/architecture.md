@@ -251,6 +251,13 @@ exceeds it (a real risk for the Hard-tier EV depth), the runtime falls back to
 a safe default action: `Pass` in a claim window, `ChangshaBotPolicy.SelectDiscardTile`
 on the bot's own turn. See `.squad/decisions/inbox/ripley-phase-h-design.md` §1.2.
 
+Turn and claim strategies receive an isolated state copy captured under the
+per-game lock. A timeout does not stop the synchronous strategy worker; the
+worker must not retain the live state after the fallback releases that lock.
+Concurrent observers must likewise use `TryGetSnapshotCopyAsync` before
+enumerating collections. To observe discard progress, count `tile-discarded`
+events rather than river entries: a successful claim removes its river entry.
+
 ---
 
 ## 7. Persistence

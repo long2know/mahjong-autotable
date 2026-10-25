@@ -421,9 +421,14 @@ public class BotBehaviorTests
             "claim window did not resolve via Pass-fallback after BotDecisionTimeoutMs");
         sw.Stop();
 
-        var final = Snapshot(runtime, gameId);
+        var final = await runtime.TryGetSnapshotCopyAsync(gameId, cts.Token);
+        Assert.NotNull(final);
         Assert.Null(final.CurrentWin);
         Assert.DoesNotContain(final.EventLog, e => e.EventType == "win-declared");
+        var strategyState = await slow.FirstState.Task.WaitAsync(cts.Token);
+        Assert.NotSame(live, strategyState);
+        Assert.NotSame(live.EventLog, strategyState.EventLog);
+        Assert.NotSame(live.Hands[1].ConcealedTiles, strategyState.Hands[1].ConcealedTiles);
         Assert.True(sw.ElapsedMilliseconds < 9_000,
             $"Claim-window Pass-fallback did not fire within BotDecisionTimeoutMs + buffer. " +
             $"Took {sw.ElapsedMilliseconds}ms; the decision-timeout fallback (100ms) must close " +
@@ -515,6 +520,62 @@ public class BotBehaviorTests
 
     // ── Phase H Wave 1 — slow-strategy harness & reflection helpers ─────────────
 
+    [Fact, Trait("Category", "Changsha")]
+    public async Task TimedOutTurnStrategy_RetainsAnIsolatedState_WhileTheRuntimeAdvances()
+    {
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 100;
+            o.BotTurnDelayMs = 1;
+            o.BotClaimDelayMs = 1;
+            o.ClaimWindowTimeoutMs = 100;
+        });
+        var runtime = harness.Runtime;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var release = new ManualResetEventSlim();
+        var started = new TaskCompletionSource<ChangshaGameState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var slow = new SlowBotStrategy(0, (state, _) =>
+        {
+            started.TrySetResult(state);
+            release.Wait(timeout.Token);
+            completed.TrySetResult();
+            return BotAction.Pass();
+        });
+        InjectStrategyOrFail(runtime, slow);
+        var gameId = await runtime.CreateGameAsync(seed: 11, botSeatIndexes: new[] { 0 },
+            hostPlayerId: null, hostConnectionId: null, timeout.Token);
+        var live = Snapshot(runtime, gameId);
+        live.DealerSeatIndex = 0;
+        foreach (var seat in live.Seats) seat.IsDealer = seat.SeatIndex == 0;
+        live.DealMode = DealMode.Auto;
+
+        try
+        {
+            await runtime.StartGameAsync(gameId, timeout.Token);
+            var captured = await started.Task.WaitAsync(timeout.Token);
+            var capturedEvents = captured.EventLog.Count;
+            var capturedTiles = captured.Hands[0].ConcealedTiles.ToArray();
+            await WaitForAsync(() => Snapshot(runtime, gameId).DiscardPile.Count > 0,
+                TimeSpan.FromSeconds(5), "timed-out turn did not apply its discard fallback");
+
+            Assert.NotSame(live, captured);
+            Assert.Equal(capturedEvents, captured.EventLog.Count);
+            Assert.Equal(capturedTiles, captured.Hands[0].ConcealedTiles);
+            Assert.Equal(14, captured.Hands[0].ConcealedTiles.Count);
+            Assert.Empty(captured.DiscardPile);
+            var after = await runtime.TryGetSnapshotCopyAsync(gameId, timeout.Token);
+            Assert.NotNull(after);
+            Assert.Single(after.DiscardPile);
+            Assert.Equal(13, after.Hands[0].ConcealedTiles.Count);
+        }
+        finally
+        {
+            release.Set();
+            await completed.Task.WaitAsync(timeout.Token);
+        }
+    }
+
     /// <summary>Test-double IChangshaBotStrategy that blocks <see cref="DecideAction"/>
     /// for <paramref name="delayMs"/> via <see cref="Thread.Sleep"/> (deliberate: a hung
     /// strategy is what Bishop's timeout wrapper must defeat). The result the strategy
@@ -526,6 +587,8 @@ public class BotBehaviorTests
         private readonly int _delayMs;
         private readonly Func<ChangshaGameState, int, BotAction> _decision;
         public int InvocationCount;
+        public TaskCompletionSource<ChangshaGameState> FirstState { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string Difficulty => "slow-test";
 
         public SlowBotStrategy(int delayMs, Func<ChangshaGameState, int, BotAction>? decision = null)
@@ -542,6 +605,7 @@ public class BotBehaviorTests
         public BotAction DecideAction(ChangshaGameState state, int seat)
         {
             Interlocked.Increment(ref InvocationCount);
+            FirstState.TrySetResult(state);
             if (_delayMs > 0) Thread.Sleep(_delayMs);
             return _decision(state, seat);
         }
