@@ -252,6 +252,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
         var preLiveWinningOuts = CountLiveWinningOuts(hand, externallyVisibleLogicalCounts);
         var discardTileId = state.ClaimWindow.DiscardTileId;
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
+        var postClaimVisibleLogicalCounts = BuildPostClaimVisibleLogicalCounts(externallyVisibleLogicalCounts, discardLogical);
 
         ChangshaClaimOpportunity? best = null;
         int[]? bestClaimTileIds = null;
@@ -264,9 +265,9 @@ public sealed class HardStrategy : IChangshaBotStrategy
         {
             var (postShanten, postSmallWinPairDistance, postLiveWinningOuts, claimTileIds) = opp.ClaimType switch
             {
-                TableClaimType.Kong => ProbeAfterExposedKongClaim(hand, discardLogical, discardTileId, externallyVisibleLogicalCounts),
-                TableClaimType.Pung => ProbeAfterPungClaim(hand, discardLogical, discardTileId, externallyVisibleLogicalCounts),
-                TableClaimType.Chow => ProbeAfterChowClaim(hand, discardLogical, discardTileId, externallyVisibleLogicalCounts),
+                TableClaimType.Kong => ProbeAfterExposedKongClaim(hand, discardLogical, discardTileId, postClaimVisibleLogicalCounts),
+                TableClaimType.Pung => ProbeAfterPungClaim(hand, discardLogical, discardTileId, postClaimVisibleLogicalCounts),
+                TableClaimType.Chow => ProbeAfterChowClaim(hand, discardLogical, discardTileId, postClaimVisibleLogicalCounts),
                 _ => (int.MaxValue, int.MaxValue, int.MinValue, null)
             };
 
@@ -1214,6 +1215,23 @@ public sealed class HardStrategy : IChangshaBotStrategy
         }
 
         return counts;
+    }
+
+    private static Dictionary<int, int> BuildPostClaimVisibleLogicalCounts(
+        IReadOnlyDictionary<int, int> externallyVisibleLogicalCounts,
+        int claimDiscardLogical)
+    {
+        var adjusted = new Dictionary<int, int>(externallyVisibleLogicalCounts);
+        var discardCount = adjusted.GetValueOrDefault(claimDiscardLogical, 0);
+        if (discardCount <= 0)
+            return adjusted;
+
+        if (discardCount == 1)
+            adjusted.Remove(claimDiscardLogical);
+        else
+            adjusted[claimDiscardLogical] = discardCount - 1;
+
+        return adjusted;
     }
 
     private static bool IsLogicalNearExhausted(int logical, Dictionary<int, int> visibleLogicalCounts)

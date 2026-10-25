@@ -317,6 +317,82 @@ public class HardClaimSmallWinPairGuardTests
         Assert.Equal(2, action.ClaimTileIds!.Length);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W30")]
+    public void Hard_PrefersMiddleChowShape_WhenCurrentDiscardAlreadyInDiscardPile()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(1, 0), Wan(6, 0), Wan(6, 2), Wan(9, 0),
+                Tong(1, 0), Tong(1, 3), Tong(3, 0), Tong(4, 2), Tong(6, 0), Tong(9, 2),
+                Tiao(1, 0), Tiao(6, 3), Tiao(9, 3)
+            }
+        };
+
+        var state = BuildSingleClaimState(
+            hand,
+            discardTileId: Tong(2, 1),
+            claimType: TableClaimType.Chow,
+            discardPileTileIds: new[] { Tong(2, 1) });
+
+        var action = new HardStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
+        Assert.NotNull(action.ClaimTileIds);
+        Assert.Equal(2, action.ClaimTileIds!.Length);
+        Assert.Equal(
+            new[]
+            {
+                ChangshaDeckBuilder.GetLogicalTile(Tong(1, 0)),
+                ChangshaDeckBuilder.GetLogicalTile(Tong(3, 0))
+            },
+            action.ClaimTileIds
+                .Select(ChangshaDeckBuilder.GetLogicalTile)
+                .OrderBy(logical => logical)
+                .ToArray());
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W30")]
+    public void Master_DelegatesMiddleChowShapeChoice_WhenCurrentDiscardAlreadyInDiscardPile()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(1, 0), Wan(6, 0), Wan(6, 2), Wan(9, 0),
+                Tong(1, 0), Tong(1, 3), Tong(3, 0), Tong(4, 2), Tong(6, 0), Tong(9, 2),
+                Tiao(1, 0), Tiao(6, 3), Tiao(9, 3)
+            }
+        };
+
+        var state = BuildSingleClaimState(
+            hand,
+            discardTileId: Tong(2, 1),
+            claimType: TableClaimType.Chow,
+            discardPileTileIds: new[] { Tong(2, 1) });
+
+        var action = ChangshaBotEngine.Resolve("master").DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
+        Assert.NotNull(action.ClaimTileIds);
+        Assert.Equal(2, action.ClaimTileIds!.Length);
+        Assert.Equal(
+            new[]
+            {
+                ChangshaDeckBuilder.GetLogicalTile(Tong(1, 0)),
+                ChangshaDeckBuilder.GetLogicalTile(Tong(3, 0))
+            },
+            action.ClaimTileIds
+                .Select(ChangshaDeckBuilder.GetLogicalTile)
+                .OrderBy(logical => logical)
+                .ToArray());
+    }
+
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W27")]
     public void Hard_PrefersPung_WhenPublicVisibilityMakesChowOutsDead()
     {
