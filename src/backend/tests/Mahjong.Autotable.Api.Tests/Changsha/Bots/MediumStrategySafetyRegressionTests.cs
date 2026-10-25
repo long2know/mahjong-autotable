@@ -358,6 +358,54 @@ public class MediumStrategySafetyRegressionTests
         Assert.NotEqual(Tong(2, 0), action.TileId);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W34")]
+    public void Medium_DoesNotPromoteLiveSmallWinSingleton_ForSingleDangerousGenbutsuTie()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(9, 0),
+                Tong(2, 0), // live lone 2/5/8 singleton
+                Tiao(7, 0)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                // single dangerous-opponent genbutsu coverage for the live 2 tile
+                new() { SeatIndex = 1, TileId = Tong(2, 1), TurnNumber = 1 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.NotEqual(Tong(2, 0), action.TileId);
+    }
+
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W32")]
     public void Medium_KeepsFullDangerousGenbutsu_WhenAnotherAlternateHasDangerousCoverage()
     {
