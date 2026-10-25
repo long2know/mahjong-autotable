@@ -198,8 +198,6 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             if (opp.ClaimType == TableClaimType.Hu)
                 return BotAction.Claim(TableClaimType.Hu);
 
-            if (opp.ClaimType == TableClaimType.Chow && hand.Melds.Count >= 3)
-                continue;
 
             var (postShanten, postSmallWinPairDistance, postLiveWinningOuts, claimTileIds) = opp.ClaimType switch
             {
