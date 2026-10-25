@@ -391,6 +391,254 @@ public class HardMasterStrategySafetyRegressionTests
         Assert.NotEqual(Tong(2, 0), action.TileId);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W33")]
+    public void Hard_KeepsFullDangerousGenbutsu_WhenAnotherAlternateHasDangerousCoverage()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0), // live 2/5/8 singleton with full dangerous-opponent genbutsu
+                Wan(5, 0),  // extra small-win tile keeps Tong(2) eligible for full-safety promotion
+                Wan(1, 0),  // partial dangerous-opponent genbutsu alternate
+                Tiao(9, 0)  // fully unsafe fallback with better shape score
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 1)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(5, 1))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(8, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                // full dangerous-opponent genbutsu coverage for Tong(2)
+                new() { SeatIndex = 1, TileId = Tong(2, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tong(2, 2), TurnNumber = 2 },
+
+                // partial dangerous-opponent coverage exists on Wan(1)
+                new() { SeatIndex = 1, TileId = Wan(1, 1), TurnNumber = 3 }
+            }
+        };
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W33")]
+    public void Master_KeepsFullDangerousGenbutsu_WhenAnotherAlternateHasDangerousCoverage()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0), // live 2/5/8 singleton with full dangerous-opponent genbutsu
+                Wan(5, 0),  // extra small-win tile keeps Tong(2) eligible for full-safety promotion
+                Wan(1, 0),  // partial dangerous-opponent genbutsu alternate
+                Tiao(9, 0)  // fully unsafe fallback with better shape score
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 1)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(5, 1))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(8, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                // full dangerous-opponent genbutsu coverage for Tong(2)
+                new() { SeatIndex = 1, TileId = Tong(2, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tong(2, 2), TurnNumber = 2 },
+
+                // partial dangerous-opponent coverage exists on Wan(1)
+                new() { SeatIndex = 1, TileId = Wan(1, 1), TurnNumber = 3 }
+            }
+        };
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W33")]
+    public void Hard_KeepsFullDangerousGenbutsu_WhenCoveredAlternateIsShapeWorseThanUnsafeFallback()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0), // live 2/5/8 singleton with full dangerous-opponent genbutsu
+                Wan(5, 0),  // extra small-win tile so Tong(2) can still be promoted on score tolerance
+                Wan(1, 0), Wan(1, 1), // covered alternate that is structurally expensive to break
+                Tiao(9, 0) // unsafe fallback with better shape score
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 1)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(5, 1))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(8, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                // full dangerous-opponent genbutsu coverage for Tong(2)
+                new() { SeatIndex = 1, TileId = Tong(2, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tong(2, 2), TurnNumber = 2 },
+
+                // partial dangerous-opponent coverage on one alternate
+                new() { SeatIndex = 1, TileId = Wan(1, 2), TurnNumber = 3 }
+            }
+        };
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W33")]
+    public void Master_KeepsFullDangerousGenbutsu_WhenCoveredAlternateIsShapeWorseThanUnsafeFallback()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0), // live 2/5/8 singleton with full dangerous-opponent genbutsu
+                Wan(5, 0),  // extra small-win tile so Tong(2) can still be promoted on score tolerance
+                Wan(1, 0), Wan(1, 1), // covered alternate that is structurally expensive to break
+                Tiao(9, 0) // unsafe fallback with better shape score
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 1)))
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(3, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(5, 1))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(8, 0)))
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                // full dangerous-opponent genbutsu coverage for Tong(2)
+                new() { SeatIndex = 1, TileId = Tong(2, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tong(2, 2), TurnNumber = 2 },
+
+                // partial dangerous-opponent coverage on one alternate
+                new() { SeatIndex = 1, TileId = Wan(1, 2), TurnNumber = 3 }
+            }
+        };
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tong(2, 0), action.TileId);
+    }
+
     private static ChangshaGameState BuildSingleDangerousState(ChangshaHandState hand, int dangerousGenbutsuTileId)
     {
         return new ChangshaGameState
