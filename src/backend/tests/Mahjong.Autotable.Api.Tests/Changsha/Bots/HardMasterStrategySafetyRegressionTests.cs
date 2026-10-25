@@ -943,6 +943,47 @@ public class HardMasterStrategySafetyRegressionTests
         Assert.Equal(Wan(1, 0), masterAction.TileId);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W44")]
+    public void HardAndMaster_PreferFullDangerousCoveredAlternate_OverPartialCoveredAlternate_WhenPreservingLiveSmallWinSingleton()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0), // lone live 2/5/8 singleton (full dangerous-opponent genbutsu)
+                Wan(2, 0),  // dead backup 2/5/8 singleton (all copies visible)
+                Wan(1, 0),  // partial dangerous-opponent covered alternate (seat 1 only)
+                Tong(9, 0), // full dangerous-opponent covered alternate (seat 1 + seat 2)
+                Tiao(9, 0)  // unsafe fallback
+            }
+        };
+
+        var state = BuildFullDangerousState(hand, Tong(2, 1), Tong(2, 2));
+
+        // Partial coverage on one non-small-win alternate.
+        state.DiscardPile.Add(new ChangshaDiscard { SeatIndex = 1, TileId = Wan(1, 1), TurnNumber = 3 });
+
+        // Full coverage on a second non-small-win alternate.
+        state.DiscardPile.Add(new ChangshaDiscard { SeatIndex = 1, TileId = Tong(9, 1), TurnNumber = 4 });
+        state.DiscardPile.Add(new ChangshaDiscard { SeatIndex = 2, TileId = Tong(9, 2), TurnNumber = 5 });
+
+        // Dead backup singleton should not count as a live alternate 2/5/8 route.
+        state.DiscardPile.Add(new ChangshaDiscard { SeatIndex = 3, TileId = Wan(2, 1), TurnNumber = 6 });
+        state.DiscardPile.Add(new ChangshaDiscard { SeatIndex = 3, TileId = Wan(2, 2), TurnNumber = 7 });
+        state.DiscardPile.Add(new ChangshaDiscard { SeatIndex = 3, TileId = Wan(2, 3), TurnNumber = 8 });
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var hardAction = hard.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, hardAction.Type);
+        Assert.Equal(ChangshaDeckBuilder.GetLogicalTile(Tong(9, 0)), ChangshaDeckBuilder.GetLogicalTile(hardAction.TileId!.Value));
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var masterAction = master.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, masterAction.Type);
+        Assert.Equal(ChangshaDeckBuilder.GetLogicalTile(Tong(9, 0)), ChangshaDeckBuilder.GetLogicalTile(masterAction.TileId!.Value));
+    }
+
     private static ChangshaGameState BuildSingleDangerousState(ChangshaHandState hand, int dangerousGenbutsuTileId)
     {
         return new ChangshaGameState
