@@ -898,9 +898,15 @@ public sealed class HardStrategy : IChangshaBotStrategy
         // already accounted for from our perspective), discarding that last copy
         // can still deal in. Allow this path to swap to an off-rank pair when the
         // pair is strictly safer against dangerous opponents.
+        //
+        // Near tenpai (0-1 shanten), keep this safety swap shanten-safe so the bot
+        // does not trade immediate hand completion equity for a defensive upgrade.
+        var protectNearTenpaiShape = selected.Shanten <= 1;
+
         var saferOffRankPair = scored
             .Where(entry => logicalCounts.GetValueOrDefault(entry.Logical, 0) > 1 && !IsSmallWinRank(entry.Logical))
             .Where(entry => entry.Shanten <= selected.Shanten + OffRankPairShantenTolerance)
+            .Where(entry => !protectNearTenpaiShape || entry.Shanten <= selected.Shanten)
             .OrderBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
             .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
             .ThenBy(entry => entry.Shanten)

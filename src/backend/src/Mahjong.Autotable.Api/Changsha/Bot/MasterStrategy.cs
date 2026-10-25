@@ -1052,9 +1052,15 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         // A dead singleton can still be the final deal-in tile. Keep it only when
         // it is at least as safe as alternatives; otherwise allow a swap to a
         // strictly safer off-rank pair under dangerous-opponent pressure.
+        //
+        // Near tenpai (0-1 shanten), keep this safety swap shanten-safe so the bot
+        // does not trade immediate hand completion equity for a defensive upgrade.
+        var protectNearTenpaiShape = selected.Shanten <= 1;
+
         var saferOffRankPair = scored
             .Where(entry => logicalCounts.GetValueOrDefault(entry.Logical, 0) > 1 && !IsSmallWinRank(entry.Logical))
             .Where(entry => entry.Shanten <= selected.Shanten + OffRankPairShantenTolerance)
+            .Where(entry => !protectNearTenpaiShape || entry.Shanten <= selected.Shanten)
             .OrderBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
             .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
             .ThenBy(entry => entry.Shanten)
