@@ -1185,7 +1185,12 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             && entry.Value >= 2);
 
         var coveredAlternates = alternates
-            .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) < 0)
+            .Select(entry => (Entry: entry, SafetyBias: TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex)))
+            .Where(entry => entry.SafetyBias < 0)
+            .ToList();
+        var fullSafetyCoveredAlternates = coveredAlternates
+            .Where(entry => entry.SafetyBias <= -2)
+            .Select(entry => entry.Entry)
             .ToList();
 
         // If a backup 2/5/8 pair already secures the eye route and every non-small-win
@@ -1208,7 +1213,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         // 2/5/8 singleton and no alternate live 2/5/8 backup singleton. Under
         // multi-dangerous pressure we preserve that live small-win route by swapping
         // to the safest available non-small-win fallback.
-        var alternate = coveredAlternates.Count > 0 ? coveredAlternates[0] : alternates[0];
+        var alternate = fullSafetyCoveredAlternates.Count > 0
+            ? fullSafetyCoveredAlternates[0]
+            : coveredAlternates.Count > 0
+                ? coveredAlternates[0].Entry
+                : alternates[0];
         tileId = alternate.TileId;
         return true;
     }
