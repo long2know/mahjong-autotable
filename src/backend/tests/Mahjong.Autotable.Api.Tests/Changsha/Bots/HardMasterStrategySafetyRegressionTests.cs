@@ -30,18 +30,18 @@ public class HardMasterStrategySafetyRegressionTests
             ConcealedTiles = new List<int>
             {
                 Wan(9, 0),  // unsafe best-score tile absent single-genbutsu promotion
-                Tong(2, 0), // dangerous-opponent genbutsu
+                Tong(3, 0), // dangerous-opponent genbutsu (non-2/5/8)
                 Tiao(7, 0)
             }
         };
 
-        var state = BuildSingleDangerousState(hand, Tong(2, 1));
+        var state = BuildSingleDangerousState(hand, Tong(3, 1));
 
         var hard = ChangshaBotEngine.Resolve("hard");
         var action = hard.DecideAction(state, botSeatIndex: 0);
 
         Assert.Equal(BotActionType.Discard, action.Type);
-        Assert.Equal(Tong(2, 0), action.TileId);
+        Assert.Equal(Tong(3, 0), action.TileId);
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W28")]
@@ -53,18 +53,18 @@ public class HardMasterStrategySafetyRegressionTests
             ConcealedTiles = new List<int>
             {
                 Wan(9, 0),  // unsafe best-score tile absent single-genbutsu promotion
-                Tong(2, 0), // dangerous-opponent genbutsu
+                Tong(3, 0), // dangerous-opponent genbutsu (non-2/5/8)
                 Tiao(7, 0)
             }
         };
 
-        var state = BuildSingleDangerousState(hand, Tong(2, 1));
+        var state = BuildSingleDangerousState(hand, Tong(3, 1));
 
         var master = ChangshaBotEngine.Resolve("master");
         var action = master.DecideAction(state, botSeatIndex: 0);
 
         Assert.Equal(BotActionType.Discard, action.Type);
-        Assert.Equal(Tong(2, 0), action.TileId);
+        Assert.Equal(Tong(3, 0), action.TileId);
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W28")]
@@ -297,6 +297,52 @@ public class HardMasterStrategySafetyRegressionTests
 
         Assert.Equal(BotActionType.Discard, action.Type);
         Assert.Equal(Tiao(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W30")]
+    public void Hard_DoesNotPromoteLiveSmallWinSingleton_ForSingleDangerousGenbutsuTie()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(9, 0),
+                Tong(2, 0), // live lone 2/5/8 singleton
+                Tiao(7, 0)
+            }
+        };
+
+        var state = BuildSingleDangerousState(hand, Tong(2, 1));
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var action = hard.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.NotEqual(Tong(2, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W30")]
+    public void Master_DoesNotPromoteLiveSmallWinSingleton_ForSingleDangerousGenbutsuTie()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(9, 0),
+                Tong(2, 0), // live lone 2/5/8 singleton
+                Tiao(7, 0)
+            }
+        };
+
+        var state = BuildSingleDangerousState(hand, Tong(2, 1));
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.NotEqual(Tong(2, 0), action.TileId);
     }
 
     private static ChangshaGameState BuildSingleDangerousState(ChangshaHandState hand, int dangerousGenbutsuTileId)
