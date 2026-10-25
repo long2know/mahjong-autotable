@@ -800,6 +800,12 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         return rank is 2 or 5 or 8;
     }
 
+    private static bool IsTerminalRank(int logical)
+    {
+        var rank = logical % 9 + 1;
+        return rank is 1 or 9;
+    }
+
     private static bool HasSingleSmallWinTile(Dictionary<int, int> logicalCounts)
     {
         var total = 0;
@@ -1185,9 +1191,15 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         // If a backup 2/5/8 pair already secures the eye route and every non-small-win
         // fallback is fully unsafe, keep the current full dangerous-opponent genbutsu
         // discard instead of forcing an unsafe swap.
+        //
+        // Also keep the full-safe singleton when the only fallback is a lone terminal
+        // (1/9) singleton: spending a guaranteed full-genbutsu tile for a terminal
+        // deal-in candidate under multi-danger pressure is an unfavorable trade once
+        // the eye route is already covered by the backup pair.
         if (hasBackupSmallWinPair
             && coveredAlternates.Count == 0
-            && alternates.Count >= 2)
+            && (alternates.Count >= 2
+                || (alternates.Count == 1 && IsTerminalRank(alternates[0].Logical))))
         {
             return false;
         }
