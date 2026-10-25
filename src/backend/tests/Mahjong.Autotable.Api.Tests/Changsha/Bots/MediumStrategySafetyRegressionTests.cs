@@ -1027,4 +1027,57 @@ public class MediumStrategySafetyRegressionTests
         Assert.Equal(BotActionType.Discard, action.Type);
         Assert.Equal(Wan(3, 0), action.TileId);
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W47")]
+    public void Medium_DoesNotTradeShantenForDeadSmallWinSafetySwap()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(1, 0), Wan(2, 0), Wan(3, 0),
+                Wan(4, 0), Wan(5, 0), Wan(6, 0),
+                Tong(1, 0), Tong(2, 0), Tong(3, 0),
+                Tiao(4, 0), Tiao(5, 0),
+                Tong(7, 0), Tong(7, 1),
+                Tiao(2, 0) // dead 2/5/8 singleton
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(9, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(9, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tong(7, 2), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tiao(2, 1), TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = Tiao(2, 2), TurnNumber = 3 },
+                new() { SeatIndex = 2, TileId = Tiao(2, 3), TurnNumber = 4 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(2, 0), action.TileId);
+    }
 }

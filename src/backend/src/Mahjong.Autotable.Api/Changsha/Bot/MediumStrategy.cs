@@ -564,12 +564,23 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     && dangerousOpponents.Count > 0
                     && safetyDiscardLogicals is not null)
                 {
+                    // Keep Medium's dead-singleton safety swaps shanten-safe
+                    // when the swap target is an off-rank pair fallback.
+                    // For non-pair safety upgrades (e.g., full dangerous-opponent
+                    // genbutsu singleton), keep existing behavior.
+                    var bestIsOffRankPair = logicalCounts.GetValueOrDefault(best.Logical, 0) > 1
+                        && !IsSmallWinRank(best.Logical);
+                    var protectNearTenpaiShape = deadSmallWinSingleton.Value.Shanten <= 1;
+                    var bestPreservesShanten = !bestIsOffRankPair
+                        || !protectNearTenpaiShape
+                        || best.Shanten <= deadSmallWinSingleton.Value.Shanten;
+
                     var bestOpponentSafety = OpponentSafetyTieBreaker(best.TileId, safetyDiscardLogicals);
                     var singletonOpponentSafety = OpponentSafetyTieBreaker(deadSmallWinSingleton.Value.TileId, safetyDiscardLogicals);
-                    if (singletonOpponentSafety > bestOpponentSafety)
+                    if (bestPreservesShanten && singletonOpponentSafety > bestOpponentSafety)
                         return (best.TileId, false);
 
-                    if (singletonOpponentSafety == bestOpponentSafety)
+                    if (bestPreservesShanten && singletonOpponentSafety == bestOpponentSafety)
                     {
                         var bestTenpaiSafety = TenpaiDetector.SafetyBias(best.TileId, state, botSeatIndex);
                         var singletonTenpaiSafety = TenpaiDetector.SafetyBias(deadSmallWinSingleton.Value.TileId, state, botSeatIndex);
@@ -1038,8 +1049,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         // Keep the singleton unless the pair is strictly safer.
         var opponentDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex, dangerousOpponents);
 
+        var protectNearTenpaiShape = selected.Shanten <= 1;
+
         var saferOffRankPair = scored
             .Where(entry => logicalCounts.GetValueOrDefault(entry.Logical, 0) > 1 && !IsSmallWinRank(entry.Logical))
+            .Where(entry => !protectNearTenpaiShape || entry.Shanten <= selected.Shanten)
             .OrderBy(entry => OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals))
             .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
             .ThenBy(entry => entry.Score)
