@@ -117,7 +117,10 @@ public sealed class PlayerIdentityImpersonationWsTests : IAsyncLifetime
         // The attacker gets hold of the token SHAPE and flips one MAC character.
         var parts = Identity.Protect(victimPublicId).Split('.');
         var mac = parts[3].ToCharArray();
-        mac[^1] = mac[^1] == 'A' ? 'B' : 'A';
+        // Mutate a guaranteed-significant character (index 0) so the decoded MAC bytes
+        // always change; mutating the final base64url character can preserve bytes when
+        // only padding bits differ.
+        mac[0] = mac[0] == 'A' ? 'B' : 'A';
         var tampered = string.Join('.', parts[0], parts[1], parts[2], new string(mac));
 
         await using var attacker = await OpenAsync(relayGameId, rawCookieValue: tampered);
