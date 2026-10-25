@@ -552,9 +552,15 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                         if (singletonTenpaiSafety > bestTenpaiSafety)
                             return (best.TileId, false);
 
+                        var singletonRank = deadSmallWinSingleton.Value.Logical % 9;
+                        var singletonHasAdjacentSingleton =
+                            (singletonRank > 0 && logicalCounts.GetValueOrDefault(deadSmallWinSingleton.Value.Logical - 1, 0) == 1)
+                            || (singletonRank < 8 && logicalCounts.GetValueOrDefault(deadSmallWinSingleton.Value.Logical + 1, 0) == 1);
+
                         if (singletonTenpaiSafety == bestTenpaiSafety
-                            && bestTenpaiSafety <= -2
-                            && best.Score < deadSmallWinSingleton.Value.Score)
+                            && bestOpponentSafety < 0
+                            && best.Score < deadSmallWinSingleton.Value.Score
+                            && !singletonHasAdjacentSingleton)
                             return (best.TileId, false);
                     }
                 }
