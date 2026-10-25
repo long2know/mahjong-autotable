@@ -386,6 +386,33 @@ public class MediumClaimGuardTests
                 .ToArray());
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W31")]
+    public void Medium_PassesNeutralChow_WithThreeExistingMelds_WhenLiveOutsDoNotImprove()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(7, 0), Wan(8, 0), Wan(9, 0),
+                Tong(2, 0), Tong(2, 1),
+                Tiao(3, 0), Tiao(6, 0)
+            },
+            Melds = new()
+            {
+                BuildChowMeld(Wan(1, 0), Wan(2, 1), Wan(3, 2)),
+                BuildChowMeld(Tong(4, 0), Tong(5, 1), Tong(6, 2)),
+                BuildChowMeld(Tiao(7, 0), Tiao(8, 1), Tiao(9, 2))
+            }
+        };
+
+        var state = BuildSingleClaimState(hand, discardTileId: Wan(6, 1), claimType: TableClaimType.Chow);
+
+        var action = new MediumStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
     private static Meld BuildChowMeld(int tileA, int tileB, int tileC)
     {
         return new Meld

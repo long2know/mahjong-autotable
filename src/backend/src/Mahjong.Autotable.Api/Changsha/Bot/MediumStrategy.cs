@@ -182,6 +182,9 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         var preSmallWinPairDistance = ComputeSmallWinPairDistance(hand.ConcealedTiles);
         var externallyVisibleLogicalCounts = CollectExternallyVisibleLogicalCountsForClaimOuts(state, botSeatIndex);
         var preLiveWinningOuts = CountLiveWinningOuts(hand, externallyVisibleLogicalCounts);
+        // Late-hand guard: once Medium already has a 2/5/8 eye locked with 3 melds,
+        // avoid neutral claims that don't improve immediate winning outs.
+        var requiresLiveOutGainOnFlatShape = hand.Melds.Count >= 3 && preSmallWinPairDistance == 0;
         var discardTileId = claimWindow.DiscardTileId;
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
         var postClaimVisibleLogicalCounts = BuildPostClaimVisibleLogicalCounts(externallyVisibleLogicalCounts, discardLogical);
@@ -215,7 +218,9 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
             if (postShanten == preShanten
                 && postSmallWinPairDistance == preSmallWinPairDistance
-                && postLiveWinningOuts < preLiveWinningOuts)
+                && (requiresLiveOutGainOnFlatShape
+                    ? postLiveWinningOuts <= preLiveWinningOuts
+                    : postLiveWinningOuts < preLiveWinningOuts))
                 continue;
 
             var claimRank = ClaimPreferenceRank(opp.ClaimType);
