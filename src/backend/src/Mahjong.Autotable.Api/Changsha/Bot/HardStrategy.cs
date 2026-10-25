@@ -63,6 +63,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
     private const int OffRankPairShantenTolerance = 2;
     private const int OffRankPairScoreTolerance = 2;
     private const int ConnectedSmallWinBridgeShantenTolerance = 1;
+    private const int SingleDangerousGenbutsuScoreTolerance = 2;
     // Allow a slightly wider score gap when upgrading from partial to full
     // dangerous-opponent genbutsu on the same shanten tier. Full coverage
     // materially reduces deal-in risk and is worth a small shape concession.
@@ -617,6 +618,17 @@ public sealed class HardStrategy : IChangshaBotStrategy
             selectedTileId = saferTile;
         }
 
+        if (TryPromoteSingleDangerousGenbutsuOnShantenTie(
+                logicalCounts,
+                scored,
+                selectedTileId,
+                state,
+                botSeatIndex,
+                out var singleSafetyTileId))
+        {
+            selectedTileId = singleSafetyTileId;
+        }
+
         if (TryPromoteFullDangerousGenbutsuOnShantenTie(
                 scored,
                 selectedTileId,
@@ -884,6 +896,54 @@ public sealed class HardStrategy : IChangshaBotStrategy
             return false;
 
         tileId = saferOffRankPair.Value.TileId;
+        return true;
+    }
+
+    private static bool TryPromoteSingleDangerousGenbutsuOnShantenTie(
+        Dictionary<int, int> logicalCounts,
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaGameState state,
+        int botSeatIndex,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count != 1)
+            return false;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        if (IsSmallWinRank(selected.Logical) && logicalCounts.GetValueOrDefault(selected.Logical, 0) == 1)
+            return false;
+
+        var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+        if (selectedSafety <= -1)
+            return false;
+
+        DiscardCandidate? dangerousGenbutsuCandidate = null;
+        foreach (var entry in scored
+                     .Where(entry => entry.TileId != selectedTileId && entry.Shanten == selected.Shanten)
+                     .OrderBy(entry => entry.Score)
+                     .ThenByDescending(entry => entry.TileId))
+        {
+            if (TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -1)
+            {
+                dangerousGenbutsuCandidate = entry;
+                break;
+            }
+        }
+
+        if (dangerousGenbutsuCandidate is null)
+            return false;
+
+        if (dangerousGenbutsuCandidate.Value.Score > selected.Score + SingleDangerousGenbutsuScoreTolerance)
+            return false;
+
+        tileId = dangerousGenbutsuCandidate.Value.TileId;
         return true;
     }
 
