@@ -73,6 +73,59 @@ public class MediumStrategySafetyRegressionTests
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
+    public void Medium_KeepsSingleDangerousGenbutsu_WhenDeadSmallWinFallbackIsOnlyEqualSafety()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tiao(2, 0), // dead 2/5/8 singleton (all copies visible)
+                Wan(1, 0),  // dangerous-opponent genbutsu with better discard score
+                Tong(9, 0)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                // same dangerous-opponent genbutsu coverage for both candidates
+                new() { SeatIndex = 1, TileId = Wan(1, 1), TurnNumber = 1 },
+                new() { SeatIndex = 1, TileId = Tiao(2, 1), TurnNumber = 2 },
+
+                // complete dead visibility for the 2/5/8 singleton
+                new() { SeatIndex = 2, TileId = Tiao(2, 2), TurnNumber = 3 },
+                new() { SeatIndex = 3, TileId = Tiao(2, 3), TurnNumber = 4 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Wan(1, 0), action.TileId);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Medium_PrefersFullDangerousGenbutsu_OverDeadSmallWinSingleton_WhenSafetyUpgradeWithinTolerance()
     {
         var hand = new ChangshaHandState
