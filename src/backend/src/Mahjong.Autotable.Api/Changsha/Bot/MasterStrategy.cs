@@ -747,10 +747,15 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (candidateTenpaiSafety > selectedTenpaiSafety)
             return false;
 
-        if (candidateOpponentSafety == selectedOpponentSafety
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        var candidateRank = candidate.Logical % 9;
+        var candidateHasAdjacentSingleton = (candidateRank > 0 && logicalCounts.GetValueOrDefault(candidate.Logical - 1, 0) == 1)
+            || (candidateRank < 8 && logicalCounts.GetValueOrDefault(candidate.Logical + 1, 0) == 1);
+        if (dangerousOpponents.Count > 0
+            && candidateOpponentSafety == selectedOpponentSafety
             && candidateTenpaiSafety == selectedTenpaiSafety
-            && selectedTenpaiSafety <= -2
-            && candidate.Score > selected.Score)
+            && candidate.Score > selected.Score
+            && !candidateHasAdjacentSingleton)
             return false;
 
         if (candidate.Score > selected.Score + FullDangerousGenbutsuScoreTolerance)
