@@ -67,6 +67,40 @@ public class HardMasterStrategySafetyRegressionTests
         Assert.Equal(Tong(2, 0), action.TileId);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W28")]
+    public void Master_PromotesSingleDangerousOpponentGenbutsu_AfterShantenScoreSelection()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(1, 2),
+                Wan(4, 2),
+                Wan(6, 0),
+                Tong(2, 2),
+                Tong(5, 2),
+                Tong(7, 3),
+                Tong(8, 2),
+                Tong(9, 0),
+                Tong(9, 1),
+                Tiao(4, 3),
+                Tiao(6, 1),
+                Tiao(7, 1), // dangerous-opponent genbutsu
+                Tiao(8, 1),
+                Tiao(8, 3)
+            }
+        };
+
+        var state = BuildSingleDangerousState(hand, Tiao(7, 3));
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var action = master.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Tiao(7, 1), action.TileId);
+    }
+
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W24")]
     public void Hard_KeepsFullDangerousGenbutsu_WhenDeadSmallWinFallbackIsOnlyEqualSafety()
     {
