@@ -886,6 +886,13 @@ public sealed class HardStrategy : IChangshaBotStrategy
         if (!IsSmallWinRank(selected.Logical) || logicalCounts.GetValueOrDefault(selected.Logical, 0) != 1)
             return false;
 
+        // In multi-lane small-win shapes (3+ distinct 2/5/8 singletons), don't
+        // force a pair-swap defensive override; keep Hard's baseline ordering so
+        // we don't overreact on safety at the expense of broad shape flexibility.
+        var smallWinSingletonCount = logicalCounts.Count(entry => IsSmallWinRank(entry.Key) && entry.Value == 1);
+        if (smallWinSingletonCount >= 3)
+            return false;
+
         // Near-dead singleton (three copies already visible) has only one live
         // draw left. Keep that discard instead of swapping to an off-rank pair
         // purely for dangerous-opponent genbutsu bias.
