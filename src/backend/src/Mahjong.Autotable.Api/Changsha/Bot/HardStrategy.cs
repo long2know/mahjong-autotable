@@ -236,11 +236,11 @@ public sealed class HardStrategy : IChangshaBotStrategy
         if (opportunities.Any(o => o.ClaimType == TableClaimType.Hu))
             return BotAction.Claim(TableClaimType.Hu);
 
-        // Phase J Wave 1 shanten gate: only accept a Pung/Kong/Chow claim when
-        // accepting strictly drops the bot's shanten (post-claim < pre-claim).
-        // Same-or-worse shanten claims are refused — this eliminates the prior
-        // heuristic-only path that occasionally turned strong hands into broken
-        // shapes (most visibly the Phase F "fussy chow" rule).
+        // Phase J Wave 1 shanten gate: baseline rule is to avoid claims that
+        // regress shape quality. Historically this was a strict shanten-drop
+        // gate; Wave 29 broadens it slightly for Hard/Master claim quality:
+        // same-shanten claims are now allowed when they preserve 2/5/8-eye
+        // distance and strictly improve immediate live winning outs.
         //
         // Phase K Wave 25: for non-Hu claims, avoid claims that worsen the
         // hand's 2/5/8-eye readiness (Changsha small-win pair route). This
@@ -249,6 +249,7 @@ public sealed class HardStrategy : IChangshaBotStrategy
         var preShanten = HandEvaluator.MinShantenToHu(hand, Array.Empty<int>());
         var preSmallWinPairDistance = ComputeSmallWinPairDistance(hand.ConcealedTiles);
         var externallyVisibleLogicalCounts = CollectExternallyVisibleLogicalCountsForClaimOuts(state, botSeatIndex);
+        var preLiveWinningOuts = CountLiveWinningOuts(hand, externallyVisibleLogicalCounts);
         var discardTileId = state.ClaimWindow.DiscardTileId;
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
 
@@ -269,11 +270,16 @@ public sealed class HardStrategy : IChangshaBotStrategy
                 _ => (int.MaxValue, int.MaxValue, int.MinValue, null)
             };
 
-            if (postShanten >= preShanten)
+            if (postShanten > preShanten)
                 continue;
 
             if (opp.ClaimType is TableClaimType.Chow or TableClaimType.Pung or TableClaimType.Kong
                 && postSmallWinPairDistance > preSmallWinPairDistance)
+                continue;
+
+            if (postShanten == preShanten
+                && postSmallWinPairDistance == preSmallWinPairDistance
+                && postLiveWinningOuts <= preLiveWinningOuts)
                 continue;
 
             // Phase K Wave 26.1: among claims that pass the strict-drop + small-win
