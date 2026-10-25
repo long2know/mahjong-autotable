@@ -1178,10 +1178,15 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         // pressure we should preserve that live small-win route rather than spending
         // it for immediate full-genbutsu comfort.
         //
-        // Keep existing scoring order among non-2/5/8 fallbacks (already sorted by
-        // keep-score then stable tile id), but do not force additional safety/score
-        // tolerances here.
-        var alternate = alternates[0];
+        // Preserve keep-score ordering, but if any non-2/5/8 fallback already has
+        // dangerous-opponent coverage (partial/full genbutsu), choose the best such
+        // covered fallback before falling back to fully unsafe candidates.
+        var coveredAlternate = alternates
+            .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) < 0)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
+
+        var alternate = coveredAlternate ?? alternates[0];
         tileId = alternate.TileId;
         return true;
     }
