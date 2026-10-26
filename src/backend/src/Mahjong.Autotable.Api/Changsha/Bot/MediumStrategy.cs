@@ -511,6 +511,24 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             .ThenByDescending(entry => entry.TileId)
             .First();
 
+        // Near tenpai, preserve completion tempo over keep-score greed:
+        // when the top-scored discard would worsen post-discard shanten,
+        // keep Medium on the best shanten tier and resolve ties by the
+        // same score/safety ordering.
+        var minShanten = scored.Min(entry => entry.Shanten);
+        if (minShanten <= 1 && best.Shanten > minShanten)
+        {
+            best = scored
+                .Where(entry => entry.Shanten == minShanten)
+                .OrderBy(entry => entry.Score)
+                .ThenBy(entry => safetyDiscardLogicals is null ? 0 : OpponentSafetyTieBreaker(entry.TileId, safetyDiscardLogicals))
+                .ThenBy(entry => state is null || botSeatIndex < 0 || dangerousOpponents is null || dangerousOpponents.Count == 0
+                    ? 0
+                    : TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
+                .ThenByDescending(entry => entry.TileId)
+                .First();
+        }
+
         if (state is not null && botSeatIndex >= 0)
         {
             var visibleLogicalCounts = CollectPublicLogicalCounts(state, hand, botSeatIndex);
