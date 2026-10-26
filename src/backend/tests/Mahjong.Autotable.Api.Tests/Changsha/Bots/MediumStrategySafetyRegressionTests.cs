@@ -1326,4 +1326,92 @@ public class MediumStrategySafetyRegressionTests
         Assert.True(chosenDiscardShanten <= singletonDiscardShanten,
             $"expected shanten-safe swap (chosen={action.TileId}, chosenShanten={chosenDiscardShanten}, singletonShanten={singletonDiscardShanten})");
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W55")]
+    public void Medium_KeepsNearTenpaiShantenPrimary_WhenDangerousSafetyBiasCompetes()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(4, 0),
+                Wan(5, 0), Wan(5, 1), Wan(5, 2),
+                Wan(9, 0), Wan(9, 1), Wan(9, 2),
+                Tong(1, 0), Tong(3, 0), Tong(8, 0),
+                Tiao(2, 0), Tiao(2, 1),
+                Tiao(9, 0), Tiao(9, 1)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(0),
+                        FakePung(5),
+                        FakePung(10)
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(1),
+                        FakePung(6),
+                        FakePung(11)
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(9, 0), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tiao(1, 2), TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = Wan(5, 2), TurnNumber = 3 },
+                new() { SeatIndex = 1, TileId = Tiao(2, 1), TurnNumber = 4 },
+                new() { SeatIndex = 2, TileId = Tiao(4, 1), TurnNumber = 5 },
+                new() { SeatIndex = 3, TileId = Wan(7, 2), TurnNumber = 6 },
+                new() { SeatIndex = 1, TileId = Wan(4, 2), TurnNumber = 7 },
+                new() { SeatIndex = 2, TileId = Wan(3, 2), TurnNumber = 8 }
+            }
+        };
+
+        static int ShantenAfterDiscard(ChangshaHandState handState, int tileId)
+        {
+            var concealedAfter = new List<int>(handState.ConcealedTiles);
+            concealedAfter.Remove(tileId);
+            return HandEvaluator.MinShantenToHu(new ChangshaHandState
+            {
+                SeatIndex = handState.SeatIndex,
+                ConcealedTiles = concealedAfter,
+                Melds = handState.Melds
+            }, Array.Empty<int>());
+        }
+
+        var minShanten = hand.ConcealedTiles
+            .Distinct()
+            .Select(tileId => ShantenAfterDiscard(hand, tileId))
+            .Min();
+
+        Assert.Equal(1, minShanten);
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.NotNull(action.TileId);
+
+        var chosenShanten = ShantenAfterDiscard(hand, action.TileId!.Value);
+        Assert.Equal(minShanten, chosenShanten);
+    }
 }
