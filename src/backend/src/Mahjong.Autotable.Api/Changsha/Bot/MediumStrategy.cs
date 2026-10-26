@@ -1196,8 +1196,30 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             return false;
 
         var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+
+        // When we're already on full dangerous-opponent genbutsu, allow an in-tier
+        // upgrade only if it strictly improves shanten without paying extra keep-score.
+        // This keeps Medium from locking onto a weaker full-safe tile solely due to
+        // tie-break order.
         if (selectedSafety <= -2)
-            return false;
+        {
+            var betterFullSafetyCandidate = scored
+                .Where(entry => entry.TileId != selectedTileId)
+                .Where(entry => entry.Shanten < selected.Shanten)
+                .Where(entry => entry.Score <= selected.Score)
+                .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -2)
+                .OrderBy(entry => entry.Shanten)
+                .ThenBy(entry => entry.Score)
+                .ThenByDescending(entry => entry.TileId)
+                .Select(entry => (DiscardCandidate?)entry)
+                .FirstOrDefault();
+
+            if (betterFullSafetyCandidate is null)
+                return false;
+
+            tileId = betterFullSafetyCandidate.Value.TileId;
+            return true;
+        }
 
         DiscardCandidate? fullSafetyCandidate = null;
         foreach (var entry in scored
