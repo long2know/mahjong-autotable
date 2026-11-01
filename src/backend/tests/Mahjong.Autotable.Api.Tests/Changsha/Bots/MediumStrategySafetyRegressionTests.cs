@@ -2587,4 +2587,92 @@ public class MediumStrategySafetyRegressionTests
         Assert.True(TenpaiDetector.SafetyBias(action.TileId!.Value, state, 0) <= -1);
         Assert.True(ShantenAfterDiscard(hand, action.TileId.Value) < ShantenAfterDiscard(hand, 72));
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W82")]
+    public void Medium_PromotesSameShantenSingleGenbutsuNearTenpai_WhenTopKeepScoreDiscardIsUnsafe()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { 44, 13, 37, 93, 97, 41, 42, 98, 83, 28, 61, 80, 18, 57 }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(0),
+                        FakePung(9),
+                        FakePung(18)
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = 2, TurnNumber = 1 },
+                new() { SeatIndex = 1, TileId = 86, TurnNumber = 2 },
+                new() { SeatIndex = 1, TileId = 85, TurnNumber = 3 },
+                new() { SeatIndex = 1, TileId = 62, TurnNumber = 4 },
+                new() { SeatIndex = 1, TileId = 79, TurnNumber = 5 },
+                new() { SeatIndex = 1, TileId = 50, TurnNumber = 6 },
+                new() { SeatIndex = 1, TileId = 0, TurnNumber = 7 },
+                new() { SeatIndex = 1, TileId = 56, TurnNumber = 8 },
+                new() { SeatIndex = 1, TileId = 74, TurnNumber = 9 },
+                new() { SeatIndex = 1, TileId = 15, TurnNumber = 10 },
+                new() { SeatIndex = 1, TileId = 103, TurnNumber = 11 },
+                new() { SeatIndex = 1, TileId = 105, TurnNumber = 12 },
+                new() { SeatIndex = 1, TileId = 46, TurnNumber = 13 },
+                new() { SeatIndex = 1, TileId = 43, TurnNumber = 14 },
+                new() { SeatIndex = 1, TileId = 32, TurnNumber = 15 },
+                new() { SeatIndex = 1, TileId = 25, TurnNumber = 16 },
+                new() { SeatIndex = 1, TileId = 16, TurnNumber = 17 },
+                new() { SeatIndex = 1, TileId = 24, TurnNumber = 18 },
+                new() { SeatIndex = 1, TileId = 38, TurnNumber = 19 },
+                new() { SeatIndex = 1, TileId = 81, TurnNumber = 20 },
+                new() { SeatIndex = 1, TileId = 54, TurnNumber = 21 },
+                new() { SeatIndex = 1, TileId = 21, TurnNumber = 22 },
+                new() { SeatIndex = 1, TileId = 69, TurnNumber = 23 },
+                new() { SeatIndex = 1, TileId = 49, TurnNumber = 24 },
+                new() { SeatIndex = 1, TileId = 39, TurnNumber = 25 }
+            }
+        };
+
+        static int ShantenAfterDiscard(ChangshaHandState handState, int tileId)
+        {
+            var concealedAfter = new List<int>(handState.ConcealedTiles);
+            concealedAfter.Remove(tileId);
+            return HandEvaluator.MinShantenToHu(new ChangshaHandState
+            {
+                SeatIndex = handState.SeatIndex,
+                ConcealedTiles = concealedAfter,
+                Melds = handState.Melds
+            }, Array.Empty<int>());
+        }
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.NotNull(action.TileId);
+        var chosenSafety = TenpaiDetector.SafetyBias(action.TileId.Value, state, 0);
+        Assert.True(chosenSafety <= -1, $"expected single-dangerous genbutsu discard, got tile={action.TileId.Value} safety={chosenSafety}");
+
+        var chosenShanten = ShantenAfterDiscard(hand, action.TileId.Value);
+        var bestSingleSafeShanten = hand.ConcealedTiles
+            .Where(tileId => TenpaiDetector.SafetyBias(tileId, state, 0) <= -1)
+            .Distinct()
+            .Min(tileId => ShantenAfterDiscard(hand, tileId));
+
+        Assert.Equal(bestSingleSafeShanten, chosenShanten);
+    }
 }

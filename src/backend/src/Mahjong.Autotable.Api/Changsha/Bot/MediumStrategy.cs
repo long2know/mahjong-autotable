@@ -1365,11 +1365,17 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 .Select(candidate => (DiscardCandidate?)candidate.Entry)
                 .FirstOrDefault();
 
-            if (saferSmallWinSingleton is null)
-                return false;
+            if (saferSmallWinSingleton is not null)
+            {
+                tileId = saferSmallWinSingleton.Value.TileId;
+                return true;
+            }
 
-            tileId = saferSmallWinSingleton.Value.TileId;
-            return true;
+            // If the currently selected 2/5/8 singleton is still unsafe, fall
+            // through to the broader dangerous-opponent promotion probe so
+            // same-shanten covered pair/off-rank alternatives can be considered.
+            if (selectedSafety <= -1)
+                return false;
         }
 
         var dangerousGenbutsuCandidates = scored
@@ -1413,7 +1419,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (dangerousGenbutsuCandidate is null)
             return false;
 
+        // Near tenpai (0-2 shanten), Medium should not ignore a same-shanten
+        // dangerous-opponent genbutsu upgrade purely due keep-score delta.
+        // Preserve the score-tolerance gate only when farther away.
         if (dangerousGenbutsuCandidate.Value.Shanten == selected.Shanten
+            && selected.Shanten > 2
             && dangerousGenbutsuCandidate.Value.Score > selected.Score + DangerousGenbutsuScoreTolerance)
             return false;
 
