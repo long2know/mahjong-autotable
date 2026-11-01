@@ -1236,9 +1236,57 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
         var opponentDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex, dangerousOpponents);
 
+        var selectedOpponentSafety = OpponentSafetyTieBreaker(selected.TileId, opponentDiscardLogicals);
+
+        // Wave 75: when single-danger pressure is active and the current best
+        // discard is non-small-win, allow Medium to spend a safer live 2/5/8
+        // singleton if another 2/5/8 pair already secures the eye route.
+        if (!IsSmallWinRank(selected.Logical))
+        {
+            var saferLiveSmallWinSingletonWithBackupPair = scored
+                .Where(entry =>
+                    entry.TileId != selectedTileId
+                    && IsSmallWinRank(entry.Logical)
+                    && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                    && entry.Shanten <= selected.Shanten
+                    && logicalCounts.Any(countEntry =>
+                        countEntry.Key != entry.Logical
+                        && IsSmallWinRank(countEntry.Key)
+                        && countEntry.Value >= 2))
+                .Select(entry => new
+                {
+                    Entry = entry,
+                    TenpaiSafety = TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex),
+                    OpponentSafety = OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals)
+                })
+                .Where(candidate =>
+                    candidate.TenpaiSafety <= -1
+                    && candidate.TenpaiSafety <= selectedSafety
+                    && candidate.OpponentSafety <= selectedOpponentSafety
+                    && (
+                        candidate.TenpaiSafety < selectedSafety
+                        || candidate.OpponentSafety < selectedOpponentSafety
+                        || (candidate.TenpaiSafety == selectedSafety
+                            && candidate.OpponentSafety == selectedOpponentSafety
+                            && candidate.Entry.Shanten < selected.Shanten)
+                    ))
+                .OrderBy(candidate => candidate.Entry.Shanten)
+                .ThenBy(candidate => candidate.TenpaiSafety)
+                .ThenBy(candidate => candidate.OpponentSafety)
+                .ThenBy(candidate => candidate.Entry.Score)
+                .ThenByDescending(candidate => candidate.Entry.TileId)
+                .Select(candidate => (DiscardCandidate?)candidate.Entry)
+                .FirstOrDefault();
+
+            if (saferLiveSmallWinSingletonWithBackupPair is not null)
+            {
+                tileId = saferLiveSmallWinSingletonWithBackupPair.Value.TileId;
+                return true;
+            }
+        }
+
         if (IsSmallWinRank(selected.Logical) && logicalCounts.GetValueOrDefault(selected.Logical, 0) == 1)
         {
-            var selectedOpponentSafety = OpponentSafetyTieBreaker(selected.TileId, opponentDiscardLogicals);
             var saferSmallWinSingleton = scored
                 .Where(entry =>
                     entry.TileId != selectedTileId
