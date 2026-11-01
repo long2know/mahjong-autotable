@@ -751,7 +751,10 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (dangerousGenbutsuCandidate is null)
             return false;
 
-        if (dangerousGenbutsuCandidate.Value.Score > selected.Score + SingleDangerousGenbutsuScoreTolerance)
+        // Near tenpai (0-2 shanten), don't let keep-score tolerance block a
+        // same-shanten dangerous-opponent genbutsu safety upgrade.
+        if (dangerousGenbutsuCandidate.Value.Score > selected.Score + SingleDangerousGenbutsuScoreTolerance
+            && selected.Shanten > 2)
             return false;
 
         tileId = dangerousGenbutsuCandidate.Value.TileId;
