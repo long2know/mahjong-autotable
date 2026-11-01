@@ -677,6 +677,34 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     return (fullDangerousLiveSmallWinSingleton.Value.TileId, false);
                 }
 
+                if (dangerousOpponents is not null
+                    && dangerousOpponents.Count == 1
+                    && safetyDiscardLogicals is not null)
+                {
+                    var deadSingletonTenpaiSafety = TenpaiDetector.SafetyBias(deadSmallWinSingleton.Value.TileId, state, botSeatIndex);
+                    var deadSingletonOpponentSafety = OpponentSafetyTieBreaker(deadSmallWinSingleton.Value.TileId, safetyDiscardLogicals);
+
+                    var liveSingleDangerousSmallWinSingleton = scored
+                        .Where(entry =>
+                            entry.TileId != deadSmallWinSingleton.Value.TileId
+                            && IsSmallWinRank(entry.Logical)
+                            && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                            && !IsLogicalDead(entry.Logical, visibleLogicalCounts)
+                            && entry.Shanten < deadSmallWinSingleton.Value.Shanten
+                            && TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= deadSingletonTenpaiSafety
+                            && OpponentSafetyTieBreaker(entry.TileId, safetyDiscardLogicals) <= deadSingletonOpponentSafety)
+                        .OrderBy(entry => entry.Shanten)
+                        .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
+                        .ThenBy(entry => OpponentSafetyTieBreaker(entry.TileId, safetyDiscardLogicals))
+                        .ThenBy(entry => entry.Score)
+                        .ThenByDescending(entry => entry.TileId)
+                        .Select(entry => (DiscardCandidate?)entry)
+                        .FirstOrDefault();
+
+                    if (liveSingleDangerousSmallWinSingleton is not null)
+                        return (liveSingleDangerousSmallWinSingleton.Value.TileId, false);
+                }
+
                 return (deadSmallWinSingleton.Value.TileId, true);
             }
 
@@ -1226,8 +1254,13 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 .Where(candidate =>
                     candidate.TenpaiSafety <= selectedSafety
                     && candidate.OpponentSafety <= selectedOpponentSafety
-                    && (candidate.TenpaiSafety < selectedSafety
-                        || candidate.OpponentSafety < selectedOpponentSafety))
+                    && (
+                        candidate.TenpaiSafety < selectedSafety
+                        || candidate.OpponentSafety < selectedOpponentSafety
+                        || (candidate.TenpaiSafety == selectedSafety
+                            && candidate.OpponentSafety == selectedOpponentSafety
+                            && candidate.Entry.Shanten < selected.Shanten)
+                    ))
                 .OrderBy(candidate => candidate.Entry.Shanten)
                 .ThenBy(candidate => candidate.TenpaiSafety)
                 .ThenBy(candidate => candidate.OpponentSafety)
