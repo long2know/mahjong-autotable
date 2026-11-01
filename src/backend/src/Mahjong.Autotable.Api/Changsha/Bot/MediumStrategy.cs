@@ -622,6 +622,15 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     }
                 }
 
+                // Near tenpai, do not let dead-singleton safety swaps move
+                // Medium off the best shanten tier (e.g. swapping to an
+                // off-rank pair fallback that is safer but shape-worse).
+                if (best.Shanten <= 1
+                    && deadSmallWinSingleton.Value.Shanten > best.Shanten)
+                {
+                    return (best.TileId, false);
+                }
+
                 if (TrySelectTenpaiSafeOffRankPair(
                         logicalCounts,
                         scored,
@@ -652,15 +661,6 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     && deadSmallWinSingleton.Value.Shanten > fullDangerousLiveSmallWinSingleton.Value.Shanten)
                 {
                     return (fullDangerousLiveSmallWinSingleton.Value.TileId, false);
-                }
-
-                // Near tenpai, don't spend one shanten step just to shed a dead 2/5/8
-                // singleton. Keep Medium's dead-singleton preference, but preserve
-                // shape quality when the current best discard is already stronger.
-                if (best.Shanten <= 1
-                    && deadSmallWinSingleton.Value.Shanten > best.Shanten)
-                {
-                    return (best.TileId, false);
                 }
 
                 return (deadSmallWinSingleton.Value.TileId, true);
