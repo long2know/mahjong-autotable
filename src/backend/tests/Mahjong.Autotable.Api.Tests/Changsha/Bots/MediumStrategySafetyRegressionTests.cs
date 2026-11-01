@@ -1651,4 +1651,99 @@ public class MediumStrategySafetyRegressionTests
         var chosenShanten = ShantenAfterDiscard(hand, action.TileId!.Value);
         Assert.Equal(minShanten, chosenShanten);
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W60")]
+    public void Medium_KeepsBestPracticalShantenTier_WhenDeadSingletonSafetyBiasCompetesAtTwoShanten()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                0, 4, 9, 26, 41, 45, 62, 69, 76, 79, 80, 83, 90, 92
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(3),
+                        FakePung(8),
+                        FakePung(15)
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(2),
+                        FakePung(13),
+                        FakePung(20)
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 2, TileId = 42, TurnNumber = 1 },
+                new() { SeatIndex = 1, TileId = 4, TurnNumber = 2 },
+                new() { SeatIndex = 2, TileId = 4, TurnNumber = 3 },
+                new() { SeatIndex = 1, TileId = 18, TurnNumber = 4 },
+                new() { SeatIndex = 1, TileId = 106, TurnNumber = 5 },
+                new() { SeatIndex = 1, TileId = 22, TurnNumber = 6 },
+                new() { SeatIndex = 2, TileId = 52, TurnNumber = 7 },
+                new() { SeatIndex = 1, TileId = 63, TurnNumber = 8 },
+                new() { SeatIndex = 3, TileId = 35, TurnNumber = 9 },
+                new() { SeatIndex = 2, TileId = 22, TurnNumber = 10 },
+                new() { SeatIndex = 2, TileId = 54, TurnNumber = 11 },
+                new() { SeatIndex = 3, TileId = 102, TurnNumber = 12 },
+                new() { SeatIndex = 1, TileId = 61, TurnNumber = 13 },
+                new() { SeatIndex = 3, TileId = 16, TurnNumber = 14 },
+                new() { SeatIndex = 2, TileId = 52, TurnNumber = 15 },
+                new() { SeatIndex = 3, TileId = 40, TurnNumber = 16 },
+                new() { SeatIndex = 2, TileId = 73, TurnNumber = 17 },
+                new() { SeatIndex = 3, TileId = 32, TurnNumber = 18 },
+                new() { SeatIndex = 1, TileId = 4, TurnNumber = 19 },
+                new() { SeatIndex = 1, TileId = 1, TurnNumber = 20 },
+                new() { SeatIndex = 1, TileId = 84, TurnNumber = 21 },
+                new() { SeatIndex = 2, TileId = 106, TurnNumber = 22 },
+                new() { SeatIndex = 3, TileId = 35, TurnNumber = 23 },
+                new() { SeatIndex = 1, TileId = 81, TurnNumber = 24 }
+            }
+        };
+
+        static int ShantenAfterDiscard(ChangshaHandState handState, int tileId)
+        {
+            var concealedAfter = new List<int>(handState.ConcealedTiles);
+            concealedAfter.Remove(tileId);
+            return HandEvaluator.MinShantenToHu(new ChangshaHandState
+            {
+                SeatIndex = handState.SeatIndex,
+                ConcealedTiles = concealedAfter,
+                Melds = handState.Melds
+            }, Array.Empty<int>());
+        }
+
+        var minShanten = hand.ConcealedTiles.Min(tileId => ShantenAfterDiscard(hand, tileId));
+        Assert.Equal(2, minShanten);
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.NotNull(action.TileId);
+
+        var chosenShanten = ShantenAfterDiscard(hand, action.TileId!.Value);
+        Assert.Equal(minShanten, chosenShanten);
+    }
 }

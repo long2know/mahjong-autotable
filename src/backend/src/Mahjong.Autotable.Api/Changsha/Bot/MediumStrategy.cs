@@ -631,6 +631,19 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     return (best.TileId, false);
                 }
 
+                var hasFullDangerousLiveSmallWinSingleton = scored.Any(entry =>
+                    IsSmallWinRank(entry.Logical)
+                    && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                    && !IsLogicalDead(entry.Logical, visibleLogicalCounts)
+                    && TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -2);
+
+                if (best.Shanten == 2
+                    && deadSmallWinSingleton.Value.Shanten > best.Shanten
+                    && !hasFullDangerousLiveSmallWinSingleton)
+                {
+                    return (best.TileId, false);
+                }
+
                 if (TrySelectTenpaiSafeOffRankPair(
                         logicalCounts,
                         scored,
