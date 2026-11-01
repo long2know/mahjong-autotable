@@ -80,12 +80,13 @@ FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 # apt's unprivileged verifier needs private directories with real POSIX modes.
 # tmpfs supplies those even when Docker's backing storage cannot preserve chmod.
 # Signature verification, the shipped keyring and apt's sandbox stay enabled.
+# Request Brotli explicitly so apt upgrades the inherited base-image package.
 RUN --mount=type=tmpfs,target=/build-work \
     --mount=type=tmpfs,target=/var/lib/apt/lists \
     --mount=type=tmpfs,target=/var/cache/apt \
     chmod 1777 /build-work \
     && TMPDIR=/build-work apt-get update \
-    && TMPDIR=/build-work apt-get install -y --no-install-recommends curl tini
+    && TMPDIR=/build-work apt-get install -y --no-install-recommends curl tini libbrotli1
 
 WORKDIR /app
 

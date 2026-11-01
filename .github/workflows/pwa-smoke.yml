@@ -44,7 +44,8 @@ concurrency:
 jobs:
   smoke:
     name: PWA service-worker registration smoke
-    runs-on: ubuntu-latest
+    # Playwright 1.60 does not support the Ubuntu 26.04 ubuntu-latest image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Checkout

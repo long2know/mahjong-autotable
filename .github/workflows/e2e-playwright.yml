@@ -46,7 +46,8 @@ jobs:
       fail-fast: false
       matrix:
         project: [chromium, mobile-chrome]
-    runs-on: ubuntu-latest
+    # Playwright 1.60 does not support the Ubuntu 26.04 ubuntu-latest image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
       contents: read
@@ -156,7 +157,7 @@ jobs:
   #  assertions or add test-only production bypasses to make HEAD pass; the PR
   #  stays a DRAFT until this is green after the dependencies merge.
   playability-gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       BUILD_SHA: ${{ github.sha }}
