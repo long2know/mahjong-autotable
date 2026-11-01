@@ -1243,7 +1243,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                      .Where(entry => entry.TileId != selectedTileId)
                      // Full-coverage safety promotions should not regress hand shape quality.
                      .Where(entry => entry.Shanten <= selected.Shanten)
-                     .OrderBy(entry => entry.Score)
+                     // Prefer stronger shape first when upgrading to full dangerous-opponent
+                     // genbutsu so we don't pick a higher-shanten full-safe tile purely on
+                     // keep-score ordering.
+                     .OrderBy(entry => entry.Shanten)
+                     .ThenBy(entry => entry.Score)
                      .ThenBy(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
                      .ThenByDescending(entry => entry.TileId))
         {
@@ -1329,9 +1333,16 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         var coveredAlternates = alternates
             .Select(entry => (Entry: entry, SafetyBias: TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex)))
             .Where(entry => entry.SafetyBias < 0)
+            .OrderBy(entry => entry.SafetyBias)
+            .ThenBy(entry => entry.Entry.Shanten)
+            .ThenBy(entry => entry.Entry.Score)
+            .ThenByDescending(entry => entry.Entry.TileId)
             .ToList();
         var fullSafetyCoveredAlternates = coveredAlternates
             .Where(entry => entry.SafetyBias <= -2)
+            .OrderBy(entry => entry.Entry.Shanten)
+            .ThenBy(entry => entry.Entry.Score)
+            .ThenByDescending(entry => entry.Entry.TileId)
             .Select(entry => entry.Entry)
             .ToList();
 
