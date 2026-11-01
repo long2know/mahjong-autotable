@@ -892,6 +892,28 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (alternate is null)
             return false;
 
+        if (alternate.Value.Shanten > selected.Shanten)
+        {
+            var hasOtherSingleSafetyAtOrBetterShanten = scored.Any(entry =>
+                entry.TileId != selectedTileId
+                && entry.Shanten <= selected.Shanten
+                && TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -1);
+
+            if (!hasOtherSingleSafetyAtOrBetterShanten)
+            {
+                var selectedTenpaiSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+                var alternateTenpaiSafety = TenpaiDetector.SafetyBias(alternate.Value.TileId, state, botSeatIndex);
+                var selectedOpponentSafety = OpponentSafetyTieBreaker(selected.TileId, opponentDiscardLogicals);
+                var alternateOpponentSafety = OpponentSafetyTieBreaker(alternate.Value.TileId, opponentDiscardLogicals);
+
+                // Do not trade away shanten tempo when the non-small-win fallback
+                // is no safer than the currently selected live 2/5/8 singleton.
+                if (alternateTenpaiSafety >= selectedTenpaiSafety
+                    && alternateOpponentSafety >= selectedOpponentSafety)
+                    return false;
+            }
+        }
+
         if (alternate.Value.Score > selected.Score + SingleDangerousGenbutsuScoreTolerance)
             return false;
 
