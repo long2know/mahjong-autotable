@@ -538,7 +538,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     IsSmallWinRank(entry.Logical)
                     && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
                     && IsLogicalDead(entry.Logical, visibleLogicalCounts))
-                .OrderBy(entry => safetyDiscardLogicals is null ? 0 : OpponentSafetyTieBreaker(entry.TileId, safetyDiscardLogicals))
+                // When multiple dead 2/5/8 singleton options exist, keep Medium
+                // on the best post-discard shanten tier before applying safety and
+                // keep-score tie-breaks.
+                .OrderBy(entry => entry.Shanten)
+                .ThenBy(entry => safetyDiscardLogicals is null ? 0 : OpponentSafetyTieBreaker(entry.TileId, safetyDiscardLogicals))
                 .ThenBy(entry => state is null || botSeatIndex < 0 || dangerousOpponents is null || dangerousOpponents.Count == 0
                     ? 0
                     : TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex))
