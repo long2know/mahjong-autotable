@@ -515,6 +515,62 @@ public class HardClaimSmallWinPairGuardTests
         Assert.Equal(2, action.ClaimTileIds!.Length);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W74")]
+    public void Hard_PrefersKongOverPung_WhenClaimShapeAndOutsTie()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(6, 0),
+                Tong(2, 0), Tong(3, 0),
+                Tong(9, 0), Tong(9, 1), Tong(9, 2),
+                Tiao(3, 0), Tiao(4, 0),
+                Tiao(5, 0), Tiao(5, 1), Tiao(5, 2),
+                Tiao(8, 0), Tiao(9, 0)
+            }
+        };
+
+        var state = BuildClaimState(
+            hand,
+            discardTileId: Tong(9, 3),
+            opportunities: new[] { TableClaimType.Pung, TableClaimType.Kong });
+
+        var action = new HardStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Kong, action.ClaimType);
+    }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W74")]
+    public void Master_DelegatesKongPreferenceOverPung_WhenClaimShapeAndOutsTie()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(6, 0),
+                Tong(2, 0), Tong(3, 0),
+                Tong(9, 0), Tong(9, 1), Tong(9, 2),
+                Tiao(3, 0), Tiao(4, 0),
+                Tiao(5, 0), Tiao(5, 1), Tiao(5, 2),
+                Tiao(8, 0), Tiao(9, 0)
+            }
+        };
+
+        var state = BuildClaimState(
+            hand,
+            discardTileId: Tong(9, 3),
+            opportunities: new[] { TableClaimType.Pung, TableClaimType.Kong });
+
+        var action = ChangshaBotEngine.Resolve("master").DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Kong, action.ClaimType);
+    }
+
     private static ChangshaGameState BuildSingleClaimState(
         ChangshaHandState hand,
         int discardTileId,
