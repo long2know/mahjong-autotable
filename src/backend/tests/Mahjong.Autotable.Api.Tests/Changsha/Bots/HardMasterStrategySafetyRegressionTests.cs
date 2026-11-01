@@ -2061,6 +2061,106 @@ public class HardMasterStrategySafetyRegressionTests
         Assert.True(TenpaiDetector.SafetyBias(masterAction.TileId!.Value, state, 0) <= -1);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W73")]
+    public void HardAndMaster_KeepFullDangerousSmallWinDiscard_WhenOnlyUnsafeFallbackKeepsSameShanten()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { 70, 83, 74, 55, 33, 21, 63, 20, 93, 23, 40, 14, 12, 25 }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        new() { Kind = MeldKind.Pung, TileIds = new List<int> { 40, 41, 42 } },
+                        new() { Kind = MeldKind.Pung, TileIds = new List<int> { 56, 57, 58 } },
+                        new() { Kind = MeldKind.Pung, TileIds = new List<int> { 0, 1, 2 } }
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        new() { Kind = MeldKind.Pung, TileIds = new List<int> { 0, 1, 2 } },
+                        new() { Kind = MeldKind.Pung, TileIds = new List<int> { 8, 9, 10 } },
+                        new() { Kind = MeldKind.Pung, TileIds = new List<int> { 36, 37, 38 } }
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 2, TileId = 103, TurnNumber = 1 },
+                new() { SeatIndex = 3, TileId = 22, TurnNumber = 2 },
+                new() { SeatIndex = 1, TileId = 107, TurnNumber = 3 },
+                new() { SeatIndex = 2, TileId = 2, TurnNumber = 4 },
+                new() { SeatIndex = 3, TileId = 69, TurnNumber = 5 },
+                new() { SeatIndex = 1, TileId = 50, TurnNumber = 6 },
+                new() { SeatIndex = 2, TileId = 75, TurnNumber = 7 },
+                new() { SeatIndex = 3, TileId = 58, TurnNumber = 8 },
+                new() { SeatIndex = 1, TileId = 45, TurnNumber = 9 },
+                new() { SeatIndex = 2, TileId = 27, TurnNumber = 10 },
+                new() { SeatIndex = 3, TileId = 44, TurnNumber = 11 },
+                new() { SeatIndex = 1, TileId = 7, TurnNumber = 12 },
+                new() { SeatIndex = 2, TileId = 52, TurnNumber = 13 },
+                new() { SeatIndex = 3, TileId = 82, TurnNumber = 14 },
+                new() { SeatIndex = 1, TileId = 43, TurnNumber = 15 },
+                new() { SeatIndex = 2, TileId = 72, TurnNumber = 16 },
+                new() { SeatIndex = 3, TileId = 73, TurnNumber = 17 },
+                new() { SeatIndex = 1, TileId = 53, TurnNumber = 18 },
+                new() { SeatIndex = 2, TileId = 64, TurnNumber = 19 },
+                new() { SeatIndex = 3, TileId = 38, TurnNumber = 20 },
+                new() { SeatIndex = 1, TileId = 30, TurnNumber = 21 },
+                new() { SeatIndex = 2, TileId = 56, TurnNumber = 22 },
+                new() { SeatIndex = 3, TileId = 13, TurnNumber = 23 },
+                new() { SeatIndex = 1, TileId = 96, TurnNumber = 24 },
+                new() { SeatIndex = 2, TileId = 10, TurnNumber = 25 },
+                new() { SeatIndex = 3, TileId = 90, TurnNumber = 26 },
+                new() { SeatIndex = 1, TileId = 9, TurnNumber = 27 },
+                new() { SeatIndex = 2, TileId = 24, TurnNumber = 28 },
+                new() { SeatIndex = 3, TileId = 46, TurnNumber = 29 },
+                new() { SeatIndex = 1, TileId = 88, TurnNumber = 30 }
+            }
+        };
+
+        static int ShantenAfterDiscard(ChangshaHandState handState, int tileId)
+        {
+            var concealedAfter = new List<int>(handState.ConcealedTiles);
+            concealedAfter.Remove(tileId);
+            return HandEvaluator.MinShantenToHu(new ChangshaHandState
+            {
+                SeatIndex = handState.SeatIndex,
+                ConcealedTiles = concealedAfter,
+                Melds = handState.Melds
+            }, Array.Empty<int>());
+        }
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var hardAction = hard.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, hardAction.Type);
+        Assert.Equal(55, hardAction.TileId);
+        Assert.True(TenpaiDetector.SafetyBias(hardAction.TileId!.Value, state, 0) <= -2);
+        Assert.Equal(2, ShantenAfterDiscard(hand, hardAction.TileId.Value));
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var masterAction = master.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, masterAction.Type);
+        Assert.Equal(55, masterAction.TileId);
+        Assert.True(TenpaiDetector.SafetyBias(masterAction.TileId!.Value, state, 0) <= -2);
+        Assert.Equal(2, ShantenAfterDiscard(hand, masterAction.TileId.Value));
+    }
+
     private static ChangshaGameState BuildSingleDangerousState(ChangshaHandState hand, int dangerousGenbutsuTileId)
     {
         return new ChangshaGameState

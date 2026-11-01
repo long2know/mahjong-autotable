@@ -1340,6 +1340,15 @@ public sealed class HardStrategy : IChangshaBotStrategy
             return false;
 
         var alternate = fullSafetyAlternates.Count > 0 ? fullSafetyAlternates[0] : alternates[0];
+
+        // In practical striking distance (0-2 shanten), keep full-dangerous
+        // safety unless an unsafe fallback buys real hand-progress.
+        var alternateSafety = TenpaiDetector.SafetyBias(alternate.TileId, state, botSeatIndex);
+        if (selected.Shanten <= 2
+            && alternateSafety >= 0
+            && alternate.Shanten >= selected.Shanten)
+            return false;
+
         if (alternate.Score > selected.Score + SingleDangerousGenbutsuScoreTolerance)
             return false;
 
