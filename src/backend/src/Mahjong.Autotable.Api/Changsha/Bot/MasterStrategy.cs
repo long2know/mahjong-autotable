@@ -374,6 +374,17 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             selectedTileId = preservedUnderFullDangerTileId;
         }
 
+        if (TryPreferLowerShantenFullDangerousCandidateWhenFarFromTenpai(
+                scored,
+                selectedTileId,
+                hand,
+                state,
+                botSeatIndex,
+                out var lowerShantenFullSafetyTileId))
+        {
+            selectedTileId = lowerShantenFullSafetyTileId;
+        }
+
         return selectedTileId;
     }
 
@@ -942,6 +953,49 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             return false;
 
         tileId = alternate.TileId;
+        return true;
+    }
+
+    private static bool TryPreferLowerShantenFullDangerousCandidateWhenFarFromTenpai(
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaHandState hand,
+        ChangshaGameState state,
+        int botSeatIndex,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count < 2)
+            return false;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        if (selected.Shanten < 4)
+            return false;
+
+        if (TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex) > -2)
+            return false;
+
+        var alternate = scored
+            .Where(entry => entry.TileId != selectedTileId)
+            .Where(entry => entry.Shanten < selected.Shanten)
+            .Where(entry => entry.Score <= selected.Score + FullDangerousGenbutsuScoreTolerance)
+            .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -2)
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
+            .ThenBy(entry => SuitCommitment.Bias(entry.TileId, hand))
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
+
+        if (alternate is null)
+            return false;
+
+        tileId = alternate.Value.TileId;
         return true;
     }
 

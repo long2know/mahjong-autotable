@@ -685,6 +685,16 @@ public sealed class HardStrategy : IChangshaBotStrategy
             selectedTileId = preservedUnderFullDangerTileId;
         }
 
+        if (TryPreferLowerShantenFullDangerousCandidateWhenFarFromTenpai(
+                scored,
+                selectedTileId,
+                state,
+                botSeatIndex,
+                out var lowerShantenFullSafetyTileId))
+        {
+            selectedTileId = lowerShantenFullSafetyTileId;
+        }
+
         return selectedTileId;
     }
 
@@ -1249,6 +1259,51 @@ public sealed class HardStrategy : IChangshaBotStrategy
             return false;
 
         tileId = alternate.TileId;
+        return true;
+    }
+
+    private static bool TryPreferLowerShantenFullDangerousCandidateWhenFarFromTenpai(
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaGameState state,
+        int botSeatIndex,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count < 2)
+            return false;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        // Near-tenpai and practical-shape zones already have explicit shanten
+        // guards elsewhere. This late pass only recovers obvious shape loss in
+        // deeper hands where we can take a full-genbutsu discard that improves
+        // shanten without giving up multi-opponent safety.
+        if (selected.Shanten < 4)
+            return false;
+
+        if (TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex) > -2)
+            return false;
+
+        var alternate = scored
+            .Where(entry => entry.TileId != selectedTileId)
+            .Where(entry => entry.Shanten < selected.Shanten)
+            .Where(entry => entry.Score <= selected.Score + FullDangerousGenbutsuScoreTolerance)
+            .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -2)
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
+
+        if (alternate is null)
+            return false;
+
+        tileId = alternate.Value.TileId;
         return true;
     }
 
