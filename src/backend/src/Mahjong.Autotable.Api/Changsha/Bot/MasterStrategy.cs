@@ -694,8 +694,10 @@ public sealed class MasterStrategy : IChangshaBotStrategy
                     Safety = TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex)
                 })
                 .Where(candidate =>
-                    candidate.Safety < selectedSmallWinSafety
-                    && candidate.Entry.Score <= selected.Score + SingleDangerousGenbutsuScoreTolerance)
+                    candidate.Safety <= selectedSmallWinSafety
+                    && candidate.Entry.Score <= selected.Score + SingleDangerousGenbutsuScoreTolerance
+                    && (candidate.Safety < selectedSmallWinSafety
+                        || candidate.Entry.Shanten < selected.Shanten))
                 .OrderBy(candidate => candidate.Entry.Shanten)
                 .ThenBy(candidate => candidate.Safety)
                 .ThenBy(candidate => candidate.Entry.Score)
@@ -920,6 +922,23 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (alternate is null)
             return false;
 
+        var selectedTenpaiSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+        var alternateTenpaiSafety = TenpaiDetector.SafetyBias(alternate.Value.TileId, state, botSeatIndex);
+        var selectedOpponentSafety = OpponentSafetyTieBreaker(selected.TileId, opponentDiscardLogicals);
+        var alternateOpponentSafety = OpponentSafetyTieBreaker(alternate.Value.TileId, opponentDiscardLogicals);
+
+        var hasAlternateLiveSmallWinSingleton = logicalCounts.Any(entry =>
+            entry.Key != selected.Logical
+            && IsSmallWinRank(entry.Key)
+            && entry.Value == 1
+            && !IsLogicalDead(entry.Key, visibleLogicalCounts));
+
+        if (alternate.Value.Shanten == selected.Shanten
+            && hasAlternateLiveSmallWinSingleton
+            && alternateTenpaiSafety >= selectedTenpaiSafety
+            && alternateOpponentSafety >= selectedOpponentSafety)
+            return false;
+
         if (alternate.Value.Shanten > selected.Shanten)
         {
             var hasOtherSingleSafetyAtOrBetterShanten = scored.Any(entry =>
@@ -929,11 +948,6 @@ public sealed class MasterStrategy : IChangshaBotStrategy
 
             if (!hasOtherSingleSafetyAtOrBetterShanten)
             {
-                var selectedTenpaiSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
-                var alternateTenpaiSafety = TenpaiDetector.SafetyBias(alternate.Value.TileId, state, botSeatIndex);
-                var selectedOpponentSafety = OpponentSafetyTieBreaker(selected.TileId, opponentDiscardLogicals);
-                var alternateOpponentSafety = OpponentSafetyTieBreaker(alternate.Value.TileId, opponentDiscardLogicals);
-
                 // Do not trade away shanten tempo when the non-small-win fallback
                 // is no safer than the currently selected live 2/5/8 singleton.
                 if (alternateTenpaiSafety >= selectedTenpaiSafety
