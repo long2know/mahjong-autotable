@@ -1357,7 +1357,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         }
 
         var dangerousGenbutsuCandidate = dangerousGenbutsuCandidates
-            .OrderBy(entry => entry.Score)
+            // When upgrading from an unsafe discard, keep Medium aligned with
+            // practical hand progress: prefer lower shanten dangerous-opponent
+            // genbutsu options before raw keep-score tie-breaks.
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
             .ThenByDescending(entry => entry.TileId)
             .Select(entry => (DiscardCandidate?)entry)
             .FirstOrDefault();
@@ -1365,7 +1369,12 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (dangerousGenbutsuCandidate is null)
             return false;
 
-        if (dangerousGenbutsuCandidate.Value.Score > selected.Score + DangerousGenbutsuScoreTolerance)
+        if (dangerousGenbutsuCandidate.Value.Shanten == selected.Shanten
+            && dangerousGenbutsuCandidate.Value.Score > selected.Score + DangerousGenbutsuScoreTolerance)
+            return false;
+
+        if (dangerousGenbutsuCandidate.Value.Shanten < selected.Shanten
+            && dangerousGenbutsuCandidate.Value.Score > selected.Score + DangerousGenbutsuLowerShantenScoreTolerance)
             return false;
 
         tileId = dangerousGenbutsuCandidate.Value.TileId;
