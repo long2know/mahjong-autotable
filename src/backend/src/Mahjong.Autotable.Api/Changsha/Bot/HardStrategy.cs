@@ -695,6 +695,18 @@ public sealed class HardStrategy : IChangshaBotStrategy
             selectedTileId = lowerShantenFullSafetyTileId;
         }
 
+        if (TryPreferLowerShantenSingleDangerousCandidateWhenFarFromTenpai(
+                logicalCounts,
+                visibleLogicalCounts,
+                scored,
+                selectedTileId,
+                state,
+                botSeatIndex,
+                out var lowerShantenSingleSafetyTileId))
+        {
+            selectedTileId = lowerShantenSingleSafetyTileId;
+        }
+
         return selectedTileId;
     }
 
@@ -980,31 +992,43 @@ public sealed class HardStrategy : IChangshaBotStrategy
             return false;
 
         var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
-        if (selectedSafety <= -1)
-            return false;
 
-        DiscardCandidate? dangerousGenbutsuCandidate = null;
-        foreach (var entry in scored
-                     .Where(entry => entry.TileId != selectedTileId && entry.Shanten == selected.Shanten)
-                     .OrderBy(entry => entry.Score)
-                     .ThenByDescending(entry => entry.TileId))
-        {
+        var dangerousGenbutsuCandidates = scored
+            .Where(entry => entry.TileId != selectedTileId)
             // Keep a live lone 2/5/8 eye route unless it is already near-dead.
             // Single-opponent genbutsu pressure alone is not enough to spend the
             // only live Changsha small-win singleton.
-            if (IsSmallWinRank(entry.Logical)
-                && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
-                && !IsLogicalNearExhausted(entry.Logical, visibleLogicalCounts))
-            {
-                continue;
-            }
+            .Where(entry =>
+                !(IsSmallWinRank(entry.Logical)
+                  && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                  && !IsLogicalNearExhausted(entry.Logical, visibleLogicalCounts)))
+            .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -1)
+            .ToList();
 
-            if (TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -1)
-            {
-                dangerousGenbutsuCandidate = entry;
-                break;
-            }
+        if (selectedSafety <= -1)
+        {
+            var lowerShantenDangerousCandidate = dangerousGenbutsuCandidates
+                .Where(entry => entry.Shanten < selected.Shanten)
+                .Where(entry => entry.Score <= selected.Score + SingleDangerousGenbutsuScoreTolerance)
+                .OrderBy(entry => entry.Shanten)
+                .ThenBy(entry => entry.Score)
+                .ThenByDescending(entry => entry.TileId)
+                .Select(entry => (DiscardCandidate?)entry)
+                .FirstOrDefault();
+
+            if (lowerShantenDangerousCandidate is null)
+                return false;
+
+            tileId = lowerShantenDangerousCandidate.Value.TileId;
+            return true;
         }
+
+        var dangerousGenbutsuCandidate = dangerousGenbutsuCandidates
+            .Where(entry => entry.Shanten == selected.Shanten)
+            .OrderBy(entry => entry.Score)
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
 
         if (dangerousGenbutsuCandidate is null)
             return false;
@@ -1294,6 +1318,53 @@ public sealed class HardStrategy : IChangshaBotStrategy
             .Where(entry => entry.Shanten < selected.Shanten)
             .Where(entry => entry.Score <= selected.Score + FullDangerousGenbutsuScoreTolerance)
             .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -2)
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
+
+        if (alternate is null)
+            return false;
+
+        tileId = alternate.Value.TileId;
+        return true;
+    }
+
+    private static bool TryPreferLowerShantenSingleDangerousCandidateWhenFarFromTenpai(
+        Dictionary<int, int> logicalCounts,
+        Dictionary<int, int> visibleLogicalCounts,
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaGameState state,
+        int botSeatIndex,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count != 1)
+            return false;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        if (selected.Shanten < 4)
+            return false;
+
+        if (TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex) > -1)
+            return false;
+
+        var alternate = scored
+            .Where(entry => entry.TileId != selectedTileId)
+            .Where(entry => entry.Shanten < selected.Shanten)
+            .Where(entry => entry.Score <= selected.Score + SingleDangerousGenbutsuScoreTolerance)
+            .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -1)
+            .Where(entry =>
+                !(IsSmallWinRank(entry.Logical)
+                  && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                  && !IsLogicalNearExhausted(entry.Logical, visibleLogicalCounts)))
             .OrderBy(entry => entry.Shanten)
             .ThenBy(entry => entry.Score)
             .ThenByDescending(entry => entry.TileId)
