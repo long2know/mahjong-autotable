@@ -1804,6 +1804,58 @@ public class HardMasterStrategySafetyRegressionTests
         Assert.Equal(4, masterAction.TileId);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W65")]
+    public void HardAndMaster_KeepLowerShantenSingleSafeSmallWinDiscard_WhenFallbackIsNotSafer()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { 5, 61, 12, 2, 16, 83, 65, 62, 53, 100, 89, 78, 30, 25 }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(0),
+                        FakePung(9),
+                        FakePung(18)
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = 54, TurnNumber = 1 },
+                new() { SeatIndex = 1, TileId = 30, TurnNumber = 2 },
+                new() { SeatIndex = 1, TileId = 1, TurnNumber = 3 },
+                new() { SeatIndex = 2, TileId = 76, TurnNumber = 4 },
+                new() { SeatIndex = 3, TileId = 66, TurnNumber = 5 },
+                new() { SeatIndex = 2, TileId = 29, TurnNumber = 6 },
+                new() { SeatIndex = 3, TileId = 16, TurnNumber = 7 }
+            }
+        };
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var hardAction = hard.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, hardAction.Type);
+        Assert.Equal(53, hardAction.TileId);
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var masterAction = master.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, masterAction.Type);
+        Assert.Equal(53, masterAction.TileId);
+    }
+
     private static ChangshaGameState BuildSingleDangerousState(ChangshaHandState hand, int dangerousGenbutsuTileId)
     {
         return new ChangshaGameState
