@@ -1168,23 +1168,40 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             return false;
 
         var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
-        if (selectedSafety <= -1)
+
+        var dangerousGenbutsuCandidates = scored
+            .Where(entry => entry.TileId != selectedTileId)
+            // Safety promotion should not regress hand shape quality.
+            .Where(entry => entry.Shanten <= selected.Shanten)
+            .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -1)
+            .ToList();
+
+        if (dangerousGenbutsuCandidates.Count == 0)
             return false;
 
-        DiscardCandidate? dangerousGenbutsuCandidate = null;
-        foreach (var entry in scored
-                     .Where(entry => entry.TileId != selectedTileId)
-                     // Safety promotion should not regress hand shape quality.
-                     .Where(entry => entry.Shanten <= selected.Shanten)
-                     .OrderBy(entry => entry.Score)
-                     .ThenByDescending(entry => entry.TileId))
+        if (selectedSafety <= -1)
         {
-            if (TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -1)
-            {
-                dangerousGenbutsuCandidate = entry;
-                break;
-            }
+            var lowerShantenDangerousCandidate = dangerousGenbutsuCandidates
+                .Where(entry => entry.Shanten < selected.Shanten)
+                .Where(entry => entry.Score <= selected.Score + DangerousGenbutsuScoreTolerance)
+                .OrderBy(entry => entry.Shanten)
+                .ThenBy(entry => entry.Score)
+                .ThenByDescending(entry => entry.TileId)
+                .Select(entry => (DiscardCandidate?)entry)
+                .FirstOrDefault();
+
+            if (lowerShantenDangerousCandidate is null)
+                return false;
+
+            tileId = lowerShantenDangerousCandidate.Value.TileId;
+            return true;
         }
+
+        var dangerousGenbutsuCandidate = dangerousGenbutsuCandidates
+            .OrderBy(entry => entry.Score)
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
 
         if (dangerousGenbutsuCandidate is null)
             return false;
