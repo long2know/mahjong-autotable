@@ -716,13 +716,10 @@ public sealed class MasterStrategy : IChangshaBotStrategy
 
         var dangerousGenbutsuCandidates = scored
             .Where(entry => entry.TileId != selectedTileId)
-            // Keep a live lone 2/5/8 eye route unless it is already near-dead.
-            // Single-opponent genbutsu pressure alone is not enough to spend the
-            // only live Changsha small-win singleton.
-            .Where(entry =>
-                !(IsSmallWinRank(entry.Logical)
-                  && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
-                  && !IsLogicalNearExhausted(entry.Logical, visibleLogicalCounts)))
+            // Keep a live lone 2/5/8 eye route only when it is the sole live
+            // small-win lane. If backup live 2/5/8 routes exist, allow single-
+            // dangerous genbutsu promotion to spend one live singleton.
+            .Where(entry => !IsProtectedLiveSmallWinSingleton(entry.Logical, logicalCounts, visibleLogicalCounts))
             .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -1)
             .ToList();
 
@@ -1141,6 +1138,26 @@ public sealed class MasterStrategy : IChangshaBotStrategy
     {
         var rank = logical % 9 + 1;
         return rank is 2 or 5 or 8;
+    }
+
+    private static bool IsProtectedLiveSmallWinSingleton(
+        int logical,
+        Dictionary<int, int> logicalCounts,
+        Dictionary<int, int> visibleLogicalCounts)
+    {
+        if (!IsSmallWinRank(logical) || logicalCounts.GetValueOrDefault(logical, 0) != 1)
+            return false;
+
+        if (IsLogicalNearExhausted(logical, visibleLogicalCounts))
+            return false;
+
+        var hasAlternateLiveSmallWinRoute = logicalCounts.Any(entry =>
+            entry.Key != logical
+            && IsSmallWinRank(entry.Key)
+            && (entry.Value >= 2
+                || (entry.Value == 1 && !IsLogicalNearExhausted(entry.Key, visibleLogicalCounts))));
+
+        return !hasAlternateLiveSmallWinRoute;
     }
 
     private static bool HasSingleSmallWinTile(Dictionary<int, int> logicalCounts)
