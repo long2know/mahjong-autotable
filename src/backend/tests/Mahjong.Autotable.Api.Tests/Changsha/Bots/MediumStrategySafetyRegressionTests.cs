@@ -2320,4 +2320,47 @@ public class MediumStrategySafetyRegressionTests
         Assert.Equal(7, action.TileId);
         Assert.Equal(-1, TenpaiDetector.SafetyBias(action.TileId!.Value, state, 0));
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W75")]
+    public void Medium_PromotesSaferLiveSmallWinSingleton_WhenBackupSmallWinPairExistsUnderSingleDanger()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { 93, 7, 91, 6, 30, 81, 46, 67, 18, 95, 10, 48, 17, 97 }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Wan(2, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tong(6, 0))),
+                        FakePung(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)))
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = 91, TurnNumber = 1 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(91, action.TileId);
+        Assert.True(TenpaiDetector.SafetyBias(action.TileId!.Value, state, 0) <= -1);
+    }
 }
