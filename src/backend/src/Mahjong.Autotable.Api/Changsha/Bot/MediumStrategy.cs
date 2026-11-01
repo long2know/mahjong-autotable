@@ -22,6 +22,10 @@ public sealed class MediumStrategy : IChangshaBotStrategy
     private const int SingleSmallWinDiscardTolerance = 2;
     private const int OffRankPairDiscardTolerance = 2;
     private const int DangerousGenbutsuScoreTolerance = 1;
+    // When Medium is already on a single-dangerous genbutsu discard, allow a
+    // slightly wider keep-score delta if the alternate improves post-discard
+    // shanten. This avoids locking onto a shape-worse safe tile purely on score.
+    private const int DangerousGenbutsuLowerShantenScoreTolerance = 2;
     private const int FullDangerousGenbutsuScoreTolerance = 2;
 
     private readonly record struct DiscardCandidate(int TileId, int Logical, int Shanten, int Score);
@@ -1338,7 +1342,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         {
             var lowerShantenDangerousCandidate = dangerousGenbutsuCandidates
                 .Where(entry => entry.Shanten < selected.Shanten)
-                .Where(entry => entry.Score <= selected.Score + DangerousGenbutsuScoreTolerance)
+                .Where(entry => entry.Score <= selected.Score + DangerousGenbutsuLowerShantenScoreTolerance)
                 .OrderBy(entry => entry.Shanten)
                 .ThenBy(entry => entry.Score)
                 .ThenByDescending(entry => entry.TileId)
