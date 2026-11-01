@@ -845,6 +845,19 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             selectedTileId = preservedSmallWinTileId;
         }
 
+        if (state is not null
+            && botSeatIndex >= 0
+            && TryPreferLowerShantenUnsafeFallbackWhenPreservingLiveSmallWinSingleton(
+                logicalCounts,
+                scored,
+                selectedTileId,
+                state,
+                botSeatIndex,
+                out var lowerShantenUnsafeFallbackTileId))
+        {
+            selectedTileId = lowerShantenUnsafeFallbackTileId;
+        }
+
         return (selectedTileId, false);
     }
 
@@ -1336,7 +1349,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         var alternates = scored
             .Where(entry => entry.TileId != selectedTileId && !IsSmallWinRank(entry.Logical))
             .Where(entry => !protectPracticalShape || entry.Shanten <= selected.Shanten)
-            .OrderBy(entry => entry.Score)
+            // When no dangerous-opponent covered fallback exists, preserve Medium's
+            // hand-progress quality by preferring lower post-discard shanten before
+            // keep-score ordering.
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
             .ThenByDescending(entry => entry.TileId)
             .ToList();
 
@@ -1390,6 +1407,74 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 ? coveredAlternates[0].Entry
                 : alternates[0];
         tileId = alternate.TileId;
+        return true;
+    }
+
+    private static bool TryPreferLowerShantenUnsafeFallbackWhenPreservingLiveSmallWinSingleton(
+        Dictionary<int, int> logicalCounts,
+        List<DiscardCandidate> scored,
+        int selectedTileId,
+        ChangshaGameState state,
+        int botSeatIndex,
+        out int tileId)
+    {
+        tileId = -1;
+
+        var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+        if (dangerousOpponents.Count < 2)
+            return false;
+
+        var selected = scored.FirstOrDefault(entry => entry.TileId == selectedTileId);
+        if (selected.TileId != selectedTileId)
+            return false;
+
+        if (selected.Shanten <= 2)
+            return false;
+
+        if (IsSmallWinRank(selected.Logical))
+            return false;
+
+        if (TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex) < 0)
+            return false;
+
+        var visibleLogicalCounts = CollectPublicLogicalCounts(state, state.Hands.Single(h => h.SeatIndex == botSeatIndex), botSeatIndex);
+        var liveFullSafetySmallWinSingletons = scored
+            .Where(entry =>
+                IsSmallWinRank(entry.Logical)
+                && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                && !IsLogicalDead(entry.Logical, visibleLogicalCounts)
+                && TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -2)
+            .ToList();
+
+        if (liveFullSafetySmallWinSingletons.Count != 1)
+            return false;
+
+        var nonSmallWinCandidates = scored
+            .Where(entry => !IsSmallWinRank(entry.Logical))
+            .ToList();
+
+        if (nonSmallWinCandidates.Count == 0)
+            return false;
+
+        // This pass is specifically for the "no covered fallback" branch where
+        // every non-small-win alternative is unsafe under multi-opponent pressure.
+        if (nonSmallWinCandidates.Any(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) < 0))
+            return false;
+
+        var unsafeNonSmallWinCandidates = nonSmallWinCandidates;
+
+        var lowerShantenUnsafeFallback = unsafeNonSmallWinCandidates
+            .Where(entry => entry.Shanten < selected.Shanten)
+            .OrderBy(entry => entry.Shanten)
+            .ThenBy(entry => entry.Score)
+            .ThenByDescending(entry => entry.TileId)
+            .Select(entry => (DiscardCandidate?)entry)
+            .FirstOrDefault();
+
+        if (lowerShantenUnsafeFallback is null)
+            return false;
+
+        tileId = lowerShantenUnsafeFallback.Value.TileId;
         return true;
     }
 
