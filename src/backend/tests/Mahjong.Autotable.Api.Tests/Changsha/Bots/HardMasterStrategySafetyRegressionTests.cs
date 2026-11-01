@@ -1915,6 +1915,66 @@ public class HardMasterStrategySafetyRegressionTests
         Assert.True(TenpaiDetector.SafetyBias(masterAction.TileId!.Value, state, 0) <= -1);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W69")]
+    public void HardAndMaster_PromoteSaferSmallWinSingleton_WhenSaferSingletonHasSlightlyHigherKeepScore()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0),
+                Tong(3, 0),
+                Tong(4, 0),
+                Tong(5, 0), // safer 2/5/8 singleton (dangerous-opponent genbutsu)
+                Tong(6, 0), Tong(6, 1), Tong(6, 2),
+                Tong(8, 0), // lower keep-score 2/5/8 singleton that used to win
+                Tiao(3, 0),
+                Tiao(5, 0), Tiao(5, 1),
+                Tiao(6, 0),
+                Tiao(9, 0), Tiao(9, 1)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(0),
+                        FakePung(9),
+                        FakePung(18)
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Tong(5, 1), TurnNumber = 1 }
+            }
+        };
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var hardAction = hard.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, hardAction.Type);
+        Assert.Equal(Tong(5, 0), hardAction.TileId);
+        Assert.True(TenpaiDetector.SafetyBias(hardAction.TileId!.Value, state, 0) <= -1);
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var masterAction = master.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, masterAction.Type);
+        Assert.Equal(Tong(5, 0), masterAction.TileId);
+        Assert.True(TenpaiDetector.SafetyBias(masterAction.TileId!.Value, state, 0) <= -1);
+    }
+
     private static ChangshaGameState BuildSingleDangerousState(ChangshaHandState hand, int dangerousGenbutsuTileId)
     {
         return new ChangshaGameState

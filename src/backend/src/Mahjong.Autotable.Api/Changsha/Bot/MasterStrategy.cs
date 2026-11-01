@@ -680,7 +680,35 @@ public sealed class MasterStrategy : IChangshaBotStrategy
             return false;
 
         if (IsSmallWinRank(selected.Logical) && logicalCounts.GetValueOrDefault(selected.Logical, 0) == 1)
-            return false;
+        {
+            var selectedSmallWinSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+            var saferSmallWinSingleton = scored
+                .Where(entry =>
+                    entry.TileId != selectedTileId
+                    && IsSmallWinRank(entry.Logical)
+                    && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                    && entry.Shanten <= selected.Shanten)
+                .Select(entry => new
+                {
+                    Entry = entry,
+                    Safety = TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex)
+                })
+                .Where(candidate =>
+                    candidate.Safety < selectedSmallWinSafety
+                    && candidate.Entry.Score <= selected.Score + SingleDangerousGenbutsuScoreTolerance)
+                .OrderBy(candidate => candidate.Entry.Shanten)
+                .ThenBy(candidate => candidate.Safety)
+                .ThenBy(candidate => candidate.Entry.Score)
+                .ThenByDescending(candidate => candidate.Entry.TileId)
+                .Select(candidate => (DiscardCandidate?)candidate.Entry)
+                .FirstOrDefault();
+
+            if (saferSmallWinSingleton is null)
+                return false;
+
+            tileId = saferSmallWinSingleton.Value.TileId;
+            return true;
+        }
 
         var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
 
