@@ -617,6 +617,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                         if (singletonTenpaiSafety == bestTenpaiSafety
                             && bestOpponentSafety < 0
                             && best.Score < deadSmallWinSingleton.Value.Score
+                            && best.Shanten <= deadSmallWinSingleton.Value.Shanten
                             && !singletonHasAdjacentSingleton)
                             return (best.TileId, false);
                     }
@@ -1215,15 +1216,15 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
 
         // When we're already on full dangerous-opponent genbutsu, allow an in-tier
-        // upgrade only if it strictly improves shanten without paying extra keep-score.
-        // This keeps Medium from locking onto a weaker full-safe tile solely due to
-        // tie-break order.
+        // upgrade that improves shanten even if it costs a small keep-score delta.
+        // This keeps Medium from locking onto a higher-shanten full-safe tile purely
+        // due to score-first ordering.
         if (selectedSafety <= -2)
         {
             var betterFullSafetyCandidate = scored
                 .Where(entry => entry.TileId != selectedTileId)
                 .Where(entry => entry.Shanten < selected.Shanten)
-                .Where(entry => entry.Score <= selected.Score)
+                .Where(entry => entry.Score <= selected.Score + FullDangerousGenbutsuScoreTolerance)
                 .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -2)
                 .OrderBy(entry => entry.Shanten)
                 .ThenBy(entry => entry.Score)

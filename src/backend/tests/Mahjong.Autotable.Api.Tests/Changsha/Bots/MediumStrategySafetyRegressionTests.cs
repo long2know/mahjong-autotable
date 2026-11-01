@@ -1851,4 +1851,78 @@ public class MediumStrategySafetyRegressionTests
         Assert.Equal(bestFullSafetyShanten, chosenShanten);
         Assert.Equal(77, action.TileId);
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W63")]
+    public void Medium_PrefersLowerShantenFullGenbutsuUpgrade_EvenWhenKeepScoreIsSlightlyWorse()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { 28, 59, 11, 44, 39, 62, 7, 99, 17, 21, 56, 77, 2, 101 }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(0),
+                        FakePung(9),
+                        FakePung(18)
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(1),
+                        FakePung(10),
+                        FakePung(19)
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = 37, TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = 107, TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = 35, TurnNumber = 3 },
+                new() { SeatIndex = 2, TileId = 18, TurnNumber = 4 },
+                new() { SeatIndex = 2, TileId = 75, TurnNumber = 5 },
+                new() { SeatIndex = 2, TileId = 82, TurnNumber = 6 },
+                new() { SeatIndex = 2, TileId = 28, TurnNumber = 7 },
+                new() { SeatIndex = 1, TileId = 51, TurnNumber = 8 },
+                new() { SeatIndex = 3, TileId = 4, TurnNumber = 9 },
+                new() { SeatIndex = 3, TileId = 80, TurnNumber = 10 },
+                new() { SeatIndex = 2, TileId = 57, TurnNumber = 11 },
+                new() { SeatIndex = 2, TileId = 38, TurnNumber = 12 },
+                new() { SeatIndex = 3, TileId = 53, TurnNumber = 13 },
+                new() { SeatIndex = 1, TileId = 62, TurnNumber = 14 },
+                new() { SeatIndex = 3, TileId = 57, TurnNumber = 15 },
+                new() { SeatIndex = 3, TileId = 49, TurnNumber = 16 },
+                new() { SeatIndex = 1, TileId = 20, TurnNumber = 17 },
+                new() { SeatIndex = 1, TileId = 92, TurnNumber = 18 },
+                new() { SeatIndex = 2, TileId = 88, TurnNumber = 19 },
+                new() { SeatIndex = 1, TileId = 63, TurnNumber = 20 },
+                new() { SeatIndex = 1, TileId = 79, TurnNumber = 21 },
+                new() { SeatIndex = 2, TileId = 78, TurnNumber = 22 },
+                new() { SeatIndex = 1, TileId = 57, TurnNumber = 23 },
+                new() { SeatIndex = 2, TileId = 56, TurnNumber = 24 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(77, action.TileId);
+    }
 }
