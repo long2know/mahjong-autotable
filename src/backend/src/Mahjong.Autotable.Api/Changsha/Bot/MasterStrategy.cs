@@ -903,9 +903,14 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (IsLogicalDead(selected.Logical, visibleLogicalCounts))
             return false;
 
+        // Keep full-dangerous live-singleton preservation swaps shanten-safe
+        // once the hand is within practical striking distance.
+        var protectPracticalShape = selected.Shanten <= 2;
+
         var alternates = scored
             .Where(entry => entry.TileId != selectedTileId && !IsSmallWinRank(entry.Logical))
             .Where(entry => entry.Shanten <= selected.Shanten + ConnectedSmallWinBridgeShantenTolerance)
+            .Where(entry => !protectPracticalShape || entry.Shanten <= selected.Shanten)
             .OrderBy(entry => entry.Shanten)
             .ThenBy(entry => entry.Score)
             .ThenBy(entry => SuitCommitment.Bias(entry.TileId, hand))
@@ -1066,9 +1071,11 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         // it is at least as safe as alternatives; otherwise allow a swap to a
         // strictly safer off-rank pair under dangerous-opponent pressure.
         //
-        // Near tenpai (0-1 shanten), keep this safety swap shanten-safe so the bot
-        // does not trade immediate hand completion equity for a defensive upgrade.
-        var protectNearTenpaiShape = selected.Shanten <= 1;
+        // Keep this safety swap shanten-safe near tenpai for all danger levels,
+        // and also at 2-shanten when multiple opponents are dangerous so we don't
+        // trade practical completion tempo for a pair-safety swap.
+        var protectNearTenpaiShape = selected.Shanten <= 1
+            || (dangerousOpponents.Count >= 2 && selected.Shanten <= 2);
 
         var saferOffRankPair = scored
             .Where(entry => logicalCounts.GetValueOrDefault(entry.Logical, 0) > 1 && !IsSmallWinRank(entry.Logical))
