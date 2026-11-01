@@ -1114,16 +1114,23 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (selected.TileId != selectedTileId)
             return false;
 
-        if (selected.Shanten < 4)
+        if (selected.Shanten < 3)
             return false;
 
         if (TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex) > -1)
             return false;
 
+        // At 3-shanten, preserving a low keep-score discard can leave obvious
+        // shape gains on the table. When we already have single-opponent
+        // dangerous coverage, allow this late pass to take any lower-shanten
+        // candidate (still safety-gated) and let score serve only as a tiebreak.
+        var relaxScoreToleranceAtThreeShanten = selected.Shanten == 3;
+
         var alternate = scored
             .Where(entry => entry.TileId != selectedTileId)
             .Where(entry => entry.Shanten < selected.Shanten)
-            .Where(entry => entry.Score <= selected.Score + SingleDangerousGenbutsuScoreTolerance)
+            .Where(entry => relaxScoreToleranceAtThreeShanten
+                || entry.Score <= selected.Score + SingleDangerousGenbutsuScoreTolerance)
             .Where(entry => TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -1)
             .Where(entry =>
                 !(IsSmallWinRank(entry.Logical)
