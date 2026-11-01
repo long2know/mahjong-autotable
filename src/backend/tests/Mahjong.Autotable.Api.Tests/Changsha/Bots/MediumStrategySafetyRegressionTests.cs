@@ -2154,4 +2154,58 @@ public class MediumStrategySafetyRegressionTests
         Assert.Equal(53, action.TileId);
         Assert.True(TenpaiDetector.SafetyBias(action.TileId!.Value, state, 0) <= -1);
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W67")]
+    public void Medium_PromotesSaferSmallWinSingleton_WhenSingleDangerousPressureExists()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tong(2, 0), // lower keep score but not dangerous-opponent genbutsu
+                Wan(5, 0),  // dangerous-opponent genbutsu small-win singleton
+
+                Wan(1, 0), Wan(1, 1),
+                Wan(4, 0), Wan(4, 1),
+                Wan(7, 0), Wan(7, 1),
+                Tong(6, 0), Tong(6, 1),
+                Tong(7, 0), Tong(7, 1),
+                Tiao(9, 0), Tiao(9, 1)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(0),
+                        FakePung(9),
+                        FakePung(18)
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(5, 1), TurnNumber = 1 }
+            }
+        };
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.Equal(Wan(5, 0), action.TileId);
+        Assert.True(TenpaiDetector.SafetyBias(action.TileId!.Value, state, 0) <= -1);
+    }
 }
