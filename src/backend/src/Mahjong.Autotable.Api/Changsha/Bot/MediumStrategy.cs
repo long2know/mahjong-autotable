@@ -193,6 +193,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
         var postClaimVisibleLogicalCounts = BuildPostClaimVisibleLogicalCounts(externallyVisibleLogicalCounts, discardLogical);
 
+        (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) pungProbe =
+            opportunities.Any(o => o.ClaimType == TableClaimType.Pung)
+                ? ProbeAfterPungClaim(hand, discardLogical, discardTileId, postClaimVisibleLogicalCounts)
+                : (Shanten: int.MaxValue, SmallWinPairDistance: int.MaxValue, LiveWinningOuts: int.MinValue, ClaimTileIds: null);
+
         ChangshaClaimOpportunity? best = null;
         int[]? bestClaimTileIds = null;
         var bestPostShanten = int.MaxValue;
@@ -220,10 +225,18 @@ public sealed class MediumStrategy : IChangshaBotStrategy
             if (postSmallWinPairDistance > preSmallWinPairDistance)
                 continue;
 
+            var allowsNeutralOutsKongUpgrade = opp.ClaimType == TableClaimType.Kong
+                && postShanten == preShanten
+                && postSmallWinPairDistance == preSmallWinPairDistance
+                && postLiveWinningOuts == preLiveWinningOuts
+                && pungProbe.Shanten == postShanten
+                && pungProbe.SmallWinPairDistance == postSmallWinPairDistance
+                && pungProbe.LiveWinningOuts == postLiveWinningOuts;
+
             if (postShanten == preShanten
                 && postSmallWinPairDistance == preSmallWinPairDistance
                 && (requiresLiveOutGainOnFlatShape
-                    ? postLiveWinningOuts <= preLiveWinningOuts
+                    ? postLiveWinningOuts <= preLiveWinningOuts && !allowsNeutralOutsKongUpgrade
                     : postLiveWinningOuts < preLiveWinningOuts))
                 continue;
 
