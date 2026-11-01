@@ -2024,4 +2024,85 @@ public class MediumStrategySafetyRegressionTests
 
         Assert.Equal(bestDangerousShanten, chosenShanten);
     }
+
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W65")]
+    public void Medium_PrefersLowerShantenUnsafeFallback_WhenPreservingLiveSmallWinSingletonUnderFullDangerousPressure()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { 88, 76, 93, 74, 46, 103, 67, 102, 38, 60, 107, 86, 78, 65 }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(0),
+                        FakePung(9),
+                        FakePung(18)
+                    }
+                },
+                new()
+                {
+                    SeatIndex = 2,
+                    Melds = new List<Meld>
+                    {
+                        FakePung(1),
+                        FakePung(10),
+                        FakePung(19)
+                    }
+                },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = 89, TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = 90, TurnNumber = 2 }
+            }
+        };
+
+        static int ShantenAfterDiscard(ChangshaHandState handState, int tileId)
+        {
+            var concealedAfter = new List<int>(handState.ConcealedTiles);
+            concealedAfter.Remove(tileId);
+            return HandEvaluator.MinShantenToHu(new ChangshaHandState
+            {
+                SeatIndex = handState.SeatIndex,
+                ConcealedTiles = concealedAfter,
+                Melds = handState.Melds
+            }, Array.Empty<int>());
+        }
+
+        var medium = ChangshaBotEngine.Resolve("medium");
+        var action = medium.DecideAction(state, botSeatIndex: 0);
+
+        Assert.Equal(BotActionType.Discard, action.Type);
+        Assert.NotNull(action.TileId);
+
+        var chosenLogical = ChangshaDeckBuilder.GetLogicalTile(action.TileId.Value);
+        var chosenRank = chosenLogical % 9 + 1;
+        Assert.DoesNotContain(chosenRank, new[] { 2, 5, 8 });
+
+        var chosenShanten = ShantenAfterDiscard(hand, action.TileId.Value);
+        var bestNonSmallWinShanten = hand.ConcealedTiles
+            .Where(tileId =>
+            {
+                var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+                var rank = logical % 9 + 1;
+                return rank is not (2 or 5 or 8);
+            })
+            .Distinct()
+            .Min(tileId => ShantenAfterDiscard(hand, tileId));
+
+        Assert.Equal(bestNonSmallWinShanten, chosenShanten);
+    }
 }
