@@ -801,6 +801,34 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 if (alternateIsOffRankPair && singletonIsWeak)
                     return (best.TileId, true);
 
+                if (state is not null
+                    && botSeatIndex >= 0
+                    && dangerousOpponents is not null
+                    && dangerousOpponents.Count == 1
+                    && safetyDiscardLogicals is not null)
+                {
+                    var hasOtherSingleSafetyAtOrBetterShanten = scored.Any(entry =>
+                        entry.TileId != best.TileId
+                        && entry.Shanten <= best.Shanten
+                        && TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex) <= -1);
+
+                    if (!hasOtherSingleSafetyAtOrBetterShanten)
+                    {
+                        var singletonTenpaiSafety = TenpaiDetector.SafetyBias(best.TileId, state, botSeatIndex);
+                        var alternateTenpaiSafety = TenpaiDetector.SafetyBias(alternate.Value.TileId, state, botSeatIndex);
+                        var singletonOpponentSafety = OpponentSafetyTieBreaker(best.TileId, safetyDiscardLogicals);
+                        var alternateOpponentSafety = OpponentSafetyTieBreaker(alternate.Value.TileId, safetyDiscardLogicals);
+
+                        // Under single dangerous-opponent pressure, do not preserve
+                        // a lone live 2/5/8 singleton by spending a non-small-win
+                        // fallback that is no safer and does not improve shanten.
+                        if (alternate.Value.Shanten >= best.Shanten
+                            && alternateTenpaiSafety >= singletonTenpaiSafety
+                            && alternateOpponentSafety >= singletonOpponentSafety)
+                            return (best.TileId, true);
+                    }
+                }
+
                 return (alternate.Value.TileId, false);
             }
         }
@@ -1177,10 +1205,43 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (selected.TileId != selectedTileId)
             return false;
 
-        if (IsSmallWinRank(selected.Logical) && logicalCounts.GetValueOrDefault(selected.Logical, 0) == 1)
-            return false;
-
         var selectedSafety = TenpaiDetector.SafetyBias(selected.TileId, state, botSeatIndex);
+        var opponentDiscardLogicals = CollectSafetyDiscardLogicals(state, botSeatIndex, dangerousOpponents);
+
+        if (IsSmallWinRank(selected.Logical) && logicalCounts.GetValueOrDefault(selected.Logical, 0) == 1)
+        {
+            var selectedOpponentSafety = OpponentSafetyTieBreaker(selected.TileId, opponentDiscardLogicals);
+            var saferSmallWinSingleton = scored
+                .Where(entry =>
+                    entry.TileId != selectedTileId
+                    && IsSmallWinRank(entry.Logical)
+                    && logicalCounts.GetValueOrDefault(entry.Logical, 0) == 1
+                    && entry.Shanten <= selected.Shanten)
+                .Select(entry => new
+                {
+                    Entry = entry,
+                    TenpaiSafety = TenpaiDetector.SafetyBias(entry.TileId, state, botSeatIndex),
+                    OpponentSafety = OpponentSafetyTieBreaker(entry.TileId, opponentDiscardLogicals)
+                })
+                .Where(candidate =>
+                    candidate.TenpaiSafety <= selectedSafety
+                    && candidate.OpponentSafety <= selectedOpponentSafety
+                    && (candidate.TenpaiSafety < selectedSafety
+                        || candidate.OpponentSafety < selectedOpponentSafety))
+                .OrderBy(candidate => candidate.Entry.Shanten)
+                .ThenBy(candidate => candidate.TenpaiSafety)
+                .ThenBy(candidate => candidate.OpponentSafety)
+                .ThenBy(candidate => candidate.Entry.Score)
+                .ThenByDescending(candidate => candidate.Entry.TileId)
+                .Select(candidate => (DiscardCandidate?)candidate.Entry)
+                .FirstOrDefault();
+
+            if (saferSmallWinSingleton is null)
+                return false;
+
+            tileId = saferSmallWinSingleton.Value.TileId;
+            return true;
+        }
 
         var dangerousGenbutsuCandidates = scored
             .Where(entry => entry.TileId != selectedTileId)
