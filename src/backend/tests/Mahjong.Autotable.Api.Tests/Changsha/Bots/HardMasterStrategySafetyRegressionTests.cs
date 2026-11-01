@@ -2037,6 +2037,30 @@ public class HardMasterStrategySafetyRegressionTests
         Assert.Equal(-1, TenpaiDetector.SafetyBias(masterAction.TileId!.Value, state, 0));
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W72")]
+    public void HardAndMaster_AllowSaferLiveSmallWinSingletonDiscard_WhenBackupLiveRoutesExist()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { 93, 7, 91, 6, 30, 81, 46, 67, 18, 95, 10, 48, 17, 97 }
+        };
+
+        var state = BuildSingleDangerousState(hand, 91);
+
+        var hard = ChangshaBotEngine.Resolve("hard");
+        var hardAction = hard.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, hardAction.Type);
+        Assert.Equal(91, hardAction.TileId);
+        Assert.True(TenpaiDetector.SafetyBias(hardAction.TileId!.Value, state, 0) <= -1);
+
+        var master = ChangshaBotEngine.Resolve("master");
+        var masterAction = master.DecideAction(state, botSeatIndex: 0);
+        Assert.Equal(BotActionType.Discard, masterAction.Type);
+        Assert.Equal(91, masterAction.TileId);
+        Assert.True(TenpaiDetector.SafetyBias(masterAction.TileId!.Value, state, 0) <= -1);
+    }
+
     private static ChangshaGameState BuildSingleDangerousState(ChangshaHandState hand, int dangerousGenbutsuTileId)
     {
         return new ChangshaGameState
