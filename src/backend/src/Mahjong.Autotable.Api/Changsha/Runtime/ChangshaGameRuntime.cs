@@ -1972,13 +1972,15 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 }
                 catch (OverflowException ex)
                 {
-                    if (TrySelectBestNonHuOfferedClaim(expectedWindow, seatIndex, out var fallbackClaimType))
+                    var fallbackAction = BuildBestNonHuFallbackClaimAction(expectedWindow, decisionState, seatIndex);
+                    if (fallbackAction.Type == BotActionType.Claim
+                        && fallbackAction.ClaimType is { } fallbackClaimType)
                     {
                         _logger.LogWarning(ex,
                             "Rejected bot Hu settlement outside the score range in game {GameId} seat {Seat}; falling back to legal non-hu claim {ClaimType}.",
                             instance.GameId, seatIndex, fallbackClaimType);
                         decided = fallbackClaimType;
-                        chosenTileIds = null;
+                        chosenTileIds = fallbackAction.ClaimTileIds?.ToArray();
                     }
                     else
                     {
@@ -2559,6 +2561,35 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         }
 
         return fallbackAction;
+    }
+
+    internal static BotAction BuildBestNonHuFallbackClaimAction(
+        ChangshaClaimWindow expectedWindow,
+        ChangshaGameState decisionState,
+        int seatIndex)
+    {
+        var nonHuDecisionState = CopyState(decisionState);
+        if (nonHuDecisionState.ClaimWindow is { } claimWindow)
+        {
+            claimWindow.Opportunities = claimWindow.Opportunities
+                .Where(opportunity => opportunity.SeatIndex != seatIndex
+                    || opportunity.ClaimType != TableClaimType.Hu)
+                .ToList();
+        }
+
+        var fallbackAction = new ChangshaBotPolicy().DecideAction(nonHuDecisionState, seatIndex);
+        if (fallbackAction.Type == BotActionType.Claim
+            && fallbackAction.ClaimType is { } claimType
+            && claimType != TableClaimType.Hu
+            && IsOfferedClaim(expectedWindow, seatIndex, claimType))
+        {
+            return fallbackAction;
+        }
+
+        if (TrySelectBestNonHuOfferedClaim(expectedWindow, seatIndex, out var fallbackClaimType))
+            return BotAction.Claim(fallbackClaimType);
+
+        return BotAction.Pass();
     }
 
     private static BotDecision BuildMediumOwnTurnTimeoutFallbackDecision(
