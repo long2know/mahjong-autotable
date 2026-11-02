@@ -1,6 +1,8 @@
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Bot;
+using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Tables;
+using Mahjong.Autotable.Api.Tests.Changsha._TestHarness;
 
 namespace Mahjong.Autotable.Api.Tests.Changsha.Bots;
 
@@ -78,5 +80,49 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.True(leaks == 0,
             $"{leaks}/{iterations} timeout calls surfaced a late strategy result instead of the " +
             $"safe-default Pass — the #124 thread-pool-starvation false-Hu leak.");
+    }
+
+    [Fact, Trait("Category", "Changsha")]
+    public void ClaimFallback_PrioritizesOfferedHu()
+    {
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 17, botSeats: new[] { 1 });
+        var window = new ChangshaClaimWindow
+        {
+            DiscardSeatIndex = 0,
+            DiscardTileId = ChangshaTestHelpers.Tid(Suit.Wan, 1, 0),
+            Opportunities = new()
+            {
+                new ChangshaClaimOpportunity { SeatIndex = 1, ClaimType = TableClaimType.Hu, Priority = 4 },
+                new ChangshaClaimOpportunity { SeatIndex = 1, ClaimType = TableClaimType.Pung, Priority = 2 }
+            }
+        };
+        state.ClaimWindow = window;
+        state.Phase = ChangshaPhase.AwaitingClaim;
+
+        var action = ChangshaGameRuntime.BuildMediumClaimFallbackAction(window, state, seatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Hu, action.ClaimType);
+    }
+
+    [Fact, Trait("Category", "Changsha")]
+    public void ClaimFallback_Passes_WhenSeatHasNoOfferedClaims()
+    {
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 19, botSeats: new[] { 1 });
+        var window = new ChangshaClaimWindow
+        {
+            DiscardSeatIndex = 0,
+            DiscardTileId = ChangshaTestHelpers.Tid(Suit.Tong, 5, 0),
+            Opportunities = new()
+            {
+                new ChangshaClaimOpportunity { SeatIndex = 2, ClaimType = TableClaimType.Pung, Priority = 2 }
+            }
+        };
+        state.ClaimWindow = window;
+        state.Phase = ChangshaPhase.AwaitingClaim;
+
+        var action = ChangshaGameRuntime.BuildMediumClaimFallbackAction(window, state, seatIndex: 1);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
     }
 }

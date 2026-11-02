@@ -1886,52 +1886,40 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             var strategy = instance.BotStrategy ?? _strategy;
             // A timed-out strategy keeps running after the lock is released.
             var decisionState = CopyState(state);
-            BotDecision ClaimFallback()
+            BotDecision ClaimTimeoutFallback()
             {
-                if (IsOfferedClaim(expectedWindow, seatIndex, TableClaimType.Hu))
-                {
-                    return BotDecision.FromAction(BotAction.Claim(TableClaimType.Hu)) with
-                    {
-                        Reasoning = new[]
-                        {
-                            "runtime: claim decision timeout; direct hu fallback from offered claims"
-                        }
-                    };
-                }
-
-                var fallbackAction = new ChangshaBotPolicy().DecideAction(decisionState, seatIndex);
-                if (fallbackAction.Type != BotActionType.Claim
-                    || fallbackAction.ClaimType is null
-                    || !IsOfferedClaim(expectedWindow, seatIndex, fallbackAction.ClaimType.Value))
-                {
-                    fallbackAction = BotAction.Pass();
-                }
+                var fallbackAction = BuildMediumClaimFallbackAction(expectedWindow, decisionState, seatIndex);
+                var timeoutReason = fallbackAction.Type == BotActionType.Claim
+                    && fallbackAction.ClaimType == TableClaimType.Hu
+                    ? "runtime: claim decision timeout; direct hu fallback from offered claims"
+                    : "runtime: claim decision timeout; medium-policy claim fallback";
 
                 return BotDecision.FromAction(fallbackAction) with
                 {
-                    Reasoning = new[]
-                    {
-                        "runtime: claim decision timeout; medium-policy claim fallback"
-                    }
+                    Reasoning = new[] { timeoutReason }
                 };
             }
             var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
                 () => strategy.DecideWithReasoning(decisionState, seatIndex),
                 _options.BotDecisionTimeoutMs,
-                ClaimFallback,
+                ClaimTimeoutFallback,
                 _logger,
                 ct).ConfigureAwait(false);
             var action = decision.Action;
-
             if (action.Type is not BotActionType.Claim and not BotActionType.Pass)
             {
                 _logger.LogWarning(
                     "Bot proposed unsupported claim-window action {ActionType} from seat {Seat} in game {GameId}; using medium-policy claim fallback.",
                     action.Type, seatIndex, instance.GameId);
-                decision = ClaimFallback() with
+                var fallbackAction = BuildMediumClaimFallbackAction(expectedWindow, decisionState, seatIndex);
+                var unsupportedReason = fallbackAction.Type == BotActionType.Claim
+                    && fallbackAction.ClaimType == TableClaimType.Hu
+                    ? "runtime: unsupported claim-window action; direct hu fallback from offered claims"
+                    : "runtime: unsupported claim-window action; medium-policy claim fallback";
+                decision = BotDecision.FromAction(fallbackAction) with
                 {
                     Reasoning = decision.Reasoning
-                        .Append("runtime: unsupported claim-window action; medium-policy claim fallback")
+                        .Append(unsupportedReason)
                         .ToArray()
                 };
                 action = decision.Action;
@@ -1943,7 +1931,8 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 _logger.LogWarning(
                     "Bot proposed invalid or unoffered claim {ClaimType} from seat {Seat} in game {GameId}; using medium-policy claim fallback.",
                     action.ClaimType, seatIndex, instance.GameId);
-                decision = ClaimFallback() with
+                var fallbackAction = BuildMediumClaimFallbackAction(expectedWindow, decisionState, seatIndex);
+                decision = BotDecision.FromAction(fallbackAction) with
                 {
                     Reasoning = decision.Reasoning
                         .Append("runtime: invalid/unoffered claim; medium-policy claim fallback")
@@ -2527,6 +2516,25 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             // Safety net for the delay-cancel / validation-fail early returns (idempotent).
             if (guardHeld) instance.EndBotSchedule(BotScheduleKind.Turn, seatIndex);
         }
+    }
+
+    internal static BotAction BuildMediumClaimFallbackAction(
+        ChangshaClaimWindow expectedWindow,
+        ChangshaGameState decisionState,
+        int seatIndex)
+    {
+        if (IsOfferedClaim(expectedWindow, seatIndex, TableClaimType.Hu))
+            return BotAction.Claim(TableClaimType.Hu);
+
+        var fallbackAction = new ChangshaBotPolicy().DecideAction(decisionState, seatIndex);
+        if (fallbackAction.Type != BotActionType.Claim
+            || fallbackAction.ClaimType is null
+            || !IsOfferedClaim(expectedWindow, seatIndex, fallbackAction.ClaimType.Value))
+        {
+            fallbackAction = BotAction.Pass();
+        }
+
+        return fallbackAction;
     }
 
     private static BotDecision BuildMediumOwnTurnTimeoutFallbackDecision(
