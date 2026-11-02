@@ -2334,6 +2334,21 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                             .ToArray()
                     };
                 }
+                else if (decision.Action.Type is not BotActionType.DeclareWin
+                         and not BotActionType.DeclareConcealedKong
+                         and not BotActionType.DeclareAddedKong
+                         and not BotActionType.Discard)
+                {
+                    _logger.LogWarning(
+                        "Bot proposed unsupported own-turn action {ActionType} in game {GameId} seat {Seat}; using deterministic discard fallback.",
+                        decision.Action.Type, instance.GameId, seatIndex);
+                    decision = DiscardFallback() with
+                    {
+                        Reasoning = decision.Reasoning
+                            .Append("runtime: unsupported own-turn action; deterministic discard fallback")
+                            .ToArray()
+                    };
+                }
                 instance.LastBotDecisions[seatIndex] = decision;
                 action = decision.Action;
             }
@@ -2369,11 +2384,11 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                     await DiscardAsync(instance.GameId, seatIndex, action.TileId!.Value, ct);
                     break;
                 default:
-                    // Fallback safety: discard the highest tile
+                    // Fallback safety: discard the deterministic medium-policy tile.
                     {
                         var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
                         if (hand.ConcealedTiles.Count > 0)
-                            await DiscardAsync(instance.GameId, seatIndex, hand.ConcealedTiles[^1], ct);
+                            await DiscardAsync(instance.GameId, seatIndex, ChangshaBotPolicy.SelectDiscardTile(hand), ct);
                         break;
                     }
             }
