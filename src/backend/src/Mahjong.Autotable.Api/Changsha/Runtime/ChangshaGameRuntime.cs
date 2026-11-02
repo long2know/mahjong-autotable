@@ -1866,13 +1866,20 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             instance.LastBotDecisions[seatIndex] = decision;
             var action = decision.Action;
             decided = action.Type == BotActionType.Claim ? action.ClaimType : null;
+
+            var chosenTileIds = decided is TableClaimType.Chow or TableClaimType.Pung or TableClaimType.Kong
+                ? action.ClaimTileIds?.ToArray()
+                : null;
+
             if (decided is { } claimType && !IsOfferedClaim(expectedWindow, seatIndex, claimType))
             {
                 _logger.LogWarning(
-                    "Rejected unoffered bot claim {ClaimType} from seat {Seat} in game {GameId}; awaiting normal claim timeout.",
+                    "Rejected unoffered bot claim {ClaimType} from seat {Seat} in game {GameId}; recording bot pass instead.",
                     claimType, seatIndex, instance.GameId);
-                return;
+                decided = null;
+                chosenTileIds = null;
             }
+
             if (decided == TableClaimType.Hu)
             {
                 try
@@ -1882,14 +1889,40 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 catch (OverflowException ex)
                 {
                     _logger.LogWarning(ex,
-                        "Rejected bot Hu settlement outside the score range in game {GameId} seat {Seat}; awaiting normal claim timeout.",
+                        "Rejected bot Hu settlement outside the score range in game {GameId} seat {Seat}; recording bot pass instead.",
                         instance.GameId, seatIndex);
-                    return;
+                    decided = null;
+                    chosenTileIds = null;
                 }
             }
-            var chosenTileIds = decided is TableClaimType.Chow or TableClaimType.Pung or TableClaimType.Kong
-                ? action.ClaimTileIds?.ToArray()
-                : null;
+            else if (decided is TableClaimType.Chow or TableClaimType.Pung or TableClaimType.Kong)
+            {
+                var hand = state.Hands.Single(h => h.SeatIndex == seatIndex);
+                try
+                {
+                    switch (decided)
+                    {
+                        case TableClaimType.Chow:
+                            ChangshaGameStateMachine.SelectChowTiles(hand, expectedWindow.DiscardTileId, chosenTileIds);
+                            break;
+                        case TableClaimType.Pung:
+                            ChangshaGameStateMachine.SelectPungTiles(hand, expectedWindow.DiscardTileId, chosenTileIds);
+                            break;
+                        case TableClaimType.Kong:
+                            ChangshaGameStateMachine.SelectKongTiles(hand, expectedWindow.DiscardTileId, chosenTileIds);
+                            break;
+                    }
+                }
+                catch (Exception ex) when (ex is TableRuleException or InvalidOperationException)
+                {
+                    _logger.LogWarning(ex,
+                        "Rejected bot claim {ClaimType} from seat {Seat} in game {GameId} due to invalid tile selection; recording bot pass instead.",
+                        decided, seatIndex, instance.GameId);
+                    decided = null;
+                    chosenTileIds = null;
+                }
+            }
+
             instance.PendingClaims[seatIndex] = new ClaimResponse(decided, chosenTileIds);
         }
         finally { instance.Lock.Release(); }
