@@ -2291,6 +2291,36 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                             .ToArray()
                     };
                 }
+                else if (decision.Action.Type == BotActionType.DeclareConcealedKong
+                         && (decision.Action.LogicalTile is null
+                             || !ChangshaGameStateMachine.CanDeclareConcealedKong(
+                                 state, seatIndex, decision.Action.LogicalTile.Value)))
+                {
+                    _logger.LogWarning(
+                        "Bot proposed unavailable concealed kong logical tile {LogicalTile} in game {GameId} seat {Seat}; using deterministic discard fallback.",
+                        decision.Action.LogicalTile, instance.GameId, seatIndex);
+                    decision = DiscardFallback() with
+                    {
+                        Reasoning = decision.Reasoning
+                            .Append("runtime: concealed kong unavailable; deterministic discard fallback")
+                            .ToArray()
+                    };
+                }
+                else if (decision.Action.Type == BotActionType.DeclareAddedKong
+                         && (decision.Action.TileId is null
+                             || !ChangshaGameStateMachine.CanDeclareAddedKong(
+                                 state, seatIndex, decision.Action.TileId.Value)))
+                {
+                    _logger.LogWarning(
+                        "Bot proposed unavailable added kong tile {TileId} in game {GameId} seat {Seat}; using deterministic discard fallback.",
+                        decision.Action.TileId, instance.GameId, seatIndex);
+                    decision = DiscardFallback() with
+                    {
+                        Reasoning = decision.Reasoning
+                            .Append("runtime: added kong unavailable; deterministic discard fallback")
+                            .ToArray()
+                    };
+                }
                 else if (decision.Action.Type == BotActionType.Discard
                          && (decision.Action.TileId is null || !hand.ConcealedTiles.Contains(decision.Action.TileId.Value)))
                 {
