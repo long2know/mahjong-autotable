@@ -1861,8 +1861,21 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             var decisionState = CopyState(state);
             BotDecision ClaimFallback()
             {
+                if (IsOfferedClaim(expectedWindow, seatIndex, TableClaimType.Hu))
+                {
+                    return BotDecision.FromAction(BotAction.Claim(TableClaimType.Hu)) with
+                    {
+                        Reasoning = new[]
+                        {
+                            "runtime: claim decision timeout; direct hu fallback from offered claims"
+                        }
+                    };
+                }
+
                 var fallbackAction = new ChangshaBotPolicy().DecideAction(decisionState, seatIndex);
-                if (fallbackAction.Type != BotActionType.Claim || fallbackAction.ClaimType is null)
+                if (fallbackAction.Type != BotActionType.Claim
+                    || fallbackAction.ClaimType is null
+                    || !IsOfferedClaim(expectedWindow, seatIndex, fallbackAction.ClaimType.Value))
                 {
                     fallbackAction = BotAction.Pass();
                 }

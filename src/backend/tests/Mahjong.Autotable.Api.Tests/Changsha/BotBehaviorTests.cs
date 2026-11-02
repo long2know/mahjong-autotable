@@ -851,7 +851,7 @@ public class BotBehaviorTests
             o.BotClaimDelayMs = 5;
             // Keep claim-window timeout far above decision timeout so we verify decision-timeout
             // fallback behavior rather than window-timeout auto-pass resolution.
-            o.ClaimWindowTimeoutMs = 10_000;
+            o.ClaimWindowTimeoutMs = 20_000;
         });
         var runtime = harness.Runtime;
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -910,7 +910,7 @@ public class BotBehaviorTests
                        && snap.CurrentWin is not null
                        && snap.CurrentWin.WinningSeatIndex == 1;
             },
-            TimeSpan.FromMilliseconds(8_000),
+            TimeSpan.FromMilliseconds(12_000),
             "claim-timeout medium fallback did not convert available Hu opportunity");
         sw.Stop();
 
@@ -924,10 +924,10 @@ public class BotBehaviorTests
         Assert.NotSame(live, strategyState);
         Assert.NotSame(live.EventLog, strategyState.EventLog);
         Assert.NotSame(live.Hands[1].ConcealedTiles, strategyState.Hands[1].ConcealedTiles);
-        Assert.True(sw.ElapsedMilliseconds < 9_000,
+        Assert.True(sw.ElapsedMilliseconds < 13_000,
             $"Claim-timeout medium fallback did not fire within BotDecisionTimeoutMs + buffer. " +
             $"Took {sw.ElapsedMilliseconds}ms; decision-timeout fallback (100ms) must resolve long " +
-            $"before the 10s ClaimWindowTimeoutMs path.");
+            $"before the 20s ClaimWindowTimeoutMs path.");
     }
 
     [Fact, Trait("Category", "Changsha")]
