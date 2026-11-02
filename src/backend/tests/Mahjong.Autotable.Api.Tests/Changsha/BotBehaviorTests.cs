@@ -759,9 +759,8 @@ public class BotBehaviorTests
 
         var resolved = Snapshot(runtime, gameId);
         Assert.Contains(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 0);
+        Assert.Contains(resolved.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 0);
         Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
-        Assert.NotNull(resolved.CurrentWin);
-        Assert.Equal(0, resolved.CurrentWin!.WinningSeatIndex);
     }
 
     [Fact, Trait("Category", "Changsha")]
