@@ -1503,8 +1503,11 @@ public sealed class MediumStrategy : IChangshaBotStrategy
 
         // If the full-dangerous candidate also improves post-discard shanten,
         // prefer shape improvement over raw keep-score delta. Otherwise enforce
-        // the usual score-tolerance guard.
+        // the usual score-tolerance guard when farther than practical striking
+        // distance. Near tenpai (0-2 shanten), prioritize full dangerous-opponent
+        // coverage over keep-score delta on same-shanten ties.
         if (fullSafetyCandidate.Value.Shanten == selected.Shanten
+            && selected.Shanten > 2
             && fullSafetyCandidate.Value.Score > selected.Score + FullDangerousGenbutsuScoreTolerance)
             return false;
 
