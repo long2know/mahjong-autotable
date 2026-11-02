@@ -1181,13 +1181,20 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 throw new HubException($"Seat {seatIndex} cannot claim {claimType} on this discard.");
 
             var chosenTiles = tileIds?.ToArray();
+            var hand = instance.State.Hands.Single(hand => hand.SeatIndex == seatIndex);
             if (parsed == TableClaimType.Chow)
             {
                 // Validate the complete choice before recording a pending response or
                 // cancelling the window timer during resolution.
-                ChangshaGameStateMachine.SelectChowTiles(
-                    instance.State.Hands.Single(hand => hand.SeatIndex == seatIndex),
-                    window.DiscardTileId, chosenTiles);
+                ChangshaGameStateMachine.SelectChowTiles(hand, window.DiscardTileId, chosenTiles);
+            }
+            else if (parsed == TableClaimType.Pung)
+            {
+                ChangshaGameStateMachine.SelectPungTiles(hand, window.DiscardTileId, chosenTiles);
+            }
+            else if (parsed == TableClaimType.Kong)
+            {
+                ChangshaGameStateMachine.SelectKongTiles(hand, window.DiscardTileId, chosenTiles);
             }
             else if (parsed == TableClaimType.Hu)
             {
@@ -1880,7 +1887,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                     return;
                 }
             }
-            var chosenTileIds = decided == TableClaimType.Chow
+            var chosenTileIds = decided is TableClaimType.Chow or TableClaimType.Pung or TableClaimType.Kong
                 ? action.ClaimTileIds?.ToArray()
                 : null;
             instance.PendingClaims[seatIndex] = new ClaimResponse(decided, chosenTileIds);

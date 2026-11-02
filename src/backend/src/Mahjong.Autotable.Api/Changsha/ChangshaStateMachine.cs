@@ -506,10 +506,14 @@ public sealed class ChangshaGameStateMachine
         => ResolveClaim(state, claimingSeatIndex, claimType, chosenTileIds: null);
 
     /// <summary>
-    /// Resolves a claim. For Chow claims, <paramref name="chosenTileIds"/> may carry the 2 concealed
-    /// tile IDs the claimant wishes to combine with the discarded tile. When provided, the IDs are
-    /// validated (both held + form a valid sequential chow with the discard); when null/empty the
-    /// resolver falls back to the lowest-rank valid pattern for legacy-client compatibility.
+    /// Resolves a claim. For meld claims (Pung/Kong/Chow), <paramref name="chosenTileIds"/> may carry
+    /// the concealed tile IDs the claimant wants to consume alongside the discarded tile.
+    /// <list type="bullet">
+    ///   <item><b>Pung</b>: exactly 2 concealed matching tile IDs.</item>
+    ///   <item><b>Kong</b>: exactly 3 concealed matching tile IDs.</item>
+    ///   <item><b>Chow</b>: exactly 2 concealed sequential tile IDs (same suit as discard).</item>
+    /// </list>
+    /// Provided IDs are validated. Null/empty preserves legacy fallback selection.
     /// </summary>
     public static List<ChangshaEvent> ResolveClaim(
         ChangshaGameState state,
@@ -546,8 +550,8 @@ public sealed class ChangshaGameStateMachine
         // Resolve and validate the complete choice before consuming either hand or river.
         var (kind, consumed) = claimType switch
         {
-            Tables.TableClaimType.Pung => (MeldKind.Pung, SelectMatchingTiles(hand, discardLogical, 2)),
-            Tables.TableClaimType.Kong => (MeldKind.ExposedKong, SelectMatchingTiles(hand, discardLogical, 3)),
+            Tables.TableClaimType.Pung => (MeldKind.Pung, SelectPungTiles(hand, claimWindow.DiscardTileId, chosenTileIds)),
+            Tables.TableClaimType.Kong => (MeldKind.ExposedKong, SelectKongTiles(hand, claimWindow.DiscardTileId, chosenTileIds)),
             Tables.TableClaimType.Chow => (MeldKind.Chow, SelectChowTiles(hand, claimWindow.DiscardTileId, chosenTileIds)),
             _ => throw new InvalidOperationException($"Unsupported meld claim {claimType}.")
         };
@@ -1420,8 +1424,74 @@ public sealed class ChangshaGameStateMachine
             state.DiscardPile.RemoveAt(idx);
     }
 
-    private static List<int> SelectMatchingTiles(ChangshaHandState hand, int logicalTile, int count)
+    /// <summary>
+    /// Selects the concealed tiles for a Pung claim. With explicit <paramref name="chosenTileIds"/>,
+    /// validates the IDs (in-hand, distinct, and matching the discard logical).
+    /// Otherwise falls back to the lowest sorted matching copies for legacy callers.
+    /// </summary>
+    public static List<int> SelectPungTiles(
+        ChangshaHandState hand,
+        int discardTileId,
+        int[]? chosenTileIds = null)
     {
+        var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
+        return SelectMatchingTiles(hand, discardLogical, count: 2, chosenTileIds, claimLabel: "Pung");
+    }
+
+    /// <summary>
+    /// Selects the concealed tiles for an exposed Kong claim. With explicit
+    /// <paramref name="chosenTileIds"/>, validates the IDs (in-hand, distinct, and
+    /// matching the discard logical). Otherwise falls back to the lowest sorted
+    /// matching copies for legacy callers.
+    /// </summary>
+    public static List<int> SelectKongTiles(
+        ChangshaHandState hand,
+        int discardTileId,
+        int[]? chosenTileIds = null)
+    {
+        var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
+        return SelectMatchingTiles(hand, discardLogical, count: 3, chosenTileIds, claimLabel: "Kong");
+    }
+
+    private static List<int> SelectMatchingTiles(
+        ChangshaHandState hand,
+        int logicalTile,
+        int count,
+        int[]? chosenTileIds,
+        string claimLabel)
+    {
+        if (chosenTileIds is { Length: > 0 })
+        {
+            if (chosenTileIds.Length != count)
+                throw new Tables.TableRuleException(
+                    Tables.TableActionErrorCodes.ClaimSelectionUnavailable,
+                    $"{claimLabel} requires exactly {count} tile ids; got {chosenTileIds.Length}.",
+                    stateVersion: 0, actionSequence: 0);
+
+            if (chosenTileIds.Distinct().Count() != chosenTileIds.Length)
+                throw new Tables.TableRuleException(
+                    Tables.TableActionErrorCodes.ClaimSelectionUnavailable,
+                    $"{claimLabel} tile ids must be distinct.",
+                    stateVersion: 0, actionSequence: 0);
+
+            foreach (var tileId in chosenTileIds)
+            {
+                if (!hand.ConcealedTiles.Contains(tileId))
+                    throw new Tables.TableRuleException(
+                        Tables.TableActionErrorCodes.ClaimSelectionUnavailable,
+                        $"{claimLabel} tile id {tileId} is not in the claimant's concealed hand.",
+                        stateVersion: 0, actionSequence: 0);
+
+                if (ChangshaDeckBuilder.GetLogicalTile(tileId) != logicalTile)
+                    throw new Tables.TableRuleException(
+                        Tables.TableActionErrorCodes.ClaimSelectionUnavailable,
+                        $"{claimLabel} tile id {tileId} does not match discard logical {logicalTile}.",
+                        stateVersion: 0, actionSequence: 0);
+            }
+
+            return chosenTileIds.ToList();
+        }
+
         var matches = hand.ConcealedTiles
             .Where(t => ChangshaDeckBuilder.GetLogicalTile(t) == logicalTile)
             .OrderBy(t => t)
