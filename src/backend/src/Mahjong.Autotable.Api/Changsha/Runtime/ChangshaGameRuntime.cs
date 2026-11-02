@@ -1915,11 +1915,34 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 }
                 catch (Exception ex) when (ex is TableRuleException or InvalidOperationException)
                 {
-                    _logger.LogWarning(ex,
-                        "Rejected bot claim {ClaimType} from seat {Seat} in game {GameId} due to invalid tile selection; recording bot pass instead.",
-                        decided, seatIndex, instance.GameId);
-                    decided = null;
-                    chosenTileIds = null;
+                    try
+                    {
+                        switch (decided)
+                        {
+                            case TableClaimType.Chow:
+                                ChangshaGameStateMachine.SelectChowTiles(hand, expectedWindow.DiscardTileId, null);
+                                break;
+                            case TableClaimType.Pung:
+                                ChangshaGameStateMachine.SelectPungTiles(hand, expectedWindow.DiscardTileId, null);
+                                break;
+                            case TableClaimType.Kong:
+                                ChangshaGameStateMachine.SelectKongTiles(hand, expectedWindow.DiscardTileId, null);
+                                break;
+                        }
+
+                        _logger.LogWarning(ex,
+                            "Bot claim {ClaimType} from seat {Seat} in game {GameId} had invalid explicit tileIds; using canonical claim tile fallback.",
+                            decided, seatIndex, instance.GameId);
+                        chosenTileIds = null;
+                    }
+                    catch (Exception fallbackEx) when (fallbackEx is TableRuleException or InvalidOperationException)
+                    {
+                        _logger.LogWarning(fallbackEx,
+                            "Rejected bot claim {ClaimType} from seat {Seat} in game {GameId}: invalid tile selection and canonical fallback unavailable; recording bot pass instead.",
+                            decided, seatIndex, instance.GameId);
+                        decided = null;
+                        chosenTileIds = null;
+                    }
                 }
             }
 
