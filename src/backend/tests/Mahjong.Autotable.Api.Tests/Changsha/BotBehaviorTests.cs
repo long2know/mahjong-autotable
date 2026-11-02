@@ -112,6 +112,50 @@ public class BotBehaviorTests
     }
 
     [Fact, Trait("Category", "Changsha")]
+    public void Bot_ClaimWindow_NonHuFallbackPrefersChowShape_OverPung_WhenChowHasStrongerOuts()
+    {
+        var (state, _) = ChangshaGameStateMachine.CreateGame(seed: 1717, botSeatIndexes: new[] { 0, 1, 2, 3 });
+        ChangshaGameStateMachine.StartGame(state);
+        ChangshaGameStateMachine.RollDice(state, new DiceService(1717));
+        ChangshaGameStateMachine.Deal(state);
+
+        var discardTong8 = ChangshaTestHelpers.Tid(Suit.Tong, 8, 1);
+        var chowTong6 = ChangshaTestHelpers.Tid(Suit.Tong, 6, 3);
+        var chowTong7 = ChangshaTestHelpers.Tid(Suit.Tong, 7, 2);
+
+        state.Hands[1].ConcealedTiles.Clear();
+        state.Hands[1].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Wan, 4, 0), ChangshaTestHelpers.Tid(Suit.Wan, 4, 2), ChangshaTestHelpers.Tid(Suit.Wan, 4, 3),
+            ChangshaTestHelpers.Tid(Suit.Tong, 3, 0), ChangshaTestHelpers.Tid(Suit.Tong, 4, 2), ChangshaTestHelpers.Tid(Suit.Tong, 5, 0),
+            chowTong6, chowTong7,
+            ChangshaTestHelpers.Tid(Suit.Tong, 8, 2), ChangshaTestHelpers.Tid(Suit.Tong, 8, 3),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 3, 3), ChangshaTestHelpers.Tid(Suit.Tiao, 4, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 5, 0)
+        });
+        state.Hands[1].Melds.Clear();
+
+        state.ClaimWindow = new ChangshaClaimWindow
+        {
+            DiscardSeatIndex = 0,
+            DiscardTileId = discardTong8,
+            Opportunities = new()
+            {
+                new ChangshaClaimOpportunity { SeatIndex = 1, ClaimType = TableClaimType.Pung, Priority = 2 },
+                new ChangshaClaimOpportunity { SeatIndex = 1, ClaimType = TableClaimType.Chow, Priority = 1 }
+            }
+        };
+        state.Phase = ChangshaPhase.AwaitingClaim;
+
+        var action = new ChangshaBotPolicy().DecideAction(state, 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Chow, action.ClaimType);
+        Assert.NotNull(action.ClaimTileIds);
+        Assert.Contains(chowTong6, action.ClaimTileIds!);
+        Assert.Contains(chowTong7, action.ClaimTileIds!);
+    }
+
+    [Fact, Trait("Category", "Changsha")]
     public async Task Bot_ClaimWindow_UsesExplicitChowTileIds_WhenStrategyProvidesBestShape()
     {
         await using var harness = new RuntimeHarness(o =>
@@ -1581,6 +1625,124 @@ public class BotBehaviorTests
         var pung = Assert.Single(resolved.Hands[1].Melds);
         Assert.Equal(MeldKind.Pung, pung.Kind);
         Assert.Contains(discardWan1, pung.TileIds);
+        Assert.Null(resolved.CurrentWin);
+        Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 1);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W103")]
+    public async Task Bot_HuOverflow_PrefersMediumNonHuChowShape_OverRankOnlyPungFallback()
+    {
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 2_000;
+            o.BotTurnDelayMs = 5_000;
+            o.BotClaimDelayMs = 1;
+            o.ClaimWindowTimeoutMs = 2_000;
+        });
+
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+
+        var gameId = await runtime.CreateGameAsync(
+            seed: 9053,
+            botSeatIndexes: new[] { 1 },
+            hostPlayerId: null,
+            hostConnectionId: null,
+            cts.Token);
+
+        Assert.True(runtime.TryGetSnapshot(gameId, out var state));
+        state!.DealerSeatIndex = 0;
+        foreach (var seat in state.Seats) seat.IsDealer = seat.SeatIndex == 0;
+        state.DealMode = DealMode.Auto;
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase == ChangshaPhase.AwaitingDiscard
+               && Snapshot(runtime, gameId).ActiveSeatIndex == 0,
+            TimeSpan.FromSeconds(2),
+            "auto-deal never reached AwaitingDiscard with seat 0 active");
+
+        var live = Snapshot(runtime, gameId);
+        var discardTong8 = ChangshaTestHelpers.Tid(Suit.Tong, 8, 1);
+        var chowTong6 = ChangshaTestHelpers.Tid(Suit.Tong, 6, 3);
+        var chowTong7 = ChangshaTestHelpers.Tid(Suit.Tong, 7, 2);
+
+        live.Hands[0].ConcealedTiles.Clear();
+        live.Hands[0].ConcealedTiles.AddRange(new[]
+        {
+            discardTong8,
+            ChangshaTestHelpers.Tid(Suit.Wan, 9, 0), ChangshaTestHelpers.Tid(Suit.Wan, 8, 0), ChangshaTestHelpers.Tid(Suit.Wan, 7, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 6, 0), ChangshaTestHelpers.Tid(Suit.Wan, 2, 0),
+            ChangshaTestHelpers.Tid(Suit.Tong, 9, 0), ChangshaTestHelpers.Tid(Suit.Tong, 7, 0), ChangshaTestHelpers.Tid(Suit.Tong, 6, 0), ChangshaTestHelpers.Tid(Suit.Tong, 5, 1),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 9, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 8, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 7, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 6, 0)
+        });
+        live.Hands[0].Melds.Clear();
+
+        // Seat 1: discard Tong-8 yields Hu + Pung + Chow, but overflowed Hu should
+        // fall back to the Medium non-Hu shape (Chow 6-7-8), not rank-only Pung.
+        live.Hands[1].ConcealedTiles.Clear();
+        live.Hands[1].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Wan, 4, 0), ChangshaTestHelpers.Tid(Suit.Wan, 4, 2), ChangshaTestHelpers.Tid(Suit.Wan, 4, 3),
+            ChangshaTestHelpers.Tid(Suit.Tong, 3, 0), ChangshaTestHelpers.Tid(Suit.Tong, 4, 2), ChangshaTestHelpers.Tid(Suit.Tong, 5, 0),
+            chowTong6, chowTong7,
+            ChangshaTestHelpers.Tid(Suit.Tong, 8, 2), ChangshaTestHelpers.Tid(Suit.Tong, 8, 3),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 3, 3), ChangshaTestHelpers.Tid(Suit.Tiao, 4, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 5, 0)
+        });
+        live.Hands[1].Melds.Clear();
+
+        // Keep other seats unable to claim the discard.
+        live.Hands[2].ConcealedTiles.Clear();
+        live.Hands[2].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Wan, 1, 0), ChangshaTestHelpers.Tid(Suit.Wan, 1, 1), ChangshaTestHelpers.Tid(Suit.Wan, 2, 1),
+            ChangshaTestHelpers.Tid(Suit.Wan, 2, 2), ChangshaTestHelpers.Tid(Suit.Wan, 3, 0), ChangshaTestHelpers.Tid(Suit.Wan, 3, 1),
+            ChangshaTestHelpers.Tid(Suit.Wan, 5, 1), ChangshaTestHelpers.Tid(Suit.Wan, 5, 2),
+            ChangshaTestHelpers.Tid(Suit.Tong, 1, 0), ChangshaTestHelpers.Tid(Suit.Tong, 1, 1),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 1, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 1, 1), ChangshaTestHelpers.Tid(Suit.Tiao, 2, 1)
+        });
+        live.Hands[2].Melds.Clear();
+
+        live.Hands[3].ConcealedTiles.Clear();
+        live.Hands[3].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Wan, 1, 2), ChangshaTestHelpers.Tid(Suit.Wan, 1, 3), ChangshaTestHelpers.Tid(Suit.Wan, 2, 3),
+            ChangshaTestHelpers.Tid(Suit.Wan, 3, 2), ChangshaTestHelpers.Tid(Suit.Wan, 3, 3), ChangshaTestHelpers.Tid(Suit.Wan, 5, 3),
+            ChangshaTestHelpers.Tid(Suit.Wan, 6, 1), ChangshaTestHelpers.Tid(Suit.Wan, 6, 2),
+            ChangshaTestHelpers.Tid(Suit.Tong, 1, 2), ChangshaTestHelpers.Tid(Suit.Tong, 1, 3),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 1, 2), ChangshaTestHelpers.Tid(Suit.Tiao, 1, 3), ChangshaTestHelpers.Tid(Suit.Tiao, 2, 2)
+        });
+        live.Hands[3].Melds.Clear();
+
+        // Force Hu preflight overflow so runtime must downgrade to non-Hu claim quality path.
+        live.CumulativeScores[0] = 0;
+        live.CumulativeScores[1] = int.MaxValue;
+        live.CumulativeScores[2] = 0;
+        live.CumulativeScores[3] = 0;
+
+        live.ClaimWindow = null;
+        live.MissedWinSeats.Clear();
+        live.ActiveSeatIndex = 0;
+        live.Phase = ChangshaPhase.AwaitingDiscard;
+
+        await runtime.DiscardAsync(gameId, seatIndex: 0, tileId: discardTong8, cts.Token);
+
+        await WaitForAsync(
+            () =>
+            {
+                var snap = Snapshot(runtime, gameId);
+                return snap.ClaimWindow is null
+                    && snap.Hands[1].Melds.Any(m => m.TileIds.Contains(discardTong8));
+            },
+            TimeSpan.FromSeconds(3),
+            "overflowed hu did not resolve to a non-hu claim");
+
+        var resolved = Snapshot(runtime, gameId);
+        var meld = Assert.Single(resolved.Hands[1].Melds);
+        Assert.Equal(MeldKind.Chow, meld.Kind);
+        Assert.Contains(discardTong8, meld.TileIds);
+        Assert.Contains(chowTong6, meld.TileIds);
+        Assert.Contains(chowTong7, meld.TileIds);
         Assert.Null(resolved.CurrentWin);
         Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 1);
     }
