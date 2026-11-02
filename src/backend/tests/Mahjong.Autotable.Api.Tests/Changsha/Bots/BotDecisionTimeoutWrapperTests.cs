@@ -125,4 +125,52 @@ public sealed class BotDecisionTimeoutWrapperTests
 
         Assert.Equal(BotActionType.Pass, action.Type);
     }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W104")]
+    public void NonHuHuOverflowFallback_PreservesMediumPass_WhenOnlyShapeRegressiveNonHuClaimsExist()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Wan(6, 0), Wan(8, 0),
+                Tong(2, 0), Tong(3, 0), Tong(9, 0), Tong(9, 1),
+                Tiao(3, 0), Tiao(4, 0), Tiao(5, 0), Tiao(5, 1), Tiao(5, 2), Tiao(8, 0), Tiao(9, 0)
+            }
+        };
+
+        var window = new ChangshaClaimWindow
+        {
+            DiscardSeatIndex = 0,
+            DiscardTileId = Tiao(5, 3),
+            Opportunities = new()
+            {
+                new ChangshaClaimOpportunity { SeatIndex = 1, ClaimType = TableClaimType.Hu, Priority = ChangshaClaimPriority.TierOf(TableClaimType.Hu) },
+                new ChangshaClaimOpportunity { SeatIndex = 1, ClaimType = TableClaimType.Pung, Priority = ChangshaClaimPriority.TierOf(TableClaimType.Pung) }
+            }
+        };
+
+        var decisionState = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingClaim,
+            ActiveSeatIndex = 0,
+            Hands = new()
+            {
+                new() { SeatIndex = 0 },
+                hand,
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            ClaimWindow = window
+        };
+
+        var action = ChangshaGameRuntime.BuildBestNonHuFallbackClaimAction(window, decisionState, seatIndex: 1);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
+    private static int Wan(int rank, int copy = 0) => ((int)Suit.Wan * 9 + (rank - 1)) * 4 + copy;
+    private static int Tong(int rank, int copy = 0) => ((int)Suit.Tong * 9 + (rank - 1)) * 4 + copy;
+    private static int Tiao(int rank, int copy = 0) => ((int)Suit.Tiao * 9 + (rank - 1)) * 4 + copy;
 }

@@ -2586,6 +2586,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             return fallbackAction;
         }
 
+        // Preserve Medium's non-Hu quality gates: if the policy deems every
+        // legal non-Hu claim shape-regressive and returns Pass, keep that pass
+        // instead of forcing a rank-only fallback claim.
+        if (fallbackAction.Type == BotActionType.Pass)
+            return fallbackAction;
+
         if (TrySelectBestNonHuOfferedClaim(expectedWindow, seatIndex, out var fallbackClaimType))
             return BotAction.Claim(fallbackClaimType);
 
