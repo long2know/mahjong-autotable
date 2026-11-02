@@ -2375,8 +2375,6 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
                 var strategy = instance.BotStrategy ?? _strategy;
                 var decisionState = CopyState(state);
-                BotDecision DiscardFallback() =>
-                    BotDecision.FromAction(BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(hand)));
                 BotDecision MediumOwnTurnFallback() =>
                     BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex);
                 var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
@@ -2396,12 +2394,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                     && !ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, seatIndex))
                 {
                     _logger.LogWarning(
-                        "Bot proposed unavailable self-draw in game {GameId} seat {Seat}; using deterministic discard fallback.",
+                        "Bot proposed unavailable self-draw in game {GameId} seat {Seat}; using medium-policy own-turn fallback.",
                         instance.GameId, seatIndex);
-                    decision = DiscardFallback() with
+                    decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
                     {
                         Reasoning = decision.Reasoning
-                            .Append("runtime: self-draw unavailable; deterministic discard fallback")
+                            .Append("runtime: self-draw unavailable; medium-policy own-turn fallback")
                             .ToArray()
                     };
                 }
@@ -2411,12 +2409,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                                  state, seatIndex, decision.Action.LogicalTile.Value)))
                 {
                     _logger.LogWarning(
-                        "Bot proposed unavailable concealed kong logical tile {LogicalTile} in game {GameId} seat {Seat}; using deterministic discard fallback.",
+                        "Bot proposed unavailable concealed kong logical tile {LogicalTile} in game {GameId} seat {Seat}; using medium-policy own-turn fallback.",
                         decision.Action.LogicalTile, instance.GameId, seatIndex);
-                    decision = DiscardFallback() with
+                    decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
                     {
                         Reasoning = decision.Reasoning
-                            .Append("runtime: concealed kong unavailable; deterministic discard fallback")
+                            .Append("runtime: concealed kong unavailable; medium-policy own-turn fallback")
                             .ToArray()
                     };
                 }
@@ -2426,12 +2424,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                                  state, seatIndex, decision.Action.TileId.Value)))
                 {
                     _logger.LogWarning(
-                        "Bot proposed unavailable added kong tile {TileId} in game {GameId} seat {Seat}; using deterministic discard fallback.",
+                        "Bot proposed unavailable added kong tile {TileId} in game {GameId} seat {Seat}; using medium-policy own-turn fallback.",
                         decision.Action.TileId, instance.GameId, seatIndex);
-                    decision = DiscardFallback() with
+                    decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
                     {
                         Reasoning = decision.Reasoning
-                            .Append("runtime: added kong unavailable; deterministic discard fallback")
+                            .Append("runtime: added kong unavailable; medium-policy own-turn fallback")
                             .ToArray()
                     };
                 }
@@ -2439,12 +2437,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                          && (decision.Action.TileId is null || !hand.ConcealedTiles.Contains(decision.Action.TileId.Value)))
                 {
                     _logger.LogWarning(
-                        "Bot proposed invalid discard tile {TileId} in game {GameId} seat {Seat}; using deterministic discard fallback.",
+                        "Bot proposed invalid discard tile {TileId} in game {GameId} seat {Seat}; using medium-policy own-turn fallback.",
                         decision.Action.TileId, instance.GameId, seatIndex);
-                    decision = DiscardFallback() with
+                    decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
                     {
                         Reasoning = decision.Reasoning
-                            .Append("runtime: invalid discard tile; deterministic discard fallback")
+                            .Append("runtime: invalid discard tile; medium-policy own-turn fallback")
                             .ToArray()
                     };
                 }
