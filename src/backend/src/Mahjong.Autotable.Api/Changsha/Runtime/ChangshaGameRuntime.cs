@@ -1245,6 +1245,33 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         window.Opportunities.Any(opportunity =>
             opportunity.SeatIndex == seatIndex && opportunity.ClaimType == claimType);
 
+    private static bool TrySelectBestNonHuOfferedClaim(
+        ChangshaClaimWindow window,
+        int seatIndex,
+        out TableClaimType claimType)
+    {
+        claimType = default;
+        var best = window.Opportunities
+            .Where(opportunity => opportunity.SeatIndex == seatIndex
+                && opportunity.ClaimType is not TableClaimType.Hu)
+            .OrderByDescending(opportunity => ChangshaClaimPriority.TierOf(opportunity.ClaimType))
+            .ThenByDescending(opportunity => opportunity.Priority)
+            .ThenByDescending(opportunity => opportunity.ClaimType switch
+            {
+                TableClaimType.Kong => 3,
+                TableClaimType.Pung => 2,
+                TableClaimType.Chow => 1,
+                _ => 0
+            })
+            .FirstOrDefault();
+
+        if (best is null)
+            return false;
+
+        claimType = best.ClaimType;
+        return true;
+    }
+
     private static void PreflightClaimHuSettlement(ChangshaGameState state, int seatIndex)
     {
         var settlement = CopyState(state);
@@ -1919,14 +1946,25 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 }
                 catch (OverflowException ex)
                 {
-                    _logger.LogWarning(ex,
-                        "Rejected bot Hu settlement outside the score range in game {GameId} seat {Seat}; recording bot pass instead.",
-                        instance.GameId, seatIndex);
-                    decided = null;
-                    chosenTileIds = null;
+                    if (TrySelectBestNonHuOfferedClaim(expectedWindow, seatIndex, out var fallbackClaimType))
+                    {
+                        _logger.LogWarning(ex,
+                            "Rejected bot Hu settlement outside the score range in game {GameId} seat {Seat}; falling back to legal non-hu claim {ClaimType}.",
+                            instance.GameId, seatIndex, fallbackClaimType);
+                        decided = fallbackClaimType;
+                        chosenTileIds = null;
+                    }
+                    else
+                    {
+                        _logger.LogWarning(ex,
+                            "Rejected bot Hu settlement outside the score range in game {GameId} seat {Seat}; recording bot pass instead.",
+                            instance.GameId, seatIndex);
+                        decided = null;
+                        chosenTileIds = null;
+                    }
                 }
             }
-            else if (decided is TableClaimType.Chow or TableClaimType.Pung or TableClaimType.Kong)
+            if (decided is TableClaimType.Chow or TableClaimType.Pung or TableClaimType.Kong)
             {
                 var hand = state.Hands.Single(h => h.SeatIndex == seatIndex);
                 try
