@@ -836,14 +836,12 @@ public class BotBehaviorTests
         Assert.Equal(expectedSafeDiscard, actualDiscard);
     }
 
-    [Fact, Trait("Category", "Changsha")]
-    public async Task Bot_Timeout_DuringClaim_PassesNotFalseHu()
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W96")]
+    public async Task Bot_Timeout_DuringClaim_UsesMediumFallback_ToTakeHuOpportunity()
     {
-        // Claim-window safe-default is Pass — NEVER a fake Hu. We construct a state where
-        // bot seat 1 holds a 13-tile Hu-wait on Wan-1, then the (human-driven, no-bot)
-        // dealer discards Wan-1. The runtime opens a claim window with a Hu opportunity
-        // for seat 1; BotClaimAsync fires, slow strategy times out, safe-default Pass
-        // resolves the window with no winner.
+        // Claim-window timeout fallback should preserve bot quality: if the strategy hangs,
+        // runtime should still apply deterministic Medium-policy claim evaluation (not forced
+        // Pass), so obvious Hu opportunities are converted instead of being dropped.
         AssertBotDecisionTimeoutOptionExists();
 
         await using var harness = new RuntimeHarness(o =>
@@ -851,10 +849,8 @@ public class BotBehaviorTests
             o.BotDecisionTimeoutMs = 100;
             o.BotTurnDelayMs = 5;
             o.BotClaimDelayMs = 5;
-            // Window timeout must be FAR larger than the decision timeout so we observe the
-            // decision-timeout fallback (not the window timeout) closing the window. A wide
-            // gap (100ms decision vs 10s window) keeps the timing assertion below robust to
-            // CI thread-pool jitter without ever colliding with the window-timeout path.
+            // Keep claim-window timeout far above decision timeout so we verify decision-timeout
+            // fallback behavior rather than window-timeout auto-pass resolution.
             o.ClaimWindowTimeoutMs = 10_000;
         });
         var runtime = harness.Runtime;
@@ -873,8 +869,7 @@ public class BotBehaviorTests
             TimeSpan.FromSeconds(2),
             "auto-deal never reached AwaitingDiscard");
 
-        // Surgically override hands so that a Wan-1 discard from seat 0 opens a Hu-only
-        // claim window for bot seat 1 (and no one else has a competing Hu opportunity).
+        // Prepare a Hu-only claim window for bot seat 1 on a Wan-1 discard.
         var live = Snapshot(runtime, gameId);
         var wan1Logical = ChangshaTestHelpers.Logical(Suit.Wan, 1);
         var wan1Copy0 = ChangshaTestHelpers.Tid(Suit.Wan, 1, 0);
@@ -883,11 +878,9 @@ public class BotBehaviorTests
         live.Hands[1].ConcealedTiles.AddRange(Acceptance.AcceptanceFixture.ThirteenTileWaitingForWan1());
         live.Hands[1].Melds.Clear();
 
-        // Strip every Wan-1 from seats 2 and 3 so they can't claim/Pung/Hu on the discard.
         foreach (var h in live.Hands.Where(h => h.SeatIndex is 2 or 3))
             h.ConcealedTiles.RemoveAll(t => ChangshaDeckBuilder.GetLogicalTile(t) == wan1Logical);
 
-        // Give dealer (seat 0) a hand of exactly 14 tiles including Wan-1 copy 0.
         live.Hands[0].ConcealedTiles.Clear();
         live.Hands[0].ConcealedTiles.AddRange(new[]
         {
@@ -901,35 +894,40 @@ public class BotBehaviorTests
             wan1Copy0,
         });
 
-        // SlowBotStrategy with a would-claim-Hu delegate makes failure mode loud: if Bishop
-        // ever surfaces the slow task's result instead of the safe-default Pass, the test
-        // catches it (CurrentWin would be populated).
-        var slow = new SlowBotStrategy(delayMs: 600, decision: (_, _) => BotAction.Claim(TableClaimType.Hu));
+        // Deliberately return Pass after timeout-sized sleep. If runtime uses the slow strategy
+        // result directly, Hu is missed; medium fallback should still claim Hu.
+        var slow = new SlowBotStrategy(delayMs: 600, decision: (_, _) => BotAction.Pass());
         InjectStrategyOrFail(runtime, slow);
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         await runtime.DiscardAsync(gameId, seatIndex: 0, tileId: wan1Copy0, cts.Token);
 
-        // The claim window must close via Pass-fallback within timeout + buffer.
         await WaitForAsync(
-            () => Snapshot(runtime, gameId).ClaimWindow is null
-               && Snapshot(runtime, gameId).Phase != ChangshaPhase.AwaitingClaim,
+            () =>
+            {
+                var snap = Snapshot(runtime, gameId);
+                return snap.ClaimWindow is null
+                       && snap.CurrentWin is not null
+                       && snap.CurrentWin.WinningSeatIndex == 1;
+            },
             TimeSpan.FromMilliseconds(8_000),
-            "claim window did not resolve via Pass-fallback after BotDecisionTimeoutMs");
+            "claim-timeout medium fallback did not convert available Hu opportunity");
         sw.Stop();
 
         var final = await runtime.TryGetSnapshotCopyAsync(gameId, cts.Token);
         Assert.NotNull(final);
-        Assert.Null(final.CurrentWin);
-        Assert.DoesNotContain(final.EventLog, e => e.EventType == "win-declared");
+        Assert.NotNull(final.CurrentWin);
+        Assert.Equal(1, final.CurrentWin!.WinningSeatIndex);
+        Assert.Contains(final.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 1);
+
         var strategyState = await slow.FirstState.Task.WaitAsync(cts.Token);
         Assert.NotSame(live, strategyState);
         Assert.NotSame(live.EventLog, strategyState.EventLog);
         Assert.NotSame(live.Hands[1].ConcealedTiles, strategyState.Hands[1].ConcealedTiles);
         Assert.True(sw.ElapsedMilliseconds < 9_000,
-            $"Claim-window Pass-fallback did not fire within BotDecisionTimeoutMs + buffer. " +
-            $"Took {sw.ElapsedMilliseconds}ms; the decision-timeout fallback (100ms) must close " +
-            $"the window well before the 10s ClaimWindowTimeoutMs path.");
+            $"Claim-timeout medium fallback did not fire within BotDecisionTimeoutMs + buffer. " +
+            $"Took {sw.ElapsedMilliseconds}ms; decision-timeout fallback (100ms) must resolve long " +
+            $"before the 10s ClaimWindowTimeoutMs path.");
     }
 
     [Fact, Trait("Category", "Changsha")]
