@@ -836,6 +836,86 @@ public class BotBehaviorTests
         Assert.Equal(expectedSafeDiscard, actualDiscard);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W97")]
+    public async Task Bot_Timeout_OnOwnTurn_UsesMediumFallback_ToTakeSelfDrawHu()
+    {
+        // Own-turn timeout fallback should preserve bot quality too: if strategy hangs,
+        // runtime should apply deterministic Medium-policy own-turn evaluation and
+        // convert obvious self-draw Hu opportunities instead of forcing a discard.
+        AssertBotDecisionTimeoutOptionExists();
+
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 100;
+            o.BotTurnDelayMs = 5;
+            o.BotClaimDelayMs = 5;
+            o.ClaimWindowTimeoutMs = 2_000;
+        });
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        var gameId = await runtime.CreateGameAsync(seed: 778899,
+            botSeatIndexes: new[] { 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null, cts.Token);
+        Assert.True(runtime.TryGetSnapshot(gameId, out var state));
+        state!.DealerSeatIndex = 0;
+        foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == 0;
+        state.DealMode = DealMode.Auto;
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+        await WaitForAsync(
+            () =>
+            {
+                var snap = Snapshot(runtime, gameId);
+                return snap.Phase == ChangshaPhase.AwaitingDiscard && snap.ActiveSeatIndex == 0;
+            },
+            TimeSpan.FromSeconds(2),
+            "auto-deal never reached AwaitingDiscard with dealer seat active");
+
+        // Dealer starts human in this test to avoid implicit scheduling races; we
+        // then flip to bot and explicitly trigger ScheduleBotIfNeeded after shaping
+        // a known self-draw win hand.
+        var live = Snapshot(runtime, gameId);
+        live.Hands[0].ConcealedTiles.Clear();
+        live.Hands[0].ConcealedTiles.AddRange(ChangshaTestHelpers.Tiles(
+            (Suit.Wan, 1), (Suit.Wan, 2), (Suit.Wan, 3),
+            (Suit.Wan, 4), (Suit.Wan, 5), (Suit.Wan, 6),
+            (Suit.Tong, 1), (Suit.Tong, 2), (Suit.Tong, 3),
+            (Suit.Tiao, 4), (Suit.Tiao, 5), (Suit.Tiao, 6),
+            (Suit.Tong, 5), (Suit.Tong, 5)));
+        live.Hands[0].Melds.Clear();
+        live.LastDrawSeatIndex = 0;
+        live.Seats[0].IsBot = true;
+        Assert.True(ChangshaGameStateMachine.CanDeclareSelfDrawWin(live, 0));
+
+        var slow = new SlowBotStrategy(delayMs: 600, decision: (_, _) => BotAction.Pass());
+        InjectStrategyOrFail(runtime, slow);
+
+        var baselineEventCount = live.EventLog.Count;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await ScheduleBotIfNeededOrFail(runtime, gameId, cts.Token);
+        await WaitForAsync(
+            () =>
+            {
+                var snap = Snapshot(runtime, gameId);
+                return snap.EventLog
+                    .Skip(baselineEventCount)
+                    .Any(e => e.EventType == "win-declared" && e.SeatIndex == 0);
+            },
+            TimeSpan.FromMilliseconds(4_000),
+            "own-turn timeout medium fallback did not declare self-draw Hu");
+        sw.Stop();
+
+        var final = await runtime.TryGetSnapshotCopyAsync(gameId, cts.Token);
+        Assert.NotNull(final);
+        Assert.Contains(final.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 0);
+        Assert.DoesNotContain(final.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
+        Assert.True(sw.ElapsedMilliseconds < 2_500,
+            $"Own-turn timeout fallback took too long to convert immediate self-draw Hu. Took {sw.ElapsedMilliseconds}ms.");
+        Assert.True(slow.InvocationCount >= 1,
+            "Slow strategy was never invoked; timeout fallback path was not exercised.");
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W96")]
     public async Task Bot_Timeout_DuringClaim_UsesMediumFallback_ToTakeHuOpportunity()
     {
@@ -1178,6 +1258,31 @@ public class BotBehaviorTests
             "ChangshaRuntimeOptions.BotDecisionTimeoutMs missing. Bishop owns Phase H Wave 1 — add the new " +
             "option (int, default 2000ms) and wrap _botPolicy.DecideAction with a Task.WhenAny race.");
         Assert.Equal(typeof(int), prop!.PropertyType);
+    }
+
+    private static async Task ScheduleBotIfNeededOrFail(IChangshaGameRuntime runtime, string gameId, CancellationToken ct)
+    {
+        var runtimeType = runtime.GetType();
+        var gamesField = runtimeType.GetField("_games", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(gamesField);
+
+        var games = gamesField!.GetValue(runtime);
+        Assert.NotNull(games);
+
+        var tryGetValue = games!.GetType().GetMethod("TryGetValue", BindingFlags.Public | BindingFlags.Instance);
+        Assert.NotNull(tryGetValue);
+
+        var args = new object?[] { gameId, null };
+        var found = (bool)(tryGetValue!.Invoke(games, args) ?? false);
+        Assert.True(found, $"Failed to locate runtime game instance for gameId={gameId}.");
+        Assert.NotNull(args[1]);
+
+        var schedule = runtimeType.GetMethod("ScheduleBotIfNeededAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(schedule);
+
+        var task = schedule!.Invoke(runtime, new[] { args[1], (object)ct }) as Task;
+        Assert.NotNull(task);
+        await task!;
     }
 
     /// <summary>Reflectively swap the runtime's bot-decision strategy. Bishop's Phase H

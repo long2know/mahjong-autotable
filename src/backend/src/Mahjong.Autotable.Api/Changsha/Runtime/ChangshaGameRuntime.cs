@@ -2307,8 +2307,9 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                     || !ChangshaOwnTurnActions.IsReady(instance.State, seatIndex))
                     return;
                 // Phase H Wave 1 — race the strategy against BotDecisionTimeoutMs. A hung
-                // strategy yields the deterministic Medium-tier discard so the turn loop
-                // makes progress instead of blocking the table indefinitely.
+                // strategy now falls back to deterministic Medium-policy own-turn evaluation
+                // (rather than unconditional discard) so timeout paths still preserve obvious
+                // Hu/Kong quality when legal.
                 // Phase J Wave 10 — capture the decision (with reasoning)
                 // and stash on the instance for replay-debugScore enrichment.
                 // Bishop W25 — per-game strategy override (URL `?botDifficulty=`)
@@ -2319,10 +2320,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 var decisionState = CopyState(state);
                 BotDecision DiscardFallback() =>
                     BotDecision.FromAction(BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(hand)));
+                BotDecision MediumOwnTurnFallback() =>
+                    BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex);
                 var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
                     () => strategy.DecideWithReasoning(decisionState, seatIndex),
                     _options.BotDecisionTimeoutMs,
-                    DiscardFallback,
+                    MediumOwnTurnFallback,
                     _logger,
                     ct).ConfigureAwait(false);
                 if (!state.Seats[seatIndex].IsBot || !ChangshaOwnTurnActions.IsReady(state, seatIndex))
@@ -2456,6 +2459,37 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             // Safety net for the delay-cancel / validation-fail early returns (idempotent).
             if (guardHeld) instance.EndBotSchedule(BotScheduleKind.Turn, seatIndex);
         }
+    }
+
+    private static BotDecision BuildMediumOwnTurnTimeoutFallbackDecision(
+        ChangshaGameState decisionState,
+        ChangshaGameState liveState,
+        ChangshaHandState liveHand,
+        int seatIndex)
+    {
+        var fallbackAction = new ChangshaBotPolicy().DecideAction(decisionState, seatIndex);
+        var fallbackIsLegal = fallbackAction.Type switch
+        {
+            BotActionType.DeclareWin => ChangshaGameStateMachine.CanDeclareSelfDrawWin(liveState, seatIndex),
+            BotActionType.DeclareConcealedKong => fallbackAction.LogicalTile is int logicalTile
+                && ChangshaGameStateMachine.CanDeclareConcealedKong(liveState, seatIndex, logicalTile),
+            BotActionType.DeclareAddedKong => fallbackAction.TileId is int addedKongTileId
+                && ChangshaGameStateMachine.CanDeclareAddedKong(liveState, seatIndex, addedKongTileId),
+            BotActionType.Discard => fallbackAction.TileId is int discardTileId
+                && liveHand.ConcealedTiles.Contains(discardTileId),
+            _ => false,
+        };
+
+        if (!fallbackIsLegal)
+            fallbackAction = BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(liveHand));
+
+        return BotDecision.FromAction(fallbackAction) with
+        {
+            Reasoning = new[]
+            {
+                "runtime: turn decision timeout; medium-policy own-turn fallback"
+            }
+        };
     }
 
     // ── Hand finished / next hand ─────────────────────────────────────
