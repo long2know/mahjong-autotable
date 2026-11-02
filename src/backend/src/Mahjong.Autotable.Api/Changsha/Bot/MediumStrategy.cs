@@ -677,7 +677,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 if (best.Shanten <= 1
                     && deadSmallWinSingleton.Value.Shanten > best.Shanten)
                 {
-                    return (best.TileId, false);
+                    return ReturnWithDangerousPromotion(best.TileId, false);
                 }
 
                 var hasFullDangerousLiveSmallWinSingleton = scored.Any(entry =>
@@ -690,7 +690,7 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                     && deadSmallWinSingleton.Value.Shanten > best.Shanten
                     && !hasFullDangerousLiveSmallWinSingleton)
                 {
-                    return (best.TileId, false);
+                    return ReturnWithDangerousPromotion(best.TileId, false);
                 }
 
                 if (TrySelectTenpaiSafeOffRankPair(
@@ -829,14 +829,14 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                         var singletonOpponentSafety = OpponentSafetyTieBreaker(smallWinSingleton.Value.TileId, safetyDiscardLogicals);
 
                         if (singletonOpponentSafety > bestOpponentSafety)
-                            return (best.TileId, false);
+                            return ReturnWithDangerousPromotion(best.TileId, false);
 
                         if (singletonOpponentSafety == bestOpponentSafety)
                         {
                             var bestTenpaiSafety = TenpaiDetector.SafetyBias(best.TileId, state, botSeatIndex);
                             var singletonTenpaiSafety = TenpaiDetector.SafetyBias(smallWinSingleton.Value.TileId, state, botSeatIndex);
                             if (singletonTenpaiSafety > bestTenpaiSafety)
-                                return (best.TileId, false);
+                                return ReturnWithDangerousPromotion(best.TileId, false);
                         }
                     }
 
