@@ -857,7 +857,7 @@ public class BotBehaviorTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
         var gameId = await runtime.CreateGameAsync(seed: 11,
-            botSeatIndexes: new[] { 1 }, hostPlayerId: null, hostConnectionId: null, cts.Token);
+            botSeatIndexes: new[] { 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null, cts.Token);
         Assert.True(runtime.TryGetSnapshot(gameId, out var state));
         state!.DealerSeatIndex = 0;
         foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == 0;
