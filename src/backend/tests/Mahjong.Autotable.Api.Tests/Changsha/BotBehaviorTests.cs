@@ -1010,6 +1010,120 @@ public class BotBehaviorTests
             $"before the 20s ClaimWindowTimeoutMs path.");
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W97")]
+    public async Task Bot_HuOverflow_FallsBackToBestNonHuClaim_InsteadOfPassing()
+    {
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 2_000;
+            o.BotTurnDelayMs = 5_000;
+            o.BotClaimDelayMs = 1;
+            o.ClaimWindowTimeoutMs = 2_000;
+        });
+
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+
+        var gameId = await runtime.CreateGameAsync(
+            seed: 9051,
+            botSeatIndexes: new[] { 1 },
+            hostPlayerId: null,
+            hostConnectionId: null,
+            cts.Token);
+
+        Assert.True(runtime.TryGetSnapshot(gameId, out var state));
+        state!.DealerSeatIndex = 0;
+        foreach (var seat in state.Seats) seat.IsDealer = seat.SeatIndex == 0;
+        state.DealMode = DealMode.Auto;
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase == ChangshaPhase.AwaitingDiscard
+               && Snapshot(runtime, gameId).ActiveSeatIndex == 0,
+            TimeSpan.FromSeconds(2),
+            "auto-deal never reached AwaitingDiscard with seat 0 active");
+
+        var live = Snapshot(runtime, gameId);
+        var discardWan1 = ChangshaTestHelpers.Tid(Suit.Wan, 1, 0);
+
+        // Seat 0: legal 14-tile hand containing the discard tile.
+        live.Hands[0].ConcealedTiles.Clear();
+        live.Hands[0].ConcealedTiles.AddRange(new[]
+        {
+            discardWan1,
+            ChangshaTestHelpers.Tid(Suit.Wan, 9, 0), ChangshaTestHelpers.Tid(Suit.Wan, 8, 0), ChangshaTestHelpers.Tid(Suit.Wan, 7, 0),
+            ChangshaTestHelpers.Tid(Suit.Tong, 9, 0), ChangshaTestHelpers.Tid(Suit.Tong, 8, 0), ChangshaTestHelpers.Tid(Suit.Tong, 7, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 9, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 8, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 7, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 4, 0), ChangshaTestHelpers.Tid(Suit.Wan, 5, 0), ChangshaTestHelpers.Tid(Suit.Wan, 6, 0),
+            ChangshaTestHelpers.Tid(Suit.Tong, 6, 0)
+        });
+        live.Hands[0].Melds.Clear();
+
+        // Seat 1 (bot): discard Wan-1 gives both Hu and Pung opportunities.
+        live.Hands[1].ConcealedTiles.Clear();
+        live.Hands[1].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Wan, 1, 1), ChangshaTestHelpers.Tid(Suit.Wan, 1, 2),
+            ChangshaTestHelpers.Tid(Suit.Wan, 2, 1), ChangshaTestHelpers.Tid(Suit.Wan, 3, 1), ChangshaTestHelpers.Tid(Suit.Wan, 4, 1),
+            ChangshaTestHelpers.Tid(Suit.Wan, 5, 1), ChangshaTestHelpers.Tid(Suit.Wan, 6, 1), ChangshaTestHelpers.Tid(Suit.Wan, 7, 1),
+            ChangshaTestHelpers.Tid(Suit.Tong, 2, 1), ChangshaTestHelpers.Tid(Suit.Tong, 3, 1), ChangshaTestHelpers.Tid(Suit.Tong, 4, 1),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 9, 1), ChangshaTestHelpers.Tid(Suit.Tiao, 9, 2)
+        });
+        live.Hands[1].Melds.Clear();
+
+        live.Hands[2].ConcealedTiles.Clear();
+        live.Hands[2].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Wan, 2, 2), ChangshaTestHelpers.Tid(Suit.Wan, 3, 2), ChangshaTestHelpers.Tid(Suit.Wan, 4, 2),
+            ChangshaTestHelpers.Tid(Suit.Wan, 5, 2), ChangshaTestHelpers.Tid(Suit.Wan, 6, 2), ChangshaTestHelpers.Tid(Suit.Wan, 7, 2),
+            ChangshaTestHelpers.Tid(Suit.Tong, 2, 2), ChangshaTestHelpers.Tid(Suit.Tong, 3, 2), ChangshaTestHelpers.Tid(Suit.Tong, 4, 2),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 2, 2), ChangshaTestHelpers.Tid(Suit.Tiao, 3, 2), ChangshaTestHelpers.Tid(Suit.Tiao, 4, 2),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 5, 2)
+        });
+        live.Hands[2].Melds.Clear();
+
+        live.Hands[3].ConcealedTiles.Clear();
+        live.Hands[3].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Wan, 2, 3), ChangshaTestHelpers.Tid(Suit.Wan, 3, 3), ChangshaTestHelpers.Tid(Suit.Wan, 4, 3),
+            ChangshaTestHelpers.Tid(Suit.Wan, 5, 3), ChangshaTestHelpers.Tid(Suit.Wan, 6, 3), ChangshaTestHelpers.Tid(Suit.Wan, 7, 3),
+            ChangshaTestHelpers.Tid(Suit.Tong, 2, 3), ChangshaTestHelpers.Tid(Suit.Tong, 3, 3), ChangshaTestHelpers.Tid(Suit.Tong, 4, 3),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 2, 3), ChangshaTestHelpers.Tid(Suit.Tiao, 3, 3), ChangshaTestHelpers.Tid(Suit.Tiao, 4, 3),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 5, 3)
+        });
+        live.Hands[3].Melds.Clear();
+
+        // Force Hu preflight overflow so runtime must downgrade to a legal non-Hu claim.
+        live.CumulativeScores[0] = 0;
+        live.CumulativeScores[1] = int.MaxValue;
+        live.CumulativeScores[2] = 0;
+        live.CumulativeScores[3] = 0;
+
+        live.ClaimWindow = null;
+        live.MissedWinSeats.Clear();
+        live.ActiveSeatIndex = 0;
+        live.Phase = ChangshaPhase.AwaitingDiscard;
+
+        await runtime.DiscardAsync(gameId, seatIndex: 0, tileId: discardWan1, cts.Token);
+
+        await WaitForAsync(
+            () =>
+            {
+                var snap = Snapshot(runtime, gameId);
+                return snap.ClaimWindow is null
+                    && snap.Hands[1].Melds.Any(m => m.Kind == MeldKind.Pung && m.TileIds.Contains(discardWan1));
+            },
+            TimeSpan.FromSeconds(3),
+            "overflowed hu did not downgrade to a legal non-hu claim");
+
+        var resolved = Snapshot(runtime, gameId);
+        var pung = Assert.Single(resolved.Hands[1].Melds);
+        Assert.Equal(MeldKind.Pung, pung.Kind);
+        Assert.Contains(discardWan1, pung.TileIds);
+        Assert.Null(resolved.CurrentWin);
+        Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 1);
+    }
+
     [Fact, Trait("Category", "Changsha")]
     public async Task Bot_Decision_Within_Timeout_ProceedsNormally()
     {
