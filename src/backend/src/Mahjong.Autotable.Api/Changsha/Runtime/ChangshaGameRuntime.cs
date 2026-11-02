@@ -1279,6 +1279,13 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         ChangshaGameStateMachine.Score(settlement);
     }
 
+    private static void PreflightSelfDrawHuSettlement(ChangshaGameState state, int seatIndex)
+    {
+        var settlement = CopyState(state);
+        ChangshaGameStateMachine.DeclareSelfDrawWin(settlement, seatIndex);
+        ChangshaGameStateMachine.Score(settlement);
+    }
+
     private bool RejectInvalidPendingClaims(ChangshaGameInstance instance, ChangshaClaimWindow window)
     {
         var rejected = false;
@@ -2403,6 +2410,25 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                             .ToArray()
                     };
                 }
+                else if (decision.Action.Type == BotActionType.DeclareWin)
+                {
+                    try
+                    {
+                        PreflightSelfDrawHuSettlement(state, seatIndex);
+                    }
+                    catch (OverflowException ex)
+                    {
+                        _logger.LogWarning(ex,
+                            "Rejected bot self-draw settlement outside the score range in game {GameId} seat {Seat}; using medium-policy own-turn fallback.",
+                            instance.GameId, seatIndex);
+                        decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
+                        {
+                            Reasoning = decision.Reasoning
+                                .Append("runtime: self-draw settlement overflow; medium-policy own-turn fallback")
+                                .ToArray()
+                        };
+                    }
+                }
                 else if (decision.Action.Type == BotActionType.DeclareConcealedKong
                          && (decision.Action.LogicalTile is null
                              || !ChangshaGameStateMachine.CanDeclareConcealedKong(
@@ -2544,7 +2570,8 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         var fallbackAction = new ChangshaBotPolicy().DecideAction(decisionState, seatIndex);
         var fallbackIsLegal = fallbackAction.Type switch
         {
-            BotActionType.DeclareWin => ChangshaGameStateMachine.CanDeclareSelfDrawWin(liveState, seatIndex),
+            BotActionType.DeclareWin => ChangshaGameStateMachine.CanDeclareSelfDrawWin(liveState, seatIndex)
+                && TryPreflightSelfDrawHuSettlement(liveState, seatIndex),
             BotActionType.DeclareConcealedKong => fallbackAction.LogicalTile is int logicalTile
                 && ChangshaGameStateMachine.CanDeclareConcealedKong(liveState, seatIndex, logicalTile),
             BotActionType.DeclareAddedKong => fallbackAction.TileId is int addedKongTileId
@@ -2564,6 +2591,19 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 "runtime: turn decision timeout; medium-policy own-turn fallback"
             }
         };
+    }
+
+    private static bool TryPreflightSelfDrawHuSettlement(ChangshaGameState state, int seatIndex)
+    {
+        try
+        {
+            PreflightSelfDrawHuSettlement(state, seatIndex);
+            return true;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
     }
 
     // ── Hand finished / next hand ─────────────────────────────────────
