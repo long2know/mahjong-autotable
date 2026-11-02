@@ -1054,8 +1054,8 @@ public class BotBehaviorTests
             {
                 var snap = Snapshot(runtime, gameId);
                 return snap.ClaimWindow is null
-                       && snap.CurrentWin is not null
-                       && snap.CurrentWin.WinningSeatIndex == 1;
+                       && snap.EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 1)
+                       && snap.EventLog.Any(e => e.EventType == "scoring-complete" && e.SeatIndex == 1);
             },
             TimeSpan.FromMilliseconds(12_000),
             "claim-timeout medium fallback did not convert available Hu opportunity");
@@ -1063,9 +1063,8 @@ public class BotBehaviorTests
 
         var final = await runtime.TryGetSnapshotCopyAsync(gameId, cts.Token);
         Assert.NotNull(final);
-        Assert.NotNull(final.CurrentWin);
-        Assert.Equal(1, final.CurrentWin!.WinningSeatIndex);
-        Assert.Contains(final.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 1);
+        Assert.Contains(final!.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 1);
+        Assert.Contains(final.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 1);
 
         var strategyState = await slow.FirstState.Task.WaitAsync(cts.Token);
         Assert.NotSame(live, strategyState);
