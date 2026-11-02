@@ -193,8 +193,9 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
         var postClaimVisibleLogicalCounts = BuildPostClaimVisibleLogicalCounts(externallyVisibleLogicalCounts, discardLogical);
 
+        var hasPungOpportunity = opportunities.Any(o => o.ClaimType == TableClaimType.Pung);
         (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) pungProbe =
-            opportunities.Any(o => o.ClaimType == TableClaimType.Pung)
+            hasPungOpportunity
                 ? ProbeAfterPungClaim(hand, discardLogical, discardTileId, postClaimVisibleLogicalCounts)
                 : (Shanten: int.MaxValue, SmallWinPairDistance: int.MaxValue, LiveWinningOuts: int.MinValue, ClaimTileIds: null);
 
@@ -229,9 +230,10 @@ public sealed class MediumStrategy : IChangshaBotStrategy
                 && postShanten == preShanten
                 && postSmallWinPairDistance == preSmallWinPairDistance
                 && postLiveWinningOuts == preLiveWinningOuts
-                && pungProbe.Shanten == postShanten
-                && pungProbe.SmallWinPairDistance == postSmallWinPairDistance
-                && pungProbe.LiveWinningOuts == postLiveWinningOuts;
+                && (!hasPungOpportunity
+                    || (pungProbe.Shanten == postShanten
+                        && pungProbe.SmallWinPairDistance == postSmallWinPairDistance
+                        && pungProbe.LiveWinningOuts == postLiveWinningOuts));
 
             if (postShanten == preShanten
                 && postSmallWinPairDistance == preSmallWinPairDistance

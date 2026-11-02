@@ -471,6 +471,34 @@ public class MediumClaimGuardTests
         Assert.Equal(BotActionType.Pass, action.Type);
     }
 
+    [Fact, Trait("Category", "Bot"), Trait("Wave", "W87")]
+    public void Medium_ClaimsNeutralKong_WhenLateHandOnlyKongOpportunityExists()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                Tong(2, 0), Tong(2, 1),
+                Wan(9, 0), Wan(9, 1), Wan(9, 2),
+                Wan(7, 0), Tiao(6, 0)
+            },
+            Melds = new()
+            {
+                BuildChowMeld(Wan(1, 0), Wan(2, 0), Wan(3, 0)),
+                BuildChowMeld(Tong(4, 0), Tong(5, 0), Tong(6, 0)),
+                BuildChowMeld(Tiao(7, 0), Tiao(8, 0), Tiao(9, 0))
+            }
+        };
+
+        var state = BuildSingleClaimState(hand, discardTileId: Wan(9, 3), claimType: TableClaimType.Kong);
+
+        var action = new MediumStrategy().DecideAction(state, botSeatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Kong, action.ClaimType);
+    }
+
     private static Meld BuildChowMeld(int tileA, int tileB, int tileC)
     {
         return new Meld
