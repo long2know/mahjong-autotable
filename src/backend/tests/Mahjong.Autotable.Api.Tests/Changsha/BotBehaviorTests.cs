@@ -199,8 +199,8 @@ public class BotBehaviorTests
         Assert.DoesNotContain(ChangshaTestHelpers.Tid(Suit.Tong, 5, 2), meld.TileIds);
     }
 
-    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W89")]
-    public async Task Bot_InvalidMatchingClaimTileIds_AreRejectedAsPass_WithoutStallingClaimResolution()
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W93")]
+    public async Task Bot_InvalidMatchingClaimTileIds_FallBackToCanonicalClaimTiles_WithoutStallingClaimResolution()
     {
         await using var harness = new RuntimeHarness(o =>
         {
@@ -305,17 +305,17 @@ public class BotBehaviorTests
                 return snap.ClaimWindow is null
                     && snap.Phase == ChangshaPhase.AwaitingDiscard
                     && snap.ActiveSeatIndex == 1
-                    && snap.DiscardPile.Count == 1
-                    && snap.DiscardPile[0].TileId == discardWan5;
+                    && snap.Hands[1].Melds.Any();
             },
             TimeSpan.FromSeconds(3),
-            "invalid bot pung selection did not degrade to pass + resolve the claim window");
+            "invalid bot pung selection did not fall back to canonical claim tile selection");
 
         var resolved = Snapshot(runtime, gameId);
         Assert.Null(resolved.ClaimWindow);
-        Assert.Empty(resolved.Hands[1].Melds);
-        Assert.Single(resolved.DiscardPile);
-        Assert.Equal(discardWan5, resolved.DiscardPile[0].TileId);
+        var meld = Assert.Single(resolved.Hands[1].Melds);
+        Assert.Equal(MeldKind.Pung, meld.Kind);
+        Assert.Contains(discardWan5, meld.TileIds);
+        Assert.Equal(3, meld.TileIds.Count);
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W90")]
