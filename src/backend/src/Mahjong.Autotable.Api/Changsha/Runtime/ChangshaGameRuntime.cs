@@ -1846,8 +1846,10 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 return;
             }
             if (instance.PendingClaims.ContainsKey(seatIndex)) return;
-            // Phase H Wave 1 — race the strategy against BotDecisionTimeoutMs. A hung
-            // strategy yields BotAction.Pass so the claim window can still resolve.
+            // Phase H Wave 1 — race the strategy against BotDecisionTimeoutMs.
+            // A hung strategy now falls back to deterministic Medium-policy claim
+            // evaluation (instead of unconditional Pass) so bots can still take
+            // legal Hu/Pung/Kong/Chow opportunities under timeout pressure.
             // Phase J Wave 10 — DecideWithReasoning surfaces the strategy's
             // tiered explanation; the BotDecision is stashed on the
             // instance for replay-debugScore enrichment.
@@ -1857,10 +1859,39 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             var strategy = instance.BotStrategy ?? _strategy;
             // A timed-out strategy keeps running after the lock is released.
             var decisionState = CopyState(state);
+            BotDecision ClaimFallback()
+            {
+                if (IsOfferedClaim(expectedWindow, seatIndex, TableClaimType.Hu))
+                {
+                    return BotDecision.FromAction(BotAction.Claim(TableClaimType.Hu)) with
+                    {
+                        Reasoning = new[]
+                        {
+                            "runtime: claim decision timeout; direct hu fallback from offered claims"
+                        }
+                    };
+                }
+
+                var fallbackAction = new ChangshaBotPolicy().DecideAction(decisionState, seatIndex);
+                if (fallbackAction.Type != BotActionType.Claim
+                    || fallbackAction.ClaimType is null
+                    || !IsOfferedClaim(expectedWindow, seatIndex, fallbackAction.ClaimType.Value))
+                {
+                    fallbackAction = BotAction.Pass();
+                }
+
+                return BotDecision.FromAction(fallbackAction) with
+                {
+                    Reasoning = new[]
+                    {
+                        "runtime: claim decision timeout; medium-policy claim fallback"
+                    }
+                };
+            }
             var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
                 () => strategy.DecideWithReasoning(decisionState, seatIndex),
                 _options.BotDecisionTimeoutMs,
-                () => BotDecision.FromAction(BotAction.Pass()),
+                ClaimFallback,
                 _logger,
                 ct).ConfigureAwait(false);
             instance.LastBotDecisions[seatIndex] = decision;
