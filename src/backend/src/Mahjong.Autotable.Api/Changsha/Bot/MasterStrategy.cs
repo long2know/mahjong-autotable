@@ -798,7 +798,8 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         if (fullSafetyCandidate is null)
             return false;
 
-        if (fullSafetyCandidate.Value.Score > selected.Score + FullDangerousGenbutsuScoreTolerance)
+        if (fullSafetyCandidate.Value.Score > selected.Score + FullDangerousGenbutsuScoreTolerance
+            && selected.Shanten > 2)
             return false;
 
         tileId = fullSafetyCandidate.Value.TileId;
