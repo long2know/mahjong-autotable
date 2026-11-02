@@ -907,6 +907,97 @@ public class BotBehaviorTests
         Assert.Contains(resolved.Hands[0].Melds, m => m.Kind == MeldKind.ConcealedKong);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W101")]
+    public async Task Bot_UnsupportedOwnTurnAction_UsesMediumFallback_ToTakeAddedKong()
+    {
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 2_000;
+            o.BotTurnDelayMs = 300;
+            o.BotClaimDelayMs = 1;
+            o.ClaimWindowTimeoutMs = 2_000;
+        });
+
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        InjectStrategyOrFail(runtime, new SlowBotStrategy(delayMs: 0, decision: (s, _) =>
+            s.Phase == ChangshaPhase.AwaitingDiscard
+                ? BotAction.Claim(TableClaimType.Pung, new[]
+                {
+                    ChangshaTestHelpers.Tid(Suit.Wan, 2, 0),
+                    ChangshaTestHelpers.Tid(Suit.Wan, 2, 1)
+                })
+                : BotAction.Pass()));
+
+        var gameId = await runtime.CreateGameAsync(
+            seed: 9053,
+            botSeatIndexes: new[] { 0 },
+            hostPlayerId: null,
+            hostConnectionId: null,
+            cts.Token);
+
+        Assert.True(runtime.TryGetSnapshot(gameId, out var state));
+        state!.DealerSeatIndex = 0;
+        foreach (var seat in state.Seats) seat.IsDealer = seat.SeatIndex == 0;
+        state.DealMode = DealMode.Auto;
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase == ChangshaPhase.AwaitingDiscard
+               && Snapshot(runtime, gameId).ActiveSeatIndex == 0,
+            TimeSpan.FromSeconds(2),
+            "auto-deal never reached AwaitingDiscard with seat 0 active");
+
+        var live = Snapshot(runtime, gameId);
+        live.Hands[0].ConcealedTiles.Clear();
+        live.Hands[0].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Wan, 2, 3),
+            ChangshaTestHelpers.Tid(Suit.Wan, 3, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 4, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 5, 0),
+            ChangshaTestHelpers.Tid(Suit.Tong, 1, 0),
+            ChangshaTestHelpers.Tid(Suit.Tong, 2, 0),
+            ChangshaTestHelpers.Tid(Suit.Tong, 3, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 4, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 5, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 6, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 9, 0),
+        });
+        live.Hands[0].Melds.Clear();
+        live.Hands[0].Melds.Add(new Meld
+        {
+            Kind = MeldKind.Pung,
+            TileIds = new List<int>
+            {
+                ChangshaTestHelpers.Tid(Suit.Wan, 2, 0),
+                ChangshaTestHelpers.Tid(Suit.Wan, 2, 1),
+                ChangshaTestHelpers.Tid(Suit.Wan, 2, 2)
+            }
+        });
+        live.LastDrawSeatIndex = 0;
+
+        var addedKongTile = ChangshaTestHelpers.Tid(Suit.Wan, 2, 3);
+        Assert.False(ChangshaGameStateMachine.CanDeclareSelfDrawWin(live, 0));
+        Assert.True(ChangshaGameStateMachine.CanDeclareAddedKong(live, 0, addedKongTile));
+
+        var baselineEventCount = live.EventLog.Count;
+
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).EventLog
+                .Skip(baselineEventCount)
+                .Any(e => e.EventType == "added-kong" && e.SeatIndex == 0),
+            TimeSpan.FromSeconds(2),
+            "unsupported own-turn action did not use medium fallback to take added kong");
+
+        var resolved = Snapshot(runtime, gameId);
+        Assert.Contains(resolved.EventLog, e => e.EventType == "added-kong" && e.SeatIndex == 0 && e.TileId == addedKongTile);
+        Assert.Contains(resolved.EventLog, e => e.EventType == "kong-replacement-drawn" && e.SeatIndex == 0);
+        Assert.Contains(resolved.Hands[0].Melds, m => m.Kind == MeldKind.AddedKong && m.TileIds.Count == 4 && m.TileIds.Contains(addedKongTile));
+        Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
+    }
+
     [Fact, Trait("Category", "Changsha")]
     public void Bot_DeterministicWithSeed_ProducesSameEventLog()
     {
