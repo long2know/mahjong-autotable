@@ -74,6 +74,12 @@ public class MediumClaimGuardTests
 
         Assert.Equal(BotActionType.Claim, action.Type);
         Assert.Equal(TableClaimType.Pung, action.ClaimType);
+        Assert.NotNull(action.ClaimTileIds);
+        Assert.Equal(2, action.ClaimTileIds!.Length);
+        Assert.All(action.ClaimTileIds, tileId =>
+            Assert.Equal(
+                ChangshaDeckBuilder.GetLogicalTile(Tong(9, 0)),
+                ChangshaDeckBuilder.GetLogicalTile(tileId)));
     }
 
     [Fact, Trait("Category", "Bot"), Trait("Wave", "W26")]
@@ -497,6 +503,12 @@ public class MediumClaimGuardTests
 
         Assert.Equal(BotActionType.Claim, action.Type);
         Assert.Equal(TableClaimType.Kong, action.ClaimType);
+        Assert.NotNull(action.ClaimTileIds);
+        Assert.Equal(3, action.ClaimTileIds!.Length);
+        Assert.All(action.ClaimTileIds, tileId =>
+            Assert.Equal(
+                ChangshaDeckBuilder.GetLogicalTile(Wan(9, 0)),
+                ChangshaDeckBuilder.GetLogicalTile(tileId)));
     }
 
     private static Meld BuildChowMeld(int tileA, int tileB, int tileC)

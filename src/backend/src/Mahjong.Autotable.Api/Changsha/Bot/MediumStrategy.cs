@@ -287,9 +287,10 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (!TryTakeTilesByLogical(concealedAfter, discardLogical, 2, out var claimedTileIds))
             return (int.MaxValue, int.MaxValue, int.MinValue, null);
 
+        var explicitClaimTileIds = claimedTileIds.ToArray();
         claimedTileIds.Add(discardTileId);
         var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.Pung, claimedTileIds, visibleLogicalCounts);
-        return (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, null);
+        return (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, explicitClaimTileIds);
     }
 
     private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) ProbeAfterExposedKongClaim(
@@ -302,9 +303,10 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         if (!TryTakeTilesByLogical(concealedAfter, discardLogical, 3, out var claimedTileIds))
             return (int.MaxValue, int.MaxValue, int.MinValue, null);
 
+        var explicitClaimTileIds = claimedTileIds.ToArray();
         claimedTileIds.Add(discardTileId);
         var probe = ProbeClaimOutcomeWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, claimedTileIds, visibleLogicalCounts);
-        return (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, null);
+        return (probe.Shanten, probe.SmallWinPairDistance, probe.LiveWinningOuts, explicitClaimTileIds);
     }
 
     private static (int Shanten, int SmallWinPairDistance, int LiveWinningOuts, int[]? ClaimTileIds) ProbeAfterChowClaim(
