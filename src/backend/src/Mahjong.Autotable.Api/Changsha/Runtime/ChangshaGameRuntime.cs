@@ -2291,6 +2291,19 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                             .ToArray()
                     };
                 }
+                else if (decision.Action.Type == BotActionType.Discard
+                         && (decision.Action.TileId is null || !hand.ConcealedTiles.Contains(decision.Action.TileId.Value)))
+                {
+                    _logger.LogWarning(
+                        "Bot proposed invalid discard tile {TileId} in game {GameId} seat {Seat}; using deterministic discard fallback.",
+                        decision.Action.TileId, instance.GameId, seatIndex);
+                    decision = DiscardFallback() with
+                    {
+                        Reasoning = decision.Reasoning
+                            .Append("runtime: invalid discard tile; deterministic discard fallback")
+                            .ToArray()
+                    };
+                }
                 instance.LastBotDecisions[seatIndex] = decision;
                 action = decision.Action;
             }
