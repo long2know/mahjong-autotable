@@ -371,6 +371,59 @@ public class BotBehaviorTests
         Assert.DoesNotContain(discarded, resolved.Hands[0].ConcealedTiles);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W91")]
+    public async Task Bot_InvalidOwnTurnConcealedKong_UsesFallbackDiscard_WithoutStallingTurnLoop()
+    {
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 2_000;
+            o.BotTurnDelayMs = 25;
+            o.BotClaimDelayMs = 1;
+            o.ClaimWindowTimeoutMs = 2_000;
+        });
+
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        InjectStrategyOrFail(runtime, new SlowBotStrategy(delayMs: 0, decision: (s, _) =>
+            s.Phase == ChangshaPhase.AwaitingDiscard
+                ? BotAction.DeclareConcealedKong(logicalTile: 999_999)
+                : BotAction.Pass()));
+
+        var gameId = await runtime.CreateGameAsync(
+            seed: 9044,
+            botSeatIndexes: new[] { 0 },
+            hostPlayerId: null,
+            hostConnectionId: null,
+            cts.Token);
+
+        Assert.True(runtime.TryGetSnapshot(gameId, out var state));
+        state!.DealerSeatIndex = 0;
+        foreach (var seat in state.Seats) seat.IsDealer = seat.SeatIndex == 0;
+        state.DealMode = DealMode.Auto;
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase == ChangshaPhase.AwaitingDiscard
+               && Snapshot(runtime, gameId).ActiveSeatIndex == 0,
+            TimeSpan.FromSeconds(2),
+            "auto-deal never reached AwaitingDiscard with seat 0 active");
+
+        var initialHandTiles = Snapshot(runtime, gameId).Hands[0].ConcealedTiles.ToHashSet();
+
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).DiscardPile.Count >= 1,
+            TimeSpan.FromSeconds(2),
+            "invalid concealed-kong proposal did not fall back to a legal discard");
+
+        var resolved = Snapshot(runtime, gameId);
+        var discarded = resolved.DiscardPile.Last().TileId;
+
+        Assert.Contains(discarded, initialHandTiles);
+        Assert.DoesNotContain(discarded, resolved.Hands[0].ConcealedTiles);
+        Assert.Empty(resolved.Hands[0].Melds);
+    }
+
     [Fact, Trait("Category", "Changsha")]
     public void Bot_DeterministicWithSeed_ProducesSameEventLog()
     {
