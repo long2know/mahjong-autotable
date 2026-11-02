@@ -1077,6 +1077,80 @@ public class BotBehaviorTests
             $"before the 20s ClaimWindowTimeoutMs path.");
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W99")]
+    public async Task Bot_UnsupportedClaimWindowAction_UsesMediumFallback_ToTakeHuOpportunity()
+    {
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 2_000;
+            o.BotTurnDelayMs = 5_000;
+            o.BotClaimDelayMs = 1;
+            o.ClaimWindowTimeoutMs = 20_000;
+        });
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        var gameId = await runtime.CreateGameAsync(seed: 9050,
+            botSeatIndexes: new[] { 1 }, hostPlayerId: null, hostConnectionId: null, cts.Token);
+        Assert.True(runtime.TryGetSnapshot(gameId, out var state));
+        state!.DealerSeatIndex = 0;
+        foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == 0;
+        state.DealMode = DealMode.Auto;
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase == ChangshaPhase.AwaitingDiscard,
+            TimeSpan.FromSeconds(2),
+            "auto-deal never reached AwaitingDiscard");
+
+        var live = Snapshot(runtime, gameId);
+        var wan1Logical = ChangshaTestHelpers.Logical(Suit.Wan, 1);
+        var wan1Copy0 = ChangshaTestHelpers.Tid(Suit.Wan, 1, 0);
+
+        live.Hands[1].ConcealedTiles.Clear();
+        live.Hands[1].ConcealedTiles.AddRange(Acceptance.AcceptanceFixture.ThirteenTileWaitingForWan1());
+        live.Hands[1].Melds.Clear();
+
+        live.Hands[0].ConcealedTiles.Clear();
+        live.Hands[0].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Tong, 9, 0), ChangshaTestHelpers.Tid(Suit.Tong, 9, 1),
+            ChangshaTestHelpers.Tid(Suit.Tong, 8, 0), ChangshaTestHelpers.Tid(Suit.Tong, 7, 0),
+            ChangshaTestHelpers.Tid(Suit.Tong, 6, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 9, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 9, 1), ChangshaTestHelpers.Tid(Suit.Tiao, 8, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 7, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 6, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 9, 0), ChangshaTestHelpers.Tid(Suit.Wan, 8, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 7, 0),
+            wan1Copy0,
+        });
+
+        foreach (var h in live.Hands.Where(h => h.SeatIndex != 1))
+            h.ConcealedTiles.RemoveAll(t => ChangshaDeckBuilder.GetLogicalTile(t) == wan1Logical && t != wan1Copy0);
+
+        InjectStrategyOrFail(runtime, new SlowBotStrategy(delayMs: 0, decision: (s, _) =>
+            s.Phase == ChangshaPhase.AwaitingClaim
+                ? BotAction.Discard(ChangshaTestHelpers.Tid(Suit.Tong, 9, 0))
+                : BotAction.Pass()));
+
+        await runtime.DiscardAsync(gameId, seatIndex: 0, tileId: wan1Copy0, cts.Token);
+
+        await WaitForAsync(
+            () =>
+            {
+                var snap = Snapshot(runtime, gameId);
+                return snap.ClaimWindow is null
+                       && snap.EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 1)
+                       && snap.EventLog.Any(e => e.EventType == "scoring-complete" && e.SeatIndex == 1);
+            },
+            TimeSpan.FromSeconds(10),
+            "unsupported claim-window action did not degrade to medium claim fallback");
+
+        var final = await runtime.TryGetSnapshotCopyAsync(gameId, cts.Token);
+        Assert.NotNull(final);
+        Assert.Contains(final!.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 1);
+        Assert.Contains(final.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 1);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W97")]
     public async Task Bot_HuOverflow_FallsBackToBestNonHuClaim_InsteadOfPassing()
     {
