@@ -1921,8 +1921,38 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 ClaimFallback,
                 _logger,
                 ct).ConfigureAwait(false);
-            instance.LastBotDecisions[seatIndex] = decision;
             var action = decision.Action;
+
+            if (action.Type is not BotActionType.Claim and not BotActionType.Pass)
+            {
+                _logger.LogWarning(
+                    "Bot proposed unsupported claim-window action {ActionType} from seat {Seat} in game {GameId}; using medium-policy claim fallback.",
+                    action.Type, seatIndex, instance.GameId);
+                decision = ClaimFallback() with
+                {
+                    Reasoning = decision.Reasoning
+                        .Append("runtime: unsupported claim-window action; medium-policy claim fallback")
+                        .ToArray()
+                };
+                action = decision.Action;
+            }
+            else if (action.Type == BotActionType.Claim
+                     && (action.ClaimType is null
+                         || !IsOfferedClaim(expectedWindow, seatIndex, action.ClaimType.Value)))
+            {
+                _logger.LogWarning(
+                    "Bot proposed invalid or unoffered claim {ClaimType} from seat {Seat} in game {GameId}; using medium-policy claim fallback.",
+                    action.ClaimType, seatIndex, instance.GameId);
+                decision = ClaimFallback() with
+                {
+                    Reasoning = decision.Reasoning
+                        .Append("runtime: invalid/unoffered claim; medium-policy claim fallback")
+                        .ToArray()
+                };
+                action = decision.Action;
+            }
+
+            instance.LastBotDecisions[seatIndex] = decision;
             decided = action.Type == BotActionType.Claim ? action.ClaimType : null;
 
             var chosenTileIds = decided is TableClaimType.Chow or TableClaimType.Pung or TableClaimType.Kong
