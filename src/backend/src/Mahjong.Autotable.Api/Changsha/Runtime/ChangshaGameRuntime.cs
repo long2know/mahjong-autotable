@@ -2435,12 +2435,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                          and not BotActionType.Discard)
                 {
                     _logger.LogWarning(
-                        "Bot proposed unsupported own-turn action {ActionType} in game {GameId} seat {Seat}; using deterministic discard fallback.",
+                        "Bot proposed unsupported own-turn action {ActionType} in game {GameId} seat {Seat}; using medium-policy own-turn fallback.",
                         decision.Action.Type, instance.GameId, seatIndex);
-                    decision = DiscardFallback() with
+                    decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
                     {
                         Reasoning = decision.Reasoning
-                            .Append("runtime: unsupported own-turn action; deterministic discard fallback")
+                            .Append("runtime: unsupported own-turn action; medium-policy own-turn fallback")
                             .ToArray()
                     };
                 }
