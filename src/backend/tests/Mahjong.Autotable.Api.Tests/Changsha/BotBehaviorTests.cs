@@ -421,12 +421,15 @@ public class BotBehaviorTests
         live.LastDrawSeatIndex = 0;
         Assert.True(ChangshaGameStateMachine.CanDeclareSelfDrawWin(live, 0));
 
-        await WaitForAsync(
-            () => Snapshot(runtime, gameId).EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 0),
+        await WaitForSnapshotAsync(
+            runtime,
+            gameId,
+            snap => snap.EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 0),
             TimeSpan.FromSeconds(2),
-            "invalid own-turn discard did not use medium fallback to convert self-draw Hu");
+            "invalid own-turn discard did not use medium fallback to convert self-draw Hu",
+            cts.Token);
 
-        var resolved = Snapshot(runtime, gameId);
+        var resolved = await SnapshotCopyAsync(runtime, gameId, cts.Token);
         Assert.Contains(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 0);
         Assert.Contains(resolved.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 0);
         Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
@@ -813,12 +816,15 @@ public class BotBehaviorTests
         live.LastDrawSeatIndex = 0;
         Assert.True(ChangshaGameStateMachine.CanDeclareSelfDrawWin(live, 0));
 
-        await WaitForAsync(
-            () => Snapshot(runtime, gameId).EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 0),
+        await WaitForSnapshotAsync(
+            runtime,
+            gameId,
+            snap => snap.EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 0),
             TimeSpan.FromSeconds(2),
-            "invalid own-turn claim did not use medium fallback to convert self-draw Hu");
+            "invalid own-turn claim did not use medium fallback to convert self-draw Hu",
+            cts.Token);
 
-        var resolved = Snapshot(runtime, gameId);
+        var resolved = await SnapshotCopyAsync(runtime, gameId, cts.Token);
         Assert.Contains(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 0);
         Assert.Contains(resolved.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 0);
         Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
@@ -894,14 +900,17 @@ public class BotBehaviorTests
 
         var baselineEventCount = live.EventLog.Count;
 
-        await WaitForAsync(
-            () => Snapshot(runtime, gameId).EventLog
+        await WaitForSnapshotAsync(
+            runtime,
+            gameId,
+            snap => snap.EventLog
                 .Skip(baselineEventCount)
                 .Any(e => e.EventType == "concealed-kong" && e.SeatIndex == 0),
             TimeSpan.FromSeconds(2),
-            "unsupported own-turn action did not use medium fallback to take concealed kong");
+            "unsupported own-turn action did not use medium fallback to take concealed kong",
+            cts.Token);
 
-        var resolved = Snapshot(runtime, gameId);
+        var resolved = await SnapshotCopyAsync(runtime, gameId, cts.Token);
         Assert.Contains(resolved.EventLog, e => e.EventType == "concealed-kong" && e.SeatIndex == 0);
         Assert.Contains(resolved.EventLog, e => e.EventType == "kong-replacement-drawn" && e.SeatIndex == 0);
         Assert.Contains(resolved.Hands[0].Melds, m => m.Kind == MeldKind.ConcealedKong);
@@ -984,14 +993,17 @@ public class BotBehaviorTests
 
         var baselineEventCount = live.EventLog.Count;
 
-        await WaitForAsync(
-            () => Snapshot(runtime, gameId).EventLog
+        await WaitForSnapshotAsync(
+            runtime,
+            gameId,
+            snap => snap.EventLog
                 .Skip(baselineEventCount)
                 .Any(e => e.EventType == "added-kong" && e.SeatIndex == 0),
             TimeSpan.FromSeconds(2),
-            "unsupported own-turn action did not use medium fallback to take added kong");
+            "unsupported own-turn action did not use medium fallback to take added kong",
+            cts.Token);
 
-        var resolved = Snapshot(runtime, gameId);
+        var resolved = await SnapshotCopyAsync(runtime, gameId, cts.Token);
         Assert.Contains(resolved.EventLog, e => e.EventType == "added-kong" && e.SeatIndex == 0 && e.TileId == addedKongTile);
         Assert.Contains(resolved.EventLog, e => e.EventType == "kong-replacement-drawn" && e.SeatIndex == 0);
         Assert.Contains(resolved.Hands[0].Melds, m => m.Kind == MeldKind.AddedKong && m.TileIds.Count == 4 && m.TileIds.Contains(addedKongTile));
@@ -1196,16 +1208,15 @@ public class BotBehaviorTests
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         await ScheduleBotIfNeededOrFail(runtime, gameId, cts.Token);
-        await WaitForAsync(
-            () =>
-            {
-                var snap = Snapshot(runtime, gameId);
-                return snap.EventLog
-                    .Skip(baselineEventCount)
-                    .Any(e => e.EventType == "win-declared" && e.SeatIndex == 0);
-            },
+        await WaitForSnapshotAsync(
+            runtime,
+            gameId,
+            snap => snap.EventLog
+                .Skip(baselineEventCount)
+                .Any(e => e.EventType == "win-declared" && e.SeatIndex == 0),
             TimeSpan.FromMilliseconds(4_000),
-            "own-turn timeout medium fallback did not declare self-draw Hu");
+            "own-turn timeout medium fallback did not declare self-draw Hu",
+            cts.Token);
         sw.Stop();
 
         var final = await runtime.TryGetSnapshotCopyAsync(gameId, cts.Token);
@@ -1284,16 +1295,15 @@ public class BotBehaviorTests
         var sw = System.Diagnostics.Stopwatch.StartNew();
         await runtime.DiscardAsync(gameId, seatIndex: 0, tileId: wan1Copy0, cts.Token);
 
-        await WaitForAsync(
-            () =>
-            {
-                var snap = Snapshot(runtime, gameId);
-                return snap.ClaimWindow is null
-                       && snap.EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 1)
-                       && snap.EventLog.Any(e => e.EventType == "scoring-complete" && e.SeatIndex == 1);
-            },
+        await WaitForSnapshotAsync(
+            runtime,
+            gameId,
+            snap => snap.ClaimWindow is null
+                    && snap.EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 1)
+                    && snap.EventLog.Any(e => e.EventType == "scoring-complete" && e.SeatIndex == 1),
             TimeSpan.FromMilliseconds(12_000),
-            "claim-timeout medium fallback did not convert available Hu opportunity");
+            "claim-timeout medium fallback did not convert available Hu opportunity",
+            cts.Token);
         sw.Stop();
 
         var final = await runtime.TryGetSnapshotCopyAsync(gameId, cts.Token);
@@ -1368,16 +1378,15 @@ public class BotBehaviorTests
 
         await runtime.DiscardAsync(gameId, seatIndex: 0, tileId: wan1Copy0, cts.Token);
 
-        await WaitForAsync(
-            () =>
-            {
-                var snap = Snapshot(runtime, gameId);
-                return snap.ClaimWindow is null
-                       && snap.EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 1)
-                       && snap.EventLog.Any(e => e.EventType == "scoring-complete" && e.SeatIndex == 1);
-            },
+        await WaitForSnapshotAsync(
+            runtime,
+            gameId,
+            snap => snap.ClaimWindow is null
+                    && snap.EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 1)
+                    && snap.EventLog.Any(e => e.EventType == "scoring-complete" && e.SeatIndex == 1),
             TimeSpan.FromSeconds(10),
-            "unsupported claim-window action did not degrade to medium claim fallback");
+            "unsupported claim-window action did not degrade to medium claim fallback",
+            cts.Token);
 
         var final = await runtime.TryGetSnapshotCopyAsync(gameId, cts.Token);
         Assert.NotNull(final);
@@ -1723,6 +1732,38 @@ public class BotBehaviorTests
     {
         Assert.True(runtime.TryGetSnapshot(gameId, out var state));
         return state!;
+    }
+
+    private static async Task<ChangshaGameState> SnapshotCopyAsync(
+        IChangshaGameRuntime runtime,
+        string gameId,
+        CancellationToken ct = default)
+    {
+        var snapshot = await runtime.TryGetSnapshotCopyAsync(gameId, ct);
+        Assert.NotNull(snapshot);
+        return snapshot!;
+    }
+
+    private static async Task WaitForSnapshotAsync(
+        IChangshaGameRuntime runtime,
+        string gameId,
+        Func<ChangshaGameState, bool> predicate,
+        TimeSpan timeout,
+        string description,
+        CancellationToken ct = default)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            var snapshot = await runtime.TryGetSnapshotCopyAsync(gameId, ct);
+            if (snapshot is not null && predicate(snapshot)) return;
+            await Task.Delay(15, ct);
+        }
+
+        throw new TimeoutException(
+            $"Bot decision-timeout contract violated: {description}. " +
+            $"Bishop owes ChangshaRuntimeOptions.BotDecisionTimeoutMs + safe-default fallback wiring " +
+            $"in BotClaimAsync / RunBotTurnAsync — see Phase H Wave 1 spec.");
     }
 
     private static async Task WaitForAsync(Func<bool> predicate, TimeSpan timeout, string description)
