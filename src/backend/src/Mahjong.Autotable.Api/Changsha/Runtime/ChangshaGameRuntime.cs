@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Mahjong.Autotable.Api.Changsha.Bot;
+using Mahjong.Autotable.Api.Changsha.Bot.Heuristics;
 using Mahjong.Autotable.Api.Data;
 using Mahjong.Autotable.Api.Data.Entities;
 using Mahjong.Autotable.Api.Tables;
@@ -2619,7 +2620,11 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         };
 
         if (!fallbackIsLegal)
-            fallbackAction = BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(liveHand));
+        {
+            fallbackAction = fallbackAction.Type == BotActionType.DeclareWin
+                ? BuildMediumOwnTurnNonWinFallbackAction(liveState, liveHand, seatIndex)
+                : BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(liveHand));
+        }
 
         return BotDecision.FromAction(fallbackAction) with
         {
@@ -2628,6 +2633,28 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 "runtime: turn decision timeout; medium-policy own-turn fallback"
             }
         };
+    }
+
+    private static BotAction BuildMediumOwnTurnNonWinFallbackAction(
+        ChangshaGameState liveState,
+        ChangshaHandState liveHand,
+        int seatIndex)
+    {
+        var concealedKongLogical = HandEvaluator.FindConcealedKongCandidate(liveHand);
+        if (concealedKongLogical >= 0
+            && ChangshaGameStateMachine.CanDeclareConcealedKong(liveState, seatIndex, concealedKongLogical))
+        {
+            return BotAction.DeclareConcealedKong(concealedKongLogical);
+        }
+
+        var addedKongTile = HandEvaluator.FindAddedKongCandidate(liveHand);
+        if (addedKongTile >= 0
+            && ChangshaGameStateMachine.CanDeclareAddedKong(liveState, seatIndex, addedKongTile))
+        {
+            return BotAction.DeclareAddedKong(addedKongTile);
+        }
+
+        return BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(liveHand));
     }
 
     private static bool TryPreflightSelfDrawHuSettlement(ChangshaGameState state, int seatIndex)
