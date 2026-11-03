@@ -162,6 +162,33 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.Pass, decision.Action.Type);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W122")]
+    public async Task DefaultStrategyDecisionObject_UsesSafeDefaultDecision()
+    {
+        var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+            () => default,
+            timeoutMs: 500,
+            safeDefault: ClaimHu,
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Claim, decision.Action.Type);
+        Assert.Equal(TableClaimType.Hu, decision.Action.ClaimType);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W122")]
+    public async Task DefaultSafeDefaultDecisionObject_FallsBackToHardPassDecision()
+    {
+        var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+            () => { Thread.Sleep(100); return ClaimHu(); },
+            timeoutMs: 1,
+            safeDefault: () => default,
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Pass, decision.Action.Type);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W116")]
     public async Task NullReasoning_IsNormalizedToEmptyList()
     {
