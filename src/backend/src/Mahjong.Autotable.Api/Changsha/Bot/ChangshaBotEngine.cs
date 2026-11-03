@@ -250,8 +250,22 @@ public static class ChangshaBotEngine
 
         static BotDecision HardPassDecision() => BotDecision.FromAction(BotAction.Pass());
 
-        BotDecision CoerceDecision(BotDecision decision, string source, bool allowSafeDefaultFallback)
+        BotDecision CoerceDecision(BotDecision? maybeDecision, string source, bool allowSafeDefaultFallback)
         {
+            if (!maybeDecision.HasValue)
+            {
+                if (allowSafeDefaultFallback)
+                {
+                    logger?.LogWarning("Bot {Source} decision factory returned null; using safe-default decision fallback.", source);
+                    return InvokeSafeDefault();
+                }
+
+                logger?.LogWarning("Bot {Source} decision factory returned null; using hard pass fallback.", source);
+                return HardPassDecision();
+            }
+
+            var decision = maybeDecision.Value;
+
             if (decision.Action is null)
             {
                 if (allowSafeDefaultFallback)
