@@ -1126,6 +1126,70 @@ public class BotBehaviorTests
         Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W119")]
+    public async Task Bot_UnsupportedOwnTurnWait_WithNullReasoning_UsesMediumFallback_ToTakeSelfDrawHu()
+    {
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 2_000;
+            o.BotTurnDelayMs = 300;
+            o.BotClaimDelayMs = 1;
+            o.ClaimWindowTimeoutMs = 2_000;
+        });
+
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        InjectStrategyOrFail(runtime, new NullReasoningBotStrategy((s, _) =>
+            s.Phase == ChangshaPhase.AwaitingDiscard
+                ? BotAction.Wait()
+                : BotAction.Pass()));
+
+        var gameId = await runtime.CreateGameAsync(
+            seed: 9051,
+            botSeatIndexes: new[] { 0 },
+            hostPlayerId: null,
+            hostConnectionId: null,
+            cts.Token);
+
+        Assert.True(runtime.TryGetSnapshot(gameId, out var state));
+        state!.DealerSeatIndex = 0;
+        foreach (var seat in state.Seats) seat.IsDealer = seat.SeatIndex == 0;
+        state.DealMode = DealMode.Auto;
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase == ChangshaPhase.AwaitingDiscard
+               && Snapshot(runtime, gameId).ActiveSeatIndex == 0,
+            TimeSpan.FromSeconds(2),
+            "auto-deal never reached AwaitingDiscard with seat 0 active");
+
+        var live = Snapshot(runtime, gameId);
+        live.Hands[0].ConcealedTiles.Clear();
+        live.Hands[0].ConcealedTiles.AddRange(ChangshaTestHelpers.Tiles(
+            (Suit.Wan, 1), (Suit.Wan, 2), (Suit.Wan, 3),
+            (Suit.Wan, 4), (Suit.Wan, 5), (Suit.Wan, 6),
+            (Suit.Tong, 1), (Suit.Tong, 2), (Suit.Tong, 3),
+            (Suit.Tiao, 4), (Suit.Tiao, 5), (Suit.Tiao, 6),
+            (Suit.Tong, 5), (Suit.Tong, 5)));
+        live.Hands[0].Melds.Clear();
+        live.LastDrawSeatIndex = 0;
+        Assert.True(ChangshaGameStateMachine.CanDeclareSelfDrawWin(live, 0));
+
+        await WaitForSnapshotAsync(
+            runtime,
+            gameId,
+            snap => snap.EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 0),
+            TimeSpan.FromSeconds(2),
+            "null-reasoning unsupported own-turn wait did not use medium fallback to convert self-draw Hu",
+            cts.Token);
+
+        var resolved = await SnapshotCopyAsync(runtime, gameId, cts.Token);
+        Assert.Contains(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 0);
+        Assert.Contains(resolved.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 0);
+        Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W117")]
     public async Task Bot_UnsupportedOwnTurnWait_UsesMediumFallback_ToTakeConcealedKong()
     {
@@ -1772,6 +1836,79 @@ public class BotBehaviorTests
         Assert.Contains(final.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 1);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W118")]
+    public async Task Bot_UnsupportedClaimWindowAction_WithNullReasoning_UsesMediumFallback_ToTakeHuOpportunity()
+    {
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 2_000;
+            o.BotTurnDelayMs = 5_000;
+            o.BotClaimDelayMs = 1;
+            o.ClaimWindowTimeoutMs = 20_000;
+        });
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        var gameId = await runtime.CreateGameAsync(seed: 9050,
+            botSeatIndexes: new[] { 1 }, hostPlayerId: null, hostConnectionId: null, cts.Token);
+        Assert.True(runtime.TryGetSnapshot(gameId, out var state));
+        state!.DealerSeatIndex = 0;
+        foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == 0;
+        state.DealMode = DealMode.Auto;
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase == ChangshaPhase.AwaitingDiscard,
+            TimeSpan.FromSeconds(2),
+            "auto-deal never reached AwaitingDiscard");
+
+        var live = Snapshot(runtime, gameId);
+        var wan1Logical = ChangshaTestHelpers.Logical(Suit.Wan, 1);
+        var wan1Copy0 = ChangshaTestHelpers.Tid(Suit.Wan, 1, 0);
+
+        live.Hands[1].ConcealedTiles.Clear();
+        live.Hands[1].ConcealedTiles.AddRange(Acceptance.AcceptanceFixture.ThirteenTileWaitingForWan1());
+        live.Hands[1].Melds.Clear();
+
+        live.Hands[0].ConcealedTiles.Clear();
+        live.Hands[0].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Tong, 9, 0), ChangshaTestHelpers.Tid(Suit.Tong, 9, 1),
+            ChangshaTestHelpers.Tid(Suit.Tong, 8, 0), ChangshaTestHelpers.Tid(Suit.Tong, 7, 0),
+            ChangshaTestHelpers.Tid(Suit.Tong, 6, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 9, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 9, 1), ChangshaTestHelpers.Tid(Suit.Tiao, 8, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 7, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 6, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 9, 0), ChangshaTestHelpers.Tid(Suit.Wan, 8, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 7, 0),
+            wan1Copy0,
+        });
+
+        foreach (var h in live.Hands.Where(h => h.SeatIndex != 1))
+            h.ConcealedTiles.RemoveAll(t => ChangshaDeckBuilder.GetLogicalTile(t) == wan1Logical && t != wan1Copy0);
+
+        InjectStrategyOrFail(runtime, new NullReasoningBotStrategy((s, _) =>
+            s.Phase == ChangshaPhase.AwaitingClaim
+                ? BotAction.Discard(ChangshaTestHelpers.Tid(Suit.Tong, 9, 0))
+                : BotAction.Pass()));
+
+        await runtime.DiscardAsync(gameId, seatIndex: 0, tileId: wan1Copy0, cts.Token);
+
+        await WaitForSnapshotAsync(
+            runtime,
+            gameId,
+            snap => snap.ClaimWindow is null
+                    && snap.EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 1)
+                    && snap.EventLog.Any(e => e.EventType == "scoring-complete" && e.SeatIndex == 1),
+            TimeSpan.FromSeconds(10),
+            "null-reasoning unsupported claim-window action did not degrade to medium claim fallback",
+            cts.Token);
+
+        var final = await runtime.TryGetSnapshotCopyAsync(gameId, cts.Token);
+        Assert.NotNull(final);
+        Assert.Contains(final!.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 1);
+        Assert.Contains(final.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 1);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W97")]
     public async Task Bot_HuOverflow_FallsBackToBestNonHuClaim_InsteadOfPassing()
     {
@@ -2151,6 +2288,34 @@ public class BotBehaviorTests
         {
             release.Set();
             await completed.Task.WaitAsync(timeout.Token);
+        }
+    }
+
+    /// <summary>
+    /// Test-double strategy that emits a valid <see cref="BotAction"/> with a
+    /// deliberately null <see cref="BotDecision.Reasoning"/> payload to verify
+    /// runtime fallback guards are null-safe when appending diagnostic lines.
+    /// </summary>
+    private sealed class NullReasoningBotStrategy : IChangshaBotStrategy
+    {
+        private readonly Func<ChangshaGameState, int, BotAction> _decision;
+
+        public NullReasoningBotStrategy(Func<ChangshaGameState, int, BotAction> decision)
+            => _decision = decision;
+
+        public string Difficulty => "null-reasoning-test";
+
+        public BotAction OnTurnStart(ChangshaGameState state, int seat) => DecideAction(state, seat);
+        public BotAction OnOtherDiscard(ChangshaGameState state, int seat, int discarder, int tile) => DecideAction(state, seat);
+        public BotAction OnSelfDraw(ChangshaGameState state, int seat) => DecideAction(state, seat);
+        public BotAction OnPickupCue(ChangshaGameState state, int seat) => BotAction.Wait();
+
+        public BotAction DecideAction(ChangshaGameState state, int seat) => _decision(state, seat);
+
+        public BotDecision DecideWithReasoning(ChangshaGameState state, int seat)
+        {
+            var action = DecideAction(state, seat);
+            return new BotDecision(action, action.TileId, 0, Reasoning: null!);
         }
     }
 

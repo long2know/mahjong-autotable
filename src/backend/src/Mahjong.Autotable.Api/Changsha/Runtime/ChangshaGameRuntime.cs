@@ -1246,6 +1246,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         window.Opportunities.Any(opportunity =>
             opportunity.SeatIndex == seatIndex && opportunity.ClaimType == claimType);
 
+    private static IReadOnlyList<string> AppendDecisionReasoning(BotDecision decision, string reasoningLine)
+    {
+        var existing = decision.Reasoning as IEnumerable<string> ?? Array.Empty<string>();
+        return existing.Append(reasoningLine).ToArray();
+    }
+
     private static bool TrySelectBestNonHuOfferedClaim(
         ChangshaClaimWindow window,
         int seatIndex,
@@ -1926,9 +1932,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                     : "runtime: unsupported claim-window action; medium-policy claim fallback";
                 decision = BotDecision.FromAction(fallbackAction) with
                 {
-                    Reasoning = decision.Reasoning
-                        .Append(unsupportedReason)
-                        .ToArray()
+                    Reasoning = AppendDecisionReasoning(decision, unsupportedReason)
                 };
                 action = decision.Action;
             }
@@ -1942,9 +1946,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 var fallbackAction = BuildMediumClaimFallbackAction(expectedWindow, decisionState, seatIndex);
                 decision = BotDecision.FromAction(fallbackAction) with
                 {
-                    Reasoning = decision.Reasoning
-                        .Append("runtime: invalid/unoffered claim; medium-policy claim fallback")
-                        .ToArray()
+                    Reasoning = AppendDecisionReasoning(decision, "runtime: invalid/unoffered claim; medium-policy claim fallback")
                 };
                 action = decision.Action;
             }
@@ -1964,9 +1966,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 chosenTileIds = null;
                 decision = BotDecision.FromAction(BotAction.Pass()) with
                 {
-                    Reasoning = decision.Reasoning
-                        .Append("runtime: rejected unoffered claim; recorded pass")
-                        .ToArray()
+                    Reasoning = AppendDecisionReasoning(decision, "runtime: rejected unoffered claim; recorded pass")
                 };
             }
 
@@ -1989,9 +1989,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         chosenTileIds = fallbackAction.ClaimTileIds?.ToArray();
                         decision = BotDecision.FromAction(BotAction.Claim(fallbackClaimType, chosenTileIds)) with
                         {
-                            Reasoning = decision.Reasoning
-                                .Append("runtime: hu settlement overflow; legal non-hu claim fallback")
-                                .ToArray()
+                            Reasoning = AppendDecisionReasoning(decision, "runtime: hu settlement overflow; legal non-hu claim fallback")
                         };
                     }
                     else
@@ -2003,9 +2001,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         chosenTileIds = null;
                         decision = BotDecision.FromAction(BotAction.Pass()) with
                         {
-                            Reasoning = decision.Reasoning
-                                .Append("runtime: hu settlement overflow; recorded pass")
-                                .ToArray()
+                            Reasoning = AppendDecisionReasoning(decision, "runtime: hu settlement overflow; recorded pass")
                         };
                     }
                 }
@@ -2048,9 +2044,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         decision = BotDecision.FromAction(BotAction.Claim(decided.Value, chosenTileIds)) with
                         {
                             Score = decision.Score,
-                            Reasoning = decision.Reasoning
-                                .Append("runtime: invalid explicit claim tileIds; canonical claim tile fallback")
-                                .ToArray()
+                            Reasoning = AppendDecisionReasoning(decision, "runtime: invalid explicit claim tileIds; canonical claim tile fallback")
                         };
                     }
                     catch (Exception fallbackEx) when (fallbackEx is TableRuleException or InvalidOperationException)
@@ -2062,9 +2056,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         chosenTileIds = null;
                         decision = BotDecision.FromAction(BotAction.Pass()) with
                         {
-                            Reasoning = decision.Reasoning
-                                .Append("runtime: invalid claim tiles and canonical fallback unavailable; recorded pass")
-                                .ToArray()
+                            Reasoning = AppendDecisionReasoning(decision, "runtime: invalid claim tiles and canonical fallback unavailable; recorded pass")
                         };
                     }
                 }
@@ -2435,9 +2427,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         instance.GameId, seatIndex);
                     decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
                     {
-                        Reasoning = decision.Reasoning
-                            .Append("runtime: self-draw unavailable; medium-policy own-turn fallback")
-                            .ToArray()
+                        Reasoning = AppendDecisionReasoning(decision, "runtime: self-draw unavailable; medium-policy own-turn fallback")
                     };
                 }
                 else if (decision.Action.Type == BotActionType.DeclareWin)
@@ -2453,9 +2443,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                             instance.GameId, seatIndex);
                         decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
                         {
-                            Reasoning = decision.Reasoning
-                                .Append("runtime: self-draw settlement overflow; medium-policy own-turn fallback")
-                                .ToArray()
+                            Reasoning = AppendDecisionReasoning(decision, "runtime: self-draw settlement overflow; medium-policy own-turn fallback")
                         };
                     }
                 }
@@ -2469,9 +2457,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         decision.Action.LogicalTile, instance.GameId, seatIndex);
                     decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
                     {
-                        Reasoning = decision.Reasoning
-                            .Append("runtime: concealed kong unavailable; medium-policy own-turn fallback")
-                            .ToArray()
+                        Reasoning = AppendDecisionReasoning(decision, "runtime: concealed kong unavailable; medium-policy own-turn fallback")
                     };
                 }
                 else if (decision.Action.Type == BotActionType.DeclareAddedKong
@@ -2484,9 +2470,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         decision.Action.TileId, instance.GameId, seatIndex);
                     decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
                     {
-                        Reasoning = decision.Reasoning
-                            .Append("runtime: added kong unavailable; medium-policy own-turn fallback")
-                            .ToArray()
+                        Reasoning = AppendDecisionReasoning(decision, "runtime: added kong unavailable; medium-policy own-turn fallback")
                     };
                 }
                 else if (decision.Action.Type == BotActionType.Discard
@@ -2497,9 +2481,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         decision.Action.TileId, instance.GameId, seatIndex);
                     decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
                     {
-                        Reasoning = decision.Reasoning
-                            .Append("runtime: invalid discard tile; medium-policy own-turn fallback")
-                            .ToArray()
+                        Reasoning = AppendDecisionReasoning(decision, "runtime: invalid discard tile; medium-policy own-turn fallback")
                     };
                 }
                 else if (decision.Action.Type is not BotActionType.DeclareWin
@@ -2512,9 +2494,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         decision.Action.Type, instance.GameId, seatIndex);
                     decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
                     {
-                        Reasoning = decision.Reasoning
-                            .Append("runtime: unsupported own-turn action; medium-policy own-turn fallback")
-                            .ToArray()
+                        Reasoning = AppendDecisionReasoning(decision, "runtime: unsupported own-turn action; medium-policy own-turn fallback")
                     };
                 }
                 instance.LastBotDecisions[seatIndex] = decision;
