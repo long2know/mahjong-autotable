@@ -1949,7 +1949,6 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 action = decision.Action;
             }
 
-            instance.LastBotDecisions[seatIndex] = decision;
             decided = action.Type == BotActionType.Claim ? action.ClaimType : null;
 
             var chosenTileIds = decided is TableClaimType.Chow or TableClaimType.Pung or TableClaimType.Kong
@@ -1963,6 +1962,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                     claimType, seatIndex, instance.GameId);
                 decided = null;
                 chosenTileIds = null;
+                decision = BotDecision.FromAction(BotAction.Pass()) with
+                {
+                    Reasoning = decision.Reasoning
+                        .Append("runtime: rejected unoffered claim; recorded pass")
+                        .ToArray()
+                };
             }
 
             if (decided == TableClaimType.Hu)
@@ -1982,6 +1987,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                             instance.GameId, seatIndex, fallbackClaimType);
                         decided = fallbackClaimType;
                         chosenTileIds = fallbackAction.ClaimTileIds?.ToArray();
+                        decision = BotDecision.FromAction(BotAction.Claim(fallbackClaimType, chosenTileIds)) with
+                        {
+                            Reasoning = decision.Reasoning
+                                .Append("runtime: hu settlement overflow; legal non-hu claim fallback")
+                                .ToArray()
+                        };
                     }
                     else
                     {
@@ -1990,6 +2001,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                             instance.GameId, seatIndex);
                         decided = null;
                         chosenTileIds = null;
+                        decision = BotDecision.FromAction(BotAction.Pass()) with
+                        {
+                            Reasoning = decision.Reasoning
+                                .Append("runtime: hu settlement overflow; recorded pass")
+                                .ToArray()
+                        };
                     }
                 }
             }
@@ -2032,6 +2049,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                             "Bot claim {ClaimType} from seat {Seat} in game {GameId} had invalid explicit tileIds; using canonical claim tile fallback.",
                             decided, seatIndex, instance.GameId);
                         chosenTileIds = null;
+                        decision = BotDecision.FromAction(BotAction.Claim(decided.Value, null)) with
+                        {
+                            Reasoning = decision.Reasoning
+                                .Append("runtime: invalid explicit claim tileIds; canonical claim tile fallback")
+                                .ToArray()
+                        };
                     }
                     catch (Exception fallbackEx) when (fallbackEx is TableRuleException or InvalidOperationException)
                     {
@@ -2040,10 +2063,17 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                             decided, seatIndex, instance.GameId);
                         decided = null;
                         chosenTileIds = null;
+                        decision = BotDecision.FromAction(BotAction.Pass()) with
+                        {
+                            Reasoning = decision.Reasoning
+                                .Append("runtime: invalid claim tiles and canonical fallback unavailable; recorded pass")
+                                .ToArray()
+                        };
                     }
                 }
             }
 
+            instance.LastBotDecisions[seatIndex] = decision;
             instance.PendingClaims[seatIndex] = new ClaimResponse(decided, chosenTileIds);
         }
         finally { instance.Lock.Release(); }
