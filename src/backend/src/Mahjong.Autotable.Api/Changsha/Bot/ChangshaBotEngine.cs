@@ -43,6 +43,26 @@ public static class ChangshaBotEngine
     /// <summary>The default strategy (Medium) — exposed for unit testing.</summary>
     public static IChangshaBotStrategy Default => MediumInstance;
 
+    private static bool IsMalformedAction(BotAction action)
+        => action.Type switch
+        {
+            BotActionType.Discard => action.TileId is null,
+            BotActionType.DeclareAddedKong => action.TileId is null,
+            BotActionType.DeclareConcealedKong => action.LogicalTile is null,
+            BotActionType.Claim => action.ClaimType is null,
+            _ => false
+        };
+
+    private static string? GetMalformedActionReason(BotAction action)
+        => action.Type switch
+        {
+            BotActionType.Discard when action.TileId is null => "discard missing tile id",
+            BotActionType.DeclareAddedKong when action.TileId is null => "added kong missing tile id",
+            BotActionType.DeclareConcealedKong when action.LogicalTile is null => "concealed kong missing logical tile",
+            BotActionType.Claim when action.ClaimType is null => "claim missing claim type",
+            _ => null
+        };
+
     /// <summary>
     /// Phase H Wave 1 — race a synchronous bot decision against a timeout. If the
     /// decision returns within <paramref name="timeoutMs"/> the result is used;
@@ -83,17 +103,40 @@ public static class ChangshaBotEngine
 
         BotAction CoerceAction(BotAction? action, string source, bool allowSafeDefaultFallback)
         {
-            if (action is not null)
-                return action;
-
-            if (allowSafeDefaultFallback)
+            if (action is null)
             {
-                logger?.LogWarning("Bot {Source} action factory returned null; using safe-default action fallback.", source);
-                return InvokeSafeDefault();
+                if (allowSafeDefaultFallback)
+                {
+                    logger?.LogWarning("Bot {Source} action factory returned null; using safe-default action fallback.", source);
+                    return InvokeSafeDefault();
+                }
+
+                logger?.LogWarning("Bot {Source} action factory returned null; using hard pass fallback.", source);
+                return HardPassAction();
             }
 
-            logger?.LogWarning("Bot {Source} action factory returned null; using hard pass fallback.", source);
-            return HardPassAction();
+            if (IsMalformedAction(action))
+            {
+                var reason = GetMalformedActionReason(action) ?? "malformed action payload";
+                if (allowSafeDefaultFallback)
+                {
+                    logger?.LogWarning(
+                        "Bot {Source} action factory returned malformed {ActionType} action ({Reason}); using safe-default action fallback.",
+                        source,
+                        action.Type,
+                        reason);
+                    return InvokeSafeDefault();
+                }
+
+                logger?.LogWarning(
+                    "Bot {Source} action factory returned malformed {ActionType} action ({Reason}); using hard pass fallback.",
+                    source,
+                    action.Type,
+                    reason);
+                return HardPassAction();
+            }
+
+            return action;
         }
 
         BotAction InvokeSafeDefault()
@@ -275,6 +318,27 @@ public static class ChangshaBotEngine
                 }
 
                 logger?.LogWarning("Bot {Source} decision returned null action; using hard pass fallback.", source);
+                return HardPassDecision();
+            }
+
+            if (IsMalformedAction(decision.Action))
+            {
+                var reason = GetMalformedActionReason(decision.Action) ?? "malformed action payload";
+                if (allowSafeDefaultFallback)
+                {
+                    logger?.LogWarning(
+                        "Bot {Source} decision returned malformed {ActionType} action ({Reason}); using safe-default decision fallback.",
+                        source,
+                        decision.Action.Type,
+                        reason);
+                    return InvokeSafeDefault();
+                }
+
+                logger?.LogWarning(
+                    "Bot {Source} decision returned malformed {ActionType} action ({Reason}); using hard pass fallback.",
+                    source,
+                    decision.Action.Type,
+                    reason);
                 return HardPassDecision();
             }
 
