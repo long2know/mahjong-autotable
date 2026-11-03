@@ -108,6 +108,74 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.Pass, decision.Action.Type);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W116")]
+    public async Task NullStrategyAction_UsesSafeDefaultAction()
+    {
+        var action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
+            () => null!,
+            timeoutMs: 500,
+            safeDefault: () => BotAction.Claim(TableClaimType.Pung),
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Pung, action.ClaimType);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W116")]
+    public async Task NullSafeDefaultAction_FallsBackToHardPass()
+    {
+        var action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
+            () => { Thread.Sleep(100); return BotAction.Claim(TableClaimType.Hu); },
+            timeoutMs: 1,
+            safeDefault: () => null!,
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W116")]
+    public async Task NullStrategyDecisionAction_UsesSafeDefaultDecision()
+    {
+        var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+            () => new BotDecision(null!, null, 7, Array.Empty<string>()),
+            timeoutMs: 500,
+            safeDefault: ClaimHu,
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Claim, decision.Action.Type);
+        Assert.Equal(TableClaimType.Hu, decision.Action.ClaimType);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W116")]
+    public async Task NullSafeDefaultDecisionAction_FallsBackToHardPassDecision()
+    {
+        var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+            () => { Thread.Sleep(100); return ClaimHu(); },
+            timeoutMs: 1,
+            safeDefault: () => new BotDecision(null!, null, 0, Array.Empty<string>()),
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Pass, decision.Action.Type);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W116")]
+    public async Task NullReasoning_IsNormalizedToEmptyList()
+    {
+        var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+            () => new BotDecision(BotAction.Pass(), null, 11, null!),
+            timeoutMs: 500,
+            safeDefault: ClaimHu,
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.NotNull(decision.Reasoning);
+        Assert.Empty(decision.Reasoning);
+    }
+
     [Fact, Trait("Category", "Changsha")]
     public async Task CancellationTokenCancelled_ReturnsSafeDefaultAction_InsteadOfThrowing()
     {

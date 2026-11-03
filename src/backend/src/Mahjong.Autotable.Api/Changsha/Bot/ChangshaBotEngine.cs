@@ -79,16 +79,33 @@ public static class ChangshaBotEngine
         ArgumentNullException.ThrowIfNull(decision);
         ArgumentNullException.ThrowIfNull(safeDefault);
 
+        static BotAction HardPassAction() => BotAction.Pass();
+
+        BotAction CoerceAction(BotAction? action, string source, bool allowSafeDefaultFallback)
+        {
+            if (action is not null)
+                return action;
+
+            if (allowSafeDefaultFallback)
+            {
+                logger?.LogWarning("Bot {Source} action factory returned null; using safe-default action fallback.", source);
+                return InvokeSafeDefault();
+            }
+
+            logger?.LogWarning("Bot {Source} action factory returned null; using hard pass fallback.", source);
+            return HardPassAction();
+        }
+
         BotAction InvokeSafeDefault()
         {
             try
             {
-                return safeDefault();
+                return CoerceAction(safeDefault(), "safe-default", allowSafeDefaultFallback: false);
             }
             catch (Exception ex)
             {
                 logger?.LogWarning(ex, "Bot safe-default action factory faulted; using hard pass fallback.");
-                return BotAction.Pass();
+                return HardPassAction();
             }
         }
 
@@ -127,7 +144,7 @@ public static class ChangshaBotEngine
                 }
 
                 if (inlineDecisionTask.IsCompletedSuccessfully)
-                    return inlineDecisionTask.Result;
+                    return CoerceAction(inlineDecisionTask.Result, "strategy", allowSafeDefaultFallback: true);
 
                 logger?.LogWarning(
                     inlineDecisionTask.Exception?.GetBaseException(),
@@ -137,7 +154,7 @@ public static class ChangshaBotEngine
 
             try
             {
-                return decision();
+                return CoerceAction(decision(), "strategy", allowSafeDefaultFallback: true);
             }
             catch (Exception ex)
             {
@@ -167,7 +184,7 @@ public static class ChangshaBotEngine
         {
             if (decisionTask.IsCompletedSuccessfully)
             {
-                return decisionTask.Result;
+                return CoerceAction(decisionTask.Result, "strategy", allowSafeDefaultFallback: true);
             }
 
             if (decisionTask.IsCanceled)
@@ -231,16 +248,41 @@ public static class ChangshaBotEngine
         ArgumentNullException.ThrowIfNull(decision);
         ArgumentNullException.ThrowIfNull(safeDefault);
 
+        static BotDecision HardPassDecision() => BotDecision.FromAction(BotAction.Pass());
+
+        BotDecision CoerceDecision(BotDecision decision, string source, bool allowSafeDefaultFallback)
+        {
+            if (decision.Action is null)
+            {
+                if (allowSafeDefaultFallback)
+                {
+                    logger?.LogWarning("Bot {Source} decision returned null action; using safe-default decision fallback.", source);
+                    return InvokeSafeDefault();
+                }
+
+                logger?.LogWarning("Bot {Source} decision returned null action; using hard pass fallback.", source);
+                return HardPassDecision();
+            }
+
+            if (decision.Reasoning is null)
+            {
+                logger?.LogWarning("Bot {Source} decision returned null reasoning; normalizing to empty reasoning.", source);
+                decision = decision with { Reasoning = Array.Empty<string>() };
+            }
+
+            return decision;
+        }
+
         BotDecision InvokeSafeDefault()
         {
             try
             {
-                return safeDefault();
+                return CoerceDecision(safeDefault(), "safe-default", allowSafeDefaultFallback: false);
             }
             catch (Exception ex)
             {
                 logger?.LogWarning(ex, "Bot safe-default decision factory faulted; using hard pass fallback.");
-                return BotDecision.FromAction(BotAction.Pass());
+                return HardPassDecision();
             }
         }
 
@@ -279,7 +321,7 @@ public static class ChangshaBotEngine
                 }
 
                 if (inlineDecisionTask.IsCompletedSuccessfully)
-                    return inlineDecisionTask.Result;
+                    return CoerceDecision(inlineDecisionTask.Result, "strategy", allowSafeDefaultFallback: true);
 
                 logger?.LogWarning(
                     inlineDecisionTask.Exception?.GetBaseException(),
@@ -289,7 +331,7 @@ public static class ChangshaBotEngine
 
             try
             {
-                return decision();
+                return CoerceDecision(decision(), "strategy", allowSafeDefaultFallback: true);
             }
             catch (Exception ex)
             {
@@ -317,7 +359,7 @@ public static class ChangshaBotEngine
         {
             if (decisionTask.IsCompletedSuccessfully)
             {
-                return decisionTask.Result;
+                return CoerceDecision(decisionTask.Result, "strategy", allowSafeDefaultFallback: true);
             }
 
             if (decisionTask.IsCanceled)
