@@ -243,6 +243,19 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.Pass, action.Type);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W127")]
+    public async Task MalformedSafeDefaultAction_UnknownActionType_FallsBackToHardPassAction()
+    {
+        var action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
+            () => { Thread.Sleep(100); return BotAction.Claim(TableClaimType.Hu); },
+            timeoutMs: 1,
+            safeDefault: () => new BotAction { Type = (BotActionType)999 },
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W123")]
     public async Task MalformedStrategyDecisionAction_MissingDiscardTile_UsesSafeDefaultDecision()
     {
@@ -291,6 +304,19 @@ public sealed class BotDecisionTimeoutWrapperTests
             () => { Thread.Sleep(100); return ClaimHu(); },
             timeoutMs: 1,
             safeDefault: () => new BotDecision(new BotAction { Type = BotActionType.Claim, ClaimType = (TableClaimType)999 }, null, 0, Array.Empty<string>()),
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Pass, decision.Action.Type);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W127")]
+    public async Task MalformedSafeDefaultDecisionAction_UnknownActionType_FallsBackToHardPassDecision()
+    {
+        var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+            () => { Thread.Sleep(100); return ClaimHu(); },
+            timeoutMs: 1,
+            safeDefault: () => new BotDecision(new BotAction { Type = (BotActionType)999 }, null, 0, Array.Empty<string>()),
             logger: null,
             ct: CancellationToken.None);
 
