@@ -72,6 +72,22 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.Pass, action.Type);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W111")]
+    public async Task CancellationTokenCancelled_WithTimeoutDisabled_UsesSafeDefaultAction()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
+            () => BotAction.Claim(TableClaimType.Hu),
+            timeoutMs: 0,
+            safeDefault: PassAction,
+            logger: null,
+            ct: cts.Token);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
     [Fact, Trait("Category", "Changsha")]
     public async Task InFlightCancellation_ReturnsSafeDefaultDecision_InsteadOfLateResult()
     {
@@ -81,6 +97,22 @@ public sealed class BotDecisionTimeoutWrapperTests
         var result = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
             () => { Thread.Sleep(250); return ClaimHu(); },
             timeoutMs: 5_000,
+            Pass,
+            logger: null,
+            ct: cts.Token);
+
+        Assert.Equal(BotActionType.Pass, result.Action.Type);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W112")]
+    public async Task CancellationTokenCancelled_WithTimeoutDisabled_UsesSafeDefaultDecision()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var result = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+            ClaimHu,
+            timeoutMs: 0,
             Pass,
             logger: null,
             ct: cts.Token);
