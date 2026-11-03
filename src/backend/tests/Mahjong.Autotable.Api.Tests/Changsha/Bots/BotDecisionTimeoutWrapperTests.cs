@@ -324,6 +324,83 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.DeclareWin, decision.Action.Type);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W110")]
+    public void OwnTurnFallback_IllegalNonWinAction_UsesStateAwareMediumDiscardSafety()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tiao(2, 0),
+                Wan(1, 0),
+                Tong(4, 0),
+                Tong(7, 0)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            LastDrawSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new()
+                {
+                    SeatIndex = 1,
+                    Melds = new List<Meld>
+                    {
+                        new()
+                        {
+                            Kind = MeldKind.Pung,
+                            TileIds = new List<int>
+                            {
+                                Wan(2, 0), Wan(2, 1), Wan(2, 2)
+                            }
+                        },
+                        new()
+                        {
+                            Kind = MeldKind.Pung,
+                            TileIds = new List<int>
+                            {
+                                Tong(6, 0), Tong(6, 1), Tong(6, 2)
+                            }
+                        },
+                        new()
+                        {
+                            Kind = MeldKind.Pung,
+                            TileIds = new List<int>
+                            {
+                                Tiao(9, 0), Tiao(9, 1), Tiao(9, 2)
+                            }
+                        }
+                    }
+                },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            },
+            DiscardPile = new List<ChangshaDiscard>
+            {
+                new() { SeatIndex = 1, TileId = Wan(1, 1), TurnNumber = 1 },
+                new() { SeatIndex = 2, TileId = Tiao(2, 1), TurnNumber = 2 },
+                new() { SeatIndex = 3, TileId = Tiao(2, 2), TurnNumber = 3 },
+                new() { SeatIndex = 2, TileId = Tiao(2, 3), TurnNumber = 4 }
+            }
+        };
+
+        var decision = ChangshaGameRuntime.BuildMediumOwnTurnFallbackDecision(
+            BotAction.Discard(tileId: -1),
+            state,
+            hand,
+            seatIndex: 0,
+            reasoningLine: "test: fallback");
+
+        Assert.Equal(BotActionType.Discard, decision.Action.Type);
+        Assert.Equal(Wan(1, 0), decision.Action.TileId);
+    }
+
     private static int Wan(int rank, int copy = 0) => ((int)Suit.Wan * 9 + (rank - 1)) * 4 + copy;
     private static int Tong(int rank, int copy = 0) => ((int)Suit.Tong * 9 + (rank - 1)) * 4 + copy;
     private static int Tiao(int rank, int copy = 0) => ((int)Suit.Tiao * 9 + (rank - 1)) * 4 + copy;
