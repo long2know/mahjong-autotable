@@ -82,6 +82,32 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.Pass, decision.Action.Type);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W115")]
+    public async Task FaultedSafeDefaultActionFactory_FallsBackToHardPass()
+    {
+        var action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
+            () => { Thread.Sleep(100); return BotAction.Claim(TableClaimType.Hu); },
+            timeoutMs: 1,
+            safeDefault: () => throw new InvalidOperationException("test: simulated safe-default fault"),
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W115")]
+    public async Task FaultedSafeDefaultDecisionFactory_FallsBackToHardPassDecision()
+    {
+        var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+            () => { Thread.Sleep(100); return ClaimHu(); },
+            timeoutMs: 1,
+            safeDefault: () => throw new InvalidOperationException("test: simulated safe-default fault"),
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Pass, decision.Action.Type);
+    }
+
     [Fact, Trait("Category", "Changsha")]
     public async Task CancellationTokenCancelled_ReturnsSafeDefaultAction_InsteadOfThrowing()
     {

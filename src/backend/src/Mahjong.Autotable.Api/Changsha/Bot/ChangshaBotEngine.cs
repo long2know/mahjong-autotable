@@ -79,12 +79,25 @@ public static class ChangshaBotEngine
         ArgumentNullException.ThrowIfNull(decision);
         ArgumentNullException.ThrowIfNull(safeDefault);
 
+        BotAction InvokeSafeDefault()
+        {
+            try
+            {
+                return safeDefault();
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Bot safe-default action factory faulted; using hard pass fallback.");
+                return BotAction.Pass();
+            }
+        }
+
         if (timeoutMs <= 0)
         {
             if (ct.IsCancellationRequested)
             {
                 logger?.LogDebug("Bot decision cancelled before execution; using safe-default action.");
-                return safeDefault();
+                return InvokeSafeDefault();
             }
 
             // Timeout-disabled mode still honours lifecycle cancellation: run the decision on a
@@ -110,7 +123,7 @@ public static class ChangshaBotEngine
                         TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
                         TaskScheduler.Default);
 
-                    return safeDefault();
+                    return InvokeSafeDefault();
                 }
 
                 if (inlineDecisionTask.IsCompletedSuccessfully)
@@ -119,7 +132,7 @@ public static class ChangshaBotEngine
                 logger?.LogWarning(
                     inlineDecisionTask.Exception?.GetBaseException(),
                     "Bot decision faulted with timeout disabled; using safe-default action.");
-                return safeDefault();
+                return InvokeSafeDefault();
             }
 
             try
@@ -129,7 +142,7 @@ public static class ChangshaBotEngine
             catch (Exception ex)
             {
                 logger?.LogWarning(ex, "Bot decision faulted with timeout disabled; using safe-default action.");
-                return safeDefault();
+                return InvokeSafeDefault();
             }
         }
 
@@ -159,13 +172,13 @@ public static class ChangshaBotEngine
 
             if (decisionTask.IsCanceled)
             {
-                return safeDefault();
+                return InvokeSafeDefault();
             }
 
             logger?.LogWarning(
                 decisionTask.Exception?.GetBaseException(),
                 "Bot decision faulted within timeout budget; using safe-default action.");
-            return safeDefault();
+            return InvokeSafeDefault();
         }
 
         // Lifecycle cancellation should not escape to callers; use safe-default and
@@ -180,7 +193,7 @@ public static class ChangshaBotEngine
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
 
-            return safeDefault();
+            return InvokeSafeDefault();
         }
 
         logger?.LogWarning(
@@ -196,7 +209,7 @@ public static class ChangshaBotEngine
             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
 
-        return safeDefault();
+        return InvokeSafeDefault();
     }
 
     /// <summary>
@@ -218,12 +231,25 @@ public static class ChangshaBotEngine
         ArgumentNullException.ThrowIfNull(decision);
         ArgumentNullException.ThrowIfNull(safeDefault);
 
+        BotDecision InvokeSafeDefault()
+        {
+            try
+            {
+                return safeDefault();
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Bot safe-default decision factory faulted; using hard pass fallback.");
+                return BotDecision.FromAction(BotAction.Pass());
+            }
+        }
+
         if (timeoutMs <= 0)
         {
             if (ct.IsCancellationRequested)
             {
                 logger?.LogDebug("Bot decision cancelled before execution; using safe-default decision.");
-                return safeDefault();
+                return InvokeSafeDefault();
             }
 
             // Timeout-disabled mode still honours lifecycle cancellation: run the decision on a
@@ -249,7 +275,7 @@ public static class ChangshaBotEngine
                         TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
                         TaskScheduler.Default);
 
-                    return safeDefault();
+                    return InvokeSafeDefault();
                 }
 
                 if (inlineDecisionTask.IsCompletedSuccessfully)
@@ -258,7 +284,7 @@ public static class ChangshaBotEngine
                 logger?.LogWarning(
                     inlineDecisionTask.Exception?.GetBaseException(),
                     "Bot decision faulted with timeout disabled; using safe-default decision.");
-                return safeDefault();
+                return InvokeSafeDefault();
             }
 
             try
@@ -268,7 +294,7 @@ public static class ChangshaBotEngine
             catch (Exception ex)
             {
                 logger?.LogWarning(ex, "Bot decision faulted with timeout disabled; using safe-default decision.");
-                return safeDefault();
+                return InvokeSafeDefault();
             }
         }
 
@@ -296,13 +322,13 @@ public static class ChangshaBotEngine
 
             if (decisionTask.IsCanceled)
             {
-                return safeDefault();
+                return InvokeSafeDefault();
             }
 
             logger?.LogWarning(
                 decisionTask.Exception?.GetBaseException(),
                 "Bot decision faulted within timeout budget; using safe-default decision.");
-            return safeDefault();
+            return InvokeSafeDefault();
         }
 
         if (ct.IsCancellationRequested || decisionTask.IsCanceled)
@@ -315,7 +341,7 @@ public static class ChangshaBotEngine
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
 
-            return safeDefault();
+            return InvokeSafeDefault();
         }
 
         logger?.LogWarning(
@@ -328,6 +354,6 @@ public static class ChangshaBotEngine
             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
 
-        return safeDefault();
+        return InvokeSafeDefault();
     }
 }
