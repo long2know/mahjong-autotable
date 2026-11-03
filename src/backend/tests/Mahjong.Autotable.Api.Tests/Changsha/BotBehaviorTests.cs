@@ -1114,6 +1114,88 @@ public class BotBehaviorTests
         Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W117")]
+    public async Task Bot_UnsupportedOwnTurnWait_UsesMediumFallback_ToTakeConcealedKong()
+    {
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 2_000;
+            o.BotTurnDelayMs = 300;
+            o.BotClaimDelayMs = 1;
+            o.ClaimWindowTimeoutMs = 2_000;
+        });
+
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        InjectStrategyOrFail(runtime, new SlowBotStrategy(delayMs: 0, decision: (s, _) =>
+            s.Phase == ChangshaPhase.AwaitingDiscard
+                ? BotAction.Wait()
+                : BotAction.Pass()));
+
+        var gameId = await runtime.CreateGameAsync(
+            seed: 9055,
+            botSeatIndexes: new[] { 0 },
+            hostPlayerId: null,
+            hostConnectionId: null,
+            cts.Token);
+
+        Assert.True(runtime.TryGetSnapshot(gameId, out var state));
+        state!.DealerSeatIndex = 0;
+        foreach (var seat in state.Seats) seat.IsDealer = seat.SeatIndex == 0;
+        state.DealMode = DealMode.Auto;
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase == ChangshaPhase.AwaitingDiscard
+               && Snapshot(runtime, gameId).ActiveSeatIndex == 0,
+            TimeSpan.FromSeconds(2),
+            "auto-deal never reached AwaitingDiscard with seat 0 active");
+
+        var live = Snapshot(runtime, gameId);
+        live.Hands[0].ConcealedTiles.Clear();
+        live.Hands[0].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Wan, 1, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 1, 1),
+            ChangshaTestHelpers.Tid(Suit.Wan, 1, 2),
+            ChangshaTestHelpers.Tid(Suit.Wan, 1, 3),
+            ChangshaTestHelpers.Tid(Suit.Tong, 2, 0),
+            ChangshaTestHelpers.Tid(Suit.Tong, 3, 0),
+            ChangshaTestHelpers.Tid(Suit.Tong, 4, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 5, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 6, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 7, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 9, 0),
+            ChangshaTestHelpers.Tid(Suit.Tong, 9, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 9, 0),
+            ChangshaTestHelpers.Tid(Suit.Tong, 7, 0),
+        });
+        live.Hands[0].Melds.Clear();
+        live.LastDrawSeatIndex = 0;
+
+        var concealedKongLogical = ChangshaTestHelpers.Logical(Suit.Wan, 1);
+        Assert.False(ChangshaGameStateMachine.CanDeclareSelfDrawWin(live, 0));
+        Assert.True(ChangshaGameStateMachine.CanDeclareConcealedKong(live, 0, concealedKongLogical));
+
+        var baselineEventCount = live.EventLog.Count;
+
+        await WaitForSnapshotAsync(
+            runtime,
+            gameId,
+            snap => snap.EventLog
+                .Skip(baselineEventCount)
+                .Any(e => e.EventType == "concealed-kong" && e.SeatIndex == 0),
+            TimeSpan.FromSeconds(2),
+            "unsupported own-turn wait did not use medium fallback to take concealed kong",
+            cts.Token);
+
+        var resolved = await SnapshotCopyAsync(runtime, gameId, cts.Token);
+        Assert.Contains(resolved.EventLog, e => e.EventType == "concealed-kong" && e.SeatIndex == 0);
+        Assert.Contains(resolved.EventLog, e => e.EventType == "kong-replacement-drawn" && e.SeatIndex == 0);
+        Assert.Contains(resolved.Hands[0].Melds, m => m.Kind == MeldKind.ConcealedKong);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W100")]
     public async Task Bot_UnsupportedOwnTurnAction_UsesMediumFallback_ToTakeConcealedKong()
     {
