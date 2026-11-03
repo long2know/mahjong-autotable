@@ -488,7 +488,7 @@ public class BotBehaviorTests
         var resolved = await SnapshotCopyAsync(runtime, gameId, cts.Token);
         Assert.Contains(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 0);
         Assert.Contains(resolved.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 0);
-        Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
+        AssertNoSeatDiscardBeforeFirstWin(resolved, seatIndex: 0);
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W102")]
@@ -1057,7 +1057,7 @@ public class BotBehaviorTests
         var resolved = await SnapshotCopyAsync(runtime, gameId, cts.Token);
         Assert.Contains(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 0);
         Assert.Contains(resolved.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 0);
-        Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
+        AssertNoSeatDiscardBeforeFirstWin(resolved, seatIndex: 0);
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W116")]
@@ -1123,7 +1123,7 @@ public class BotBehaviorTests
         var resolved = await SnapshotCopyAsync(runtime, gameId, cts.Token);
         Assert.Contains(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 0);
         Assert.Contains(resolved.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 0);
-        Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
+        AssertNoSeatDiscardBeforeFirstWin(resolved, seatIndex: 0);
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W120")]
@@ -1188,7 +1188,7 @@ public class BotBehaviorTests
         var resolved = await SnapshotCopyAsync(runtime, gameId, cts.Token);
         Assert.Contains(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 0);
         Assert.Contains(resolved.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 0);
-        Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
+        AssertNoSeatDiscardBeforeFirstWin(resolved, seatIndex: 0);
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W119")]
@@ -1252,7 +1252,7 @@ public class BotBehaviorTests
         var resolved = await SnapshotCopyAsync(runtime, gameId, cts.Token);
         Assert.Contains(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 0);
         Assert.Contains(resolved.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 0);
-        Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
+        AssertNoSeatDiscardBeforeFirstWin(resolved, seatIndex: 0);
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W117")]
@@ -1514,7 +1514,7 @@ public class BotBehaviorTests
         Assert.Contains(resolved.EventLog, e => e.EventType == "added-kong" && e.SeatIndex == 0 && e.TileId == addedKongTile);
         Assert.Contains(resolved.EventLog, e => e.EventType == "kong-replacement-drawn" && e.SeatIndex == 0);
         Assert.Contains(resolved.Hands[0].Melds, m => m.Kind == MeldKind.AddedKong && m.TileIds.Count == 4 && m.TileIds.Contains(addedKongTile));
-        Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
+        AssertNoSeatDiscardBeforeFirstEvent(resolved, seatIndex: 0, pivotEventType: "added-kong");
     }
 
     [Fact, Trait("Category", "Changsha")]
@@ -1729,7 +1729,7 @@ public class BotBehaviorTests
         var final = await runtime.TryGetSnapshotCopyAsync(gameId, cts.Token);
         Assert.NotNull(final);
         Assert.Contains(final.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 0);
-        Assert.DoesNotContain(final.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
+        AssertNoSeatDiscardBeforeFirstWin(final, seatIndex: 0);
         Assert.True(sw.ElapsedMilliseconds < 2_500,
             $"Own-turn timeout fallback took too long to convert immediate self-draw Hu. Took {sw.ElapsedMilliseconds}ms.");
         Assert.True(slow.InvocationCount >= 1,
@@ -2586,6 +2586,27 @@ public class BotBehaviorTests
             $"Bot decision-timeout contract violated: {description}. " +
             $"Bishop owes ChangshaRuntimeOptions.BotDecisionTimeoutMs + safe-default fallback wiring " +
             $"in BotClaimAsync / RunBotTurnAsync — see Phase H Wave 1 spec.");
+    }
+
+    private static void AssertNoSeatDiscardBeforeFirstWin(ChangshaGameState state, int seatIndex) =>
+        AssertNoSeatDiscardBeforeFirstEvent(state, seatIndex, pivotEventType: "win-declared");
+
+    private static void AssertNoSeatDiscardBeforeFirstEvent(
+        ChangshaGameState state,
+        int seatIndex,
+        string pivotEventType)
+    {
+        var pivot = state.EventLog
+            .Where(e => e.EventType == pivotEventType && e.SeatIndex == seatIndex)
+            .OrderBy(e => e.Sequence)
+            .FirstOrDefault();
+
+        Assert.NotNull(pivot);
+        Assert.DoesNotContain(
+            state.EventLog,
+            e => e.EventType == "tile-discarded"
+                && e.SeatIndex == seatIndex
+                && e.Sequence < pivot!.Sequence);
     }
 
     private static BotDecision GetLastBotDecisionOrFail(
