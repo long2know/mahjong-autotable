@@ -2024,18 +2024,24 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 var hand = state.Hands.Single(h => h.SeatIndex == seatIndex);
                 try
                 {
-                    switch (decided)
+                    List<int> canonicalOrValidatedTileIds = decided switch
                     {
-                        case TableClaimType.Chow:
-                            ChangshaGameStateMachine.SelectChowTiles(hand, expectedWindow.DiscardTileId, chosenTileIds);
-                            break;
-                        case TableClaimType.Pung:
-                            ChangshaGameStateMachine.SelectPungTiles(hand, expectedWindow.DiscardTileId, chosenTileIds);
-                            break;
-                        case TableClaimType.Kong:
-                            ChangshaGameStateMachine.SelectKongTiles(hand, expectedWindow.DiscardTileId, chosenTileIds);
-                            break;
-                    }
+                        TableClaimType.Chow => ChangshaGameStateMachine.SelectChowTiles(hand, expectedWindow.DiscardTileId, chosenTileIds),
+                        TableClaimType.Pung => ChangshaGameStateMachine.SelectPungTiles(hand, expectedWindow.DiscardTileId, chosenTileIds),
+                        TableClaimType.Kong => ChangshaGameStateMachine.SelectKongTiles(hand, expectedWindow.DiscardTileId, chosenTileIds),
+                        _ => throw new InvalidOperationException($"Unsupported canonical claim fallback type: {decided}")
+                    };
+
+                    // Always persist the concrete resolved tile ids for non-Hu claims,
+                    // even when the bot omitted explicit claim ids. This keeps the
+                    // replay/debug decision payload aligned with the actual meld shape
+                    // that passed runtime validation.
+                    chosenTileIds = canonicalOrValidatedTileIds.ToArray();
+                    decision = BotDecision.FromAction(BotAction.Claim(decided.Value, chosenTileIds)) with
+                    {
+                        Score = decision.Score,
+                        Reasoning = decision.Reasoning
+                    };
                 }
                 catch (Exception ex) when (ex is TableRuleException or InvalidOperationException)
                 {
