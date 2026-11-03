@@ -85,7 +85,8 @@ public static class ChangshaBotEngine
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var decisionTask = Task.Run(decision, ct);
-        await Task.WhenAny(decisionTask, Task.Delay(timeoutMs, ct)).ConfigureAwait(false);
+        var delayTask = Task.Delay(timeoutMs, ct);
+        await Task.WhenAny(decisionTask, delayTask).ConfigureAwait(false);
 
         // #124 — the strategy's outcome is honoured ONLY when it demonstrably arrived within the
         // wall-clock budget. Task.WhenAny ordering is NOT authoritative under thread-pool
@@ -93,17 +94,36 @@ public static class ChangshaBotEngine
         // Task.Delay timeout's own completion is starved past the (slower) strategy, so WhenAny
         // can surface a late strategy result as if it were in-budget — leaking e.g. a false Hu
         // where the safe-default is required. The Stopwatch is immune to that scheduling inversion.
-        if (stopwatch.ElapsedMilliseconds <= timeoutMs)
+        if (!ct.IsCancellationRequested
+            && stopwatch.ElapsedMilliseconds <= timeoutMs
+            && decisionTask.IsCompleted)
         {
             if (decisionTask.IsCompletedSuccessfully)
             {
                 return decisionTask.Result;
             }
 
-            if (decisionTask.IsCompleted && !decisionTask.IsCompletedSuccessfully)
+            if (decisionTask.IsCanceled)
             {
-                return decisionTask.GetAwaiter().GetResult();
+                return safeDefault();
             }
+
+            return decisionTask.GetAwaiter().GetResult();
+        }
+
+        // Lifecycle cancellation should not escape to callers; use safe-default and
+        // let any late/faulted strategy task drain in the background.
+        if (ct.IsCancellationRequested || decisionTask.IsCanceled)
+        {
+            logger?.LogDebug("Bot decision cancelled; using safe-default action.");
+
+            _ = decisionTask.ContinueWith(
+                static t => { _ = t.Exception; },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+
+            return safeDefault();
         }
 
         logger?.LogWarning(
@@ -148,23 +168,41 @@ public static class ChangshaBotEngine
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var decisionTask = Task.Run(decision, ct);
-        await Task.WhenAny(decisionTask, Task.Delay(timeoutMs, ct)).ConfigureAwait(false);
+        var delayTask = Task.Delay(timeoutMs, ct);
+        await Task.WhenAny(decisionTask, delayTask).ConfigureAwait(false);
 
         // #124 — see DecideActionWithTimeoutAsync: honour the strategy's outcome ONLY when it
         // demonstrably arrived within the wall-clock budget, so a late (thread-pool-starved)
         // strategy answer can never be surfaced in place of the safe-default (the Postgres-cell
         // false-Hu flake). The Stopwatch is authoritative where Task.WhenAny ordering is not.
-        if (stopwatch.ElapsedMilliseconds <= timeoutMs)
+        if (!ct.IsCancellationRequested
+            && stopwatch.ElapsedMilliseconds <= timeoutMs
+            && decisionTask.IsCompleted)
         {
             if (decisionTask.IsCompletedSuccessfully)
             {
                 return decisionTask.Result;
             }
 
-            if (decisionTask.IsCompleted && !decisionTask.IsCompletedSuccessfully)
+            if (decisionTask.IsCanceled)
             {
-                return decisionTask.GetAwaiter().GetResult();
+                return safeDefault();
             }
+
+            return decisionTask.GetAwaiter().GetResult();
+        }
+
+        if (ct.IsCancellationRequested || decisionTask.IsCanceled)
+        {
+            logger?.LogDebug("Bot decision cancelled; using safe-default decision.");
+
+            _ = decisionTask.ContinueWith(
+                static t => { _ = t.Exception; },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+
+            return safeDefault();
         }
 
         logger?.LogWarning(
