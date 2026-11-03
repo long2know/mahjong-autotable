@@ -50,6 +50,30 @@ public static class ChangshaBotEngine
     private static bool IsValidClaimType(TableClaimType? claimType)
         => claimType is { } value && Enum.IsDefined(value);
 
+    private static bool IsValidTileId(int? tileId)
+        => tileId is { } value
+            && value >= 0
+            && value < ChangshaDeckBuilder.TotalTiles;
+
+    private static bool IsValidLogicalTile(int? logicalTile)
+        => logicalTile is { } value
+            && value >= 0
+            && value < ChangshaDeckBuilder.LogicalTileCount;
+
+    private static bool HasMalformedClaimTileIds(int[]? claimTileIds)
+    {
+        if (claimTileIds is not { Length: > 0 })
+            return false;
+
+        foreach (var tileId in claimTileIds)
+        {
+            if (tileId < 0 || tileId >= ChangshaDeckBuilder.TotalTiles)
+                return true;
+        }
+
+        return false;
+    }
+
     private static bool IsMalformedAction(BotAction action)
     {
         if (!IsValidActionType(action.Type))
@@ -57,10 +81,11 @@ public static class ChangshaBotEngine
 
         return action.Type switch
         {
-            BotActionType.Discard => action.TileId is null,
-            BotActionType.DeclareAddedKong => action.TileId is null,
-            BotActionType.DeclareConcealedKong => action.LogicalTile is null,
-            BotActionType.Claim => !IsValidClaimType(action.ClaimType),
+            BotActionType.Discard => !IsValidTileId(action.TileId),
+            BotActionType.DeclareAddedKong => !IsValidTileId(action.TileId),
+            BotActionType.DeclareConcealedKong => !IsValidLogicalTile(action.LogicalTile),
+            BotActionType.Claim => !IsValidClaimType(action.ClaimType)
+                || HasMalformedClaimTileIds(action.ClaimTileIds),
             _ => false
         };
     }
@@ -73,10 +98,14 @@ public static class ChangshaBotEngine
         return action.Type switch
         {
             BotActionType.Discard when action.TileId is null => "discard missing tile id",
+            BotActionType.Discard when !IsValidTileId(action.TileId) => "discard tile id out of range",
             BotActionType.DeclareAddedKong when action.TileId is null => "added kong missing tile id",
+            BotActionType.DeclareAddedKong when !IsValidTileId(action.TileId) => "added kong tile id out of range",
             BotActionType.DeclareConcealedKong when action.LogicalTile is null => "concealed kong missing logical tile",
+            BotActionType.DeclareConcealedKong when !IsValidLogicalTile(action.LogicalTile) => "concealed kong logical tile out of range",
             BotActionType.Claim when action.ClaimType is null => "claim missing claim type",
             BotActionType.Claim when !IsValidClaimType(action.ClaimType) => "claim has unknown claim type",
+            BotActionType.Claim when HasMalformedClaimTileIds(action.ClaimTileIds) => "claim has out-of-range tile id",
             _ => null
         };
     }
