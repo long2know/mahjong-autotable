@@ -2522,16 +2522,33 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         };
                     }
                 }
-                else if (decision.Action.Type == BotActionType.Discard
-                         && (decision.Action.TileId is null || !hand.ConcealedTiles.Contains(decision.Action.TileId.Value)))
+                else if (decision.Action.Type == BotActionType.Discard)
                 {
-                    _logger.LogWarning(
-                        "Bot proposed invalid discard tile {TileId} in game {GameId} seat {Seat}; using medium-policy own-turn fallback.",
-                        decision.Action.TileId, instance.GameId, seatIndex);
-                    decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
+                    var safeDiscardTileId = SelectSafeDiscardTileOrNull(hand, decision.Action.TileId);
+                    if (safeDiscardTileId is { } legalDiscardTileId)
                     {
-                        Reasoning = AppendDecisionReasoning(decision, "runtime: invalid discard tile; medium-policy own-turn fallback")
-                    };
+                        if (decision.Action.TileId != legalDiscardTileId)
+                        {
+                            _logger.LogWarning(
+                                "Bot proposed stale discard tile {TileId} in game {GameId} seat {Seat}; remapping to legal matching tile {RemappedTileId}.",
+                                decision.Action.TileId, instance.GameId, seatIndex, legalDiscardTileId);
+                            decision = decision with
+                            {
+                                Action = BotAction.Discard(legalDiscardTileId),
+                                Reasoning = AppendDecisionReasoning(decision, "runtime: remapped stale discard tile to legal matching copy")
+                            };
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "Bot proposed invalid discard tile {TileId} in game {GameId} seat {Seat}; using medium-policy own-turn fallback.",
+                            decision.Action.TileId, instance.GameId, seatIndex);
+                        decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
+                        {
+                            Reasoning = AppendDecisionReasoning(decision, "runtime: invalid discard tile; medium-policy own-turn fallback")
+                        };
+                    }
                 }
                 else if (decision.Action.Type is not BotActionType.DeclareWin
                          and not BotActionType.DeclareConcealedKong
@@ -2751,27 +2768,35 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
 
     internal static int SelectSafeDiscardTile(ChangshaHandState hand, int candidateTileId)
     {
-        if (hand.ConcealedTiles.Contains(candidateTileId))
-            return candidateTileId;
-
-        // Preserve strategy intent when only the physical copy index is stale: if a
-        // matching logical tile still exists in hand, discard that legal copy.
-        if (candidateTileId >= 0 && candidateTileId < ChangshaDeckBuilder.TotalTiles)
-        {
-            var logicalTile = ChangshaDeckBuilder.GetLogicalTile(candidateTileId);
-            var remappedTileId = hand.ConcealedTiles
-                .Where(tileId => ChangshaDeckBuilder.GetLogicalTile(tileId) == logicalTile)
-                .OrderBy(tileId => tileId)
-                .Cast<int?>()
-                .FirstOrDefault();
-
-            if (remappedTileId is { } legalTileId)
-                return legalTileId;
-        }
+        if (SelectSafeDiscardTileOrNull(hand, candidateTileId) is { } safeTileId)
+            return safeTileId;
 
         // Deterministic hard fallback for malformed strategy outputs: keep turn flow
         // progressing with a legal discard instead of surfacing an invalid tile id.
         return hand.ConcealedTiles.Min();
+    }
+
+    internal static int? SelectSafeDiscardTileOrNull(ChangshaHandState hand, int? candidateTileId)
+    {
+        if (candidateTileId is not { } tileId)
+            return null;
+
+        if (hand.ConcealedTiles.Contains(tileId))
+            return tileId;
+
+        // Preserve strategy intent when only the physical copy index is stale: if a
+        // matching logical tile still exists in hand, discard that legal copy.
+        if (tileId >= 0 && tileId < ChangshaDeckBuilder.TotalTiles)
+        {
+            var logicalTile = ChangshaDeckBuilder.GetLogicalTile(tileId);
+            return hand.ConcealedTiles
+                .Where(concealedTileId => ChangshaDeckBuilder.GetLogicalTile(concealedTileId) == logicalTile)
+                .OrderBy(concealedTileId => concealedTileId)
+                .Cast<int?>()
+                .FirstOrDefault();
+        }
+
+        return null;
     }
 
     internal static int? SelectSafeAddedKongTile(ChangshaGameState state, int seatIndex, int? candidateTileId)
