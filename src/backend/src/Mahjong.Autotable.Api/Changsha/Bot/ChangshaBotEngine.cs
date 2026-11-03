@@ -61,7 +61,8 @@ public static class ChangshaBotEngine
     /// <param name="safeDefault">
     /// Factory for the fallback action — supplied by the caller because the safe
     /// default depends on the call site (turn → discard, claim window → pass).
-    /// Invoked only on timeout; never throws.
+    /// Invoked when timeout/cancellation/fault blocks a trustworthy strategy
+    /// outcome; never throws.
     /// </param>
     /// <param name="logger">Optional logger; a warning is emitted on timeout.</param>
     /// <param name="ct">
@@ -95,6 +96,11 @@ public static class ChangshaBotEngine
                 logger?.LogDebug("Bot decision cancelled during execution; using safe-default action.");
                 return safeDefault();
             }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Bot decision faulted with timeout disabled; using safe-default action.");
+                return safeDefault();
+            }
         }
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -122,7 +128,10 @@ public static class ChangshaBotEngine
                 return safeDefault();
             }
 
-            return decisionTask.GetAwaiter().GetResult();
+            logger?.LogWarning(
+                decisionTask.Exception?.GetBaseException(),
+                "Bot decision faulted within timeout budget; using safe-default action.");
+            return safeDefault();
         }
 
         // Lifecycle cancellation should not escape to callers; use safe-default and
@@ -161,8 +170,8 @@ public static class ChangshaBotEngine
     /// <see cref="DecideActionWithTimeoutAsync"/>. Same timeout / safe-default
     /// semantics, but threads a <see cref="BotDecision"/> all the way through
     /// so the runtime can capture reasoning + score for the audit replay.
-    /// On timeout the caller's <paramref name="safeDefault"/> factory is
-    /// invoked; the safe default typically wraps a stable
+    /// On timeout/cancellation/fault the caller's <paramref name="safeDefault"/>
+    /// factory is invoked; the safe default typically wraps a stable
     /// <see cref="BotAction"/> with empty reasoning + score 0.
     /// </summary>
     public static async Task<BotDecision> DecideWithReasoningWithTimeoutAsync(
@@ -192,6 +201,11 @@ public static class ChangshaBotEngine
                 logger?.LogDebug("Bot decision cancelled during execution; using safe-default decision.");
                 return safeDefault();
             }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Bot decision faulted with timeout disabled; using safe-default decision.");
+                return safeDefault();
+            }
         }
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -217,7 +231,10 @@ public static class ChangshaBotEngine
                 return safeDefault();
             }
 
-            return decisionTask.GetAwaiter().GetResult();
+            logger?.LogWarning(
+                decisionTask.Exception?.GetBaseException(),
+                "Bot decision faulted within timeout budget; using safe-default decision.");
+            return safeDefault();
         }
 
         if (ct.IsCancellationRequested || decisionTask.IsCanceled)
