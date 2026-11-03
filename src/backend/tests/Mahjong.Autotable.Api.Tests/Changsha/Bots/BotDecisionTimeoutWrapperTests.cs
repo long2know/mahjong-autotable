@@ -763,6 +763,34 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(Wan(1, 0), decision.Action.TileId);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W124")]
+    public void SelectSafeDiscardTile_UsesCandidate_WhenTileIsInHand()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { Wan(7, 0), Tong(3, 0), Tiao(5, 0) }
+        };
+
+        var selected = ChangshaGameRuntime.SelectSafeDiscardTile(hand, Tong(3, 0));
+
+        Assert.Equal(Tong(3, 0), selected);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W124")]
+    public void SelectSafeDiscardTile_FallsBackToLowestTile_WhenCandidateIsIllegal()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { Wan(7, 0), Tong(3, 0), Tiao(5, 0) }
+        };
+
+        var selected = ChangshaGameRuntime.SelectSafeDiscardTile(hand, candidateTileId: -1);
+
+        Assert.Equal(Wan(7, 0), selected);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W121")]
     public void OwnTurnFallback_EmptyConcealedHand_DoesNotThrow_AndReturnsPass()
     {

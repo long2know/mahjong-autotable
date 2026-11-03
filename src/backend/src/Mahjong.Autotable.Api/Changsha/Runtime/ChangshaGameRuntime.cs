@@ -2570,7 +2570,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                     {
                         var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
                         if (hand.ConcealedTiles.Count > 0)
-                            await DiscardAsync(instance.GameId, seatIndex, ChangshaBotPolicy.SelectDiscardTile(hand), ct);
+                        {
+                            var candidateTileId = ChangshaBotPolicy.SelectDiscardTile(hand);
+                            var discardTileId = SelectSafeDiscardTile(hand, candidateTileId);
+                            await DiscardAsync(instance.GameId, seatIndex, discardTileId, ct);
+                        }
+
                         break;
                     }
             }
@@ -2714,6 +2719,16 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         return BuildMediumOwnTurnNonWinFallbackAction(liveState, liveHand, seatIndex);
     }
 
+    internal static int SelectSafeDiscardTile(ChangshaHandState hand, int candidateTileId)
+    {
+        if (hand.ConcealedTiles.Contains(candidateTileId))
+            return candidateTileId;
+
+        // Deterministic hard fallback for malformed strategy outputs: keep turn flow
+        // progressing with a legal discard instead of surfacing an invalid tile id.
+        return hand.ConcealedTiles.Min();
+    }
+
     private static BotAction BuildMediumOwnTurnNonWinFallbackAction(
         ChangshaGameState liveState,
         ChangshaHandState liveHand,
@@ -2755,7 +2770,8 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             return BotAction.DeclareAddedKong(addedKongTile);
         }
 
-        return BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(liveHand));
+        var candidateTileId = ChangshaBotPolicy.SelectDiscardTile(liveHand);
+        return BotAction.Discard(SelectSafeDiscardTile(liveHand, candidateTileId));
     }
 
     private static bool TryPreflightSelfDrawHuSettlement(ChangshaGameState state, int seatIndex)
