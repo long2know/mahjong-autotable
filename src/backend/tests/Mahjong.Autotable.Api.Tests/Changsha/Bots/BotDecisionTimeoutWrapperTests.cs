@@ -682,6 +682,40 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(Wan(1, 0), decision.Action.TileId);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W121")]
+    public void OwnTurnFallback_EmptyConcealedHand_DoesNotThrow_AndReturnsPass()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new List<int>(),
+            Melds = new List<Meld>()
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 1,
+            LastDrawSeatIndex = 1,
+            Hands = new()
+            {
+                new() { SeatIndex = 0 },
+                hand,
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var decision = ChangshaGameRuntime.BuildMediumOwnTurnFallbackDecision(
+            BotAction.Discard(tileId: -1),
+            state,
+            hand,
+            seatIndex: 1,
+            reasoningLine: "test: empty concealed hand fallback");
+
+        Assert.Equal(BotActionType.Pass, decision.Action.Type);
+    }
+
     private static int Wan(int rank, int copy = 0) => ((int)Suit.Wan * 9 + (rank - 1)) * 4 + copy;
     private static int Tong(int rank, int copy = 0) => ((int)Suit.Tong * 9 + (rank - 1)) * 4 + copy;
     private static int Tiao(int rank, int copy = 0) => ((int)Suit.Tiao * 9 + (rank - 1)) * 4 + copy;
