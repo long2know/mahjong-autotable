@@ -292,6 +292,38 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.DeclareWin, decision.Action.Type);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W109")]
+    public void OwnTurnFallback_LegalNonWinAction_StillPromotesLegalSelfDrawWin()
+    {
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 31, botSeats: new[] { 1 });
+        state.Phase = ChangshaPhase.AwaitingDiscard;
+        state.ActiveSeatIndex = 1;
+        state.LastDrawSeatIndex = 1;
+
+        var hand = state.Hands.Single(h => h.SeatIndex == 1);
+        hand.ConcealedTiles.Clear();
+        hand.Melds.Clear();
+        hand.ConcealedTiles.AddRange(new[]
+        {
+            Wan(1, 0), Wan(2, 0), Wan(3, 0),
+            Wan(4, 0), Wan(5, 0), Wan(6, 0),
+            Tong(1, 0), Tong(2, 0), Tong(3, 0),
+            Tiao(4, 0), Tiao(5, 0), Tiao(6, 0),
+            Tong(5, 1), Tong(5, 2)
+        });
+
+        Assert.True(ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, seatIndex: 1));
+
+        var decision = ChangshaGameRuntime.BuildMediumOwnTurnFallbackDecision(
+            BotAction.Discard(tileId: Tong(5, 1)),
+            state,
+            hand,
+            seatIndex: 1,
+            reasoningLine: "test: fallback");
+
+        Assert.Equal(BotActionType.DeclareWin, decision.Action.Type);
+    }
+
     private static int Wan(int rank, int copy = 0) => ((int)Suit.Wan * 9 + (rank - 1)) * 4 + copy;
     private static int Tong(int rank, int copy = 0) => ((int)Suit.Tong * 9 + (rank - 1)) * 4 + copy;
     private static int Tiao(int rank, int copy = 0) => ((int)Suit.Tiao * 9 + (rank - 1)) * 4 + copy;

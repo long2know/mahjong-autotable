@@ -2621,10 +2621,19 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         int seatIndex,
         string reasoningLine)
     {
+        // Runtime fallback should always convert to legal self-draw Hu first when available,
+        // even if the policy fallback returned a legal non-Hu action. This avoids dropping
+        // guaranteed wins on timeout/unsupported-action fallback paths.
+        var canDeclareSelfDrawHu = ChangshaGameStateMachine.CanDeclareSelfDrawWin(liveState, seatIndex)
+            && TryPreflightSelfDrawHuSettlement(liveState, seatIndex);
+        if (canDeclareSelfDrawHu && fallbackAction.Type != BotActionType.DeclareWin)
+        {
+            fallbackAction = BotAction.DeclareWin();
+        }
+
         var fallbackIsLegal = fallbackAction.Type switch
         {
-            BotActionType.DeclareWin => ChangshaGameStateMachine.CanDeclareSelfDrawWin(liveState, seatIndex)
-                && TryPreflightSelfDrawHuSettlement(liveState, seatIndex),
+            BotActionType.DeclareWin => canDeclareSelfDrawHu,
             BotActionType.DeclareConcealedKong => fallbackAction.LogicalTile is int logicalTile
                 && ChangshaGameStateMachine.CanDeclareConcealedKong(liveState, seatIndex, logicalTile),
             BotActionType.DeclareAddedKong => fallbackAction.TileId is int addedKongTileId
