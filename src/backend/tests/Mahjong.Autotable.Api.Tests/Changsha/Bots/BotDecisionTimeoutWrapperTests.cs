@@ -189,6 +189,60 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.Pass, decision.Action.Type);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W123")]
+    public async Task MalformedStrategyAction_MissingClaimType_UsesSafeDefaultAction()
+    {
+        var action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
+            () => new BotAction { Type = BotActionType.Claim },
+            timeoutMs: 500,
+            safeDefault: () => BotAction.Claim(TableClaimType.Pung),
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Pung, action.ClaimType);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W123")]
+    public async Task MalformedSafeDefaultAction_MissingTileId_FallsBackToHardPassAction()
+    {
+        var action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
+            () => { Thread.Sleep(100); return BotAction.Claim(TableClaimType.Hu); },
+            timeoutMs: 1,
+            safeDefault: () => new BotAction { Type = BotActionType.Discard },
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W123")]
+    public async Task MalformedStrategyDecisionAction_MissingDiscardTile_UsesSafeDefaultDecision()
+    {
+        var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+            () => new BotDecision(new BotAction { Type = BotActionType.Discard }, null, 0, Array.Empty<string>()),
+            timeoutMs: 500,
+            safeDefault: ClaimHu,
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Claim, decision.Action.Type);
+        Assert.Equal(TableClaimType.Hu, decision.Action.ClaimType);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W123")]
+    public async Task MalformedSafeDefaultDecisionAction_MissingClaimType_FallsBackToHardPassDecision()
+    {
+        var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+            () => { Thread.Sleep(100); return ClaimHu(); },
+            timeoutMs: 1,
+            safeDefault: () => new BotDecision(new BotAction { Type = BotActionType.Claim }, null, 0, Array.Empty<string>()),
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Pass, decision.Action.Type);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W116")]
     public async Task NullReasoning_IsNormalizedToEmptyList()
     {
