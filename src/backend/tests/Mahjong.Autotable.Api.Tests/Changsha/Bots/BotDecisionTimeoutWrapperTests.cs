@@ -947,6 +947,20 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(Tong(3, 0), selected);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W129")]
+    public void SelectSafeDiscardTile_RemapsToMatchingLogicalTile_WhenCandidateCopyIsMissing()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { Wan(7, 1), Wan(7, 2), Tong(3, 0) }
+        };
+
+        var selected = ChangshaGameRuntime.SelectSafeDiscardTile(hand, Wan(7, 0));
+
+        Assert.Equal(Wan(7, 1), selected);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W124")]
     public void SelectSafeDiscardTile_FallsBackToLowestTile_WhenCandidateIsIllegal()
     {

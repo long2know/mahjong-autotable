@@ -2733,6 +2733,21 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         if (hand.ConcealedTiles.Contains(candidateTileId))
             return candidateTileId;
 
+        // Preserve strategy intent when only the physical copy index is stale: if a
+        // matching logical tile still exists in hand, discard that legal copy.
+        if (candidateTileId >= 0 && candidateTileId < ChangshaDeckBuilder.TotalTiles)
+        {
+            var logicalTile = ChangshaDeckBuilder.GetLogicalTile(candidateTileId);
+            var remappedTileId = hand.ConcealedTiles
+                .Where(tileId => ChangshaDeckBuilder.GetLogicalTile(tileId) == logicalTile)
+                .OrderBy(tileId => tileId)
+                .Cast<int?>()
+                .FirstOrDefault();
+
+            if (remappedTileId is { } legalTileId)
+                return legalTileId;
+        }
+
         // Deterministic hard fallback for malformed strategy outputs: keep turn flow
         // progressing with a legal discard instead of surfacing an invalid tile id.
         return hand.ConcealedTiles.Min();
