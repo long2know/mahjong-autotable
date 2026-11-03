@@ -57,6 +57,32 @@ public sealed class BotDecisionTimeoutWrapperTests
     }
 
     [Fact, Trait("Category", "Changsha")]
+    public async Task FaultedStrategy_ReturnsSafeDefaultAction_InsteadOfThrowing()
+    {
+        var action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
+            () => throw new InvalidOperationException("test: simulated strategy fault"),
+            timeoutMs: 500,
+            safeDefault: PassAction,
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
+    [Fact, Trait("Category", "Changsha")]
+    public async Task FaultedStrategy_ReturnsSafeDefaultDecision_InsteadOfThrowing()
+    {
+        var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+            () => throw new InvalidOperationException("test: simulated strategy fault"),
+            timeoutMs: 500,
+            safeDefault: Pass,
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.Pass, decision.Action.Type);
+    }
+
+    [Fact, Trait("Category", "Changsha")]
     public async Task CancellationTokenCancelled_ReturnsSafeDefaultAction_InsteadOfThrowing()
     {
         using var cts = new CancellationTokenSource();
