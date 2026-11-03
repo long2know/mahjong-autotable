@@ -1920,6 +1920,19 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 _logger,
                 ct).ConfigureAwait(false);
             var action = decision.Action;
+            if (IsOfferedClaim(expectedWindow, seatIndex, TableClaimType.Hu)
+                && (action.Type != BotActionType.Claim || action.ClaimType != TableClaimType.Hu))
+            {
+                _logger.LogWarning(
+                    "Bot skipped offered Hu claim from seat {Seat} in game {GameId}; overriding to Hu claim.",
+                    seatIndex, instance.GameId);
+                decision = BotDecision.FromAction(BotAction.Claim(TableClaimType.Hu)) with
+                {
+                    Score = decision.Score,
+                    Reasoning = AppendDecisionReasoning(decision, "runtime: offered hu available; overriding non-hu claim decision")
+                };
+                action = decision.Action;
+            }
             if (action.Type is not BotActionType.Claim and not BotActionType.Pass)
             {
                 _logger.LogWarning(
@@ -2418,6 +2431,21 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         "Ignoring obsolete bot decision in game {GameId} seat {Seat}: actor or turn is no longer ready.",
                         instance.GameId, seatIndex);
                     return;
+                }
+                var shouldForceSelfDrawHu = decision.Action.Type != BotActionType.DeclareWin
+                    && ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, seatIndex)
+                    && TryPreflightSelfDrawHuSettlement(state, seatIndex);
+                if (shouldForceSelfDrawHu)
+                {
+                    _logger.LogWarning(
+                        "Bot skipped available self-draw in game {GameId} seat {Seat}; overriding to DeclareWin.",
+                        instance.GameId, seatIndex);
+                    decision = decision with
+                    {
+                        Action = BotAction.DeclareWin(),
+                        Tile = null,
+                        Reasoning = AppendDecisionReasoning(decision, "runtime: legal self-draw available; overriding non-win own-turn action")
+                    };
                 }
                 if (decision.Action.Type == BotActionType.DeclareWin
                     && !ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, seatIndex))
