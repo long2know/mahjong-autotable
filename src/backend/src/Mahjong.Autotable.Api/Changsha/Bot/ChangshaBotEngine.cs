@@ -1,5 +1,6 @@
 namespace Mahjong.Autotable.Api.Changsha.Bot;
 
+using Mahjong.Autotable.Api.Tables;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
@@ -43,25 +44,42 @@ public static class ChangshaBotEngine
     /// <summary>The default strategy (Medium) — exposed for unit testing.</summary>
     public static IChangshaBotStrategy Default => MediumInstance;
 
+    private static bool IsValidActionType(BotActionType actionType)
+        => Enum.IsDefined(actionType);
+
+    private static bool IsValidClaimType(TableClaimType? claimType)
+        => claimType is { } value && Enum.IsDefined(value);
+
     private static bool IsMalformedAction(BotAction action)
-        => action.Type switch
+    {
+        if (!IsValidActionType(action.Type))
+            return true;
+
+        return action.Type switch
         {
             BotActionType.Discard => action.TileId is null,
             BotActionType.DeclareAddedKong => action.TileId is null,
             BotActionType.DeclareConcealedKong => action.LogicalTile is null,
-            BotActionType.Claim => action.ClaimType is null,
+            BotActionType.Claim => !IsValidClaimType(action.ClaimType),
             _ => false
         };
+    }
 
     private static string? GetMalformedActionReason(BotAction action)
-        => action.Type switch
+    {
+        if (!IsValidActionType(action.Type))
+            return "unknown action type";
+
+        return action.Type switch
         {
             BotActionType.Discard when action.TileId is null => "discard missing tile id",
             BotActionType.DeclareAddedKong when action.TileId is null => "added kong missing tile id",
             BotActionType.DeclareConcealedKong when action.LogicalTile is null => "concealed kong missing logical tile",
             BotActionType.Claim when action.ClaimType is null => "claim missing claim type",
+            BotActionType.Claim when !IsValidClaimType(action.ClaimType) => "claim has unknown claim type",
             _ => null
         };
+    }
 
     /// <summary>
     /// Phase H Wave 1 — race a synchronous bot decision against a timeout. If the
