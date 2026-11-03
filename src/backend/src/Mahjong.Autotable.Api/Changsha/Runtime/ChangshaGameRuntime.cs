@@ -2600,14 +2600,23 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             return BotAction.Claim(TableClaimType.Hu);
 
         var fallbackAction = new ChangshaBotPolicy().DecideAction(decisionState, seatIndex);
-        if (fallbackAction.Type != BotActionType.Claim
-            || fallbackAction.ClaimType is null
-            || !IsOfferedClaim(expectedWindow, seatIndex, fallbackAction.ClaimType.Value))
+        if (fallbackAction.Type == BotActionType.Claim
+            && fallbackAction.ClaimType is { } fallbackClaimType
+            && IsOfferedClaim(expectedWindow, seatIndex, fallbackClaimType))
         {
-            fallbackAction = BotAction.Pass();
+            return fallbackAction;
         }
 
-        return fallbackAction;
+        // Preserve Medium's explicit pass (shape-regressive/declined non-Hu).
+        if (fallbackAction.Type == BotActionType.Pass)
+            return fallbackAction;
+
+        // Defensive fallback for stale/out-of-phase decision snapshots: keep claim-window
+        // progress by taking the strongest legal non-Hu claim rather than dropping to pass.
+        if (TrySelectBestNonHuOfferedClaim(expectedWindow, seatIndex, out var bestNonHuClaimType))
+            return BotAction.Claim(bestNonHuClaimType);
+
+        return BotAction.Pass();
     }
 
     internal static BotAction BuildBestNonHuFallbackClaimAction(
