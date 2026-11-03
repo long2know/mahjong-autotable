@@ -87,21 +87,44 @@ public static class ChangshaBotEngine
                 return safeDefault();
             }
 
-            try
+            // Timeout-disabled mode still honours lifecycle cancellation: run the decision on a
+            // dedicated worker and race it against the caller token so we can return a safe-default
+            // promptly even if the strategy blocks synchronously.
+            if (ct.CanBeCanceled)
             {
-                var action = decision();
-                if (ct.IsCancellationRequested)
+                var inlineDecisionTask = Task.Factory.StartNew(
+                    decision,
+                    CancellationToken.None,
+                    TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
+                var cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                await Task.WhenAny(inlineDecisionTask, cancellationTask).ConfigureAwait(false);
+
+                if (ct.IsCancellationRequested || !inlineDecisionTask.IsCompleted || inlineDecisionTask.IsCanceled)
                 {
                     logger?.LogDebug("Bot decision cancelled during execution; using safe-default action.");
+
+                    _ = inlineDecisionTask.ContinueWith(
+                        static t => { _ = t.Exception; },
+                        CancellationToken.None,
+                        TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
+
                     return safeDefault();
                 }
 
-                return action;
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                logger?.LogDebug("Bot decision cancelled during execution; using safe-default action.");
+                if (inlineDecisionTask.IsCompletedSuccessfully)
+                    return inlineDecisionTask.Result;
+
+                logger?.LogWarning(
+                    inlineDecisionTask.Exception?.GetBaseException(),
+                    "Bot decision faulted with timeout disabled; using safe-default action.");
                 return safeDefault();
+            }
+
+            try
+            {
+                return decision();
             }
             catch (Exception ex)
             {
@@ -203,21 +226,44 @@ public static class ChangshaBotEngine
                 return safeDefault();
             }
 
-            try
+            // Timeout-disabled mode still honours lifecycle cancellation: run the decision on a
+            // dedicated worker and race it against the caller token so we can return a safe-default
+            // promptly even if the strategy blocks synchronously.
+            if (ct.CanBeCanceled)
             {
-                var resolved = decision();
-                if (ct.IsCancellationRequested)
+                var inlineDecisionTask = Task.Factory.StartNew(
+                    decision,
+                    CancellationToken.None,
+                    TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
+                var cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                await Task.WhenAny(inlineDecisionTask, cancellationTask).ConfigureAwait(false);
+
+                if (ct.IsCancellationRequested || !inlineDecisionTask.IsCompleted || inlineDecisionTask.IsCanceled)
                 {
                     logger?.LogDebug("Bot decision cancelled during execution; using safe-default decision.");
+
+                    _ = inlineDecisionTask.ContinueWith(
+                        static t => { _ = t.Exception; },
+                        CancellationToken.None,
+                        TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
+
                     return safeDefault();
                 }
 
-                return resolved;
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                logger?.LogDebug("Bot decision cancelled during execution; using safe-default decision.");
+                if (inlineDecisionTask.IsCompletedSuccessfully)
+                    return inlineDecisionTask.Result;
+
+                logger?.LogWarning(
+                    inlineDecisionTask.Exception?.GetBaseException(),
+                    "Bot decision faulted with timeout disabled; using safe-default decision.");
                 return safeDefault();
+            }
+
+            try
+            {
+                return decision();
             }
             catch (Exception ex)
             {
