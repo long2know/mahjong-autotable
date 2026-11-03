@@ -632,6 +632,32 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.Pass, action.Type);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W128")]
+    public void ClaimFallback_UsesBestOfferedNonHuClaim_WhenDecisionStateIsOutOfPhase()
+    {
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 23, botSeats: new[] { 1 });
+        var window = new ChangshaClaimWindow
+        {
+            DiscardSeatIndex = 0,
+            DiscardTileId = ChangshaTestHelpers.Tid(Suit.Wan, 7, 0),
+            Opportunities = new()
+            {
+                new ChangshaClaimOpportunity { SeatIndex = 1, ClaimType = TableClaimType.Chow, Priority = 1 },
+                new ChangshaClaimOpportunity { SeatIndex = 1, ClaimType = TableClaimType.Pung, Priority = 2 }
+            }
+        };
+
+        // Intentionally out-of-phase snapshot: Medium would emit Wait/Discard here.
+        // Fallback must stay within expected claim-window legality.
+        state.ClaimWindow = null;
+        state.Phase = ChangshaPhase.AwaitingDiscard;
+
+        var action = ChangshaGameRuntime.BuildMediumClaimFallbackAction(window, state, seatIndex: 1);
+
+        Assert.Equal(BotActionType.Claim, action.Type);
+        Assert.Equal(TableClaimType.Pung, action.ClaimType);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W104")]
     public void NonHuHuOverflowFallback_PreservesMediumPass_WhenOnlyShapeRegressiveNonHuClaimsExist()
     {
