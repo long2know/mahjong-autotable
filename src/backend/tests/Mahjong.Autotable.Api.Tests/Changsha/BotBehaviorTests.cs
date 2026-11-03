@@ -1724,6 +1724,10 @@ public class BotBehaviorTests
         Assert.Contains(discardWan1, pung.TileIds);
         Assert.Null(resolved.CurrentWin);
         Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 1);
+
+        var lastDecision = GetLastBotDecisionOrFail(runtime, gameId, seatIndex: 1);
+        Assert.Equal(BotActionType.Claim, lastDecision.Action.Type);
+        Assert.Equal(TableClaimType.Pung, lastDecision.Action.ClaimType);
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W103")]
@@ -1842,6 +1846,11 @@ public class BotBehaviorTests
         Assert.Contains(chowTong7, meld.TileIds);
         Assert.Null(resolved.CurrentWin);
         Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 1);
+
+        var lastDecision = GetLastBotDecisionOrFail(runtime, gameId, seatIndex: 1);
+        Assert.Equal(BotActionType.Claim, lastDecision.Action.Type);
+        Assert.Equal(TableClaimType.Chow, lastDecision.Action.ClaimType);
+        Assert.NotEqual(TableClaimType.Hu, lastDecision.Action.ClaimType);
     }
 
     [Fact, Trait("Category", "Changsha")]
@@ -2114,6 +2123,46 @@ public class BotBehaviorTests
             $"Bot decision-timeout contract violated: {description}. " +
             $"Bishop owes ChangshaRuntimeOptions.BotDecisionTimeoutMs + safe-default fallback wiring " +
             $"in BotClaimAsync / RunBotTurnAsync — see Phase H Wave 1 spec.");
+    }
+
+    private static BotDecision GetLastBotDecisionOrFail(
+        IChangshaGameRuntime runtime,
+        string gameId,
+        int seatIndex)
+    {
+        var runtimeType = runtime.GetType();
+        var gamesField = runtimeType.GetField("_games", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(gamesField);
+
+        var games = gamesField!.GetValue(runtime);
+        Assert.NotNull(games);
+
+        var tryGetGame = games!.GetType().GetMethod("TryGetValue", BindingFlags.Public | BindingFlags.Instance);
+        Assert.NotNull(tryGetGame);
+
+        var gameArgs = new object?[] { gameId, null };
+        var foundGame = (bool)(tryGetGame!.Invoke(games, gameArgs) ?? false);
+        Assert.True(foundGame, $"Failed to locate runtime game instance for gameId={gameId}.");
+        Assert.NotNull(gameArgs[1]);
+
+        var instance = gameArgs[1]!;
+        var lastBotDecisionsProperty = instance.GetType().GetProperty("LastBotDecisions", BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(lastBotDecisionsProperty);
+
+        var lastBotDecisions = lastBotDecisionsProperty!.GetValue(instance);
+        Assert.NotNull(lastBotDecisions);
+
+        var tryGetDecision = lastBotDecisions!.GetType().GetMethod("TryGetValue", BindingFlags.Public | BindingFlags.Instance);
+        Assert.NotNull(tryGetDecision);
+
+        var decisionArgs = new object?[] { seatIndex, null };
+        var foundDecision = (bool)(tryGetDecision!.Invoke(lastBotDecisions, decisionArgs) ?? false);
+        Assert.True(foundDecision, $"No LastBotDecision recorded for seat {seatIndex} in game {gameId}.");
+
+        var boxed = decisionArgs[1];
+        Assert.NotNull(boxed);
+        Assert.IsType<BotDecision>(boxed);
+        return (BotDecision)boxed!;
     }
 
     private static void AssertBotDecisionTimeoutOptionExists()
