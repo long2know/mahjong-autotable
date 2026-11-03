@@ -118,12 +118,15 @@ public sealed class BotDecisionTimeoutWrapperTests
     public async Task InFlightCancellation_WithTimeoutDisabled_UsesSafeDefaultAction()
     {
         using var cts = new CancellationTokenSource();
+        using var entered = new ManualResetEventSlim(false);
+        using var release = new ManualResetEventSlim(false);
 
         var decisionTask = Task.Run(() =>
             ChangshaBotEngine.DecideActionWithTimeoutAsync(
                 () =>
                 {
-                    Thread.Sleep(80);
+                    entered.Set();
+                    release.Wait(TimeSpan.FromSeconds(5));
                     return BotAction.Claim(TableClaimType.Hu);
                 },
                 timeoutMs: 0,
@@ -131,10 +134,18 @@ public sealed class BotDecisionTimeoutWrapperTests
                 logger: null,
                 ct: cts.Token));
 
-        await Task.Delay(10);
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(1)), "Strategy did not start in time.");
         cts.Cancel();
 
-        var action = await decisionTask;
+        BotAction action;
+        try
+        {
+            action = await decisionTask.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            release.Set();
+        }
 
         Assert.Equal(BotActionType.Pass, action.Type);
     }
@@ -175,12 +186,15 @@ public sealed class BotDecisionTimeoutWrapperTests
     public async Task InFlightCancellation_WithTimeoutDisabled_UsesSafeDefaultDecision()
     {
         using var cts = new CancellationTokenSource();
+        using var entered = new ManualResetEventSlim(false);
+        using var release = new ManualResetEventSlim(false);
 
         var decisionTask = Task.Run(() =>
             ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
                 () =>
                 {
-                    Thread.Sleep(80);
+                    entered.Set();
+                    release.Wait(TimeSpan.FromSeconds(5));
                     return ClaimHu();
                 },
                 timeoutMs: 0,
@@ -188,10 +202,18 @@ public sealed class BotDecisionTimeoutWrapperTests
                 logger: null,
                 ct: cts.Token));
 
-        await Task.Delay(10);
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(1)), "Strategy did not start in time.");
         cts.Cancel();
 
-        var result = await decisionTask;
+        BotDecision result;
+        try
+        {
+            result = await decisionTask.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            release.Set();
+        }
 
         Assert.Equal(BotActionType.Pass, result.Action.Type);
     }
