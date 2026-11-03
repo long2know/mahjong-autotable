@@ -933,6 +933,132 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(Wan(1, 0), decision.Action.TileId);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W130")]
+    public void SelectSafeAddedKongTile_UsesCandidate_WhenTileIsLegal()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(1, 3),
+                Wan(2, 0), Wan(3, 0), Wan(4, 0),
+                Tong(2, 0), Tong(3, 0), Tong(4, 0),
+                Tiao(6, 0), Tiao(7, 0), Tiao(8, 0), Tiao(9, 0)
+            },
+            Melds = new List<Meld>
+            {
+                new()
+                {
+                    Kind = MeldKind.Pung,
+                    TileIds = new List<int> { Wan(1, 0), Wan(1, 1), Wan(1, 2) },
+                    ClaimedFromSeatIndex = 2
+                }
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var selected = ChangshaGameRuntime.SelectSafeAddedKongTile(state, seatIndex: 0, candidateTileId: Wan(1, 3));
+
+        Assert.Equal(Wan(1, 3), selected);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W130")]
+    public void SelectSafeAddedKongTile_RemapsToMatchingLogicalTile_WhenCandidateCopyIsMissing()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(1, 3),
+                Wan(2, 0), Wan(3, 0), Wan(4, 0),
+                Tong(2, 0), Tong(3, 0), Tong(4, 0),
+                Tiao(6, 0), Tiao(7, 0), Tiao(8, 0), Tiao(9, 0)
+            },
+            Melds = new List<Meld>
+            {
+                new()
+                {
+                    Kind = MeldKind.Pung,
+                    TileIds = new List<int> { Wan(1, 0), Wan(1, 1), Wan(1, 2) },
+                    ClaimedFromSeatIndex = 2
+                }
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var selected = ChangshaGameRuntime.SelectSafeAddedKongTile(state, seatIndex: 0, candidateTileId: Wan(1, 0));
+
+        Assert.Equal(Wan(1, 3), selected);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W130")]
+    public void SelectSafeAddedKongTile_ReturnsNull_WhenNoMatchingLegalTileExists()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(1, 3),
+                Wan(2, 0), Wan(3, 0), Wan(4, 0),
+                Tong(2, 0), Tong(3, 0), Tong(4, 0),
+                Tiao(6, 0), Tiao(7, 0), Tiao(8, 0), Tiao(9, 0)
+            },
+            Melds = new List<Meld>
+            {
+                new()
+                {
+                    Kind = MeldKind.Pung,
+                    TileIds = new List<int> { Wan(1, 0), Wan(1, 1), Wan(1, 2) },
+                    ClaimedFromSeatIndex = 2
+                }
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var selected = ChangshaGameRuntime.SelectSafeAddedKongTile(state, seatIndex: 0, candidateTileId: Tong(9, 0));
+
+        Assert.Null(selected);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W124")]
     public void SelectSafeDiscardTile_UsesCandidate_WhenTileIsInHand()
     {

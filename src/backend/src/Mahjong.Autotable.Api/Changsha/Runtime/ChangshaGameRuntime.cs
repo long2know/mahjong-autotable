@@ -2494,18 +2494,33 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         Reasoning = AppendDecisionReasoning(decision, "runtime: concealed kong unavailable; medium-policy own-turn fallback")
                     };
                 }
-                else if (decision.Action.Type == BotActionType.DeclareAddedKong
-                         && (decision.Action.TileId is null
-                             || !ChangshaGameStateMachine.CanDeclareAddedKong(
-                                 state, seatIndex, decision.Action.TileId.Value)))
+                else if (decision.Action.Type == BotActionType.DeclareAddedKong)
                 {
-                    _logger.LogWarning(
-                        "Bot proposed unavailable added kong tile {TileId} in game {GameId} seat {Seat}; using medium-policy own-turn fallback.",
-                        decision.Action.TileId, instance.GameId, seatIndex);
-                    decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
+                    var safeAddedKongTileId = SelectSafeAddedKongTile(state, seatIndex, decision.Action.TileId);
+                    if (safeAddedKongTileId is { } legalAddedKongTileId)
                     {
-                        Reasoning = AppendDecisionReasoning(decision, "runtime: added kong unavailable; medium-policy own-turn fallback")
-                    };
+                        if (decision.Action.TileId != legalAddedKongTileId)
+                        {
+                            _logger.LogWarning(
+                                "Bot proposed stale added kong tile {TileId} in game {GameId} seat {Seat}; remapping to legal matching tile {RemappedTileId}.",
+                                decision.Action.TileId, instance.GameId, seatIndex, legalAddedKongTileId);
+                            decision = decision with
+                            {
+                                Action = BotAction.DeclareAddedKong(legalAddedKongTileId),
+                                Reasoning = AppendDecisionReasoning(decision, "runtime: remapped stale added kong tile to legal matching copy")
+                            };
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "Bot proposed unavailable added kong tile {TileId} in game {GameId} seat {Seat}; using medium-policy own-turn fallback.",
+                            decision.Action.TileId, instance.GameId, seatIndex);
+                        decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
+                        {
+                            Reasoning = AppendDecisionReasoning(decision, "runtime: added kong unavailable; medium-policy own-turn fallback")
+                        };
+                    }
                 }
                 else if (decision.Action.Type == BotActionType.Discard
                          && (decision.Action.TileId is null || !hand.ConcealedTiles.Contains(decision.Action.TileId.Value)))
@@ -2686,6 +2701,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             fallbackAction = BotAction.DeclareWin();
         }
 
+        if (fallbackAction.Type == BotActionType.DeclareAddedKong
+            && SelectSafeAddedKongTile(liveState, seatIndex, fallbackAction.TileId) is { } safeFallbackAddedKongTileId)
+        {
+            fallbackAction = BotAction.DeclareAddedKong(safeFallbackAddedKongTileId);
+        }
+
         var fallbackIsLegal = fallbackAction.Type switch
         {
             BotActionType.DeclareWin => canDeclareSelfDrawHu,
@@ -2753,6 +2774,25 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         return hand.ConcealedTiles.Min();
     }
 
+    internal static int? SelectSafeAddedKongTile(ChangshaGameState state, int seatIndex, int? candidateTileId)
+    {
+        if (candidateTileId is not { } tileId)
+            return null;
+
+        if (ChangshaGameStateMachine.CanDeclareAddedKong(state, seatIndex, tileId))
+            return tileId;
+
+        if (tileId < 0 || tileId >= ChangshaDeckBuilder.TotalTiles)
+            return null;
+
+        var logicalTile = ChangshaDeckBuilder.GetLogicalTile(tileId);
+        return ChangshaGameStateMachine.GetAddedKongCandidates(state, seatIndex)
+            .Where(candidate => ChangshaDeckBuilder.GetLogicalTile(candidate) == logicalTile)
+            .OrderBy(candidate => candidate)
+            .Cast<int?>()
+            .FirstOrDefault();
+    }
+
     private static BotAction BuildMediumOwnTurnNonWinFallbackAction(
         ChangshaGameState liveState,
         ChangshaHandState liveHand,
@@ -2766,6 +2806,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             return BotAction.Pass();
 
         var mediumAction = new ChangshaBotPolicy().DecideAction(liveState, seatIndex);
+        if (mediumAction.Type == BotActionType.DeclareAddedKong
+            && SelectSafeAddedKongTile(liveState, seatIndex, mediumAction.TileId) is { } safeMediumAddedKongTileId)
+        {
+            mediumAction = BotAction.DeclareAddedKong(safeMediumAddedKongTileId);
+        }
+
         var mediumActionIsLegalNonWin = mediumAction.Type switch
         {
             BotActionType.DeclareConcealedKong => mediumAction.LogicalTile is int logicalTile
