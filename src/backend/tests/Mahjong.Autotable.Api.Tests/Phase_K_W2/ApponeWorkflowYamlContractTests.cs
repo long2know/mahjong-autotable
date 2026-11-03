@@ -125,6 +125,19 @@ public class ApponeWorkflowYamlContractTests
             "Multi-arch runtime workflow must curl `/health`.");
     }
 
+    [Theory, Trait("Category", "Deploy")]
+    [InlineData("multi-arch-runtime.yml")]
+    [InlineData("container-scan.yml")]
+    public void RuntimeAndScanVerdicts_UseActionsSummaries_NotPrComments(string workflow)
+    {
+        var content = File.ReadAllText(Path.Combine(
+            LocateRepoRoot(), ".github", "workflows", workflow));
+        Assert.DoesNotContain("sticky-pull-request-comment", content);
+        Assert.DoesNotMatch(@"pull-requests:\s*write", content);
+        Assert.Contains("GITHUB_STEP_SUMMARY", content);
+        Assert.Matches(@"if:\s*always\(\)", content);
+    }
+
     // ────────────────────────────────────────────────────────────────────
     //  4. TURN k8s overlay — references coturn/coturn:4.6 image
     // ────────────────────────────────────────────────────────────────────

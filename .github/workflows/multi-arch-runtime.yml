@@ -15,9 +15,8 @@
 #     the published image at `ghcr.io/.../mahjong-autotable:main`;
 #     catches publish-pipeline breakage.
 #
-# The PR comment is sticky (header: multi-arch-runtime) so reviewers
-# see the matrix verdict directly in the PR conversation without
-# clicking into Actions.
+# Per-architecture verdicts are published in Actions job summaries
+# and checks, not PR comments, to avoid routine notification emails.
 
 name: multi-arch-runtime
 
@@ -32,7 +31,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: multi-arch-runtime-${{ github.ref }}
@@ -56,9 +54,6 @@ jobs:
             host_port: 18092
             boot_timeout_s: 300
             arch_short: arm64
-    outputs:
-      result_amd64: ${{ steps.collect.outputs.result_amd64 }}
-      result_arm64: ${{ steps.collect.outputs.result_arm64 }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -144,18 +139,23 @@ jobs:
           echo "✅ $PLATFORM /health OK (body: $body)"
           echo "result=PASS" >> "$GITHUB_OUTPUT"
 
-      - name: Collect per-arch result for sticky comment
-        id: collect
+      - name: Summarise per-arch runtime verdict
         if: always()
         env:
-          ARCH: ${{ matrix.arch_short }}
+          PLATFORM: ${{ matrix.platform }}
           RESULT: ${{ steps.run.outputs.result }}
         run: |
           set -eu
           if [ -z "${RESULT:-}" ]; then
             RESULT="FAIL (build error)"
           fi
-          echo "result_${ARCH}=${RESULT}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Multi-arch runtime gate"
+            echo
+            echo "| Architecture | Verdict |"
+            echo "| --- | --- |"
+            echo "| \`${PLATFORM}\` | ${RESULT} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload container logs
         if: always()
@@ -165,42 +165,3 @@ jobs:
           path: container-${{ matrix.arch_short }}.log
           if-no-files-found: ignore
           retention-days: 7
-
-  comment:
-    name: Sticky PR comment (matrix verdict)
-    needs: build-and-run
-    if: always() && github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      pull-requests: write
-    steps:
-      - name: Compose comment body
-        id: body
-        env:
-          RESULT_AMD64: ${{ needs.build-and-run.outputs.result_amd64 }}
-          RESULT_ARM64: ${{ needs.build-and-run.outputs.result_arm64 }}
-        run: |
-          set -eu
-          AMD="${RESULT_AMD64:-FAIL (job skipped)}"
-          ARM="${RESULT_ARM64:-FAIL (job skipped)}"
-          {
-            echo "body<<EOF"
-            echo "### Multi-arch runtime gate"
-            echo
-            echo "PR-time \`docker run --platform=… + curl /health\` verdict per architecture:"
-            echo
-            echo "| Architecture | Verdict |"
-            echo "| --- | --- |"
-            echo "| \`linux/amd64\` | ${AMD} |"
-            echo "| \`linux/arm64\` | ${ARM} |"
-            echo
-            echo "_Workflow: \`.github/workflows/multi-arch-runtime.yml\`._"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Post or update sticky comment
-        uses: marocchino/sticky-pull-request-comment@331f8f5b4215f0445d3c07b4967662a32a2d3e31 # v2.9.0
-        with:
-          header: multi-arch-runtime
-          message: ${{ steps.body.outputs.body }}
