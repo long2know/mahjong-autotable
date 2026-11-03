@@ -210,6 +210,56 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(ChangshaTestHelpers.Logical(Suit.Wan, 1), decision.Action.LogicalTile);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W107")]
+    public void OwnTurnFallback_IllegalNonWinAction_PrefersLegalAddedKongBeforeDiscard_WhenNoConcealedKongExists()
+    {
+        var addedKongTile = Wan(1, 3);
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new()
+            {
+                addedKongTile,
+                Wan(2, 0), Wan(3, 0), Wan(4, 0),
+                Tong(2, 0), Tong(3, 0), Tong(4, 0),
+                Tiao(6, 0), Tiao(7, 0), Tiao(8, 0), Tiao(9, 0)
+            },
+            Melds = new()
+            {
+                new()
+                {
+                    Kind = MeldKind.Pung,
+                    TileIds = new() { Wan(1, 0), Wan(1, 1), Wan(1, 2) },
+                    ClaimedFromSeatIndex = 0
+                }
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 1,
+            LastDrawSeatIndex = 1,
+            Hands = new()
+            {
+                new() { SeatIndex = 0 },
+                hand,
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var decision = ChangshaGameRuntime.BuildMediumOwnTurnFallbackDecision(
+            BotAction.Discard(tileId: -1),
+            state,
+            hand,
+            seatIndex: 1,
+            reasoningLine: "test: fallback");
+
+        Assert.Equal(BotActionType.DeclareAddedKong, decision.Action.Type);
+        Assert.Equal(addedKongTile, decision.Action.TileId);
+    }
+
     private static int Wan(int rank, int copy = 0) => ((int)Suit.Wan * 9 + (rank - 1)) * 4 + copy;
     private static int Tong(int rank, int copy = 0) => ((int)Suit.Tong * 9 + (rank - 1)) * 4 + copy;
     private static int Tiao(int rank, int copy = 0) => ((int)Suit.Tiao * 9 + (rank - 1)) * 4 + copy;
