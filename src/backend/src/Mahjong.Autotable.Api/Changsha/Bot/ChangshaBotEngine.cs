@@ -104,7 +104,11 @@ public static class ChangshaBotEngine
         }
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var decisionTask = Task.Run(decision, ct);
+        var decisionTask = Task.Factory.StartNew(
+            decision,
+            ct,
+            TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
         var delayTask = Task.Delay(timeoutMs, ct);
         await Task.WhenAny(decisionTask, delayTask).ConfigureAwait(false);
 
@@ -209,7 +213,11 @@ public static class ChangshaBotEngine
         }
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var decisionTask = Task.Run(decision, ct);
+        var decisionTask = Task.Factory.StartNew(
+            decision,
+            ct,
+            TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
         var delayTask = Task.Delay(timeoutMs, ct);
         await Task.WhenAny(decisionTask, delayTask).ConfigureAwait(false);
 
