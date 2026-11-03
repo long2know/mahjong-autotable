@@ -360,6 +360,18 @@ public class BotBehaviorTests
         Assert.Equal(MeldKind.Pung, meld.Kind);
         Assert.Contains(discardWan5, meld.TileIds);
         Assert.Equal(3, meld.TileIds.Count);
+
+        var lastDecision = GetLastBotDecisionOrFail(runtime, gameId, seatIndex: 1);
+        Assert.Equal(BotActionType.Claim, lastDecision.Action.Type);
+        Assert.Equal(TableClaimType.Pung, lastDecision.Action.ClaimType);
+        Assert.NotNull(lastDecision.Action.ClaimTileIds);
+        Assert.Equal(
+            new[]
+            {
+                ChangshaTestHelpers.Tid(Suit.Wan, 5, 0),
+                ChangshaTestHelpers.Tid(Suit.Wan, 5, 1)
+            },
+            lastDecision.Action.ClaimTileIds);
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W90")]
