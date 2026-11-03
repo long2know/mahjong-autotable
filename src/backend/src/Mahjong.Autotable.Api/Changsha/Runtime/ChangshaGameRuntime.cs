@@ -2713,6 +2713,13 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         ChangshaHandState liveHand,
         int seatIndex)
     {
+        // Safety rail: malformed/stale snapshots can transiently expose an own-turn
+        // hand with zero concealed tiles. Medium policy discard selection throws on
+        // empty hands; keep fallback deterministic and non-throwing so the bot turn
+        // loop never crashes while recovering from bad state.
+        if (liveHand.ConcealedTiles.Count == 0)
+            return BotAction.Pass();
+
         var mediumAction = new ChangshaBotPolicy().DecideAction(liveState, seatIndex);
         var mediumActionIsLegalNonWin = mediumAction.Type switch
         {
