@@ -25,6 +25,7 @@ namespace Mahjong.Autotable.Api.Tests.Changsha.Bots;
 /// </summary>
 public sealed class BotDecisionTimeoutWrapperTests
 {
+    private static BotAction PassAction() => BotAction.Pass();
     private static BotDecision Pass() => BotDecision.FromAction(BotAction.Pass());
     private static BotDecision ClaimHu() => BotDecision.FromAction(BotAction.Claim(TableClaimType.Hu));
 
@@ -53,6 +54,38 @@ public sealed class BotDecisionTimeoutWrapperTests
 
         Assert.Equal(BotActionType.Claim, result.Action.Type);
         Assert.Equal(TableClaimType.Hu, result.Action.ClaimType);
+    }
+
+    [Fact, Trait("Category", "Changsha")]
+    public async Task CancellationTokenCancelled_ReturnsSafeDefaultAction_InsteadOfThrowing()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
+            () => BotAction.Claim(TableClaimType.Hu),
+            timeoutMs: 500,
+            safeDefault: PassAction,
+            logger: null,
+            ct: cts.Token);
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
+    [Fact, Trait("Category", "Changsha")]
+    public async Task InFlightCancellation_ReturnsSafeDefaultDecision_InsteadOfLateResult()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(10);
+
+        var result = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+            () => { Thread.Sleep(250); return ClaimHu(); },
+            timeoutMs: 5_000,
+            Pass,
+            logger: null,
+            ct: cts.Token);
+
+        Assert.Equal(BotActionType.Pass, result.Action.Type);
     }
 
     [Fact, Trait("Category", "Changsha")]
