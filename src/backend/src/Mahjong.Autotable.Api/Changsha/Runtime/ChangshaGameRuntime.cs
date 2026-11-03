@@ -2032,25 +2032,22 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 {
                     try
                     {
-                        switch (decided)
+                        List<int> canonicalTileIds = decided switch
                         {
-                            case TableClaimType.Chow:
-                                ChangshaGameStateMachine.SelectChowTiles(hand, expectedWindow.DiscardTileId, null);
-                                break;
-                            case TableClaimType.Pung:
-                                ChangshaGameStateMachine.SelectPungTiles(hand, expectedWindow.DiscardTileId, null);
-                                break;
-                            case TableClaimType.Kong:
-                                ChangshaGameStateMachine.SelectKongTiles(hand, expectedWindow.DiscardTileId, null);
-                                break;
-                        }
+                            TableClaimType.Chow => ChangshaGameStateMachine.SelectChowTiles(hand, expectedWindow.DiscardTileId, null),
+                            TableClaimType.Pung => ChangshaGameStateMachine.SelectPungTiles(hand, expectedWindow.DiscardTileId, null),
+                            TableClaimType.Kong => ChangshaGameStateMachine.SelectKongTiles(hand, expectedWindow.DiscardTileId, null),
+                            _ => throw new InvalidOperationException($"Unsupported canonical claim fallback type: {decided}")
+                        };
 
                         _logger.LogWarning(ex,
                             "Bot claim {ClaimType} from seat {Seat} in game {GameId} had invalid explicit tileIds; using canonical claim tile fallback.",
                             decided, seatIndex, instance.GameId);
-                        chosenTileIds = null;
-                        decision = BotDecision.FromAction(BotAction.Claim(decided.Value, null)) with
+
+                        chosenTileIds = canonicalTileIds.ToArray();
+                        decision = BotDecision.FromAction(BotAction.Claim(decided.Value, chosenTileIds)) with
                         {
+                            Score = decision.Score,
                             Reasoning = decision.Reasoning
                                 .Append("runtime: invalid explicit claim tileIds; canonical claim tile fallback")
                                 .ToArray()
