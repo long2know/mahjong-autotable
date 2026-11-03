@@ -243,6 +243,104 @@ public class BotBehaviorTests
         Assert.DoesNotContain(ChangshaTestHelpers.Tid(Suit.Tong, 5, 2), meld.TileIds);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W118")]
+    public async Task Bot_InvalidExplicitChowTileIds_FallBackToCanonicalChowShape_AndPersistResolvedTileIds()
+    {
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 2_000;
+            o.BotTurnDelayMs = 5_000;
+            o.BotClaimDelayMs = 1;
+            o.ClaimWindowTimeoutMs = 2_000;
+        });
+
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        var gameId = await runtime.CreateGameAsync(
+            seed: 1227,
+            botSeatIndexes: new[] { 1 },
+            hostPlayerId: null,
+            hostConnectionId: null,
+            cts.Token);
+
+        Assert.True(runtime.TryGetSnapshot(gameId, out var state));
+        state!.DealerSeatIndex = 0;
+        foreach (var seat in state.Seats) seat.IsDealer = seat.SeatIndex == 0;
+        state.DealMode = DealMode.Auto;
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase == ChangshaPhase.AwaitingDiscard
+               && Snapshot(runtime, gameId).ActiveSeatIndex == 0,
+            TimeSpan.FromSeconds(2),
+            "auto-deal never reached AwaitingDiscard with seat 0 active");
+
+        var live = Snapshot(runtime, gameId);
+        var discardTong6 = ChangshaTestHelpers.Tid(Suit.Tong, 6, 1);
+        var canonicalTong5 = ChangshaTestHelpers.Tid(Suit.Tong, 5, 2);
+        var canonicalTong7 = ChangshaTestHelpers.Tid(Suit.Tong, 7, 3);
+        var alternateTong8 = ChangshaTestHelpers.Tid(Suit.Tong, 8, 0);
+
+        // Seat 1 can chow Tong-6 as 5-6-7 or 6-7-8. Runtime canonical fallback should
+        // choose the lowest valid pattern (5-6-7) when explicit claim tile ids are invalid.
+        live.Hands[1].ConcealedTiles.Clear();
+        live.Hands[1].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Wan, 1, 1), ChangshaTestHelpers.Tid(Suit.Wan, 6, 0), ChangshaTestHelpers.Tid(Suit.Wan, 7, 3),
+            ChangshaTestHelpers.Tid(Suit.Tong, 3, 0), canonicalTong5,
+            ChangshaTestHelpers.Tid(Suit.Tong, 6, 0), ChangshaTestHelpers.Tid(Suit.Tong, 6, 3),
+            canonicalTong7, alternateTong8,
+            ChangshaTestHelpers.Tid(Suit.Tiao, 1, 3), ChangshaTestHelpers.Tid(Suit.Tiao, 2, 1), ChangshaTestHelpers.Tid(Suit.Tiao, 4, 3), ChangshaTestHelpers.Tid(Suit.Tiao, 7, 0)
+        });
+        live.Hands[1].Melds.Clear();
+
+        live.Hands[0].ConcealedTiles.Clear();
+        live.Hands[0].ConcealedTiles.AddRange(new[]
+        {
+            ChangshaTestHelpers.Tid(Suit.Tong, 9, 0), ChangshaTestHelpers.Tid(Suit.Tong, 9, 1),
+            ChangshaTestHelpers.Tid(Suit.Tong, 8, 1), ChangshaTestHelpers.Tid(Suit.Tong, 7, 1),
+            ChangshaTestHelpers.Tid(Suit.Tong, 5, 0), ChangshaTestHelpers.Tid(Suit.Tong, 4, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 9, 0), ChangshaTestHelpers.Tid(Suit.Wan, 8, 0),
+            ChangshaTestHelpers.Tid(Suit.Wan, 7, 0), ChangshaTestHelpers.Tid(Suit.Wan, 2, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 9, 0), ChangshaTestHelpers.Tid(Suit.Tiao, 8, 0),
+            ChangshaTestHelpers.Tid(Suit.Tiao, 7, 0),
+            discardTong6
+        });
+        live.Hands[0].Melds.Clear();
+
+        var scripted = new SlowBotStrategy(delayMs: 0, decision: (s, _) =>
+            s.Phase == ChangshaPhase.AwaitingClaim
+                ? BotAction.Claim(TableClaimType.Chow, new[]
+                {
+                    ChangshaTestHelpers.Tid(Suit.Wan, 1, 1),
+                    ChangshaTestHelpers.Tid(Suit.Wan, 6, 0)
+                })
+                : BotAction.Pass());
+        InjectStrategyOrFail(runtime, scripted);
+
+        await runtime.DiscardAsync(gameId, seatIndex: 0, tileId: discardTong6, cts.Token);
+
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).ClaimWindow is null
+               && Snapshot(runtime, gameId).Hands[1].Melds.Any(),
+            TimeSpan.FromSeconds(3),
+            "invalid explicit chow tile ids did not fall back to canonical chow shape");
+
+        var meld = Snapshot(runtime, gameId).Hands[1].Melds.Single();
+        Assert.Equal(MeldKind.Chow, meld.Kind);
+        Assert.Contains(discardTong6, meld.TileIds);
+        Assert.Contains(canonicalTong5, meld.TileIds);
+        Assert.Contains(canonicalTong7, meld.TileIds);
+        Assert.DoesNotContain(alternateTong8, meld.TileIds);
+
+        var lastDecision = GetLastBotDecisionOrFail(runtime, gameId, seatIndex: 1);
+        Assert.Equal(BotActionType.Claim, lastDecision.Action.Type);
+        Assert.Equal(TableClaimType.Chow, lastDecision.Action.ClaimType);
+        Assert.NotNull(lastDecision.Action.ClaimTileIds);
+        Assert.Equal(new[] { canonicalTong5, canonicalTong7 }, lastDecision.Action.ClaimTileIds);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W93")]
     public async Task Bot_InvalidMatchingClaimTileIds_FallBackToCanonicalClaimTiles_WithoutStallingClaimResolution()
     {
