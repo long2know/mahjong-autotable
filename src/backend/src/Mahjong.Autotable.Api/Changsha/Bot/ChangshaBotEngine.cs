@@ -80,7 +80,21 @@ public static class ChangshaBotEngine
 
         if (timeoutMs <= 0)
         {
-            return decision();
+            if (ct.IsCancellationRequested)
+            {
+                logger?.LogDebug("Bot decision cancelled before execution; using safe-default action.");
+                return safeDefault();
+            }
+
+            try
+            {
+                return decision();
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                logger?.LogDebug("Bot decision cancelled during execution; using safe-default action.");
+                return safeDefault();
+            }
         }
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -163,7 +177,21 @@ public static class ChangshaBotEngine
 
         if (timeoutMs <= 0)
         {
-            return decision();
+            if (ct.IsCancellationRequested)
+            {
+                logger?.LogDebug("Bot decision cancelled before execution; using safe-default decision.");
+                return safeDefault();
+            }
+
+            try
+            {
+                return decision();
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                logger?.LogDebug("Bot decision cancelled during execution; using safe-default decision.");
+                return safeDefault();
+            }
         }
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
