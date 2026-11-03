@@ -46,7 +46,8 @@
 #     CRITICAL-only).
 #   * Threshold is a workflow_dispatch input so a triage call can
 #     temporarily relax to CRITICAL-only for a one-off rerun.
-#   * STICKY PR comment via marocchino/sticky-pull-request-comment@v2.
+#   * Verdicts in Actions job summaries/checks and the Security tab,
+#     not PR comments, to avoid routine notification emails.
 #   * Nightly cron on main runs FULL severity sweep (CRITICAL+HIGH+
 #     MEDIUM+LOW) for visibility; does not fail on MEDIUM/LOW.
 
@@ -78,7 +79,6 @@ on:
 permissions:
   contents: read
   security-events: write
-  pull-requests: write
   issues: write
 
 concurrency:
@@ -279,8 +279,8 @@ jobs:
           trivyignores: .trivyignore
 
       # JSON pass — captures the FULL finding set at every severity
-      # so the PR-comment summary has counts everywhere.
-      # Always runs so the comment is informative even when the gate
+      # so the Actions job summary has counts everywhere.
+      # Always runs so the summary is informative even when the gate
       # above already failed.
       - name: Trivy JSON output (full severity sweep)
         if: always()
@@ -323,6 +323,14 @@ jobs:
           if [[ ! -s trivy-findings.json ]]; then
             echo "no trivy-findings.json — scan likely did not produce JSON output"
             {
+              echo "## Trivy container-scan summary"
+              echo
+              echo "Findings unavailable — scan did not produce JSON output (not zero findings)."
+              echo "Gate threshold: \`${{ steps.compute-threshold.outputs.threshold }}\`"
+              echo "Gate verdict: \`${{ steps.gate.outcome }}\`"
+              echo "See the job checks and logs for scan/build failures."
+            } >> "$GITHUB_STEP_SUMMARY"
+            {
               echo "critical=0"
               echo "high=0"
               echo "medium=0"
@@ -347,6 +355,8 @@ jobs:
           {
             echo "## Trivy container-scan summary (W6 tuned)"
             echo
+            echo "Image: \`${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}\`"
+            echo
             echo "| Severity | Count |"
             echo "|----------|------:|"
             echo "| CRITICAL | $CRITICAL |"
@@ -360,31 +370,6 @@ jobs:
             echo "Gate verdict: \`${{ steps.gate.outcome }}\`"
             echo "Event: \`${{ github.event_name }}\` — cron runs are non-blocking; PR/push runs block on HIGH+CRITICAL by default."
           } >> "$GITHUB_STEP_SUMMARY"
-
-      # Sticky PR comment — updates in place across subsequent runs
-      # so reviewers see the latest scan verdict without conversation
-      # noise. Header pins the comment identity (`container-scan`).
-      - name: Sticky PR comment
-        if: github.event_name == 'pull_request' && always()
-        uses: marocchino/sticky-pull-request-comment@331f8f5b4215f0445d3c07b4967662a32a2d3e31 # v2.9.0
-        with:
-          header: container-scan
-          message: |
-            ### 🔍 Container scan (Phase K Wave 6 — Apone)
-
-            - Image: `${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}`
-            - Gate threshold: `${{ steps.compute-threshold.outputs.threshold }}` (Wave 6 default: HIGH+CRITICAL block-merge)
-            - Gate verdict: **${{ steps.gate.outcome }}**
-            - Findings (after `ignore-unfixed: true` + `.github/trivy-allowlist.yaml`):
-              - CRITICAL: `${{ steps.summary.outputs.critical }}`
-              - HIGH:     `${{ steps.summary.outputs.high }}`
-              - MEDIUM:   `${{ steps.summary.outputs.medium }}`
-              - LOW:      `${{ steps.summary.outputs.low }}`
-
-            See the [Security tab](${{ github.server_url }}/${{ github.repository }}/security/code-scanning?query=is%3Aopen+category%3Atrivy-container-scan)
-            for the full SARIF + per-CVE remediation guidance, and the
-            [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            for the gating-step table.
 
       - name: Upload findings artefact
         if: always()

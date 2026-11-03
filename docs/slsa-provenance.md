@@ -777,9 +777,9 @@ at W17. The pin count per workflow file at W17 PR-readiness:
 | `sign-image.yml`                      | 2 (W17 NEW)   | W17             | Cosign signing of the W4 + W6 image-attest chain.              |
 | `verify-signature.yml`                | 2 (W17 NEW)   | W17             | Reusable verifier (caller-side cosign verify).                 |
 | `verify-slsa-on-deploy.yml`           | 3 (W17 NEW)   | W17             | Pre-merge SLSA verifier gate.                                  |
-| `container-scan.yml`                  | 7 (W17 NEW)   | W17             | Trivy + allowlist + Sticky-comment.                            |
+| `container-scan.yml`                  | 7 (W17 NEW)   | W17             | Trivy + allowlist; verdicts now in Actions summaries/checks, not comments. |
 | `mirror-ghcr-to-ecr.yml`              | 6 (W17 NEW)   | W17             | Crane + cosign multi-registry copy.                            |
-| `multi-arch-runtime.yml`              | 5 (W17 NEW)   | W17             | Per-arch container runtime smoke + sticky comment.             |
+| `multi-arch-runtime.yml`              | 5 (W17 NEW)   | W17             | Per-arch container runtime smoke; verdicts now in Actions summaries/checks, not comments. |
 | `multi-arch-smoke.yml`                | 3 (W17 NEW)   | W17             | Pre-merge multi-arch image-pull smoke.                         |
 
 **W17 net new SHA pins: +50** (target was +15). The
