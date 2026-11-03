@@ -2606,6 +2606,21 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         int seatIndex)
     {
         var fallbackAction = new ChangshaBotPolicy().DecideAction(decisionState, seatIndex);
+        return BuildMediumOwnTurnFallbackDecision(
+            fallbackAction,
+            liveState,
+            liveHand,
+            seatIndex,
+            "runtime: turn decision timeout; medium-policy own-turn fallback");
+    }
+
+    internal static BotDecision BuildMediumOwnTurnFallbackDecision(
+        BotAction fallbackAction,
+        ChangshaGameState liveState,
+        ChangshaHandState liveHand,
+        int seatIndex,
+        string reasoningLine)
+    {
         var fallbackIsLegal = fallbackAction.Type switch
         {
             BotActionType.DeclareWin => ChangshaGameStateMachine.CanDeclareSelfDrawWin(liveState, seatIndex)
@@ -2621,16 +2636,14 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
 
         if (!fallbackIsLegal)
         {
-            fallbackAction = fallbackAction.Type == BotActionType.DeclareWin
-                ? BuildMediumOwnTurnNonWinFallbackAction(liveState, liveHand, seatIndex)
-                : BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(liveHand));
+            fallbackAction = BuildMediumOwnTurnNonWinFallbackAction(liveState, liveHand, seatIndex);
         }
 
         return BotDecision.FromAction(fallbackAction) with
         {
             Reasoning = new[]
             {
-                "runtime: turn decision timeout; medium-policy own-turn fallback"
+                reasoningLine
             }
         };
     }

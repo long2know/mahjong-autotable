@@ -170,6 +170,46 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.Pass, action.Type);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W106")]
+    public void OwnTurnFallback_IllegalNonWinAction_PrefersLegalConcealedKongBeforeDiscard()
+    {
+        var concealedTiles = ChangshaTestHelpers.Tiles(
+            (Suit.Wan, 1), (Suit.Wan, 1), (Suit.Wan, 1), (Suit.Wan, 1),
+            (Suit.Wan, 2), (Suit.Wan, 3), (Suit.Wan, 4),
+            (Suit.Tong, 2), (Suit.Tong, 3), (Suit.Tong, 4),
+            (Suit.Tiao, 6), (Suit.Tiao, 7), (Suit.Tiao, 8), (Suit.Tiao, 9));
+
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = concealedTiles
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 1,
+            LastDrawSeatIndex = 1,
+            Hands = new()
+            {
+                new() { SeatIndex = 0 },
+                hand,
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var decision = ChangshaGameRuntime.BuildMediumOwnTurnFallbackDecision(
+            BotAction.Discard(tileId: -1),
+            state,
+            hand,
+            seatIndex: 1,
+            reasoningLine: "test: fallback");
+
+        Assert.Equal(BotActionType.DeclareConcealedKong, decision.Action.Type);
+        Assert.Equal(ChangshaTestHelpers.Logical(Suit.Wan, 1), decision.Action.LogicalTile);
+    }
+
     private static int Wan(int rank, int copy = 0) => ((int)Suit.Wan * 9 + (rank - 1)) * 4 + copy;
     private static int Tong(int rank, int copy = 0) => ((int)Suit.Tong * 9 + (rank - 1)) * 4 + copy;
     private static int Tiao(int rank, int copy = 0) => ((int)Suit.Tiao * 9 + (rank - 1)) * 4 + copy;
