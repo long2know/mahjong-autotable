@@ -1048,6 +1048,72 @@ public class BotBehaviorTests
         Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W116")]
+    public async Task Bot_UnsupportedOwnTurnWait_UsesMediumFallback_ToTakeSelfDrawHu()
+    {
+        await using var harness = new RuntimeHarness(o =>
+        {
+            o.BotDecisionTimeoutMs = 2_000;
+            o.BotTurnDelayMs = 300;
+            o.BotClaimDelayMs = 1;
+            o.ClaimWindowTimeoutMs = 2_000;
+        });
+
+        var runtime = harness.Runtime;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        InjectStrategyOrFail(runtime, new SlowBotStrategy(delayMs: 0, decision: (s, _) =>
+            s.Phase == ChangshaPhase.AwaitingDiscard
+                ? BotAction.Wait()
+                : BotAction.Pass()));
+
+        var gameId = await runtime.CreateGameAsync(
+            seed: 9051,
+            botSeatIndexes: new[] { 0 },
+            hostPlayerId: null,
+            hostConnectionId: null,
+            cts.Token);
+
+        Assert.True(runtime.TryGetSnapshot(gameId, out var state));
+        state!.DealerSeatIndex = 0;
+        foreach (var seat in state.Seats) seat.IsDealer = seat.SeatIndex == 0;
+        state.DealMode = DealMode.Auto;
+
+        await runtime.StartGameAsync(gameId, cts.Token);
+        await WaitForAsync(
+            () => Snapshot(runtime, gameId).Phase == ChangshaPhase.AwaitingDiscard
+               && Snapshot(runtime, gameId).ActiveSeatIndex == 0,
+            TimeSpan.FromSeconds(2),
+            "auto-deal never reached AwaitingDiscard with seat 0 active");
+
+        // Give seat 0 a deterministic self-draw winning hand. If runtime downgrades
+        // unsupported own-turn WAIT actions to medium own-turn fallback, bot should Hu.
+        var live = Snapshot(runtime, gameId);
+        live.Hands[0].ConcealedTiles.Clear();
+        live.Hands[0].ConcealedTiles.AddRange(ChangshaTestHelpers.Tiles(
+            (Suit.Wan, 1), (Suit.Wan, 2), (Suit.Wan, 3),
+            (Suit.Wan, 4), (Suit.Wan, 5), (Suit.Wan, 6),
+            (Suit.Tong, 1), (Suit.Tong, 2), (Suit.Tong, 3),
+            (Suit.Tiao, 4), (Suit.Tiao, 5), (Suit.Tiao, 6),
+            (Suit.Tong, 5), (Suit.Tong, 5)));
+        live.Hands[0].Melds.Clear();
+        live.LastDrawSeatIndex = 0;
+        Assert.True(ChangshaGameStateMachine.CanDeclareSelfDrawWin(live, 0));
+
+        await WaitForSnapshotAsync(
+            runtime,
+            gameId,
+            snap => snap.EventLog.Any(e => e.EventType == "win-declared" && e.SeatIndex == 0),
+            TimeSpan.FromSeconds(2),
+            "unsupported own-turn wait did not use medium fallback to convert self-draw Hu",
+            cts.Token);
+
+        var resolved = await SnapshotCopyAsync(runtime, gameId, cts.Token);
+        Assert.Contains(resolved.EventLog, e => e.EventType == "win-declared" && e.SeatIndex == 0);
+        Assert.Contains(resolved.EventLog, e => e.EventType == "scoring-complete" && e.SeatIndex == 0);
+        Assert.DoesNotContain(resolved.EventLog, e => e.EventType == "discard" && e.SeatIndex == 0);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W100")]
     public async Task Bot_UnsupportedOwnTurnAction_UsesMediumFallback_ToTakeConcealedKong()
     {
