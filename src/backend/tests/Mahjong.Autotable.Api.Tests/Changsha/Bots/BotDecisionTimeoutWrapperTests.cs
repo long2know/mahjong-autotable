@@ -173,6 +173,30 @@ public sealed class BotDecisionTimeoutWrapperTests
             $"safe-default Pass — the #124 thread-pool-starvation false-Hu leak.");
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W114")]
+    public async Task UnderThreadPoolStarvation_ActionWrapper_LateStrategyResult_NeverSurfaces()
+    {
+        // Mirror the #124 starvation guard for DecideActionWithTimeoutAsync so both wrapper
+        // surfaces stay pinned to timeout-safe defaults under pool pressure.
+        const int iterations = 300;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        var calls = Enumerable.Range(0, iterations).Select(_ =>
+            ChangshaBotEngine.DecideActionWithTimeoutAsync(
+                () => { Thread.Sleep(60); return BotAction.Claim(TableClaimType.Hu); },
+                timeoutMs: 10,
+                safeDefault: PassAction,
+                logger: null,
+                ct: cts.Token));
+
+        var results = await Task.WhenAll(calls);
+
+        var leaks = results.Count(r => r.Type != BotActionType.Pass);
+        Assert.True(leaks == 0,
+            $"{leaks}/{iterations} action-wrapper timeout calls surfaced a late strategy result " +
+            $"instead of the safe-default Pass.");
+    }
+
     [Fact, Trait("Category", "Changsha")]
     public void ClaimFallback_PrioritizesOfferedHu()
     {
