@@ -114,6 +114,31 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.Pass, action.Type);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W113")]
+    public async Task InFlightCancellation_WithTimeoutDisabled_UsesSafeDefaultAction()
+    {
+        using var cts = new CancellationTokenSource();
+
+        var decisionTask = Task.Run(() =>
+            ChangshaBotEngine.DecideActionWithTimeoutAsync(
+                () =>
+                {
+                    Thread.Sleep(80);
+                    return BotAction.Claim(TableClaimType.Hu);
+                },
+                timeoutMs: 0,
+                safeDefault: PassAction,
+                logger: null,
+                ct: cts.Token));
+
+        await Task.Delay(10);
+        cts.Cancel();
+
+        var action = await decisionTask;
+
+        Assert.Equal(BotActionType.Pass, action.Type);
+    }
+
     [Fact, Trait("Category", "Changsha")]
     public async Task InFlightCancellation_ReturnsSafeDefaultDecision_InsteadOfLateResult()
     {
@@ -142,6 +167,31 @@ public sealed class BotDecisionTimeoutWrapperTests
             Pass,
             logger: null,
             ct: cts.Token);
+
+        Assert.Equal(BotActionType.Pass, result.Action.Type);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W114")]
+    public async Task InFlightCancellation_WithTimeoutDisabled_UsesSafeDefaultDecision()
+    {
+        using var cts = new CancellationTokenSource();
+
+        var decisionTask = Task.Run(() =>
+            ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+                () =>
+                {
+                    Thread.Sleep(80);
+                    return ClaimHu();
+                },
+                timeoutMs: 0,
+                Pass,
+                logger: null,
+                ct: cts.Token));
+
+        await Task.Delay(10);
+        cts.Cancel();
+
+        var result = await decisionTask;
 
         Assert.Equal(BotActionType.Pass, result.Action.Type);
     }

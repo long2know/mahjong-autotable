@@ -89,7 +89,14 @@ public static class ChangshaBotEngine
 
             try
             {
-                return decision();
+                var action = decision();
+                if (ct.IsCancellationRequested)
+                {
+                    logger?.LogDebug("Bot decision cancelled during execution; using safe-default action.");
+                    return safeDefault();
+                }
+
+                return action;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -198,7 +205,14 @@ public static class ChangshaBotEngine
 
             try
             {
-                return decision();
+                var resolved = decision();
+                if (ct.IsCancellationRequested)
+                {
+                    logger?.LogDebug("Bot decision cancelled during execution; using safe-default decision.");
+                    return safeDefault();
+                }
+
+                return resolved;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
