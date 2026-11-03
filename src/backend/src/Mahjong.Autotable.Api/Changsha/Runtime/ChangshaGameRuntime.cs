@@ -2636,7 +2636,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
 
         if (!fallbackIsLegal)
         {
-            fallbackAction = BuildMediumOwnTurnNonWinFallbackAction(liveState, liveHand, seatIndex);
+            fallbackAction = BuildMediumOwnTurnFallbackAction(liveState, liveHand, seatIndex);
         }
 
         return BotDecision.FromAction(fallbackAction) with
@@ -2646,6 +2646,22 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 reasoningLine
             }
         };
+    }
+
+    private static BotAction BuildMediumOwnTurnFallbackAction(
+        ChangshaGameState liveState,
+        ChangshaHandState liveHand,
+        int seatIndex)
+    {
+        // If the candidate fallback action is illegal, preserve the strongest legal own-turn
+        // conversion first: immediate self-draw Hu (when scoring settlement preflight stays in-range).
+        if (ChangshaGameStateMachine.CanDeclareSelfDrawWin(liveState, seatIndex)
+            && TryPreflightSelfDrawHuSettlement(liveState, seatIndex))
+        {
+            return BotAction.DeclareWin();
+        }
+
+        return BuildMediumOwnTurnNonWinFallbackAction(liveState, liveHand, seatIndex);
     }
 
     private static BotAction BuildMediumOwnTurnNonWinFallbackAction(
