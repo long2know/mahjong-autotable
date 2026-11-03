@@ -2678,6 +2678,21 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         ChangshaHandState liveHand,
         int seatIndex)
     {
+        var mediumAction = new ChangshaBotPolicy().DecideAction(liveState, seatIndex);
+        var mediumActionIsLegalNonWin = mediumAction.Type switch
+        {
+            BotActionType.DeclareConcealedKong => mediumAction.LogicalTile is int logicalTile
+                && ChangshaGameStateMachine.CanDeclareConcealedKong(liveState, seatIndex, logicalTile),
+            BotActionType.DeclareAddedKong => mediumAction.TileId is int tileId
+                && ChangshaGameStateMachine.CanDeclareAddedKong(liveState, seatIndex, tileId),
+            BotActionType.Discard => mediumAction.TileId is int discardTileId
+                && liveHand.ConcealedTiles.Contains(discardTileId),
+            _ => false,
+        };
+
+        if (mediumActionIsLegalNonWin)
+            return mediumAction;
+
         var concealedKongLogical = HandEvaluator.FindConcealedKongCandidate(liveHand);
         if (concealedKongLogical >= 0
             && ChangshaGameStateMachine.CanDeclareConcealedKong(liveState, seatIndex, concealedKongLogical))
