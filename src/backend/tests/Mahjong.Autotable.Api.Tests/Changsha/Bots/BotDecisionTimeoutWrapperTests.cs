@@ -1027,6 +1027,55 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(Tong(2, 0), decision.Action.TileId);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W133")]
+    public void OwnTurnFallback_StaleAddedKongCopyId_RemapsBeforeLegalityFallbackUpgrade()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 1,
+            ConcealedTiles = new List<int>
+            {
+                Wan(1, 3),
+                Wan(2, 0), Wan(3, 0), Wan(4, 0),
+                Tong(2, 0), Tong(3, 0), Tong(4, 0),
+                Tiao(6, 0), Tiao(7, 0), Tiao(8, 0), Tiao(9, 0)
+            },
+            Melds = new List<Meld>
+            {
+                new()
+                {
+                    Kind = MeldKind.Pung,
+                    TileIds = new List<int> { Wan(1, 0), Wan(1, 1), Wan(1, 2) },
+                    ClaimedFromSeatIndex = 2
+                }
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 1,
+            LastDrawSeatIndex = 1,
+            Hands = new List<ChangshaHandState>
+            {
+                new() { SeatIndex = 0 },
+                hand,
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var decision = ChangshaGameRuntime.BuildMediumOwnTurnFallbackDecision(
+            BotAction.DeclareAddedKong(tileId: Wan(1, 0)),
+            state,
+            hand,
+            seatIndex: 1,
+            reasoningLine: "test: fallback");
+
+        Assert.Equal(BotActionType.DeclareAddedKong, decision.Action.Type);
+        Assert.Equal(Wan(1, 3), decision.Action.TileId);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W130")]
     public void SelectSafeAddedKongTile_UsesCandidate_WhenTileIsLegal()
     {
