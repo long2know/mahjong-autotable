@@ -1570,6 +1570,48 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(Wan(6, 0), selected);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W139")]
+    public void TryRemapClaimTileIdsToLegalMatchingCopies_RemapsLowRangeLogicalPayload_WhenPhysicalInterpretationHasNoLegalCopy()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { Wan(6, 0), Wan(7, 1), Tong(3, 0) }
+        };
+
+        var remapped = ChangshaGameRuntime.TryRemapClaimTileIdsToLegalMatchingCopies(hand, new[] { 5, 6 });
+
+        Assert.Equal(new[] { Wan(6, 0), Wan(7, 1) }, remapped);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W139")]
+    public void TryRemapClaimTileIdsToLegalMatchingCopies_KeepsPhysicalInterpretation_WhenBothPhysicalAndLogicalInterpretationsAreLegal()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { Wan(2, 2), Wan(6, 0), Tong(3, 0) }
+        };
+
+        var remapped = ChangshaGameRuntime.TryRemapClaimTileIdsToLegalMatchingCopies(hand, new[] { 5 });
+
+        Assert.Equal(new[] { Wan(2, 2) }, remapped);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W139")]
+    public void TryRemapClaimTileIdsToLegalMatchingCopies_UsesMixedInterpretation_WhenNeededForFeasibleRemap()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { Wan(2, 3), Wan(6, 0), Tong(3, 0) }
+        };
+
+        var remapped = ChangshaGameRuntime.TryRemapClaimTileIdsToLegalMatchingCopies(hand, new[] { 5, 6 });
+
+        Assert.Equal(new[] { Wan(6, 0), Wan(2, 3) }, remapped);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W138")]
     public void SelectSafeDiscardTileOrNull_KeepsPhysicalInterpretation_WhenBothPhysicalAndLogicalInterpretationsAreLegal()
     {

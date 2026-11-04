@@ -2761,29 +2761,122 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         if (chosenTileIds is not { Length: > 0 })
             return null;
 
-        var remainingByLogical = hand.ConcealedTiles
+        var availableCopiesByLogical = hand.ConcealedTiles
             .OrderBy(tileId => tileId)
             .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
-            .ToDictionary(group => group.Key, group => new Queue<int>(group));
+            .ToDictionary(group => group.Key, group => group.ToArray());
 
-        var remapped = new int[chosenTileIds.Length];
+        if (availableCopiesByLogical.Count == 0)
+            return null;
+
+        var remainingByLogical = availableCopiesByLogical
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Length);
+
+        var interpretationOptions = new (int LogicalTile, bool IsDirectLogical)[chosenTileIds.Length][];
         for (var i = 0; i < chosenTileIds.Length; i++)
         {
             var chosenTileId = chosenTileIds[i];
             if (chosenTileId < 0 || chosenTileId >= ChangshaDeckBuilder.TotalTiles)
                 return null;
 
-            var logicalTile = ChangshaDeckBuilder.GetLogicalTile(chosenTileId);
-            if (!remainingByLogical.TryGetValue(logicalTile, out var availableCopies)
-                || availableCopies.Count == 0)
+            var physicalLogicalTile = ChangshaDeckBuilder.GetLogicalTile(chosenTileId);
+            var options = new List<(int LogicalTile, bool IsDirectLogical)>
             {
-                return null;
+                (physicalLogicalTile, false)
+            };
+
+            // Low-range explicit claim payloads (0..26) are ambiguous: they can be either
+            // physical tile ids or stale logical-tile payloads. Keep physical interpretation
+            // preferred, but allow direct logical interpretation when needed to recover a
+            // legal remap.
+            if (chosenTileId < ChangshaDeckBuilder.LogicalTileCount
+                && chosenTileId != physicalLogicalTile)
+            {
+                options.Add((chosenTileId, true));
             }
 
-            remapped[i] = availableCopies.Dequeue();
+            interpretationOptions[i] = options.ToArray();
         }
 
-        return remapped;
+        var selectedLogicalTiles = new int[chosenTileIds.Length];
+        var bestDirectLogicalCount = int.MaxValue;
+        int[]? bestRemapped = null;
+
+        Search(index: 0, directLogicalCount: 0);
+        return bestRemapped;
+
+        void Search(int index, int directLogicalCount)
+        {
+            if (directLogicalCount > bestDirectLogicalCount)
+                return;
+
+            if (index == chosenTileIds.Length)
+            {
+                var candidateRemap = MaterializeRemap(selectedLogicalTiles);
+                if (candidateRemap is null)
+                    return;
+
+                if (bestRemapped is null
+                    || directLogicalCount < bestDirectLogicalCount
+                    || CompareLexicographically(candidateRemap, bestRemapped) < 0)
+                {
+                    bestDirectLogicalCount = directLogicalCount;
+                    bestRemapped = candidateRemap;
+                }
+
+                return;
+            }
+
+            foreach (var option in interpretationOptions[index])
+            {
+                if (!remainingByLogical.TryGetValue(option.LogicalTile, out var remaining)
+                    || remaining <= 0)
+                {
+                    continue;
+                }
+
+                remainingByLogical[option.LogicalTile] = remaining - 1;
+                selectedLogicalTiles[index] = option.LogicalTile;
+
+                Search(index + 1, directLogicalCount + (option.IsDirectLogical ? 1 : 0));
+
+                remainingByLogical[option.LogicalTile] = remaining;
+            }
+        }
+
+        int[]? MaterializeRemap(int[] logicalSelection)
+        {
+            var queues = availableCopiesByLogical
+                .ToDictionary(kvp => kvp.Key, kvp => new Queue<int>(kvp.Value));
+
+            var remapped = new int[logicalSelection.Length];
+            for (var i = 0; i < logicalSelection.Length; i++)
+            {
+                var logicalTile = logicalSelection[i];
+                if (!queues.TryGetValue(logicalTile, out var queue)
+                    || queue.Count == 0)
+                {
+                    return null;
+                }
+
+                remapped[i] = queue.Dequeue();
+            }
+
+            return remapped;
+        }
+
+        static int CompareLexicographically(int[] left, int[] right)
+        {
+            var length = Math.Min(left.Length, right.Length);
+            for (var i = 0; i < length; i++)
+            {
+                var cmp = left[i].CompareTo(right[i]);
+                if (cmp != 0)
+                    return cmp;
+            }
+
+            return left.Length.CompareTo(right.Length);
+        }
     }
 
     private static BotDecision BuildMediumOwnTurnTimeoutFallbackDecision(
