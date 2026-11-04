@@ -2024,13 +2024,7 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 var hand = state.Hands.Single(h => h.SeatIndex == seatIndex);
                 try
                 {
-                    List<int> canonicalOrValidatedTileIds = decided switch
-                    {
-                        TableClaimType.Chow => ChangshaGameStateMachine.SelectChowTiles(hand, expectedWindow.DiscardTileId, chosenTileIds),
-                        TableClaimType.Pung => ChangshaGameStateMachine.SelectPungTiles(hand, expectedWindow.DiscardTileId, chosenTileIds),
-                        TableClaimType.Kong => ChangshaGameStateMachine.SelectKongTiles(hand, expectedWindow.DiscardTileId, chosenTileIds),
-                        _ => throw new InvalidOperationException($"Unsupported canonical claim fallback type: {decided}")
-                    };
+                    var canonicalOrValidatedTileIds = SelectClaimTiles(hand, decided.Value, expectedWindow.DiscardTileId, chosenTileIds);
 
                     // Always persist the concrete resolved tile ids for non-Hu claims,
                     // even when the bot omitted explicit claim ids. This keeps the
@@ -2045,38 +2039,86 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 }
                 catch (Exception ex) when (ex is TableRuleException or InvalidOperationException)
                 {
-                    try
+                    var remappedClaimTileIds = TryRemapClaimTileIdsToLegalMatchingCopies(hand, chosenTileIds);
+                    if (remappedClaimTileIds is not null)
                     {
-                        List<int> canonicalTileIds = decided switch
+                        try
                         {
-                            TableClaimType.Chow => ChangshaGameStateMachine.SelectChowTiles(hand, expectedWindow.DiscardTileId, null),
-                            TableClaimType.Pung => ChangshaGameStateMachine.SelectPungTiles(hand, expectedWindow.DiscardTileId, null),
-                            TableClaimType.Kong => ChangshaGameStateMachine.SelectKongTiles(hand, expectedWindow.DiscardTileId, null),
-                            _ => throw new InvalidOperationException($"Unsupported canonical claim fallback type: {decided}")
-                        };
+                            var remappedValidatedTileIds = SelectClaimTiles(hand, decided.Value, expectedWindow.DiscardTileId, remappedClaimTileIds);
+                            _logger.LogWarning(ex,
+                                "Bot claim {ClaimType} from seat {Seat} in game {GameId} had stale explicit tileIds; remapping to legal matching copies.",
+                                decided, seatIndex, instance.GameId);
 
-                        _logger.LogWarning(ex,
-                            "Bot claim {ClaimType} from seat {Seat} in game {GameId} had invalid explicit tileIds; using canonical claim tile fallback.",
-                            decided, seatIndex, instance.GameId);
-
-                        chosenTileIds = canonicalTileIds.ToArray();
-                        decision = BotDecision.FromAction(BotAction.Claim(decided.Value, chosenTileIds)) with
+                            chosenTileIds = remappedValidatedTileIds.ToArray();
+                            decision = BotDecision.FromAction(BotAction.Claim(decided.Value, chosenTileIds)) with
+                            {
+                                Score = decision.Score,
+                                Reasoning = AppendDecisionReasoning(decision, "runtime: remapped stale claim tileIds to legal matching copies")
+                            };
+                        }
+                        catch (Exception remapEx) when (remapEx is TableRuleException or InvalidOperationException)
                         {
-                            Score = decision.Score,
-                            Reasoning = AppendDecisionReasoning(decision, "runtime: invalid explicit claim tileIds; canonical claim tile fallback")
-                        };
+                            _logger.LogDebug(remapEx,
+                                "Bot claim remap validation failed for seat {Seat} in game {GameId}; falling back to canonical claim tile selection.",
+                                seatIndex, instance.GameId);
+                            try
+                            {
+                                var canonicalTileIds = SelectClaimTiles(hand, decided.Value, expectedWindow.DiscardTileId, null);
+
+                                _logger.LogWarning(ex,
+                                    "Bot claim {ClaimType} from seat {Seat} in game {GameId} had invalid explicit tileIds; using canonical claim tile fallback.",
+                                    decided, seatIndex, instance.GameId);
+
+                                chosenTileIds = canonicalTileIds.ToArray();
+                                decision = BotDecision.FromAction(BotAction.Claim(decided.Value, chosenTileIds)) with
+                                {
+                                    Score = decision.Score,
+                                    Reasoning = AppendDecisionReasoning(decision, "runtime: invalid explicit claim tileIds; canonical claim tile fallback")
+                                };
+                            }
+                            catch (Exception fallbackEx) when (fallbackEx is TableRuleException or InvalidOperationException)
+                            {
+                                _logger.LogWarning(fallbackEx,
+                                    "Rejected bot claim {ClaimType} from seat {Seat} in game {GameId}: invalid tile selection and canonical fallback unavailable; recording bot pass instead.",
+                                    decided, seatIndex, instance.GameId);
+                                decided = null;
+                                chosenTileIds = null;
+                                decision = BotDecision.FromAction(BotAction.Pass()) with
+                                {
+                                    Reasoning = AppendDecisionReasoning(decision, "runtime: invalid claim tiles and canonical fallback unavailable; recorded pass")
+                                };
+                            }
+                        }
                     }
-                    catch (Exception fallbackEx) when (fallbackEx is TableRuleException or InvalidOperationException)
+                    else
                     {
-                        _logger.LogWarning(fallbackEx,
-                            "Rejected bot claim {ClaimType} from seat {Seat} in game {GameId}: invalid tile selection and canonical fallback unavailable; recording bot pass instead.",
-                            decided, seatIndex, instance.GameId);
-                        decided = null;
-                        chosenTileIds = null;
-                        decision = BotDecision.FromAction(BotAction.Pass()) with
+                        try
                         {
-                            Reasoning = AppendDecisionReasoning(decision, "runtime: invalid claim tiles and canonical fallback unavailable; recorded pass")
-                        };
+                            var canonicalTileIds = SelectClaimTiles(hand, decided.Value, expectedWindow.DiscardTileId, null);
+
+                            _logger.LogWarning(ex,
+                                "Bot claim {ClaimType} from seat {Seat} in game {GameId} had invalid explicit tileIds; using canonical claim tile fallback.",
+                                decided, seatIndex, instance.GameId);
+
+                            chosenTileIds = canonicalTileIds.ToArray();
+                            decision = BotDecision.FromAction(BotAction.Claim(decided.Value, chosenTileIds)) with
+                            {
+                                Score = decision.Score,
+                                Reasoning = AppendDecisionReasoning(decision, "runtime: invalid explicit claim tileIds; canonical claim tile fallback")
+                            };
+                        }
+                        catch (Exception fallbackEx) when (fallbackEx is TableRuleException or InvalidOperationException)
+                        {
+                            _logger.LogWarning(fallbackEx,
+                                "Rejected bot claim {ClaimType} from seat {Seat} in game {GameId}: invalid tile selection and canonical fallback unavailable; recording bot pass instead.",
+                                decided, seatIndex, instance.GameId);
+                            decided = null;
+                            chosenTileIds = null;
+                            decision = BotDecision.FromAction(BotAction.Pass()) with
+                            {
+                                Reasoning = AppendDecisionReasoning(decision, "runtime: invalid claim tiles and canonical fallback unavailable; recorded pass")
+                            };
+                        }
                     }
                 }
             }
@@ -2684,6 +2726,49 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             return BotAction.Claim(fallbackClaimType);
 
         return BotAction.Pass();
+    }
+
+    private static List<int> SelectClaimTiles(
+        ChangshaHandState hand,
+        TableClaimType claimType,
+        int discardTileId,
+        int[]? chosenTileIds)
+        => claimType switch
+        {
+            TableClaimType.Chow => ChangshaGameStateMachine.SelectChowTiles(hand, discardTileId, chosenTileIds),
+            TableClaimType.Pung => ChangshaGameStateMachine.SelectPungTiles(hand, discardTileId, chosenTileIds),
+            TableClaimType.Kong => ChangshaGameStateMachine.SelectKongTiles(hand, discardTileId, chosenTileIds),
+            _ => throw new InvalidOperationException($"Unsupported canonical claim fallback type: {claimType}")
+        };
+
+    internal static int[]? TryRemapClaimTileIdsToLegalMatchingCopies(ChangshaHandState hand, int[]? chosenTileIds)
+    {
+        if (chosenTileIds is not { Length: > 0 })
+            return null;
+
+        var remainingByLogical = hand.ConcealedTiles
+            .OrderBy(tileId => tileId)
+            .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
+            .ToDictionary(group => group.Key, group => new Queue<int>(group));
+
+        var remapped = new int[chosenTileIds.Length];
+        for (var i = 0; i < chosenTileIds.Length; i++)
+        {
+            var chosenTileId = chosenTileIds[i];
+            if (chosenTileId < 0 || chosenTileId >= ChangshaDeckBuilder.TotalTiles)
+                return null;
+
+            var logicalTile = ChangshaDeckBuilder.GetLogicalTile(chosenTileId);
+            if (!remainingByLogical.TryGetValue(logicalTile, out var availableCopies)
+                || availableCopies.Count == 0)
+            {
+                return null;
+            }
+
+            remapped[i] = availableCopies.Dequeue();
+        }
+
+        return remapped;
     }
 
     private static BotDecision BuildMediumOwnTurnTimeoutFallbackDecision(
