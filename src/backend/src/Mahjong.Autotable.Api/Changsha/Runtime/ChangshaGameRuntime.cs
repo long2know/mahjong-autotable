@@ -2920,16 +2920,20 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             return logicalTile;
 
         // Legacy / malformed payload guard: some stale strategy outputs carry a
-        // physical tile-id copy in the logical-tile field. Normalize any in-range
-        // tile-id payload back to its logical tile when that remapped logical kong
-        // is actually legal for this seat.
-        if (logicalTile < 0 || logicalTile >= ChangshaDeckBuilder.TotalTiles)
+        // physical tile-id copy in the logical-tile field. For high-range values
+        // (>= logical-tile count), this is unambiguous and we can safely normalize
+        // to the physical tile's logical index.
+        //
+        // Low-range payloads (0..26) are ambiguous because they overlap the logical
+        // id domain itself. Remapping those can silently convert a genuinely invalid
+        // logical kong choice into a different legal kong, which regresses turn
+        // quality. Treat low-range mismatches as invalid and let own-turn fallback
+        // choose a legal action instead.
+        if (logicalTile < ChangshaDeckBuilder.LogicalTileCount
+            || logicalTile >= ChangshaDeckBuilder.TotalTiles)
             return null;
 
         var remappedLogicalTile = ChangshaDeckBuilder.GetLogicalTile(logicalTile);
-        if (remappedLogicalTile == logicalTile)
-            return null;
-
         return ChangshaGameStateMachine.CanDeclareConcealedKong(state, seatIndex, remappedLogicalTile)
             ? remappedLogicalTile
             : null;
