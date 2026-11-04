@@ -2809,6 +2809,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             fallbackAction = BotAction.DeclareAddedKong(safeFallbackAddedKongTileId);
         }
 
+        if (fallbackAction.Type == BotActionType.Discard
+            && SelectSafeDiscardTileOrNull(liveHand, fallbackAction.TileId) is { } safeFallbackDiscardTileId)
+        {
+            fallbackAction = BotAction.Discard(safeFallbackDiscardTileId);
+        }
+
         var fallbackIsLegal = fallbackAction.Type switch
         {
             BotActionType.DeclareWin => canDeclareSelfDrawHu,
