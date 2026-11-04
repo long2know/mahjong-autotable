@@ -1570,6 +1570,24 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(Wan(6, 0), selected);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W141")]
+    public void SelectSafeDiscardTileOrNull_PrefersPolicySelectedInterpretation_WhenLowRangePayloadIsAmbiguous()
+    {
+        // 2 is ambiguous in low-range: physical interpretation => Wan-1 copy,
+        // direct logical interpretation => Wan-3. Both are legal copies in hand.
+        // Runtime should break this tie using Medium's discard policy rather than
+        // always forcing the physical interpretation.
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { Wan(1, 0), Wan(1, 1), Wan(2, 0), Wan(3, 0) }
+        };
+
+        var selected = ChangshaGameRuntime.SelectSafeDiscardTileOrNull(hand, candidateTileId: 2);
+
+        Assert.Equal(Wan(3, 0), selected);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W139")]
     public void TryRemapClaimTileIdsToLegalMatchingCopies_RemapsLowRangeLogicalPayload_WhenPhysicalInterpretationHasNoLegalCopy()
     {
