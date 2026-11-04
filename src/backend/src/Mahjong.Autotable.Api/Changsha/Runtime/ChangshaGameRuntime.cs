@@ -2950,10 +2950,46 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         if (tileId < 0 || tileId >= ChangshaDeckBuilder.TotalTiles)
             return null;
 
-        var logicalTile = ChangshaDeckBuilder.GetLogicalTile(tileId);
-        return ChangshaGameStateMachine.GetAddedKongCandidates(state, seatIndex)
-            .Where(candidate => ChangshaDeckBuilder.GetLogicalTile(candidate) == logicalTile)
+        var candidates = ChangshaGameStateMachine.GetAddedKongCandidates(state, seatIndex)
             .OrderBy(candidate => candidate)
+            .ToArray();
+
+        if (candidates.Length == 0)
+            return null;
+
+        var physicalLogicalTile = ChangshaDeckBuilder.GetLogicalTile(tileId);
+
+        // Low-range payloads (0..26) are ambiguous: the value can be either a physical tile id
+        // OR an accidental logical-tile payload from stale strategy output. Prefer the logical
+        // interpretation when it is the only legal candidate, but reject when both interpretations
+        // are legal (we cannot infer intent safely).
+        if (tileId < ChangshaDeckBuilder.LogicalTileCount)
+        {
+            var directLogicalTile = tileId;
+            if (directLogicalTile != physicalLogicalTile)
+            {
+                var physicalCandidates = candidates
+                    .Where(candidate => ChangshaDeckBuilder.GetLogicalTile(candidate) == physicalLogicalTile)
+                    .ToArray();
+                var directLogicalCandidates = candidates
+                    .Where(candidate => ChangshaDeckBuilder.GetLogicalTile(candidate) == directLogicalTile)
+                    .ToArray();
+
+                if (physicalCandidates.Length > 0 && directLogicalCandidates.Length > 0)
+                    return null;
+
+                if (directLogicalCandidates.Length > 0)
+                    return directLogicalCandidates[0];
+
+                if (physicalCandidates.Length > 0)
+                    return physicalCandidates[0];
+
+                return null;
+            }
+        }
+
+        return candidates
+            .Where(candidate => ChangshaDeckBuilder.GetLogicalTile(candidate) == physicalLogicalTile)
             .Cast<int?>()
             .FirstOrDefault();
     }
