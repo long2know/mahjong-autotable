@@ -1612,6 +1612,30 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(new[] { Wan(6, 0), Wan(2, 3) }, remapped);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W140")]
+    public void TryRemapClaimTileIdsToLegalMatchingCopies_PrefersClaimValidRemap_ForAmbiguousLowRangeChowPayload()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(1, 0), Wan(2, 0), Wan(3, 0), Wan(4, 0), Wan(6, 0), Tong(3, 0)
+            }
+        };
+
+        // Bot emitted stale logical chow payloads [3,5] (Wan4/Wan6) in a low-range field
+        // that also has a legal physical interpretation [Wan1/Wan2]. For discard Wan5,
+        // runtime remap should prefer the claim-valid interpretation to preserve strategy shape.
+        var remapped = ChangshaGameRuntime.TryRemapClaimTileIdsToLegalMatchingCopies(
+            hand,
+            chosenTileIds: new[] { 3, 5 },
+            claimType: TableClaimType.Chow,
+            discardTileId: Wan(5, 0));
+
+        Assert.Equal(new[] { Wan(4, 0), Wan(6, 0) }, remapped);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W138")]
     public void SelectSafeDiscardTileOrNull_KeepsPhysicalInterpretation_WhenBothPhysicalAndLogicalInterpretationsAreLegal()
     {

@@ -2039,7 +2039,11 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 }
                 catch (Exception ex) when (ex is TableRuleException or InvalidOperationException)
                 {
-                    var remappedClaimTileIds = TryRemapClaimTileIdsToLegalMatchingCopies(hand, chosenTileIds);
+                    var remappedClaimTileIds = TryRemapClaimTileIdsToLegalMatchingCopies(
+                        hand,
+                        chosenTileIds,
+                        decided,
+                        expectedWindow.DiscardTileId);
                     if (remappedClaimTileIds is not null)
                     {
                         try
@@ -2756,10 +2760,17 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             _ => throw new InvalidOperationException($"Unsupported canonical claim fallback type: {claimType}")
         };
 
-    internal static int[]? TryRemapClaimTileIdsToLegalMatchingCopies(ChangshaHandState hand, int[]? chosenTileIds)
+    internal static int[]? TryRemapClaimTileIdsToLegalMatchingCopies(
+        ChangshaHandState hand,
+        int[]? chosenTileIds,
+        TableClaimType? claimType = null,
+        int? discardTileId = null)
     {
         if (chosenTileIds is not { Length: > 0 })
             return null;
+
+        var constrainToClaimShape = claimType is TableClaimType.Chow or TableClaimType.Pung or TableClaimType.Kong
+            && discardTileId is not null;
 
         var availableCopiesByLogical = hand.ConcealedTiles
             .OrderBy(tileId => tileId)
@@ -2815,6 +2826,18 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                 var candidateRemap = MaterializeRemap(selectedLogicalTiles);
                 if (candidateRemap is null)
                     return;
+
+                if (constrainToClaimShape)
+                {
+                    try
+                    {
+                        _ = SelectClaimTiles(hand, claimType!.Value, discardTileId!.Value, candidateRemap);
+                    }
+                    catch (Exception ex) when (ex is TableRuleException or InvalidOperationException)
+                    {
+                        return;
+                    }
+                }
 
                 if (bestRemapped is null
                     || directLogicalCount < bestDirectLogicalCount
