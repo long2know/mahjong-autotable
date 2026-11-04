@@ -1284,6 +1284,40 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)), selected);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W135")]
+    public void SelectSafeConcealedKongLogical_RemapsLowPhysicalTilePayloadToLegalLogicalTile()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(1, 0), Wan(1, 1), Wan(1, 2), Wan(1, 3),
+                Tong(2, 0), Tong(3, 0), Tong(4, 0), Tong(5, 0), Tong(6, 0),
+                Tiao(2, 0), Tiao(3, 0), Tiao(4, 0), Tiao(5, 0), Tiao(6, 0)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            LastDrawSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var staleLowPhysicalTilePayload = Wan(1, 2);
+        var selected = ChangshaGameRuntime.SelectSafeConcealedKongLogical(state, seatIndex: 0, candidateLogicalTile: staleLowPhysicalTilePayload);
+
+        Assert.Equal(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0)), selected);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W124")]
     public void SelectSafeDiscardTile_UsesCandidate_WhenTileIsInHand()
     {

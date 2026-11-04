@@ -2919,17 +2919,17 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         if (ChangshaGameStateMachine.CanDeclareConcealedKong(state, seatIndex, logicalTile))
             return logicalTile;
 
-        // Legacy / malformed payload guard: some stale strategy outputs can carry a
-        // physical tile-id copy in the logical-tile field. Re-map to the logical tile
-        // only when the candidate is outside logical range to avoid rewriting valid
-        // (but currently unavailable) logical values.
-        if (logicalTile < ChangshaDeckBuilder.LogicalTileCount
-            || logicalTile >= ChangshaDeckBuilder.TotalTiles)
-        {
+        // Legacy / malformed payload guard: some stale strategy outputs carry a
+        // physical tile-id copy in the logical-tile field. Normalize any in-range
+        // tile-id payload back to its logical tile when that remapped logical kong
+        // is actually legal for this seat.
+        if (logicalTile < 0 || logicalTile >= ChangshaDeckBuilder.TotalTiles)
             return null;
-        }
 
         var remappedLogicalTile = ChangshaDeckBuilder.GetLogicalTile(logicalTile);
+        if (remappedLogicalTile == logicalTile)
+            return null;
+
         return ChangshaGameStateMachine.CanDeclareConcealedKong(state, seatIndex, remappedLogicalTile)
             ? remappedLogicalTile
             : null;
