@@ -1553,6 +1553,37 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(Wan(7, 1), selected);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W138")]
+    public void SelectSafeDiscardTileOrNull_RemapsLowRangeLogicalPayload_WhenPhysicalInterpretationHasNoLegalCopy()
+    {
+        // 5 is ambiguous: physical tile-id interpretation => Wan-2 copy 1 (logical 1),
+        // direct logical interpretation => Wan-6 (logical 5). When no Wan-2 copy is in
+        // hand, runtime should salvage stale logical payloads by remapping to Wan-6.
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { Wan(6, 0), Wan(6, 2), Tong(3, 0) }
+        };
+
+        var selected = ChangshaGameRuntime.SelectSafeDiscardTileOrNull(hand, candidateTileId: 5);
+
+        Assert.Equal(Wan(6, 0), selected);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W138")]
+    public void SelectSafeDiscardTileOrNull_KeepsPhysicalInterpretation_WhenBothPhysicalAndLogicalInterpretationsAreLegal()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { Wan(2, 2), Wan(6, 0), Tong(3, 0) }
+        };
+
+        var selected = ChangshaGameRuntime.SelectSafeDiscardTileOrNull(hand, candidateTileId: 5);
+
+        Assert.Equal(Wan(2, 2), selected);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W131")]
     public void SelectSafeDiscardTileOrNull_ReturnsNull_WhenNoLegalMatchingTileExists()
     {
