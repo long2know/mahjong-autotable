@@ -3024,10 +3024,13 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             .ToArray();
 
         // Low-range payloads (0..26) are ambiguous: they can be either physical tile ids
-        // or stale logical tile payloads emitted in the discard tile-id field. Keep the
-        // physical interpretation when available (normal contract), but if no physical
-        // match exists and the logical interpretation does, salvage the decision by
-        // remapping to the lowest legal copy for that logical tile.
+        // or stale logical tile payloads emitted in the discard tile-id field.
+        //
+        // 1) If only direct-logical interpretation is legal, salvage to that logical tile.
+        // 2) If both physical and direct-logical interpretations are legal, let Medium's
+        //    discard policy break the tie so fallback quality tracks current bot behavior
+        //    instead of arbitrarily forcing physical interpretation.
+        // 3) Otherwise preserve physical interpretation (wire contract default).
         if (tileId < ChangshaDeckBuilder.LogicalTileCount)
         {
             var directLogicalTile = tileId;
@@ -3040,6 +3043,16 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
 
                 if (physicalCandidates.Length == 0 && directLogicalCandidates.Length > 0)
                     return directLogicalCandidates[0];
+
+                if (physicalCandidates.Length > 0 && directLogicalCandidates.Length > 0)
+                {
+                    var policyPreferredTileId = ChangshaBotPolicy.SelectDiscardTile(hand);
+                    if (physicalCandidates.Contains(policyPreferredTileId)
+                        || directLogicalCandidates.Contains(policyPreferredTileId))
+                    {
+                        return policyPreferredTileId;
+                    }
+                }
             }
         }
 
