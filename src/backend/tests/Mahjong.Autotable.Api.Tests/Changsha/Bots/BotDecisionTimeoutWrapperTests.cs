@@ -1216,6 +1216,103 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Null(selected);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W137")]
+    public void SelectSafeAddedKongTile_LowRangePayload_UsesLogicalInterpretation_WhenPhysicalInterpretationHasNoCandidate()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(6, 3),
+                Wan(2, 0), Wan(3, 0), Wan(4, 0),
+                Tong(2, 0), Tong(3, 0), Tong(4, 0),
+                Tiao(6, 0), Tiao(7, 0), Tiao(8, 0), Tiao(9, 0)
+            },
+            Melds = new List<Meld>
+            {
+                new()
+                {
+                    Kind = MeldKind.Pung,
+                    TileIds = new List<int> { Wan(6, 0), Wan(6, 1), Wan(6, 2) },
+                    ClaimedFromSeatIndex = 2
+                }
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            LastDrawSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        // 5 is ambiguous in low-range: physical interpretation => logical Wan2,
+        // direct logical interpretation => Wan6. Only Wan6 is legal here.
+        var selected = ChangshaGameRuntime.SelectSafeAddedKongTile(state, seatIndex: 0, candidateTileId: 5);
+
+        Assert.Equal(Wan(6, 3), selected);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W137")]
+    public void SelectSafeAddedKongTile_LowRangePayload_ReturnsNull_WhenPhysicalAndLogicalInterpretationsAreBothLegal()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(2, 3),
+                Wan(6, 3),
+                Tong(2, 0), Tong(3, 0), Tong(4, 0),
+                Tiao(6, 0), Tiao(7, 0), Tiao(8, 0)
+            },
+            Melds = new List<Meld>
+            {
+                new()
+                {
+                    Kind = MeldKind.Pung,
+                    TileIds = new List<int> { Wan(2, 0), Wan(2, 1), Wan(2, 2) },
+                    ClaimedFromSeatIndex = 2
+                },
+                new()
+                {
+                    Kind = MeldKind.Pung,
+                    TileIds = new List<int> { Wan(6, 0), Wan(6, 1), Wan(6, 2) },
+                    ClaimedFromSeatIndex = 1
+                }
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            LastDrawSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        // 5 is ambiguous in low-range and both interpretations are legal:
+        // physical interpretation => Wan2, direct logical interpretation => Wan6.
+        // Runtime must not guess.
+        var selected = ChangshaGameRuntime.SelectSafeAddedKongTile(state, seatIndex: 0, candidateTileId: 5);
+
+        Assert.Null(selected);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W134")]
     public void SelectSafeConcealedKongLogical_UsesCandidate_WhenLogicalTileIsLegal()
     {
