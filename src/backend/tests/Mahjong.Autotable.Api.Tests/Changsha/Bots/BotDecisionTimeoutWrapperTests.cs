@@ -1284,8 +1284,8 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)), selected);
     }
 
-    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W135")]
-    public void SelectSafeConcealedKongLogical_RemapsLowPhysicalTilePayloadToLegalLogicalTile()
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W136")]
+    public void SelectSafeConcealedKongLogical_DoesNotRemapAmbiguousLowPayload()
     {
         var hand = new ChangshaHandState
         {
@@ -1312,10 +1312,49 @@ public sealed class BotDecisionTimeoutWrapperTests
             }
         };
 
-        var staleLowPhysicalTilePayload = Wan(1, 2);
-        var selected = ChangshaGameRuntime.SelectSafeConcealedKongLogical(state, seatIndex: 0, candidateLogicalTile: staleLowPhysicalTilePayload);
+        var ambiguousLowPayload = Wan(1, 2);
+        var selected = ChangshaGameRuntime.SelectSafeConcealedKongLogical(state, seatIndex: 0, candidateLogicalTile: ambiguousLowPayload);
 
-        Assert.Equal(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0)), selected);
+        Assert.Null(selected);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W136")]
+    public void OwnTurnFallback_AmbiguousLowConcealedKongPayload_UsesLegalMediumAction()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(1, 0), Wan(1, 1), Wan(1, 2), Wan(1, 3),
+                Tong(2, 0), Tong(3, 0), Tong(4, 0), Tong(5, 0), Tong(6, 0),
+                Tiao(2, 0), Tiao(3, 0), Tiao(4, 0), Tiao(5, 0), Tiao(6, 0)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            LastDrawSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var decision = ChangshaGameRuntime.BuildMediumOwnTurnFallbackDecision(
+            BotAction.DeclareConcealedKong(Wan(1, 2)),
+            state,
+            hand,
+            seatIndex: 0,
+            reasoningLine: "test: ambiguous low concealed-kong payload fallback");
+
+        Assert.Equal(BotActionType.DeclareConcealedKong, decision.Action.Type);
+        Assert.Equal(ChangshaDeckBuilder.GetLogicalTile(Wan(1, 0)), decision.Action.LogicalTile);
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W124")]
