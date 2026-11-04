@@ -74,6 +74,34 @@ public static class ChangshaBotEngine
         return false;
     }
 
+    private static int? NormalizeConcealedKongLogicalTile(int? logicalTile)
+    {
+        if (!logicalTile.HasValue)
+            return logicalTile;
+
+        if (IsValidLogicalTile(logicalTile))
+            return logicalTile;
+
+        // Legacy payload guard: some strategy wrappers can leak physical tile ids
+        // (0..107) into the concealed-kong logical-tile field. Preserve strategy
+        // intent by normalizing that copy-id payload to its logical tile index.
+        return IsValidTileId(logicalTile)
+            ? ChangshaDeckBuilder.GetLogicalTile(logicalTile.Value)
+            : logicalTile;
+    }
+
+    private static BotAction NormalizeAction(BotAction action)
+    {
+        if (action.Type != BotActionType.DeclareConcealedKong)
+            return action;
+
+        var normalizedLogicalTile = NormalizeConcealedKongLogicalTile(action.LogicalTile);
+        if (normalizedLogicalTile == action.LogicalTile)
+            return action;
+
+        return BotAction.DeclareConcealedKong(normalizedLogicalTile!.Value);
+    }
+
     private static bool IsMalformedAction(BotAction action)
     {
         if (!IsValidActionType(action.Type))
@@ -160,6 +188,17 @@ public static class ChangshaBotEngine
 
                 logger?.LogWarning("Bot {Source} action factory returned null; using hard pass fallback.", source);
                 return HardPassAction();
+            }
+
+            var normalizedAction = NormalizeAction(action);
+            if (!ReferenceEquals(normalizedAction, action))
+            {
+                logger?.LogWarning(
+                    "Bot {Source} action factory returned concealed-kong physical tile payload {TilePayload}; normalized to logical tile {LogicalTile}.",
+                    source,
+                    action.LogicalTile,
+                    normalizedAction.LogicalTile);
+                action = normalizedAction;
             }
 
             if (IsMalformedAction(action))
@@ -366,6 +405,17 @@ public static class ChangshaBotEngine
 
                 logger?.LogWarning("Bot {Source} decision returned null action; using hard pass fallback.", source);
                 return HardPassDecision();
+            }
+
+            var normalizedAction = NormalizeAction(decision.Action);
+            if (!ReferenceEquals(normalizedAction, decision.Action))
+            {
+                logger?.LogWarning(
+                    "Bot {Source} decision returned concealed-kong physical tile payload {TilePayload}; normalized to logical tile {LogicalTile}.",
+                    source,
+                    decision.Action.LogicalTile,
+                    normalizedAction.LogicalTile);
+                decision = decision with { Action = normalizedAction };
             }
 
             if (IsMalformedAction(decision.Action))
