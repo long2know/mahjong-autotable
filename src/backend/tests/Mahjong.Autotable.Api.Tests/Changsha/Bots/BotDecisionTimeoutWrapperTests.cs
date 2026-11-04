@@ -1313,6 +1313,77 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Null(selected);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W138")]
+    public void OwnTurnFallback_AmbiguousLowAddedKongPayload_UsesLegalMediumAction()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Wan(2, 3),
+                Wan(6, 3),
+                Tong(2, 0), Tong(3, 0), Tong(4, 0),
+                Tiao(6, 0), Tiao(7, 0), Tiao(8, 0)
+            },
+            Melds = new List<Meld>
+            {
+                new()
+                {
+                    Kind = MeldKind.Pung,
+                    TileIds = new List<int> { Wan(2, 0), Wan(2, 1), Wan(2, 2) },
+                    ClaimedFromSeatIndex = 2
+                },
+                new()
+                {
+                    Kind = MeldKind.Pung,
+                    TileIds = new List<int> { Wan(6, 0), Wan(6, 1), Wan(6, 2) },
+                    ClaimedFromSeatIndex = 1
+                }
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            LastDrawSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        // Ambiguous low-range payload: physical interpretation => Wan2, direct
+        // logical interpretation => Wan6. Runtime remap must refuse guessing and
+        // route through a legal medium-policy fallback action.
+        var decision = ChangshaGameRuntime.BuildMediumOwnTurnFallbackDecision(
+            BotAction.DeclareAddedKong(tileId: 5),
+            state,
+            hand,
+            seatIndex: 0,
+            reasoningLine: "test: ambiguous low added-kong payload fallback");
+
+        Assert.NotEqual(BotActionType.Pass, decision.Action.Type);
+
+        var actionIsLegal = decision.Action.Type switch
+        {
+            BotActionType.DeclareAddedKong => decision.Action.TileId is int tileId
+                && ChangshaGameStateMachine.CanDeclareAddedKong(state, seatIndex: 0, tileId),
+            BotActionType.DeclareConcealedKong => decision.Action.LogicalTile is int logicalTile
+                && ChangshaGameStateMachine.CanDeclareConcealedKong(state, seatIndex: 0, logicalTile),
+            BotActionType.Discard => decision.Action.TileId is int discardTileId
+                && hand.ConcealedTiles.Contains(discardTileId),
+            BotActionType.DeclareWin => ChangshaGameStateMachine.CanDeclareSelfDrawWin(state, seatIndex: 0),
+            _ => false,
+        };
+
+        Assert.True(actionIsLegal, "fallback produced an illegal own-turn action");
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W134")]
     public void SelectSafeConcealedKongLogical_UsesCandidate_WhenLogicalTileIsLegal()
     {
