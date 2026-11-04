@@ -3052,6 +3052,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                     {
                         return policyPreferredTileId;
                     }
+
+                    // Both interpretations are legal, but Medium does not prefer either.
+                    // Treat the payload as unresolved ambiguity so callers can escalate
+                    // to full medium-policy fallback instead of pinning to arbitrary
+                    // physical-copy ordering.
+                    return null;
                 }
             }
         }

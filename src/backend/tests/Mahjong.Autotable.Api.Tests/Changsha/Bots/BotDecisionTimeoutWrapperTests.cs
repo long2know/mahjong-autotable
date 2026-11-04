@@ -1655,17 +1655,38 @@ public sealed class BotDecisionTimeoutWrapperTests
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W138")]
-    public void SelectSafeDiscardTileOrNull_KeepsPhysicalInterpretation_WhenBothPhysicalAndLogicalInterpretationsAreLegal()
+    public void SelectSafeDiscardTileOrNull_PrefersPolicySelectedPhysicalInterpretation_WhenLowRangePayloadIsAmbiguous()
     {
+        // 11 is ambiguous in low-range: physical interpretation => Wan-3 copy,
+        // direct logical interpretation => Tong-3. Both are legal, and Medium
+        // prefers Wan-3 in this hand.
         var hand = new ChangshaHandState
         {
             SeatIndex = 0,
-            ConcealedTiles = new List<int> { Wan(2, 2), Wan(6, 0), Tong(3, 0) }
+            ConcealedTiles = new List<int> { Wan(3, 0), Tong(2, 0), Tong(3, 0), Tong(4, 0) }
         };
 
-        var selected = ChangshaGameRuntime.SelectSafeDiscardTileOrNull(hand, candidateTileId: 5);
+        var selected = ChangshaGameRuntime.SelectSafeDiscardTileOrNull(hand, candidateTileId: 11);
 
-        Assert.Equal(Wan(2, 2), selected);
+        Assert.Equal(Wan(3, 0), selected);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W142")]
+    public void SelectSafeDiscardTileOrNull_ReturnsNull_WhenLowRangeAmbiguityHasNoPolicySupportedInterpretation()
+    {
+        // 2 is ambiguous in low-range: physical interpretation => Wan-1 copy,
+        // direct logical interpretation => Wan-3. Both are legal, but Medium
+        // prefers discarding Wan-9 in this hand. Runtime should mark the payload
+        // as unresolved so callers can run full medium fallback selection.
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int> { Wan(1, 0), Wan(3, 0), Wan(9, 0) }
+        };
+
+        var selected = ChangshaGameRuntime.SelectSafeDiscardTileOrNull(hand, candidateTileId: 2);
+
+        Assert.Null(selected);
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W131")]
