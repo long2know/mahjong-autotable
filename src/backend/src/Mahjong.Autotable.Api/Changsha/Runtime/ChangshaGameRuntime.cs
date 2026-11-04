@@ -2898,17 +2898,36 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
 
         // Preserve strategy intent when only the physical copy index is stale: if a
         // matching logical tile still exists in hand, discard that legal copy.
-        if (tileId >= 0 && tileId < ChangshaDeckBuilder.TotalTiles)
+        if (tileId < 0 || tileId >= ChangshaDeckBuilder.TotalTiles)
+            return null;
+
+        var physicalLogicalTile = ChangshaDeckBuilder.GetLogicalTile(tileId);
+        var physicalCandidates = hand.ConcealedTiles
+            .Where(concealedTileId => ChangshaDeckBuilder.GetLogicalTile(concealedTileId) == physicalLogicalTile)
+            .OrderBy(concealedTileId => concealedTileId)
+            .ToArray();
+
+        // Low-range payloads (0..26) are ambiguous: they can be either physical tile ids
+        // or stale logical tile payloads emitted in the discard tile-id field. Keep the
+        // physical interpretation when available (normal contract), but if no physical
+        // match exists and the logical interpretation does, salvage the decision by
+        // remapping to the lowest legal copy for that logical tile.
+        if (tileId < ChangshaDeckBuilder.LogicalTileCount)
         {
-            var logicalTile = ChangshaDeckBuilder.GetLogicalTile(tileId);
-            return hand.ConcealedTiles
-                .Where(concealedTileId => ChangshaDeckBuilder.GetLogicalTile(concealedTileId) == logicalTile)
-                .OrderBy(concealedTileId => concealedTileId)
-                .Cast<int?>()
-                .FirstOrDefault();
+            var directLogicalTile = tileId;
+            if (directLogicalTile != physicalLogicalTile)
+            {
+                var directLogicalCandidates = hand.ConcealedTiles
+                    .Where(concealedTileId => ChangshaDeckBuilder.GetLogicalTile(concealedTileId) == directLogicalTile)
+                    .OrderBy(concealedTileId => concealedTileId)
+                    .ToArray();
+
+                if (physicalCandidates.Length == 0 && directLogicalCandidates.Length > 0)
+                    return directLogicalCandidates[0];
+            }
         }
 
-        return null;
+        return physicalCandidates.Cast<int?>().FirstOrDefault();
     }
 
     internal static int? SelectSafeConcealedKongLogical(ChangshaGameState state, int seatIndex, int? candidateLogicalTile)
