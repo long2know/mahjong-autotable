@@ -2523,18 +2523,33 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
                         };
                     }
                 }
-                else if (decision.Action.Type == BotActionType.DeclareConcealedKong
-                         && (decision.Action.LogicalTile is null
-                             || !ChangshaGameStateMachine.CanDeclareConcealedKong(
-                                 state, seatIndex, decision.Action.LogicalTile.Value)))
+                else if (decision.Action.Type == BotActionType.DeclareConcealedKong)
                 {
-                    _logger.LogWarning(
-                        "Bot proposed unavailable concealed kong logical tile {LogicalTile} in game {GameId} seat {Seat}; using medium-policy own-turn fallback.",
-                        decision.Action.LogicalTile, instance.GameId, seatIndex);
-                    decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
+                    var safeConcealedKongLogical = SelectSafeConcealedKongLogical(state, seatIndex, decision.Action.LogicalTile);
+                    if (safeConcealedKongLogical is { } legalConcealedKongLogical)
                     {
-                        Reasoning = AppendDecisionReasoning(decision, "runtime: concealed kong unavailable; medium-policy own-turn fallback")
-                    };
+                        if (decision.Action.LogicalTile != legalConcealedKongLogical)
+                        {
+                            _logger.LogWarning(
+                                "Bot proposed stale concealed kong logical tile {LogicalTile} in game {GameId} seat {Seat}; remapping to legal logical tile {RemappedLogicalTile}.",
+                                decision.Action.LogicalTile, instance.GameId, seatIndex, legalConcealedKongLogical);
+                            decision = decision with
+                            {
+                                Action = BotAction.DeclareConcealedKong(legalConcealedKongLogical),
+                                Reasoning = AppendDecisionReasoning(decision, "runtime: remapped stale concealed kong tile to legal logical tile")
+                            };
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "Bot proposed unavailable concealed kong logical tile {LogicalTile} in game {GameId} seat {Seat}; using medium-policy own-turn fallback.",
+                            decision.Action.LogicalTile, instance.GameId, seatIndex);
+                        decision = BuildMediumOwnTurnTimeoutFallbackDecision(decisionState, state, hand, seatIndex) with
+                        {
+                            Reasoning = AppendDecisionReasoning(decision, "runtime: concealed kong unavailable; medium-policy own-turn fallback")
+                        };
+                    }
                 }
                 else if (decision.Action.Type == BotActionType.DeclareAddedKong)
                 {
@@ -2803,6 +2818,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             fallbackAction = BotAction.DeclareWin();
         }
 
+        if (fallbackAction.Type == BotActionType.DeclareConcealedKong
+            && SelectSafeConcealedKongLogical(liveState, seatIndex, fallbackAction.LogicalTile) is { } safeFallbackConcealedKongLogical)
+        {
+            fallbackAction = BotAction.DeclareConcealedKong(safeFallbackConcealedKongLogical);
+        }
+
         if (fallbackAction.Type == BotActionType.DeclareAddedKong
             && SelectSafeAddedKongTile(liveState, seatIndex, fallbackAction.TileId) is { } safeFallbackAddedKongTileId)
         {
@@ -2890,6 +2911,30 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
         return null;
     }
 
+    internal static int? SelectSafeConcealedKongLogical(ChangshaGameState state, int seatIndex, int? candidateLogicalTile)
+    {
+        if (candidateLogicalTile is not { } logicalTile)
+            return null;
+
+        if (ChangshaGameStateMachine.CanDeclareConcealedKong(state, seatIndex, logicalTile))
+            return logicalTile;
+
+        // Legacy / malformed payload guard: some stale strategy outputs can carry a
+        // physical tile-id copy in the logical-tile field. Re-map to the logical tile
+        // only when the candidate is outside logical range to avoid rewriting valid
+        // (but currently unavailable) logical values.
+        if (logicalTile < ChangshaDeckBuilder.LogicalTileCount
+            || logicalTile >= ChangshaDeckBuilder.TotalTiles)
+        {
+            return null;
+        }
+
+        var remappedLogicalTile = ChangshaDeckBuilder.GetLogicalTile(logicalTile);
+        return ChangshaGameStateMachine.CanDeclareConcealedKong(state, seatIndex, remappedLogicalTile)
+            ? remappedLogicalTile
+            : null;
+    }
+
     internal static int? SelectSafeAddedKongTile(ChangshaGameState state, int seatIndex, int? candidateTileId)
     {
         if (candidateTileId is not { } tileId)
@@ -2922,6 +2967,12 @@ public sealed partial class ChangshaGameRuntime : IChangshaGameRuntime, IAsyncDi
             return BotAction.Pass();
 
         var mediumAction = new ChangshaBotPolicy().DecideAction(liveState, seatIndex);
+        if (mediumAction.Type == BotActionType.DeclareConcealedKong
+            && SelectSafeConcealedKongLogical(liveState, seatIndex, mediumAction.LogicalTile) is { } safeMediumConcealedKongLogical)
+        {
+            mediumAction = BotAction.DeclareConcealedKong(safeMediumConcealedKongLogical);
+        }
+
         if (mediumAction.Type == BotActionType.DeclareAddedKong
             && SelectSafeAddedKongTile(liveState, seatIndex, mediumAction.TileId) is { } safeMediumAddedKongTileId)
         {

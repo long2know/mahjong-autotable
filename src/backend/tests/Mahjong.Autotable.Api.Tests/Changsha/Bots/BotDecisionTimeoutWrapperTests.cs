@@ -243,6 +243,20 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.Pass, action.Type);
     }
 
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W134")]
+    public async Task StrategyAction_PhysicalTilePayloadInConcealedKong_RemapsToLogicalTile()
+    {
+        var action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
+            () => BotAction.DeclareConcealedKong(Tiao(9, 2)),
+            timeoutMs: 500,
+            safeDefault: () => BotAction.Claim(TableClaimType.Pung),
+            logger: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(BotActionType.DeclareConcealedKong, action.Type);
+        Assert.Equal(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 2)), action.LogicalTile);
+    }
+
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W126")]
     public async Task MalformedStrategyAction_UnknownActionType_UsesSafeDefaultAction()
     {
@@ -310,18 +324,18 @@ public sealed class BotDecisionTimeoutWrapperTests
         Assert.Equal(BotActionType.Pass, decision.Action.Type);
     }
 
-    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W131")]
-    public async Task MalformedStrategyDecisionAction_OutOfRangeConcealedKongLogical_UsesSafeDefaultDecision()
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W134")]
+    public async Task StrategyDecision_PhysicalTilePayloadInConcealedKong_RemapsToLogicalTile()
     {
         var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
-            () => BotDecision.FromAction(BotAction.DeclareConcealedKong(ChangshaDeckBuilder.LogicalTileCount)),
+            () => BotDecision.FromAction(BotAction.DeclareConcealedKong(Tiao(9, 2))),
             timeoutMs: 500,
             safeDefault: ClaimHu,
             logger: null,
             ct: CancellationToken.None);
 
-        Assert.Equal(BotActionType.Claim, decision.Action.Type);
-        Assert.Equal(TableClaimType.Hu, decision.Action.ClaimType);
+        Assert.Equal(BotActionType.DeclareConcealedKong, decision.Action.Type);
+        Assert.Equal(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 2)), decision.Action.LogicalTile);
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W131")]
@@ -1200,6 +1214,74 @@ public sealed class BotDecisionTimeoutWrapperTests
         var selected = ChangshaGameRuntime.SelectSafeAddedKongTile(state, seatIndex: 0, candidateTileId: Tong(9, 0));
 
         Assert.Null(selected);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W134")]
+    public void SelectSafeConcealedKongLogical_UsesCandidate_WhenLogicalTileIsLegal()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tiao(9, 0), Tiao(9, 1), Tiao(9, 2), Tiao(9, 3),
+                Wan(1, 0), Wan(2, 0), Wan(3, 0), Wan(4, 0), Wan(5, 0),
+                Tong(4, 0), Tong(5, 0), Tong(6, 0), Tong(7, 0), Tong(8, 0)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            LastDrawSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var legalLogical = ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0));
+        var selected = ChangshaGameRuntime.SelectSafeConcealedKongLogical(state, seatIndex: 0, candidateLogicalTile: legalLogical);
+
+        Assert.Equal(legalLogical, selected);
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "W134")]
+    public void SelectSafeConcealedKongLogical_RemapsPhysicalTilePayloadToLegalLogicalTile()
+    {
+        var hand = new ChangshaHandState
+        {
+            SeatIndex = 0,
+            ConcealedTiles = new List<int>
+            {
+                Tiao(9, 0), Tiao(9, 1), Tiao(9, 2), Tiao(9, 3),
+                Wan(1, 0), Wan(2, 0), Wan(3, 0), Wan(4, 0), Wan(5, 0),
+                Tong(4, 0), Tong(5, 0), Tong(6, 0), Tong(7, 0), Tong(8, 0)
+            }
+        };
+
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingDiscard,
+            ActiveSeatIndex = 0,
+            LastDrawSeatIndex = 0,
+            Hands = new List<ChangshaHandState>
+            {
+                hand,
+                new() { SeatIndex = 1 },
+                new() { SeatIndex = 2 },
+                new() { SeatIndex = 3 }
+            }
+        };
+
+        var stalePhysicalTilePayload = Tiao(9, 2);
+        var selected = ChangshaGameRuntime.SelectSafeConcealedKongLogical(state, seatIndex: 0, candidateLogicalTile: stalePhysicalTilePayload);
+
+        Assert.Equal(ChangshaDeckBuilder.GetLogicalTile(Tiao(9, 0)), selected);
     }
 
     [Fact, Trait("Category", "Changsha"), Trait("Wave", "W124")]
